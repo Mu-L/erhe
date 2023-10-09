@@ -95,6 +95,10 @@ FetchContent_MakeAvailable(etl)
 message("Fetching glm")
 FetchContent_MakeAvailable(glm)
 
+message("Fetching glslang")
+include(glslang)
+FetchContent_MakeAvailable_glslang()
+
 message("Fetching GSL")
 FetchContent_MakeAvailable(GSL)
 
