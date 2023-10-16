@@ -315,9 +315,10 @@ target_link_libraries(
     erhe::defer
     erhe::file
     erhe::geometry
-    erhe::gl
+    #erhe::gl
+    IGLLibrary
     erhe::gltf
-    erhe::graphics
+    #erhe::graphics
     erhe::imgui
     erhe::log
     erhe::math

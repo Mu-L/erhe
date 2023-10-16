@@ -22,14 +22,15 @@ erhe_target_sources_grouped(
 target_link_libraries(
     ${_target}
     PUBLIC
-        erhe::graphics
+        #erhe::graphics
+        IGLLibrary
         erhe::math
         erhe::primitive
         erhe::ui
         Microsoft.GSL::GSL
     PRIVATE
         erhe::concurrency
-        erhe::gl
+        #erhe::gl
         erhe::log
         erhe::profile
         erhe::verify
