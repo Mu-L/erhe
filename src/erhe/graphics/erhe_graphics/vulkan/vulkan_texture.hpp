@@ -7,7 +7,11 @@
 #include "volk.h"
 #include "vk_mem_alloc.h"
 
+#include <vector>
+
 namespace erhe::graphics {
+
+class Device_impl;
 
 class Texture_impl final
 {
@@ -22,7 +26,7 @@ public:
 
     using Create_info = Texture_create_info;
 
-    [[nodiscard]] static auto get_mipmap_dimensions (Texture_type type) -> int;
+    [[nodiscard]] static auto get_mipmap_dimensions(Texture_type type) -> int;
 
     [[nodiscard]] auto get_debug_label           () const -> erhe::utility::Debug_label;
     [[nodiscard]] auto get_pixelformat           () const -> erhe::dataformat::Format;
@@ -35,26 +39,47 @@ public:
     [[nodiscard]] auto get_sample_count          () const -> int;
     [[nodiscard]] auto get_texture_type          () const -> Texture_type;
     [[nodiscard]] auto is_layered                () const -> bool;
-    [[nodiscard]] auto get_handle                () const -> uint64_t;
     [[nodiscard]] auto is_sparse                 () const -> bool;
 
-    [[nodiscard]] auto get_vma_allocation() const -> VmaAllocation;
-    [[nodiscard]] auto get_vk_image      () const -> VkImage;
+    [[nodiscard]] auto get_vma_allocation        () const -> VmaAllocation;
+    [[nodiscard]] auto get_vk_image              () const -> VkImage;
+    [[nodiscard]] auto get_view_base_array_layer () const -> int;
+    [[nodiscard]] auto get_vk_image_view         (VkImageAspectFlags aspect_mask, uint32_t base_layer, uint32_t layer_count) -> VkImageView;
+    [[nodiscard]] auto get_vk_image_view         (VkImageAspectFlags aspect_mask, uint32_t base_layer, uint32_t layer_count, uint32_t base_level, uint32_t level_count) -> VkImageView;
+    [[nodiscard]] auto get_current_layout        () const -> VkImageLayout;
 
     void clear() const;
+    void set_buffer       (Buffer& buffer);
+    void transition_layout(VkCommandBuffer command_buffer, VkImageLayout new_layout) const;
+    void set_layout       (VkImageLayout layout) const; // Update tracked layout without inserting barrier
 
 private:
     friend bool operator==(const Texture_impl& lhs, const Texture_impl& rhs) noexcept;
 
-    VmaAllocation m_vma_allocation{VK_NULL_HANDLE};
-    VkImage       m_vk_image      {VK_NULL_HANDLE};	
-    VkImageView   m_vk_image_view {VK_NULL_HANDLE};
-    VkSampler     m_vk_sampler    {VK_NULL_HANDLE};
+    class Cached_image_view
+    {
+    public:
+        VkImageAspectFlags aspect_mask{0};
+        uint32_t           base_layer {0};
+        uint32_t           layer_count{0};
+        uint32_t           base_level {0};
+        uint32_t           level_count{0};
+        VkImageView        image_view {VK_NULL_HANDLE};
+    };
+
+    Device_impl&                   m_device_impl;
+    VmaAllocation                  m_vma_allocation{VK_NULL_HANDLE};
+    VkImage                        m_vk_image      {VK_NULL_HANDLE};
+    VkSampler                      m_vk_sampler    {VK_NULL_HANDLE};
+    std::vector<Cached_image_view> m_cached_image_views;
 
     Texture_type               m_type                  {Texture_type::texture_2d};
     erhe::dataformat::Format   m_pixelformat           {erhe::dataformat::Format::format_8_vec4_srgb};
     bool                       m_fixed_sample_locations{true};
     bool                       m_is_sparse             {false};
+    bool                       m_is_view               {false};
+    int                        m_view_base_array_layer {0};
+    int                        m_view_base_level       {0};
     int                        m_sample_count          {0};
     int                        m_width                 {0};
     int                        m_height                {0};
@@ -63,6 +88,7 @@ private:
     int                        m_level_count           {0};
     Buffer*                    m_buffer                {nullptr};
     erhe::utility::Debug_label m_debug_label;
+    mutable VkImageLayout      m_current_layout        {VK_IMAGE_LAYOUT_UNDEFINED};
 };
 
 

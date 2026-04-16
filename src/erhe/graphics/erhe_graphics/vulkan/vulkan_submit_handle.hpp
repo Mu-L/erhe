@@ -6,11 +6,9 @@
 
 namespace erhe::graphics {
 
-class Submit_handle {
+class Submit_handle
+{
 public:
-    uint32_t m_buffer_index{0};
-    uint32_t m_submit_id   {0};
-
     Submit_handle() = default;
 
     explicit Submit_handle(uint64_t handle)
@@ -29,6 +27,9 @@ public:
     {
         return (static_cast<uint64_t>(m_submit_id) << 32u) + m_buffer_index;
     }
+
+    uint32_t m_buffer_index{0};
+    uint32_t m_submit_id   {0};
 };
 
 static_assert(sizeof(Submit_handle) == sizeof(uint64_t));

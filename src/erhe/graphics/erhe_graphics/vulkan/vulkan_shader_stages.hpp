@@ -3,6 +3,8 @@
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/glsl_to_spirv.hpp"
 
+#include "volk.h"
+
 #include "glslang/Public/ShaderLang.h"
 namespace glslang {
     class TShader;
@@ -47,6 +49,8 @@ public:
 
     auto get_final_source(const Shader_stage& shader, std::optional<unsigned int> gl_name) -> std::string;
 
+    [[nodiscard]] auto get_spirv_binary(Shader_type type) const -> std::span<const unsigned int>;
+
 private:
     friend class Shader_stages_impl;
     friend class Reloadable_shader_stages;
@@ -69,17 +73,29 @@ public:
     Shader_stages_impl(Device& device, const std::string& non_functional_name);
     Shader_stages_impl(Shader_stages_impl&& old);
     Shader_stages_impl& operator=(Shader_stages_impl&& old);
+    ~Shader_stages_impl();
 
     // Reloads program by consuming prototype
     void reload    (Shader_stages_prototype&& prototype);
     void invalidate();
-    [[nodiscard]] auto name    () const -> const std::string&;
-    [[nodiscard]] auto is_valid() const -> bool;
+    [[nodiscard]] auto name                () const -> const std::string&;
+    [[nodiscard]] auto is_valid            () const -> bool;
+    [[nodiscard]] auto get_bind_group_layout() const -> const Bind_group_layout*;
+
+    [[nodiscard]] auto get_vertex_module  () const -> VkShaderModule;
+    [[nodiscard]] auto get_fragment_module() const -> VkShaderModule;
+    [[nodiscard]] auto get_compute_module () const -> VkShaderModule;
 
 private:
-    Device&     m_device;
-    std::string m_name;
-    bool        m_is_valid{false};
+    void destroy_modules();
+
+    Device&                  m_device;
+    std::string              m_name;
+    const Bind_group_layout* m_bind_group_layout{nullptr};
+    bool                     m_is_valid{false};
+    VkShaderModule           m_vertex_module  {VK_NULL_HANDLE};
+    VkShaderModule           m_fragment_module{VK_NULL_HANDLE};
+    VkShaderModule           m_compute_module {VK_NULL_HANDLE};
 };
 
 class Shader_stages_impl_hash

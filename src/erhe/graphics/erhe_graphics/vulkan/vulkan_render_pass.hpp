@@ -28,17 +28,22 @@ public:
     void reset       ();
     auto check_status() const -> bool;
 
-    [[nodiscard]] auto get_render_target_width () const -> int;
-    [[nodiscard]] auto get_render_target_height() const -> int;
-    [[nodiscard]] auto get_sample_count        () const -> unsigned int;
-    [[nodiscard]] auto get_swapchain           () const -> Swapchain*;
-    [[nodiscard]] auto get_debug_label         () const -> erhe::utility::Debug_label;
+    [[nodiscard]] auto get_render_target_width   () const -> int;
+    [[nodiscard]] auto get_render_target_height  () const -> int;
+    [[nodiscard]] auto get_sample_count          () const -> unsigned int;
+    [[nodiscard]] auto get_color_attachment_count() const -> unsigned int;
+    [[nodiscard]] auto get_swapchain             () const -> Swapchain*;
+    [[nodiscard]] auto get_debug_label           () const -> erhe::utility::Debug_label;
+    [[nodiscard]] auto get_command_buffer        () const -> VkCommandBuffer;
+    [[nodiscard]] auto get_render_pass           () const -> VkRenderPass;
 
-    // For Render_command_encoder;
-    void start_render_pass();
-    void end_render_pass();
+    // For Render_command_encoder
+    void start_render_pass(Render_pass* render_pass_before, Render_pass* render_pass_after);
+    void end_render_pass  (Render_pass* render_pass_after);
 
 private:
+    friend class Device_impl;
+
     Device&                                          m_device;
     Swapchain*                                       m_swapchain{nullptr};
     std::array<Render_pass_attachment_descriptor, 4> m_color_attachments;
@@ -53,9 +58,11 @@ private:
 
     Device_impl&              m_device_impl;
     VkRenderPass              m_render_pass   {VK_NULL_HANDLE};
+    VkFramebuffer             m_framebuffer   {VK_NULL_HANDLE};
     VkCommandBuffer           m_command_buffer{VK_NULL_HANDLE};
     VkRenderPassBeginInfo     m_begin_info{};
     std::vector<VkClearValue> m_clear_values;
+    bool                      m_any_load_op_clear{false};
 };
 
 } // namespace erhe::graphics

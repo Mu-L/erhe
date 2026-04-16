@@ -14,13 +14,14 @@
 
 #include <fmt/format.h>
 
+#include <cstring>
 #include <sstream>
 #include <vector>
 
 namespace erhe::graphics {
 
 Buffer_impl::Buffer_impl(Device& device, const Buffer_create_info& create_info) noexcept
-    : m_device                                {device}
+    : m_device_impl                           {device.get_impl()}
     , m_capacity_byte_count                   {create_info.capacity_byte_count}
     , m_usage                                 {create_info.usage}
     , m_memory_allocation_create_flag_bit_mask{create_info.memory_allocation_create_flag_bit_mask}
@@ -45,14 +46,13 @@ Buffer_impl::Buffer_impl(Device& device, const Buffer_create_info& create_info) 
         .pNext                 = nullptr,
         .flags                 = 0,
         .size                  = create_info.capacity_byte_count,
-        .usage                 = to_vulkan_buffer_usage(create_info.usage),
+        .usage                 = to_vulkan_buffer_usage(create_info.usage) | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         .sharingMode           = VK_SHARING_MODE_EXCLUSIVE,
         .queueFamilyIndexCount = 0,
         .pQueueFamilyIndices   = nullptr
     };
 
-    Device_impl&  device_impl = device.get_impl();
-    VmaAllocator& allocator   = device.get_impl().get_allocator();
+    VmaAllocator& allocator   = m_device_impl.get_allocator();
     VkResult      result      = VK_SUCCESS;
 
     const VmaAllocationCreateInfo allocation_create_info{
@@ -74,9 +74,11 @@ Buffer_impl::Buffer_impl(Device& device, const Buffer_create_info& create_info) 
     ERHE_VERIFY(m_vk_buffer != VK_NULL_HANDLE);
     ERHE_VERIFY(m_vma_allocation != VK_NULL_HANDLE);
 
+    vmaSetAllocationName(allocator, m_vma_allocation, create_info.debug_label.data());
+
     if (!create_info.debug_label.empty()) {
         m_debug_label = create_info.debug_label;
-        device_impl.set_debug_label(
+        m_device_impl.set_debug_label(
             VK_OBJECT_TYPE_BUFFER,
             reinterpret_cast<uint64_t>(m_vk_buffer),
             create_info.debug_label.data()
@@ -90,7 +92,7 @@ Buffer_impl::Buffer_impl(Device& device, const Buffer_create_info& create_info) 
     VmaAllocationInfo allocation_info{};
     vmaGetAllocationInfo(allocator, m_vma_allocation, &allocation_info);
     ERHE_VERIFY(allocation_info.size >= create_info.capacity_byte_count);
-    m_vk_memory_type = device_impl.get_memory_type(allocation_info.memoryType);
+    m_vk_memory_type = m_device_impl.get_memory_type(allocation_info.memoryType);
     const bool host_visible  = m_vk_memory_type.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
     const bool host_coherent = m_vk_memory_type.propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
@@ -141,20 +143,18 @@ Buffer_impl::Buffer_impl(Device& device, const Buffer_create_info& create_info) 
 }
 
 Buffer_impl::Buffer_impl(Device& device)
-    : m_device{device}
+    : m_device_impl{device.get_impl()}
 {
 }
 
 Buffer_impl::~Buffer_impl() noexcept
 {
-    Device_impl& device_impl = m_device.get_impl();
-
     const bool          persistently_mapped = m_persistently_mapped;
     const VmaAllocation vma_allocation      = m_vma_allocation;
     const VkBuffer      vk_buffer           = m_vk_buffer;
 
-    device_impl.add_completion_handler(
-        [&device_impl, persistently_mapped, vma_allocation, vk_buffer]() {
+    m_device_impl.add_completion_handler(
+        [persistently_mapped, vma_allocation, vk_buffer](Device_impl& device_impl) {
             VmaAllocator& allocator = device_impl.get_allocator();
 
             if (persistently_mapped) {
@@ -166,7 +166,7 @@ Buffer_impl::~Buffer_impl() noexcept
 }
 
 Buffer_impl::Buffer_impl(Buffer_impl&& old) noexcept
-    : m_device             {old.m_device}
+    : m_device_impl        {old.m_device_impl}
     , m_vma_allocation     {std::exchange(old.m_vma_allocation, VK_NULL_HANDLE)}
     , m_vk_buffer          {std::exchange(old.m_vk_buffer,      VK_NULL_HANDLE)}
     , m_debug_label        {std::move(old.m_debug_label)}
@@ -242,14 +242,13 @@ auto Buffer_impl::map_all_bytes() noexcept -> std::span<std::byte>
     ERHE_VERIFY(m_vk_buffer != VK_NULL_HANDLE);
     ERHE_VERIFY(m_vma_allocation != VK_NULL_HANDLE);
 
-    VmaAllocator& allocator = m_device.get_impl().get_allocator();
+    VmaAllocator& allocator = m_device_impl.get_allocator();
     VkResult      result    = VK_SUCCESS;
 
     void* map_pointer = nullptr;
     result = vmaMapMemory(allocator, m_vma_allocation, &map_pointer);
     if (result != VK_SUCCESS) {
-        log_swapchain->critical("vmaMapMemory() failed with {} {}", static_cast<int32_t>(result), c_str(result));
-        abort();
+        m_device_impl.get_device().device_message(Message_severity::error,fmt::format("vmaMapMemory() failed with {} {}", static_cast<int32_t>(result), c_str(result)));
     }
     m_map_all = std::span<std::byte>{
         static_cast<std::byte*>(map_pointer),
@@ -288,7 +287,7 @@ void Buffer_impl::unmap() noexcept
     ERHE_VERIFY(m_vma_allocation != VK_NULL_HANDLE);
 
     ERHE_VERIFY(m_map.data() != nullptr);
-    VmaAllocator& allocator = m_device.get_impl().get_allocator();
+    VmaAllocator& allocator = m_device_impl.get_allocator();
     vmaUnmapMemory(allocator, m_vma_allocation);
     m_map = {};
     m_map_all = {};
@@ -302,8 +301,8 @@ void Buffer_impl::invalidate(const std::size_t byte_offset, const std::size_t by
     ERHE_VERIFY(m_vma_allocation != VK_NULL_HANDLE);
     ERHE_VERIFY(m_map.data() != nullptr);
 
-    VkDevice      vulkan_device = m_device.get_impl().get_vulkan_device();
-    VmaAllocator& allocator     = m_device.get_impl().get_allocator();
+    VkDevice      vulkan_device = m_device_impl.get_vulkan_device();
+    VmaAllocator& allocator     = m_device_impl.get_allocator();
     VkResult      result        = VK_SUCCESS;
 
     VmaAllocationInfo allocation_info{};
@@ -318,8 +317,7 @@ void Buffer_impl::invalidate(const std::size_t byte_offset, const std::size_t by
     };
     result = vkInvalidateMappedMemoryRanges(vulkan_device, 1, &memory_range);
     if (result != VK_SUCCESS) {
-        log_context->critical("vkInvalidateMappedMemoryRanges() failed with {} {}", static_cast<int32_t>(result), c_str(result));
-        abort();
+        m_device_impl.get_device().device_message(Message_severity::error,fmt::format("vkInvalidateMappedMemoryRanges() failed with {} {}", static_cast<int32_t>(result), c_str(result)));
     }
 }
 
@@ -334,8 +332,8 @@ void Buffer_impl::flush_bytes(const std::size_t byte_offset, const std::size_t b
         return;
     }
 
-    VkDevice      vulkan_device = m_device.get_impl().get_vulkan_device();
-    VmaAllocator& allocator     = m_device.get_impl().get_allocator();
+    VkDevice      vulkan_device = m_device_impl.get_vulkan_device();
+    VmaAllocator& allocator     = m_device_impl.get_allocator();
     VkResult      result        = VK_SUCCESS;
 
     VmaAllocationInfo allocation_info{};
@@ -350,14 +348,25 @@ void Buffer_impl::flush_bytes(const std::size_t byte_offset, const std::size_t b
     };
     result = vkFlushMappedMemoryRanges(vulkan_device, 1, &memory_range);
     if (result != VK_SUCCESS) {
-        log_context->critical("vkFlushMappedMemoryRanges() failed with {} {}", static_cast<int32_t>(result), c_str(result));
-        abort();
+        m_device_impl.get_device().device_message(Message_severity::error,fmt::format("vkFlushMappedMemoryRanges() failed with {} {}", static_cast<int32_t>(result), c_str(result)));
+    }
+}
+
+void Buffer_impl::upload_sub_data(const std::size_t byte_offset, const std::size_t byte_count, const void* data) noexcept
+{
+    if ((data == nullptr) || (byte_count == 0)) {
+        return;
+    }
+    std::span<std::byte> mapped = map_bytes(byte_offset, byte_count);
+    if (!mapped.empty()) {
+        std::memcpy(mapped.data(), data, byte_count);
+        flush_bytes(byte_offset, byte_count);
     }
 }
 
 void Buffer_impl::dump() const noexcept
 {
-    ERHE_FATAL("not implemented");
+    // TODO Implement buffer dump for debugging
 }
 
 void Buffer_impl::flush_and_unmap_bytes(const std::size_t byte_count) noexcept
@@ -379,6 +388,11 @@ auto Buffer_impl::get_vma_allocation() const -> VmaAllocation
 auto Buffer_impl::get_vk_buffer() const -> VkBuffer
 {
     return m_vk_buffer;
+}
+
+auto Buffer_impl::is_host_visible() const -> bool
+{
+    return (m_vk_memory_type.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 }
 
 auto operator==(const Buffer_impl& lhs, const Buffer_impl& rhs) noexcept -> bool

@@ -214,6 +214,12 @@ auto Surface_impl::use_physical_device(VkPhysicalDevice physical_device) -> bool
             surface_capabilities2.surfaceCapabilities.maxImageCount
         );
     }
+    log_context->info(
+        "Swapchain image count = {} (driver min = {}, max = {})",
+        m_image_count,
+        surface_capabilities2.surfaceCapabilities.minImageCount,
+        surface_capabilities2.surfaceCapabilities.maxImageCount
+    );
 
     return true;
 }
@@ -233,40 +239,75 @@ void Surface_impl::fail()
 
 auto Surface_impl::get_surface_format_score(const VkSurfaceFormatKHR surface_format) const -> float
 {
-    float format_score = 1.0f;
+    const int requested_bit_depth = (m_surface_create_info.context_window != nullptr)
+        ? m_surface_create_info.context_window->get_window_configuration().color_bit_depth
+        : 8;
+    const bool prefer_hdr = m_surface_create_info.prefer_high_dynamic_range;
+
+    // Classify the format
+    bool is_srgb_format  = false; // format applies linear-to-sRGB OETF on write
+    bool is_float_format = false;
+    int  bit_depth       = 0;
     switch (surface_format.format) {
-        case VK_FORMAT_R8G8B8A8_UNORM:           format_score = 2.0f; break;
-        case VK_FORMAT_B8G8R8A8_UNORM:           format_score = 2.0f; break;
-        case VK_FORMAT_R8G8B8A8_SRGB:            format_score = 3.0f; break;
-        case VK_FORMAT_B8G8R8A8_SRGB:            format_score = 3.0f; break;
-        case VK_FORMAT_A2R10G10B10_UNORM_PACK32: format_score = 4.0f; break;
+        case VK_FORMAT_R8G8B8A8_SRGB:            is_srgb_format = true;  bit_depth = 8;  break;
+        case VK_FORMAT_B8G8R8A8_SRGB:            is_srgb_format = true;  bit_depth = 8;  break;
+        case VK_FORMAT_R8G8B8A8_UNORM:           is_srgb_format = false; bit_depth = 8;  break;
+        case VK_FORMAT_B8G8R8A8_UNORM:           is_srgb_format = false; bit_depth = 8;  break;
+        case VK_FORMAT_A2R10G10B10_UNORM_PACK32: is_srgb_format = false; bit_depth = 10; break;
+        case VK_FORMAT_A2B10G10R10_UNORM_PACK32: is_srgb_format = false; bit_depth = 10; break;
+        case VK_FORMAT_R16G16B16A16_SFLOAT:      is_float_format = true; bit_depth = 16; break;
         default:
-            break;
+            return 0.0f;
     }
 
-    float color_space_score = 10.0f;
-    switch (surface_format.colorSpace) {
-        case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:       color_space_score = 2.0f; break;
-        case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:
-        case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
-        case VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT:
-        case VK_COLOR_SPACE_DCI_P3_NONLINEAR_EXT:
-        case VK_COLOR_SPACE_BT709_LINEAR_EXT:
-        case VK_COLOR_SPACE_BT709_NONLINEAR_EXT:
-        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
-        case VK_COLOR_SPACE_HDR10_ST2084_EXT:
-        case VK_COLOR_SPACE_DOLBYVISION_EXT:
-        case VK_COLOR_SPACE_HDR10_HLG_EXT:
-        case VK_COLOR_SPACE_ADOBERGB_LINEAR_EXT:
-        case VK_COLOR_SPACE_ADOBERGB_NONLINEAR_EXT:
-        case VK_COLOR_SPACE_PASS_THROUGH_EXT:
-        case VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT:
-        case VK_COLOR_SPACE_DISPLAY_NATIVE_AMD:
-        default:
-            break;
+    // Score format + colorSpace as a pair.
+    //
+    // erhe shaders output linear color. The format+colorSpace combination must
+    // ensure correct display:
+    //
+    //   _SRGB format + SRGB_NONLINEAR:        HW encodes sRGB, display expects sRGB.  Correct.
+    //   _UNORM format + SRGB_NONLINEAR:        Linear stored as-is, display expects sRGB. Dark.
+    //   _SFLOAT format + EXTENDED_SRGB_LINEAR:  Linear stored, compositor converts. Correct (HDR).
+    //   _UNORM 10-bit + HDR10_ST2084:           Needs PQ encoding in shader. Not supported.
+    //
+    // Reject mismatched pairs that would produce incorrect output.
+
+    const VkColorSpaceKHR color_space = surface_format.colorSpace;
+
+    if (color_space == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+        // Standard SDR path. Only correct when the format has sRGB OETF.
+        if (!is_srgb_format) {
+            // UNORM + SRGB_NONLINEAR = linear values displayed as sRGB = dark.
+            // Give a low but non-zero score as a last-resort fallback.
+            return 1.0f;
+        }
+        // sRGB format + SRGB_NONLINEAR: the correct SDR combination.
+        float score = 100.0f;
+        if (bit_depth == requested_bit_depth) {
+            score += 40.0f;
+        }
+        if (!prefer_hdr) {
+            score += 20.0f; // SDR preference bonus
+        }
+        return score;
     }
 
-    return format_score * color_space_score;
+    if (color_space == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT) {
+        // scRGB linear HDR path. Only makes sense with float formats.
+        if (!is_float_format) {
+            return 0.0f;
+        }
+        float score = 80.0f;
+        if (prefer_hdr) {
+            score += 40.0f; // HDR preference bonus
+        }
+        return score;
+    }
+
+    // Other color spaces (HDR10_ST2084, Display P3, BT2020, etc.)
+    // require shader-side transfer functions erhe does not currently implement.
+    // Score low so they are only selected if nothing else is available.
+    return 0.5f;
 }
 
 auto Surface_impl::get_present_scaling_capabilities() const -> VkSurfacePresentScalingCapabilitiesKHR
@@ -498,9 +539,37 @@ void Surface_impl::choose_surface_format()
 
 void Surface_impl::choose_present_mode()
 {
+    const Graphics_config& config = m_device_impl.get_graphics_config();
+
+    // Always report what the driver advertises and what we pick -- frame-
+    // pacing issues (and especially the MoltenVK FIFO-at-60Hz trap) are
+    // impossible to diagnose without this.
+    {
+        std::string modes;
+        for (const VkPresentModeKHR present_mode : m_present_modes) {
+            if (!modes.empty()) {
+                modes += ", ";
+            }
+            modes += c_str(present_mode);
+        }
+        log_context->info("Surface present modes available: [{}]", modes);
+    }
+
+    // When force_present_mode_immediate is set, use IMMEDIATE if available.
+    // This disables vsync for accurate performance measurements.
+    if (config.force_present_mode_immediate) {
+        for (const VkPresentModeKHR present_mode : m_present_modes) {
+            if (present_mode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+                m_present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+                log_context->info("Forcing present mode VK_PRESENT_MODE_IMMEDIATE_KHR (force_present_mode_immediate)");
+                return;
+            }
+        }
+        log_context->warn("force_present_mode_immediate is set but VK_PRESENT_MODE_IMMEDIATE_KHR is not available");
+    }
+
     float best_score = std::numeric_limits<float>::lowest();
     VkPresentModeKHR selected_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-    log_context->debug("Surface present modes:");
     for (const VkPresentModeKHR present_mode : m_present_modes) {
         const float score = get_present_mode_score(present_mode);
         log_context->debug("  present mode {} score {}", c_str(present_mode), score);
@@ -510,7 +579,7 @@ void Surface_impl::choose_present_mode()
         }
     }
     m_present_mode = selected_present_mode;
-    log_context->debug("Selected present mode {}", c_str(m_present_mode));
+    log_context->info("Selected present mode {}", c_str(m_present_mode));
 
     const VkSurfacePresentScalingCapabilitiesKHR scaling_capabilities = get_present_scaling_capabilities();
     log_context->debug("  scaling   = {}", to_string_VkPresentScalingFlagsKHR(scaling_capabilities.supportedPresentScaling));
@@ -525,7 +594,7 @@ Surface_impl::~Surface_impl() noexcept
     VkSurfaceKHR surface = m_surface;
     if (surface != VK_NULL_HANDLE) {
         m_device_impl.add_completion_handler(
-            [instance, surface]() {
+            [instance, surface](Device_impl&) {
                 log_context->debug("Surface_impl::~Surface_impl() completion handler");
                 vkDestroySurfaceKHR(instance, surface, nullptr);
             }
@@ -674,19 +743,40 @@ auto Surface_impl::update_swapchain(Vulkan_swapchain_create_info& out_swapchain_
         }
     }
 
+    // Build the pNext chain for the swapchain create info.
+    // When swapchain_maintenance1 is enabled, provide VkSwapchainPresentModesCreateInfoKHR
+    // to inform the implementation which present modes the application may use.
+    bool use_present_modes = m_device_impl.get_capabilities().m_swapchain_maintenance1;
+
+    out_swapchain_create_info.present_modes = m_present_modes;
+    out_swapchain_create_info.swapchain_present_modes_create_info = VkSwapchainPresentModesCreateInfoKHR{
+        .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_KHR, // VkStructureType
+        .pNext            = nullptr,                                                   // const void*
+        .presentModeCount = static_cast<uint32_t>(out_swapchain_create_info.present_modes.size()), // uint32_t
+        .pPresentModes    = out_swapchain_create_info.present_modes.data()              // const VkPresentModeKHR*
+    };
+
     out_swapchain_create_info.swapchain_present_scaling_create_info = VkSwapchainPresentScalingCreateInfoKHR{
         .sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_SCALING_CREATE_INFO_KHR, // VkStructureType
-        .pNext           = nullptr,                                                     // const void*
+        .pNext           = use_present_modes                                            // const void*
+                              ? &out_swapchain_create_info.swapchain_present_modes_create_info
+                              : nullptr,
         .scalingBehavior = scaling_behavior,                                            // VkPresentScalingFlagsKHR
         .presentGravityX = gravity_x,                                                   // VkPresentGravityFlagsKHR
         .presentGravityY = gravity_y                                                    // VkPresentGravityFlagsKHR
     };
 
+    // Chain: swapchain_create_info -> [scaling -> [present_modes]] or [present_modes]
+    const void* pNext = nullptr;
+    if (use_scaling) {
+        pNext = &out_swapchain_create_info.swapchain_present_scaling_create_info;
+    } else if (use_present_modes) {
+        pNext = &out_swapchain_create_info.swapchain_present_modes_create_info;
+    }
+
     out_swapchain_create_info.swapchain_create_info = VkSwapchainCreateInfoKHR{
         .sType                 = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,   // VkStructureType
-        .pNext                 = use_scaling                                    // const void*
-                                    ? &out_swapchain_create_info.swapchain_present_scaling_create_info
-                                    : nullptr,        
+        .pNext                 = pNext,                                         // const void*
         .flags                 = 0,                                             // VkSwapchainCreateFlagsKHR
         .surface               = m_surface,                                     // VkSurfaceKHR
         .minImageCount         = m_image_count,                                 // uint32_t

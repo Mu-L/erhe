@@ -4,6 +4,7 @@
 
 #include "volk.h"
 
+#include <cstdint>
 #include <vector>
 
 namespace erhe::window { class Context_window; }
@@ -20,6 +21,8 @@ class Vulkan_swapchain_create_info
 public:
     VkSwapchainCreateInfoKHR               swapchain_create_info;
     VkSwapchainPresentScalingCreateInfoKHR swapchain_present_scaling_create_info;
+    VkSwapchainPresentModesCreateInfoKHR   swapchain_present_modes_create_info;
+    std::vector<VkPresentModeKHR>          present_modes;
 };
 
 class Surface_impl final

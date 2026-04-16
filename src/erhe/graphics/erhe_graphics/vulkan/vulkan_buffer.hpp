@@ -11,6 +11,8 @@
 
 namespace erhe::graphics {
 
+class Device_impl;
+
 class Buffer_impl final
 {
 public:
@@ -29,6 +31,7 @@ public:
     void invalidate           (std::size_t byte_offset, std::size_t byte_count) noexcept;
     void flush_bytes          (std::size_t byte_offset, std::size_t byte_count) noexcept;
     void flush_and_unmap_bytes(std::size_t byte_count) noexcept;
+    void upload_sub_data      (std::size_t byte_offset, std::size_t byte_count, const void* data) noexcept;
     void dump                 () const noexcept;
 
     auto begin_write(std::size_t byte_offset, std::size_t byte_count) noexcept -> std::span<std::byte>;
@@ -52,6 +55,7 @@ public:
 
     [[nodiscard]] auto get_vma_allocation() const -> VmaAllocation;
     [[nodiscard]] auto get_vk_buffer     () const -> VkBuffer;
+    [[nodiscard]] auto is_host_visible   () const -> bool;
 
 private:
     friend bool operator==(const Buffer_impl& lhs, const Buffer_impl& rhs) noexcept;
@@ -60,7 +64,7 @@ private:
     friend class Texture;
 
     ERHE_PROFILE_MUTEX(std::mutex, m_allocate_mutex);
-    Device&       m_device;
+    Device_impl&  m_device_impl;
     VmaAllocation m_vma_allocation     {VK_NULL_HANDLE};
     VkBuffer      m_vk_buffer          {VK_NULL_HANDLE};	
     VkMemoryType  m_vk_memory_type     {};
