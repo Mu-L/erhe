@@ -3,7 +3,7 @@
 #include "rendering_test_log.hpp"
 
 #include "erhe_codegen/config_io.hpp"
-#include "rendering_test/generated/rendering_test_settings_serialization.hpp"
+#include "generated/rendering_test/rendering_test_settings_serialization.hpp"
 #include "erhe_scene_renderer/generated/mesh_memory_config.hpp"
 #include "erhe_scene_renderer/generated/mesh_memory_config_serialization.hpp"
 #include "erhe_dataformat/dataformat_log.hpp"

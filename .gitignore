@@ -45,6 +45,7 @@ log.txt
 releases
 erhe_cmake_dependencies.dot*
 .cpm_cache
+CMakeUserPresets.json
 
 # Per-executable runtime artifacts
 src/editor/logs/

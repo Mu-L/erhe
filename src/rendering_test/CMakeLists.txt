@@ -84,7 +84,7 @@ source_group("codegen generated/scene_renderer" FILES ${_scene_renderer_ser_sour
 
 # Rendering test settings codegen (struct + serialization live in this target only)
 set(_rt_config_defs "${CMAKE_CURRENT_SOURCE_DIR}/definitions")
-set(_rt_config_out  "${CMAKE_CURRENT_BINARY_DIR}/rendering_test/generated")
+set(_rt_config_out  "${CMAKE_CURRENT_BINARY_DIR}/generated/rendering_test")
 
 erhe_codegen_generate(
     TARGET          ${_target}

@@ -2,7 +2,7 @@
 
 #include "programs.hpp"
 
-#include "rendering_test/generated/rendering_test_settings.hpp"
+#include "generated/rendering_test/rendering_test_settings.hpp"
 
 #include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_gltf/image_transfer.hpp"
