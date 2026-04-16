@@ -168,6 +168,14 @@ endif()
 add_definitions(-DERHE_GEOGRAM_GIT_COMMIT="${ERHE_GEOGRAM_GIT_COMMIT}")
 
 CPMAddPackage(
+    NAME              cpptrace
+    GIT_TAG           v1.0.4
+    VERSION           1.0.4
+    GIT_SHALLOW       TRUE
+    GITHUB_REPOSITORY jeremy-rifkin/cpptrace
+)
+
+CPMAddPackage(
     NAME              fmt
     GIT_TAG           12.1.0
     VERSION           12.1.0
@@ -216,8 +224,8 @@ CPMAddPackage(
 # Enable GLM_GTX_component_wise
 add_definitions(-DGLM_ENABLE_EXPERIMENTAL)
 
-# Force ERHE_SPIRV on for Metal before the glslang fetch
-if (${ERHE_GRAPHICS_LIBRARY} STREQUAL "metal")
+# Force ERHE_SPIRV on for Metal and Vulkan before the glslang fetch
+if (${ERHE_GRAPHICS_LIBRARY} STREQUAL "metal" OR ${ERHE_GRAPHICS_LIBRARY} STREQUAL "vulkan")
     set(ERHE_SPIRV "ON" CACHE STRING "Enable SPIR-V" FORCE)
 endif ()
 
@@ -248,10 +256,12 @@ if (${ERHE_GRAPHICS_LIBRARY} STREQUAL "opengl")
     message(STATUS "Erhe configured to use OpenGL as graphics API.")
     set(ERHE_GRAPHICS_API_OPENGL TRUE)
     add_definitions(-DERHE_GRAPHICS_LIBRARY_OPENGL)
+    find_package(OpenGL REQUIRED)
 elseif (${ERHE_GRAPHICS_LIBRARY} STREQUAL "vulkan")
     message(STATUS "Erhe configured to use vulkan as graphics API.")
     set(ERHE_GRAPHICS_API_VULKAN TRUE)
     add_definitions(-DERHE_GRAPHICS_LIBRARY_VULKAN)
+    add_definitions(-DVK_NO_PROTOTYPES)
     CPMAddPackage(
         NAME              Vulkan-Headers
         GIT_TAG           vulkan-sdk-1.4.335.0
@@ -264,6 +274,7 @@ elseif (${ERHE_GRAPHICS_LIBRARY} STREQUAL "vulkan")
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
     )
+    set(VOLK_STATIC_DEFINES VK_NO_PROTOTYPES CACHE STRING "" FORCE)
     CPMAddPackage(
         NAME              volk
         GIT_TAG           vulkan-sdk-1.4.335.0
@@ -641,8 +652,6 @@ else ()
     message(STATUS "Erhe configured to disable XR.")
     add_definitions(-DERHE_XR_LIBRARY_NONE)
 endif ()
-
-find_package(OpenGL REQUIRED)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

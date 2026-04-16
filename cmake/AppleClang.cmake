@@ -27,4 +27,5 @@ add_compile_options("$<$<CONFIG:DEBUG>:-O0;-g3>")
 set(ERHE_ADDITIONAL_GL_INCLUDES "${PROJECT_SOURCE_DIR}/src/khronos/khronos")
 
 function (erhe_target_settings_toolchain target)
+    set_target_properties(${target} PROPERTIES XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym")
 endfunction()
