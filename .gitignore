@@ -24,6 +24,7 @@ build_vs2026_opengl
 build_vs2026_opengl_no_tracy
 build_vs2026_opengl_asan
 build_vs2026_vulkan
+build_vs2026_vulkan_asan
 build_test_geometry
 build_test_raytrace_bvh
 build_test_raytrace_embree
@@ -33,11 +34,24 @@ build_vs2026_headless
 build_tests_asan
 build_opengl
 build_xcode_metal
+build_xcode_metal_asan
 build_xcode_opengl
 build_xcode_opengl_asan
+build_xcode_vulkan
+build_xcode_vulkan_asan
 cmake-build-*
 vscode-cmake-*
 log.txt
 releases
 erhe_cmake_dependencies.dot*
 .cpm_cache
+
+# Per-executable runtime artifacts
+src/editor/logs/
+src/editor/spirv_cache/
+src/example/logs/
+src/example/spirv_cache/
+src/hextiles/logs/
+src/hextiles/spirv_cache/
+src/rendering_test/logs/
+src/rendering_test/spirv_cache/
