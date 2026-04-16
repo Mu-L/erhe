@@ -49,7 +49,7 @@
         {
             "_version": 1,
             "label": "frame_log",
-            "visible": true
+            "visible": false
         },
         {
             "_version": 1,
@@ -99,7 +99,7 @@
         {
             "_version": 1,
             "label": "log_settings",
-            "visible": true
+            "visible": false
         },
         {
             "_version": 1,
@@ -179,7 +179,7 @@
         {
             "_version": 1,
             "label": "tail_log",
-            "visible": true
+            "visible": false
         },
         {
             "_version": 1,

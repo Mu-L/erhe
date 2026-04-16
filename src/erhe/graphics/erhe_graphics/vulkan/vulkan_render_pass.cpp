@@ -1114,6 +1114,7 @@ void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, 
     //
     // render_pass_after: used for debug-time validation only (see
     // end_render_pass).
+    static_cast<void>(render_pass_before);
     static_cast<void>(render_pass_after);
 
     m_device_impl.set_active_render_pass_impl(this);
@@ -1239,6 +1240,7 @@ void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, 
                     image_layout_str(att.layout_before),
                     image_layout_str(att.layout_after)
                 );
+                static_cast<void>(role);
             };
             for (std::size_t i = 0; i < m_color_attachments.size(); ++i) {
                 const std::string role = fmt::format("color{}", i);
@@ -1275,12 +1277,14 @@ void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, 
             }
             const bool has_depth   = m_depth_attachment.is_defined()   && (m_depth_attachment.texture   != nullptr);
             const bool has_stencil = m_stencil_attachment.is_defined() && (m_stencil_attachment.texture != nullptr);
+            static_cast<void>(has_depth);
+            static_cast<void>(has_stencil);
             ERHE_VULKAN_SYNC_TRACE(
                 "[RP_BEGIN] pass=\"{}\" color={} depth={} stencil={} area={}x{}",
                 m_debug_label.data(),
                 color_count,
-                has_depth   ? 1 : 0,
-                has_stencil ? 1 : 0,
+                has_depth,
+                has_stencil,
                 m_render_target_width,
                 m_render_target_height
             );
@@ -1288,8 +1292,8 @@ void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, 
                 "[RP_BEGIN] pass=\"{}\" color={} depth={} stencil={} area={}x{}",
                 m_debug_label.data(),
                 color_count,
-                has_depth   ? 1 : 0,
-                has_stencil ? 1 : 0,
+                has_depth,
+                has_stencil,
                 m_render_target_width,
                 m_render_target_height
             );
