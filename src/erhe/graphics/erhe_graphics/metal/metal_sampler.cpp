@@ -55,20 +55,20 @@ auto to_mtl_compare_function(const Compare_operation op) -> MTL::CompareFunction
 } // anonymous namespace
 
 Sampler_impl::Sampler_impl(Device& device, const Sampler_create_info& create_info)
-    : m_min_filter       {create_info.min_filter       }
-    , m_mag_filter       {create_info.mag_filter       }
-    , m_mipmap_mode      {create_info.mipmap_mode      }
-    , m_address_mode     {create_info.address_mode     }
-    , m_compare_enable   {create_info.compare_enable   }
-    , m_compare_operation{create_info.compare_operation}
-    , m_lod_bias         {create_info.lod_bias         }
-    , m_max_lod          {create_info.max_lod          }
-    , m_min_lod          {create_info.min_lod          }
-    , m_max_anisotropy   {create_info.max_anisotropy   }
-    , m_debug_label      {create_info.debug_label      }
+    : m_device_impl      {device.get_impl()              }
+    , m_min_filter       {create_info.min_filter        }
+    , m_mag_filter       {create_info.mag_filter        }
+    , m_mipmap_mode      {create_info.mipmap_mode       }
+    , m_address_mode     {create_info.address_mode      }
+    , m_compare_enable   {create_info.compare_enable    }
+    , m_compare_operation{create_info.compare_operation }
+    , m_lod_bias         {create_info.lod_bias          }
+    , m_max_lod          {create_info.max_lod           }
+    , m_min_lod          {create_info.min_lod           }
+    , m_max_anisotropy   {create_info.max_anisotropy    }
+    , m_debug_label      {create_info.debug_label       }
 {
-    Device_impl& device_impl = device.get_impl();
-    MTL::Device* mtl_device = device_impl.get_mtl_device();
+    MTL::Device* mtl_device = m_device_impl.get_mtl_device();
     if (mtl_device == nullptr) {
         return;
     }
@@ -101,8 +101,13 @@ Sampler_impl::Sampler_impl(Device& device, const Sampler_create_info& create_inf
 Sampler_impl::~Sampler_impl() noexcept
 {
     if (m_mtl_sampler != nullptr) {
-        m_mtl_sampler->release();
+        MTL::SamplerState* mtl_sampler = m_mtl_sampler;
         m_mtl_sampler = nullptr;
+        m_device_impl.add_completion_handler(
+            [mtl_sampler](Device_impl&) {
+                mtl_sampler->release();
+            }
+        );
     }
 }
 

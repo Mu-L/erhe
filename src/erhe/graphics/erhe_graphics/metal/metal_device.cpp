@@ -10,16 +10,19 @@
 #include "erhe_graphics/ring_buffer_range.hpp"
 #include "erhe_graphics/surface.hpp"
 #include "erhe_graphics/swapchain.hpp"
+#include "erhe_graphics/metal/metal_swapchain.hpp"
 #include "erhe_graphics/texture.hpp"
 
 #include "erhe_dataformat/dataformat.hpp"
 #include "erhe_verify/verify.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include "erhe_utility/align.hpp"
 
 #include <fmt/format.h>
 #include <Metal/Metal.hpp>
+#include <QuartzCore/QuartzCore.hpp>
 
 namespace erhe::graphics {
 
@@ -38,6 +41,17 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     }
 
     log_startup->info("Metal device: {}", m_mtl_device->name()->utf8String());
+
+    // Require Metal 3 (GPU family Metal3): the bindless texture heap relies on
+    // SPIRV-Cross MSL 3+ for full mutable aliasing of argument buffer descriptors.
+    if (!m_mtl_device->supportsFamily(MTL::GPUFamilyMetal3)) {
+        log_startup->critical(
+            "Metal device '{}' does not support GPUFamilyMetal3 (Metal 3). "
+            "erhe requires Metal 3.",
+            m_mtl_device->name()->utf8String()
+        );
+        abort();
+    }
 
     m_mtl_command_queue = m_mtl_device->newCommandQueue();
 
@@ -132,6 +146,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     m_info.max_uniform_block_size                   = 65536;
     m_info.use_texture_view                         = true;
     m_info.max_per_stage_descriptor_samplers        = 256; // Tier 2 argument buffers remove per-stage limit
+    m_info.texture_heap_path                       = Texture_heap_path::metal_argument_buffer;
     m_info.max_compute_workgroup_count[0]           = 65535;
     m_info.max_compute_workgroup_count[1]           = 65535;
     m_info.max_compute_workgroup_count[2]           = 65535;
@@ -158,6 +173,22 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     m_info.max_depth_layers                         = 4;
     m_info.max_depth_resolution                     = 4096;
 
+    // Metal MSAA depth/stencil resolve filter support is fixed by OS version.
+    // erhe targets macOS 10.15 / iOS 13 or later, where:
+    //   - MTLMultisampleDepthResolveFilter   has sample0 / min / max (no average).
+    //   - MTLMultisampleStencilResolveFilter has sample0 / depthResolvedSample.
+    // We expose only sample_zero / min / max for depth and sample_zero for stencil
+    // through the cross-API enum (depthResolvedSample is intentionally not exposed
+    // because it has no Vulkan analogue).
+    m_info.supported_depth_resolve_modes =
+        Resolve_mode_flag_bit_mask::sample_zero |
+        Resolve_mode_flag_bit_mask::min |
+        Resolve_mode_flag_bit_mask::max;
+    m_info.supported_stencil_resolve_modes = Resolve_mode_flag_bit_mask::sample_zero;
+    // Metal allows depth and stencil filters to be set independently.
+    m_info.independent_depth_stencil_resolve      = true;
+    m_info.independent_depth_stencil_resolve_none = true;
+
     // Metal coordinate conventions
     // Metal viewport transform uses y_w = (1 - y_ndc)/2 * h + originY, which
     // maps positive NDC Y to the top of the screen. No projection Y-flip needed.
@@ -178,11 +209,26 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
 
 Device_impl::~Device_impl() noexcept
 {
+    // Resource destructors enqueue completion handlers, so the surface and
+    // ring buffers must be torn down before we drain the queue. Surface
+    // destruction in turn enqueues handlers (e.g. for the swapchain texture
+    // argument encoder), so we need to drain *after* this point.
     m_surface.reset();
+    m_ring_buffers.clear();
     if (m_texture_argument_encoder != nullptr) {
         m_texture_argument_encoder->release();
         m_texture_argument_encoder = nullptr;
     }
+
+    // Wait for the GPU to finish anything still in flight, then drain every
+    // queued completion handler unconditionally. Mirrors the Vulkan
+    // ~Device_impl() teardown order.
+    wait_idle();
+    for (const Completion_handler& entry : m_completion_handlers) {
+        entry.callback(*this);
+    }
+    m_completion_handlers.clear();
+
     if (m_mtl_log_state != nullptr) {
         m_mtl_log_state->release();
         m_mtl_log_state = nullptr;
@@ -203,46 +249,203 @@ Device_impl::~Device_impl() noexcept
 
 auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
 {
+    ERHE_VERIFY(m_state == Device_frame_state::idle);
     out_frame_state.predicted_display_time   = 0;
     out_frame_state.predicted_display_period = 0;
     out_frame_state.should_render            = true;
+    m_state = Device_frame_state::waited;
+    return true;
+}
+
+auto Device_impl::begin_frame() -> bool
+{
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
+
+    // Drain frames whose device cb has signalled GPU completion via its
+    // addCompletedHandler. Ring buffer ranges pinned to those frames
+    // become safe to recycle; per-frame completion handlers run now.
+    std::vector<uint64_t> drained;
+    {
+        std::lock_guard<std::mutex> lock{m_completion_mutex};
+        drained.swap(m_pending_completed_frames);
+    }
+    for (const uint64_t completed_frame : drained) {
+        for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
+            ring_buffer->frame_completed(completed_frame);
+        }
+        frame_completed(completed_frame);
+    }
+
+    // Open the device-frame command buffer. All in-frame recording
+    // (render pass, blit, compute, transfers) routes through this
+    // single cb so the frame lands in one commit at end_frame.
+    if (m_mtl_command_queue != nullptr) {
+        ERHE_VERIFY(m_active_command_buffer == nullptr);
+        m_active_command_buffer = m_mtl_command_queue->commandBuffer();
+        if (m_active_command_buffer != nullptr) {
+            m_active_command_buffer->retain();
+
+            // Record the frame index this cb belongs to so the GPU
+            // completion handler can enqueue it for frame_completed
+            // processing at the next begin_frame. The handler runs on
+            // an arbitrary Metal dispatch thread, so the enqueue must
+            // be synchronized with the main-thread drain above.
+            const uint64_t frame_index_for_handler = m_frame_index;
+            m_active_command_buffer->addCompletedHandler(
+                [this, frame_index_for_handler](MTL::CommandBuffer*) {
+                    std::lock_guard<std::mutex> lock{m_completion_mutex};
+                    m_pending_completed_frames.push_back(frame_index_for_handler);
+                }
+            );
+        }
+    }
+
+    // Per-frame MTL::Fence used to serialize encoders on the device cb.
+    // Each encoder waits on the fence at start and updates it at end.
+    // Released in end_frame via the cb's completion handler so the GPU
+    // keeps using it until the cb retires.
+    ERHE_VERIFY(m_frame_fence == nullptr);
+    if (m_mtl_device != nullptr) {
+        m_frame_fence = m_mtl_device->newFence();
+    }
+
+    m_had_swapchain_frame = false;
+    m_pending_drawable    = nullptr;
+    m_state = Device_frame_state::recording;
     return true;
 }
 
 auto Device_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bool
 {
-    // Notify ring buffers that earlier frames have completed.
-    // Use a 2-frame delay: assume the GPU has finished frame N-2 by the time
-    // frame N begins. This is conservative and avoids needing per-command-buffer
-    // completion handlers.
-    if (m_frame_index > 2) {
-        const uint64_t completed_frame = m_frame_index - 2;
-        for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
-            ring_buffer->frame_completed(completed_frame);
-        }
+    const bool device_ok = begin_frame();
+    if (!device_ok) {
+        return false;
     }
-
-    bool result = true;
-    if (m_surface) {
-        Swapchain* swapchain = m_surface->get_swapchain();
-        if (swapchain != nullptr) {
-            result = swapchain->begin_frame(frame_begin_info);
-        }
-    }
-    return result;
+    Frame_state dummy_state{};
+    return begin_swapchain_frame(frame_begin_info, dummy_state);
 }
 
 auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
 {
+    ERHE_VERIFY(
+        (m_state == Device_frame_state::in_swapchain_frame) ||
+        (m_state == Device_frame_state::recording)
+    );
+
+    if (m_state == Device_frame_state::in_swapchain_frame) {
+        end_swapchain_frame(frame_end_info);
+    }
+
+    // Present the swapchain drawable on the device cb (if a swapchain
+    // frame was nested this device frame), then commit the single cb.
+    if (m_active_command_buffer != nullptr) {
+        if (m_had_swapchain_frame && (m_pending_drawable != nullptr)) {
+            m_active_command_buffer->presentDrawable(m_pending_drawable);
+        }
+        // Release the per-frame fence once the GPU is done with the
+        // cb. The fence must remain alive for the duration of cb
+        // execution on the GPU.
+        if (m_frame_fence != nullptr) {
+            MTL::Fence* fence_to_release = m_frame_fence;
+            m_active_command_buffer->addCompletedHandler(
+                [fence_to_release](MTL::CommandBuffer*) {
+                    fence_to_release->release();
+                }
+            );
+            m_frame_fence = nullptr;
+        }
+        m_active_command_buffer->commit();
+        m_active_command_buffer->release();
+        m_active_command_buffer = nullptr;
+    }
+
+    // Let Swapchain_impl::end_frame run its bookkeeping (releases the
+    // cached drawable, etc.). The actual present was just done on the
+    // device cb above.
     bool result = true;
-    if (m_surface) {
+    if (m_had_swapchain_frame && m_surface) {
         Swapchain* swapchain = m_surface->get_swapchain();
         if (swapchain != nullptr) {
-            result = swapchain->end_frame(frame_end_info);
+            result = swapchain->get_impl().end_frame(frame_end_info);
         }
     }
+    m_had_swapchain_frame = false;
+    m_pending_drawable    = nullptr;
+
     ++m_frame_index;
+    m_state = Device_frame_state::idle;
     return result;
+}
+
+auto Device_impl::end_frame() -> bool
+{
+    return end_frame(Frame_end_info{});
+}
+
+auto Device_impl::begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool
+{
+    ERHE_VERIFY(m_state == Device_frame_state::recording);
+
+    if (!m_surface) {
+        out_frame_state.should_render = false;
+        return false;
+    }
+    Swapchain* swapchain = m_surface->get_swapchain();
+    if (swapchain == nullptr) {
+        out_frame_state.should_render = false;
+        return false;
+    }
+
+    const bool ok = swapchain->get_impl().begin_frame(frame_begin_info);
+    out_frame_state.should_render = ok;
+    if (ok) {
+        // Latch the drawable so end_frame() can present it on the
+        // device cb after all render-pass encoding has completed.
+        m_pending_drawable    = swapchain->get_impl().get_current_drawable();
+        m_state               = Device_frame_state::in_swapchain_frame;
+        m_had_swapchain_frame = true;
+    }
+    return ok;
+}
+
+auto Device_impl::get_device_frame_command_buffer() const -> MTL::CommandBuffer*
+{
+    if (!is_in_device_frame()) {
+        return nullptr;
+    }
+    // While a render pass is open on the device cb, transfer/blit ops
+    // must not share the cb: Metal only allows one encoder open at a
+    // time, and ending the render encoder mid-pass to blit would abort
+    // the pass. Force callers (blit encoder, upload_to_*, clear_texture)
+    // to fall back to a one-shot cb. Ordering is preserved because the
+    // fallback cb is committed+waited inline while the device cb stays
+    // in the "recording" state, still unsubmitted.
+    if (s_active_render_pass != nullptr) {
+        return nullptr;
+    }
+    return m_active_command_buffer;
+}
+
+auto Device_impl::get_device_frame_fence() const -> MTL::Fence*
+{
+    return m_frame_fence;
+}
+
+void Device_impl::end_swapchain_frame(const Frame_end_info& /*frame_end_info*/)
+{
+    ERHE_VERIFY(m_state == Device_frame_state::in_swapchain_frame);
+    m_state = Device_frame_state::recording;
+}
+
+auto Device_impl::is_in_device_frame() const -> bool
+{
+    return (m_state == Device_frame_state::recording) ||
+           (m_state == Device_frame_state::in_swapchain_frame);
+}
+
+auto Device_impl::is_in_swapchain_frame() const -> bool
+{
+    return m_state == Device_frame_state::in_swapchain_frame;
 }
 
 auto Device_impl::get_surface() -> Surface*
@@ -257,9 +460,65 @@ void Device_impl::resize_swapchain_to_window()
 
 void Device_impl::memory_barrier(const Memory_barrier_mask)
 {
-    // Metal synchronizes through command buffer ordering within the same queue.
-    // Compute and render use separate command buffers submitted to the same queue,
-    // so ordering is guaranteed. No additional barrier is needed.
+    // Strong barrier: end the active device cb here and start a fresh
+    // one. Successive cbs on the same MTLCommandQueue execute in
+    // submission order on the GPU, so all earlier work (compute
+    // writes, blit copies, prior render passes) is observable to
+    // encoders on the new cb without a CPU stall. No
+    // waitUntilCompleted is required.
+    //
+    // Cheaper alternatives -- per-frame MTL::Fence on each encoder
+    // and Metal's automatic hazard tracking on direct buffer
+    // bindings -- demonstrably do not serialize compute -> vertex-
+    // attribute reads on Ring_buffer ranges in our pipeline (see
+    // Debug_renderer / Content_wide_line_renderer / selection
+    // outline glitches that disappear once the cb split is enforced).
+    if (m_active_command_buffer == nullptr) {
+        return;
+    }
+    // memory_barrier must not be called from inside a render pass.
+    // Vulkan asserts the same; on Metal there is no encoder open when
+    // wide_line / debug_renderer compute() returns to its caller.
+    ERHE_VERIFY(s_active_render_pass == nullptr);
+
+    // Release the per-frame fence on the cb we're about to commit so
+    // it stays alive for the duration of GPU execution. A fresh fence
+    // is created for the new cb below.
+    if (m_frame_fence != nullptr) {
+        MTL::Fence* fence_to_release = m_frame_fence;
+        m_active_command_buffer->addCompletedHandler(
+            [fence_to_release](MTL::CommandBuffer*) {
+                fence_to_release->release();
+            }
+        );
+        m_frame_fence = nullptr;
+    }
+
+    // Commit the current cb. Queue-order ensures the next cb's work
+    // observes this cb's writes; no CPU wait needed.
+    m_active_command_buffer->commit();
+    m_active_command_buffer->release();
+    m_active_command_buffer = nullptr;
+
+    // Open a fresh cb for the rest of this device frame. Re-arm the
+    // per-frame completion handler so frame_completed gets driven for
+    // this slice too. Allocate a new fence.
+    if (m_mtl_command_queue != nullptr) {
+        m_active_command_buffer = m_mtl_command_queue->commandBuffer();
+        if (m_active_command_buffer != nullptr) {
+            m_active_command_buffer->retain();
+            const uint64_t frame_index_for_handler = m_frame_index;
+            m_active_command_buffer->addCompletedHandler(
+                [this, frame_index_for_handler](MTL::CommandBuffer*) {
+                    std::lock_guard<std::mutex> lock{m_completion_mutex};
+                    m_pending_completed_frames.push_back(frame_index_for_handler);
+                }
+            );
+        }
+    }
+    if (m_mtl_device != nullptr) {
+        m_frame_fence = m_mtl_device->newFence();
+    }
 }
 
 void Device_impl::clear_texture(const Texture& texture, const std::array<double, 4> clear_value)
@@ -281,13 +540,23 @@ void Device_impl::clear_texture(const Texture& texture, const std::array<double,
         (pixel_format == MTL::PixelFormatDepth32Float_Stencil8);
 
     if (is_depth || is_stencil) {
-        // Depth/stencil clears require a render pass with LoadActionClear
-        if (m_mtl_command_queue == nullptr) {
-            return;
-        }
-        MTL::CommandBuffer* command_buffer = m_mtl_command_queue->commandBuffer();
-        if (command_buffer == nullptr) {
-            return;
+        // Depth/stencil clears require a render pass with LoadActionClear.
+        // Prefer the active device cb, fall back to a one-shot cb.
+        MTL::CommandBuffer* device_cb = get_device_frame_command_buffer();
+        const bool          in_frame  = (device_cb != nullptr);
+        std::unique_lock<std::mutex> recording_lock;
+        MTL::CommandBuffer* command_buffer = nullptr;
+        if (in_frame) {
+            recording_lock = std::unique_lock<std::mutex>{m_recording_mutex};
+            command_buffer = device_cb;
+        } else {
+            if (m_mtl_command_queue == nullptr) {
+                return;
+            }
+            command_buffer = m_mtl_command_queue->commandBuffer();
+            if (command_buffer == nullptr) {
+                return;
+            }
         }
         MTL::RenderPassDescriptor* render_pass_desc = MTL::RenderPassDescriptor::alloc()->init();
         if (is_depth) {
@@ -305,9 +574,18 @@ void Device_impl::clear_texture(const Texture& texture, const std::array<double,
             stencil_att->setStoreAction(MTL::StoreActionStore);
         }
         MTL::RenderCommandEncoder* encoder = command_buffer->renderCommandEncoder(render_pass_desc);
+        if (in_frame && (m_frame_fence != nullptr)) {
+            encoder->waitForFence(
+                m_frame_fence,
+                MTL::RenderStageVertex | MTL::RenderStageFragment
+            );
+            encoder->updateFence(m_frame_fence, MTL::RenderStageFragment);
+        }
         encoder->endEncoding();
-        command_buffer->commit();
-        command_buffer->waitUntilCompleted();
+        if (!in_frame) {
+            command_buffer->commit();
+            command_buffer->waitUntilCompleted();
+        }
         render_pass_desc->release();
         return;
     }
@@ -392,27 +670,51 @@ void Device_impl::clear_texture(const Texture& texture, const std::array<double,
         // replaceRegion only works for shared/managed storage.
         // For private storage, copy via a staging buffer + blit encoder.
         if (mtl_texture->storageMode() == MTL::StorageModePrivate) {
-            if (m_mtl_command_queue == nullptr) {
-                return;
-            }
-            MTL::CommandBuffer* command_buffer = m_mtl_command_queue->commandBuffer();
-            if (command_buffer == nullptr) {
-                return;
+            MTL::CommandBuffer* device_cb = get_device_frame_command_buffer();
+            const bool          in_frame  = (device_cb != nullptr);
+            std::unique_lock<std::mutex> recording_lock;
+            MTL::CommandBuffer* command_buffer = nullptr;
+            if (in_frame) {
+                recording_lock = std::unique_lock<std::mutex>{m_recording_mutex};
+                command_buffer = device_cb;
+            } else {
+                if (m_mtl_command_queue == nullptr) {
+                    return;
+                }
+                command_buffer = m_mtl_command_queue->commandBuffer();
+                if (command_buffer == nullptr) {
+                    return;
+                }
             }
             MTL::Buffer* staging = m_mtl_device->newBuffer(
                 clear_data.data(), total_bytes, MTL::ResourceStorageModeShared
             );
             MTL::BlitCommandEncoder* blit = command_buffer->blitCommandEncoder();
+            if (in_frame && (m_frame_fence != nullptr)) {
+                blit->waitForFence(m_frame_fence);
+            }
             blit->copyFromBuffer(
                 staging, 0, bytes_per_row, 0,
                 MTL::Size(width, height, 1),
                 mtl_texture, 0, 0,
                 MTL::Origin(0, 0, 0)
             );
+            if (in_frame && (m_frame_fence != nullptr)) {
+                blit->updateFence(m_frame_fence);
+            }
             blit->endEncoding();
-            command_buffer->commit();
-            command_buffer->waitUntilCompleted();
-            staging->release();
+            if (in_frame) {
+                MTL::Buffer* staging_to_release = staging;
+                command_buffer->addCompletedHandler(
+                    [staging_to_release](MTL::CommandBuffer*) {
+                        staging_to_release->release();
+                    }
+                );
+            } else {
+                command_buffer->commit();
+                command_buffer->waitUntilCompleted();
+                staging->release();
+            }
         } else {
             mtl_texture->replaceRegion(region, 0, clear_data.data(), bytes_per_row);
         }
@@ -431,15 +733,183 @@ void Device_impl::upload_to_buffer(const Buffer& buffer, const size_t offset, co
     std::memcpy(static_cast<std::byte*>(mtl_buffer->contents()) + offset, data, length);
 }
 
-void Device_impl::upload_to_texture(const Texture&, int, int, int, int, int, erhe::dataformat::Format, const void*, int)
+void Device_impl::upload_to_texture(
+    const Texture&           texture,
+    int                      level,
+    int                      x,
+    int                      y,
+    int                      width,
+    int                      height,
+    erhe::dataformat::Format pixelformat,
+    const void*              data,
+    int                      row_stride
+)
 {
-    // Metal textures use StorageModePrivate; use blit command encoder for uploads
-    m_device.device_error("Metal: upload_to_texture should not be called; use blit command encoder");
+    if ((data == nullptr) || (width <= 0) || (height <= 0)) {
+        return;
+    }
+
+    const Texture_impl& tex_impl = texture.get_impl();
+    MTL::Texture* mtl_texture = tex_impl.get_mtl_texture();
+    if (mtl_texture == nullptr) {
+        m_device.device_message(
+            Message_severity::error,
+            "Metal upload_to_texture: texture has no MTL::Texture"
+        );
+        return;
+    }
+
+    const std::size_t pixel_size = erhe::dataformat::get_format_size_bytes(pixelformat);
+    const std::size_t src_stride = (row_stride > 0)
+        ? static_cast<std::size_t>(row_stride)
+        : (static_cast<std::size_t>(width) * pixel_size);
+    const std::size_t data_size  = src_stride * static_cast<std::size_t>(height);
+
+    // Staging buffer in shared memory for host -> device copy.
+    MTL::Buffer* staging = m_mtl_device->newBuffer(
+        data_size,
+        MTL::ResourceStorageModeShared
+    );
+    if (staging == nullptr) {
+        m_device.device_message(
+            Message_severity::error,
+            "Metal upload_to_texture: failed to allocate staging buffer"
+        );
+        return;
+    }
+    std::memcpy(staging->contents(), data, data_size);
+
+    // Prefer the active device-frame cb so this upload lands in the
+    // single per-frame commit alongside renders/blits/etc. Otherwise
+    // (pre-device-frame init), fall back to a one-shot cb that commits
+    // and waits synchronously.
+    MTL::CommandBuffer* device_cb = get_device_frame_command_buffer();
+    const bool          in_frame  = (device_cb != nullptr);
+    std::unique_lock<std::mutex> recording_lock;
+    MTL::CommandBuffer* command_buffer = nullptr;
+    if (in_frame) {
+        recording_lock = std::unique_lock<std::mutex>{m_recording_mutex};
+        command_buffer = device_cb;
+    } else {
+        command_buffer = m_mtl_command_queue->commandBuffer();
+        if (command_buffer == nullptr) {
+            staging->release();
+            m_device.device_message(
+                Message_severity::error,
+                "Metal upload_to_texture: failed to allocate command buffer"
+            );
+            return;
+        }
+    }
+
+    MTL::BlitCommandEncoder* blit = command_buffer->blitCommandEncoder();
+    if (blit == nullptr) {
+        staging->release();
+        m_device.device_message(
+            Message_severity::error,
+            "Metal upload_to_texture: failed to allocate blit command encoder"
+        );
+        return;
+    }
+
+    if (in_frame && (m_frame_fence != nullptr)) {
+        blit->waitForFence(m_frame_fence);
+    }
+
+    blit->copyFromBuffer(
+        staging,
+        /*sourceOffset*/        NS::UInteger{0},
+        /*sourceBytesPerRow*/   static_cast<NS::UInteger>(src_stride),
+        /*sourceBytesPerImage*/ static_cast<NS::UInteger>(data_size),
+        MTL::Size(
+            static_cast<NS::UInteger>(width),
+            static_cast<NS::UInteger>(height),
+            NS::UInteger{1}
+        ),
+        mtl_texture,
+        /*destinationSlice*/  NS::UInteger{0},
+        /*destinationLevel*/  static_cast<NS::UInteger>(level),
+        MTL::Origin(
+            static_cast<NS::UInteger>(x),
+            static_cast<NS::UInteger>(y),
+            NS::UInteger{0}
+        )
+    );
+
+    if (in_frame && (m_frame_fence != nullptr)) {
+        blit->updateFence(m_frame_fence);
+    }
+    blit->endEncoding();
+
+    if (in_frame) {
+        // Defer staging buffer release to when the device cb finishes.
+        MTL::Buffer* staging_to_release = staging;
+        command_buffer->addCompletedHandler(
+            [staging_to_release](MTL::CommandBuffer*) {
+                staging_to_release->release();
+            }
+        );
+    } else {
+        command_buffer->commit();
+        command_buffer->waitUntilCompleted();
+        staging->release();
+    }
 }
 
-void Device_impl::add_completion_handler(std::function<void()>)
+void Device_impl::add_completion_handler(std::function<void(Device_impl&)> callback)
 {
-    ERHE_FATAL("Metal: add_completion_handler not implemented");
+    m_completion_handlers.emplace_back(m_frame_index, std::move(callback));
+}
+
+void Device_impl::frame_completed(const uint64_t completed_frame)
+{
+    for (const Completion_handler& entry : m_completion_handlers) {
+        if (entry.frame_number == completed_frame) {
+            entry.callback(*this);
+        }
+    }
+    auto i = std::remove_if(
+        m_completion_handlers.begin(),
+        m_completion_handlers.end(),
+        [completed_frame](const Completion_handler& entry) { return entry.frame_number == completed_frame; }
+    );
+    if (i != m_completion_handlers.end()) {
+        m_completion_handlers.erase(i, m_completion_handlers.end());
+    }
+}
+
+void Device_impl::wait_idle()
+{
+    // Metal has no vkDeviceWaitIdle equivalent. The standard idiom is to
+    // submit an empty command buffer on the queue and wait for it to
+    // complete -- because command buffers from the same queue are
+    // FIFO-ordered, this guarantees all earlier work has finished.
+    if (m_mtl_command_queue == nullptr) {
+        return;
+    }
+    MTL::CommandBuffer* command_buffer = m_mtl_command_queue->commandBuffer();
+    if (command_buffer == nullptr) {
+        return;
+    }
+    command_buffer->commit();
+    command_buffer->waitUntilCompleted();
+
+    // All prior cbs (including device-frame cbs) have now completed on
+    // the GPU. Drain any pending frame-completion enqueues and flush
+    // their frame_completed callbacks so staging buffers / ring buffer
+    // ranges are released before wait_idle returns (used by the editor
+    // ctor's init-frame flow).
+    std::vector<uint64_t> drained;
+    {
+        std::lock_guard<std::mutex> lock{m_completion_mutex};
+        drained.swap(m_pending_completed_frames);
+    }
+    for (const uint64_t completed_frame : drained) {
+        for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
+            ring_buffer->frame_completed(completed_frame);
+        }
+        frame_completed(completed_frame);
+    }
 }
 
 void Device_impl::on_thread_enter()
@@ -546,6 +1016,22 @@ auto Device_impl::allocate_ring_buffer_entry(
     return m_ring_buffers.back()->acquire(required_alignment, usage, byte_count);
 }
 
+void Device_impl::start_frame_capture() {}
+void Device_impl::end_frame_capture() {}
+void Device_impl::transition_texture_layout(const Texture& texture, Image_layout new_layout)
+{
+    // No-op for Metal -- image layouts are managed by the runtime
+    static_cast<void>(texture);
+    static_cast<void>(new_layout);
+}
+
+void Device_impl::cmd_texture_barrier(uint64_t usage_before, uint64_t usage_after)
+{
+    // No-op for Metal -- synchronization is managed by the runtime
+    static_cast<void>(usage_before);
+    static_cast<void>(usage_after);
+}
+
 auto Device_impl::make_blit_command_encoder() -> Blit_command_encoder
 {
     return Blit_command_encoder{m_device};
@@ -578,10 +1064,22 @@ auto Device_impl::get_format_properties(const erhe::dataformat::Format format) c
     return properties;
 }
 
+auto Device_impl::probe_image_format_support(const erhe::dataformat::Format format, const uint64_t usage_mask) const -> bool
+{
+    // Metal has no direct equivalent of vkGetPhysicalDeviceImageFormatProperties2.
+    // The probe concept is Vulkan-specific; on Metal we conservatively report
+    // "supported" and let texture creation fail if the combination is not valid.
+    static_cast<void>(format);
+    static_cast<void>(usage_mask);
+    return true;
+}
+
 auto Device_impl::get_supported_depth_stencil_formats() const -> std::vector<erhe::dataformat::Format>
 {
     return std::vector<erhe::dataformat::Format>{
-        erhe::dataformat::Format::format_d32_sfloat
+        erhe::dataformat::Format::format_d16_unorm,
+        erhe::dataformat::Format::format_d32_sfloat,
+        erhe::dataformat::Format::format_d32_sfloat_s8_uint
     };
 }
 
@@ -607,8 +1105,14 @@ auto Device_impl::choose_depth_stencil_format(const std::vector<erhe::dataformat
 
 auto Device_impl::choose_depth_stencil_format(const unsigned int sort_flags, const int requested_sample_count) const -> erhe::dataformat::Format
 {
-    static_cast<void>(sort_flags);
     static_cast<void>(requested_sample_count);
+    // Honor format_flag_require_stencil so callers asking for a stencil-
+    // bearing depth format get one. d32_sfloat_s8_uint is the only stencil-
+    // bearing depth format Metal exposes via MTLPixelFormatDepth32Float_Stencil8;
+    // d24_unorm_s8_uint is not available on Apple silicon.
+    if ((sort_flags & format_flag_require_stencil) != 0) {
+        return erhe::dataformat::Format::format_d32_sfloat_s8_uint;
+    }
     return erhe::dataformat::Format::format_d32_sfloat;
 }
 

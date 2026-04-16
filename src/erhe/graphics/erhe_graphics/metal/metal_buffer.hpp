@@ -10,6 +10,8 @@ namespace MTL { class Buffer; }
 
 namespace erhe::graphics {
 
+class Device_impl;
+
 class Buffer_impl final
 {
 public:
@@ -54,7 +56,7 @@ public:
     friend class Texture;
 
 private:
-    Device&                    m_device;
+    Device_impl&               m_device_impl;
     MTL::Buffer*               m_mtl_buffer{nullptr};
     std::span<std::byte>       m_map;
     std::size_t                m_capacity_byte_count{0};

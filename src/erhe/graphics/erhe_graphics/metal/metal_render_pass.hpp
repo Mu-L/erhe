@@ -49,8 +49,8 @@ public:
 
 private:
     friend class Render_pass;
-    void start_render_pass();
-    void end_render_pass  ();
+    void start_render_pass(Render_pass* render_pass_before, Render_pass* render_pass_after);
+    void end_render_pass  (Render_pass* render_pass_after);
 
 private:
     Device&                                          m_device;
@@ -63,12 +63,21 @@ private:
     erhe::utility::Debug_label                       m_debug_label;
     MTL::CommandBuffer*                              m_command_buffer{nullptr};
     MTL::RenderCommandEncoder*                       m_mtl_encoder{nullptr};
+    // True when m_command_buffer was allocated directly from the queue
+    // (no device frame active). In that case end_render_pass commits
+    // it. False when we borrowed the device-frame cb from Device_impl;
+    // Device_impl::end_frame commits.
+    bool                                             m_owns_command_buffer{false};
+    // Held while recording into the device-frame cb, released in
+    // end_render_pass. Prevents other encoders from interleaving with
+    // this render pass.
+    std::unique_lock<std::mutex>                     m_recording_lock{};
     std::array<unsigned long, 4>                     m_color_pixel_formats{};
     unsigned long                                    m_depth_pixel_format{0};
     unsigned long                                    m_stencil_pixel_format{0};
     unsigned long                                    m_sample_count{1};
 
-    static Render_pass_impl*              s_active_render_pass;
+    friend class Device_impl;
 };
 
 } // namespace erhe::graphics

@@ -17,6 +17,9 @@ public:
     Render_command_encoder_impl& operator=(Render_command_encoder_impl&&) = delete;
     ~Render_command_encoder_impl() noexcept;
 
+    void set_bind_group_layout    (const Bind_group_layout* bind_group_layout);
+    void set_sampled_image        (uint32_t binding_point, const Texture& texture, const Sampler& sampler);
+    void set_render_pipeline      (const Render_pipeline& pipeline);
     void set_render_pipeline_state(const Render_pipeline_state& pipeline);
     void set_render_pipeline_state(const Render_pipeline_state& pipeline, const Shader_stages* override_shader_stages);
     void set_viewport_rect        (int x, int y, int width, int height);
@@ -42,6 +45,7 @@ public:
 private:
     void apply_viewport();
 
+    const Bind_group_layout* m_bind_group_layout{nullptr};
     MTL::Buffer* m_index_buffer    {nullptr};
     int          m_viewport_x      {0};
     int          m_viewport_y      {0};

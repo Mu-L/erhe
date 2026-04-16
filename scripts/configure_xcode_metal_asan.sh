@@ -7,7 +7,7 @@
 mkdir -p build/ninja
 cmake \
     -G "Xcode" \
-    -B build_xcode_metal \
+    -B build_xcode_metal_asan \
     -S . \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
     -Wno-dev \
@@ -23,6 +23,6 @@ cmake \
     -DERHE_TEXT_LAYOUT_LIBRARY=harfbuzz \
     -DERHE_WINDOW_LIBRARY=sdl \
     -DERHE_XR_LIBRARY=none \
-    -DERHE_USE_ASAN:BOOL=OFF \
+    -DERHE_USE_ASAN:BOOL=ON \
     -DERHE_SPIRV=ON \
     -DERHE_BUILD_TESTS=ON

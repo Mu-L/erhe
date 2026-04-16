@@ -10,18 +10,17 @@
 namespace erhe::graphics {
 
 Buffer_impl::Buffer_impl(Device& device)
-    : m_device{device}
+    : m_device_impl{device.get_impl()}
 {
 }
 
 Buffer_impl::Buffer_impl(Device& device, const Buffer_create_info& create_info) noexcept
-    : m_device             {device}
+    : m_device_impl        {device.get_impl()}
     , m_capacity_byte_count{create_info.capacity_byte_count}
     , m_usage              {create_info.usage}
     , m_debug_label        {create_info.debug_label}
 {
-    Device_impl& device_impl = device.get_impl();
-    MTL::Device* mtl_device = device_impl.get_mtl_device();
+    MTL::Device* mtl_device = m_device_impl.get_mtl_device();
     if ((mtl_device != nullptr) && (m_capacity_byte_count > 0)) {
         m_mtl_buffer = mtl_device->newBuffer(m_capacity_byte_count, MTL::ResourceStorageModeShared);
         if (m_mtl_buffer != nullptr) {
@@ -45,13 +44,18 @@ Buffer_impl::Buffer_impl(Device& device, const Buffer_create_info& create_info) 
 Buffer_impl::~Buffer_impl() noexcept
 {
     if (m_mtl_buffer != nullptr) {
-        m_mtl_buffer->release();
+        MTL::Buffer* mtl_buffer = m_mtl_buffer;
         m_mtl_buffer = nullptr;
+        m_device_impl.add_completion_handler(
+            [mtl_buffer](Device_impl&) {
+                mtl_buffer->release();
+            }
+        );
     }
 }
 
 Buffer_impl::Buffer_impl(Buffer_impl&& other) noexcept
-    : m_device             {other.m_device}
+    : m_device_impl        {other.m_device_impl}
     , m_mtl_buffer         {other.m_mtl_buffer}
     , m_map                {other.m_map}
     , m_capacity_byte_count{other.m_capacity_byte_count}
@@ -67,7 +71,12 @@ auto Buffer_impl::operator=(Buffer_impl&& other) noexcept -> Buffer_impl&
 {
     if (this != &other) {
         if (m_mtl_buffer != nullptr) {
-            m_mtl_buffer->release();
+            MTL::Buffer* mtl_buffer = m_mtl_buffer;
+            m_device_impl.add_completion_handler(
+                [mtl_buffer](Device_impl&) {
+                    mtl_buffer->release();
+                }
+            );
         }
         m_mtl_buffer          = other.m_mtl_buffer;
         m_map                 = other.m_map;

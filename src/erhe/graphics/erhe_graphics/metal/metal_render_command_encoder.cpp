@@ -1,17 +1,24 @@
 #include "erhe_graphics/metal/metal_render_command_encoder.hpp"
 #include "erhe_graphics/metal/metal_render_pass.hpp"
 #include "erhe_graphics/metal/metal_buffer.hpp"
+#include "erhe_graphics/metal/metal_sampler.hpp"
 #include "erhe_graphics/metal/metal_shader_stages.hpp"
+#include "erhe_graphics/metal/metal_texture.hpp"
 #include "erhe_graphics/metal/metal_helpers.hpp"
 #include "erhe_graphics/metal/metal_device.hpp"
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/draw_indirect.hpp"
 #include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/metal/metal_render_pipeline.hpp"
+#include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/state/depth_stencil_state.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
+#include "erhe_graphics/texture.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <fmt/format.h>
@@ -42,152 +49,6 @@ auto to_mtl_index_type(const erhe::dataformat::Format format) -> MTL::IndexType
     }
 }
 
-auto to_mtl_vertex_format(const erhe::dataformat::Format format) -> MTL::VertexFormat
-{
-    using F = erhe::dataformat::Format;
-    switch (format) {
-        case F::format_8_scalar_uint:    return MTL::VertexFormatUChar;
-        case F::format_8_vec2_uint:      return MTL::VertexFormatUChar2;
-        case F::format_8_vec3_uint:      return MTL::VertexFormatUChar3;
-        case F::format_8_vec4_uint:      return MTL::VertexFormatUChar4;
-        case F::format_8_scalar_sint:    return MTL::VertexFormatChar;
-        case F::format_8_vec2_sint:      return MTL::VertexFormatChar2;
-        case F::format_8_vec3_sint:      return MTL::VertexFormatChar3;
-        case F::format_8_vec4_sint:      return MTL::VertexFormatChar4;
-        case F::format_8_vec2_unorm:     return MTL::VertexFormatUChar2Normalized;
-        case F::format_8_vec4_unorm:     return MTL::VertexFormatUChar4Normalized;
-        case F::format_8_vec2_snorm:     return MTL::VertexFormatChar2Normalized;
-        case F::format_8_vec4_snorm:     return MTL::VertexFormatChar4Normalized;
-        case F::format_16_scalar_uint:   return MTL::VertexFormatUShort;
-        case F::format_16_vec2_uint:     return MTL::VertexFormatUShort2;
-        case F::format_16_vec3_uint:     return MTL::VertexFormatUShort3;
-        case F::format_16_vec4_uint:     return MTL::VertexFormatUShort4;
-        case F::format_16_scalar_sint:   return MTL::VertexFormatShort;
-        case F::format_16_vec2_sint:     return MTL::VertexFormatShort2;
-        case F::format_16_vec3_sint:     return MTL::VertexFormatShort3;
-        case F::format_16_vec4_sint:     return MTL::VertexFormatShort4;
-        case F::format_16_scalar_float:  return MTL::VertexFormatHalf;
-        case F::format_16_vec2_float:    return MTL::VertexFormatHalf2;
-        case F::format_16_vec4_float:    return MTL::VertexFormatHalf4;
-        case F::format_16_scalar_unorm:  return MTL::VertexFormatUShortNormalized;
-        case F::format_16_vec2_unorm:    return MTL::VertexFormatUShort2Normalized;
-        case F::format_16_vec4_unorm:    return MTL::VertexFormatUShort4Normalized;
-        case F::format_16_scalar_snorm:  return MTL::VertexFormatShortNormalized;
-        case F::format_16_vec2_snorm:    return MTL::VertexFormatShort2Normalized;
-        case F::format_16_vec4_snorm:    return MTL::VertexFormatShort4Normalized;
-        case F::format_32_scalar_float:  return MTL::VertexFormatFloat;
-        case F::format_32_vec2_float:    return MTL::VertexFormatFloat2;
-        case F::format_32_vec3_float:    return MTL::VertexFormatFloat3;
-        case F::format_32_vec4_float:    return MTL::VertexFormatFloat4;
-        case F::format_32_scalar_sint:   return MTL::VertexFormatInt;
-        case F::format_32_vec2_sint:     return MTL::VertexFormatInt2;
-        case F::format_32_vec3_sint:     return MTL::VertexFormatInt3;
-        case F::format_32_vec4_sint:     return MTL::VertexFormatInt4;
-        case F::format_32_scalar_uint:   return MTL::VertexFormatUInt;
-        case F::format_32_vec2_uint:     return MTL::VertexFormatUInt2;
-        case F::format_32_vec3_uint:     return MTL::VertexFormatUInt3;
-        case F::format_32_vec4_uint:     return MTL::VertexFormatUInt4;
-        case F::format_packed1010102_vec4_snorm: return MTL::VertexFormatInt1010102Normalized;
-        case F::format_packed1010102_vec4_unorm: return MTL::VertexFormatUInt1010102Normalized;
-        default:
-            ERHE_FATAL("Unsupported vertex format %u", static_cast<unsigned int>(format));
-    }
-}
-
-auto to_mtl_winding(const Front_face_direction direction) -> MTL::Winding
-{
-    switch (direction) {
-        case Front_face_direction::ccw: return MTL::WindingCounterClockwise;
-        case Front_face_direction::cw:  return MTL::WindingClockwise;
-        default:                        return MTL::WindingCounterClockwise;
-    }
-}
-
-auto to_mtl_cull_mode(const bool face_cull_enable, const Cull_face_mode mode) -> MTL::CullMode
-{
-    if (!face_cull_enable) {
-        return MTL::CullModeNone;
-    }
-    switch (mode) {
-        case Cull_face_mode::front:          return MTL::CullModeFront;
-        case Cull_face_mode::back:           return MTL::CullModeBack;
-        case Cull_face_mode::front_and_back: return MTL::CullModeNone;
-        default:                             return MTL::CullModeNone;
-    }
-}
-
-auto to_mtl_stencil_operation(const Stencil_op op) -> MTL::StencilOperation
-{
-    switch (op) {
-        case Stencil_op::zero:      return MTL::StencilOperationZero;
-        case Stencil_op::keep:      return MTL::StencilOperationKeep;
-        case Stencil_op::replace:   return MTL::StencilOperationReplace;
-        case Stencil_op::incr:      return MTL::StencilOperationIncrementClamp;
-        case Stencil_op::incr_wrap: return MTL::StencilOperationIncrementWrap;
-        case Stencil_op::decr:      return MTL::StencilOperationDecrementClamp;
-        case Stencil_op::decr_wrap: return MTL::StencilOperationDecrementWrap;
-        case Stencil_op::invert:    return MTL::StencilOperationInvert;
-        default:                    return MTL::StencilOperationKeep;
-    }
-}
-
-auto to_mtl_compare_function(const Compare_operation op) -> MTL::CompareFunction
-{
-    switch (op) {
-        case Compare_operation::never:            return MTL::CompareFunctionNever;
-        case Compare_operation::less:             return MTL::CompareFunctionLess;
-        case Compare_operation::equal:            return MTL::CompareFunctionEqual;
-        case Compare_operation::less_or_equal:    return MTL::CompareFunctionLessEqual;
-        case Compare_operation::greater:          return MTL::CompareFunctionGreater;
-        case Compare_operation::not_equal:        return MTL::CompareFunctionNotEqual;
-        case Compare_operation::greater_or_equal: return MTL::CompareFunctionGreaterEqual;
-        case Compare_operation::always:           return MTL::CompareFunctionAlways;
-        default:                                  return MTL::CompareFunctionAlways;
-    }
-}
-
-auto to_mtl_blend_factor(const Blending_factor factor) -> MTL::BlendFactor
-{
-    switch (factor) {
-        case Blending_factor::zero:                     return MTL::BlendFactorZero;
-        case Blending_factor::one:                      return MTL::BlendFactorOne;
-        case Blending_factor::src_color:                return MTL::BlendFactorSourceColor;
-        case Blending_factor::one_minus_src_color:      return MTL::BlendFactorOneMinusSourceColor;
-        case Blending_factor::dst_color:                return MTL::BlendFactorDestinationColor;
-        case Blending_factor::one_minus_dst_color:      return MTL::BlendFactorOneMinusDestinationColor;
-        case Blending_factor::src_alpha:                return MTL::BlendFactorSourceAlpha;
-        case Blending_factor::one_minus_src_alpha:      return MTL::BlendFactorOneMinusSourceAlpha;
-        case Blending_factor::dst_alpha:                return MTL::BlendFactorDestinationAlpha;
-        case Blending_factor::one_minus_dst_alpha:      return MTL::BlendFactorOneMinusDestinationAlpha;
-        case Blending_factor::constant_color:           return MTL::BlendFactorBlendColor;
-        case Blending_factor::one_minus_constant_color: return MTL::BlendFactorOneMinusBlendColor;
-        case Blending_factor::constant_alpha:           return MTL::BlendFactorBlendAlpha;
-        case Blending_factor::one_minus_constant_alpha: return MTL::BlendFactorOneMinusBlendAlpha;
-        case Blending_factor::src_alpha_saturate:       return MTL::BlendFactorSourceAlphaSaturated;
-        case Blending_factor::src1_color:               return MTL::BlendFactorSource1Color;
-        case Blending_factor::one_minus_src1_color:     return MTL::BlendFactorOneMinusSource1Color;
-        case Blending_factor::src1_alpha:               return MTL::BlendFactorSource1Alpha;
-        case Blending_factor::one_minus_src1_alpha:     return MTL::BlendFactorOneMinusSource1Alpha;
-        default:                                        return MTL::BlendFactorOne;
-    }
-}
-
-auto to_mtl_blend_operation(const Blend_equation_mode mode) -> MTL::BlendOperation
-{
-    switch (mode) {
-        case Blend_equation_mode::func_add:              return MTL::BlendOperationAdd;
-        case Blend_equation_mode::func_subtract:         return MTL::BlendOperationSubtract;
-        case Blend_equation_mode::func_reverse_subtract: return MTL::BlendOperationReverseSubtract;
-        case Blend_equation_mode::min_:                  return MTL::BlendOperationMin;
-        case Blend_equation_mode::max_:                  return MTL::BlendOperationMax;
-        default:                                         return MTL::BlendOperationAdd;
-    }
-}
-
-// Vertex buffer indices are offset to avoid collision with SPIRV-Cross
-// assigned argument buffer indices (uniform/storage buffers).
-static constexpr NS::UInteger vertex_buffer_index_offset = 16;
-
 } // anonymous namespace
 
 Render_command_encoder_impl::Render_command_encoder_impl(Device& device)
@@ -196,6 +57,75 @@ Render_command_encoder_impl::Render_command_encoder_impl(Device& device)
 }
 
 Render_command_encoder_impl::~Render_command_encoder_impl() noexcept = default;
+
+void Render_command_encoder_impl::set_bind_group_layout(const Bind_group_layout* bind_group_layout)
+{
+    m_bind_group_layout = bind_group_layout;
+}
+
+void Render_command_encoder_impl::set_sampled_image(uint32_t binding_point, const Texture& texture, const Sampler& sampler)
+{
+    MTL::RenderCommandEncoder* encoder = Render_pass_impl::get_active_mtl_encoder();
+    if (encoder == nullptr) {
+        return;
+    }
+    ERHE_VERIFY(m_bind_group_layout != nullptr);
+
+    // Scalar named samplers are emitted as direct [[texture(N)]]/[[sampler(N)]]
+    // bindings on Metal (see metal_shader_stages_prototype.cpp). The Metal
+    // slot index is computed the same way SPIRV-Cross sees it: the user-
+    // facing binding_point plus the bind group layout's sampler binding
+    // offset (= one past the highest buffer binding). The shader emitter's
+    // ERHE_SAMPLER_BINDING_OFFSET macro applies the same offset.
+    const uint32_t metal_slot = binding_point + m_bind_group_layout->get_sampler_binding_offset();
+
+    MTL::Texture*      mtl_texture = texture.get_impl().get_mtl_texture();
+    MTL::SamplerState* mtl_sampler = sampler.get_impl().get_mtl_sampler();
+    if (mtl_texture == nullptr || mtl_sampler == nullptr) {
+        return;
+    }
+    encoder->setFragmentTexture     (mtl_texture, static_cast<NS::UInteger>(metal_slot));
+    encoder->setFragmentSamplerState(mtl_sampler, static_cast<NS::UInteger>(metal_slot));
+}
+
+void Render_command_encoder_impl::set_render_pipeline(const Render_pipeline& pipeline)
+{
+    MTL::RenderCommandEncoder* encoder = Render_pass_impl::get_active_mtl_encoder();
+    if (encoder == nullptr) {
+        return;
+    }
+
+    const Render_pipeline_impl& impl = pipeline.get_impl();
+    if (!impl.is_valid()) {
+        return;
+    }
+
+    encoder->setRenderPipelineState(impl.get_pso());
+
+    if (impl.get_depth_stencil() != nullptr) {
+        encoder->setDepthStencilState(impl.get_depth_stencil());
+    }
+
+    // Bind push constant (ERHE_DRAW_ID = 0) for vertex stage
+    {
+        static constexpr NS::UInteger metal_push_constant_index = 15;
+        int32_t draw_id = 0;
+        encoder->setVertexBytes(&draw_id, sizeof(draw_id), metal_push_constant_index);
+    }
+
+    // Rasterization state from create info
+    const Render_pipeline_create_info& create_info = pipeline.get_create_info();
+    encoder->setFrontFacingWinding(to_mtl_winding(create_info.rasterization.front_face_direction));
+    encoder->setCullMode(to_mtl_cull_mode(create_info.rasterization.face_cull_enable, create_info.rasterization.cull_face_mode));
+
+    // Stencil reference values
+    if (create_info.depth_stencil.stencil_test_enable) {
+        encoder->setStencilReferenceValues(
+            create_info.depth_stencil.stencil_front.reference,
+            create_info.depth_stencil.stencil_back.reference
+        );
+    }
+}
 
 void Render_command_encoder_impl::set_render_pipeline_state(const Render_pipeline_state& pipeline)
 {

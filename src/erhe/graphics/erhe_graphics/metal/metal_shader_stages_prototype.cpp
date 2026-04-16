@@ -1,8 +1,10 @@
 #include "erhe_graphics/metal/metal_shader_stages.hpp"
 #include "erhe_graphics/metal/metal_device.hpp"
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/glsl_format_source.hpp"
 #include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/shader_resource.hpp"
 
 #include <Metal/Metal.hpp>
 
@@ -19,6 +21,7 @@ auto compile_spirv_to_mtl_function(
     std::span<const unsigned int>    spirv,
     const std::string&               shader_name,
     const char*                      stage_name,
+    const Bind_group_layout*         bind_group_layout,
     MTL::Library*&                   out_library
 ) -> MTL::Function*
 {
@@ -29,7 +32,9 @@ auto compile_spirv_to_mtl_function(
     spirv_cross::CompilerMSL compiler(spirv.data(), spirv.size());
     spirv_cross::CompilerMSL::Options msl_options;
     msl_options.platform = spirv_cross::CompilerMSL::Options::macOS;
-    msl_options.set_msl_version(2, 3);
+    // Metal 3 is required: full mutable aliasing of argument buffer descriptors
+    // (used by our bindless texture heap) only works on MSL 3+.
+    msl_options.set_msl_version(3, 0);
     msl_options.argument_buffers = true;
     msl_options.argument_buffers_tier = spirv_cross::CompilerMSL::Options::ArgumentBuffersTier::Tier2;
     msl_options.force_active_argument_buffer_resources = true;
@@ -53,37 +58,94 @@ auto compile_spirv_to_mtl_function(
     {
         spirv_cross::ShaderResources pre_resources = compiler.get_shader_resources();
 
-        // Move sampled images to texture descriptor set and assign deterministic
-        // [[id(N)]] values for fragment/compute stages only.
-        // Vertex shaders don't sample textures; their sampled_image declarations
-        // (injected via default_uniform_block) are unused. Keep them in the
-        // discrete set 0 so they don't create an argument buffer.
+        // Sampled images split into two paths on Metal:
+        //
+        //   - **Texture-heap samplers** (e.g. `s_textures[64]` for the bindless
+        //     material texture array) go into an argument buffer at
+        //     descriptor set 7. The texture heap encodes them via an
+        //     MTL::ArgumentEncoder and binds the buffer at [[buffer(14)]].
+        //
+        //   - **Dedicated named samplers** (e.g. `s_shadow_compare`,
+        //     `s_depth`, `s_input`) stay in the discrete set 0 with explicit
+        //     [[texture(N)]]/[[sampler(N)]] bindings. They are bound by
+        //     Render_command_encoder::set_sampled_image() at draw time via
+        //     setFragmentTexture / setFragmentSamplerState. The Metal slot
+        //     index is the original SPIRV/GLSL binding number (which is
+        //     the user-facing binding_point + sampler_binding_offset, so
+        //     the host side and the shader side agree).
+        //
+        // The classification is driven by the explicit
+        // Shader_resource::get_is_texture_heap() flag on each sampler member
+        // of the default uniform block. We do NOT use array-ness as a proxy:
+        // a dedicated sampler may legitimately be declared as an array of size
+        // 1 (or even larger), and a texture-heap sampler may have any size.
+        //
+        // Vertex shaders don't sample textures; their sampled_image
+        // declarations (injected via default_uniform_block) are unused. Keep
+        // them in the discrete set 0 so they don't create an argument buffer.
         if (exec_model == spv::ExecutionModelFragment || exec_model == spv::ExecutionModelGLCompute) {
-            for (const spirv_cross::Resource& resource : pre_resources.sampled_images) {
-                compiler.set_decoration(resource.id, spv::DecorationDescriptorSet, texture_descriptor_set);
-            }
+            // Build a name -> is_texture_heap lookup from the bind group
+            // layout's default uniform block. If no layout was supplied
+            // (e.g. compute-only shaders that don't sample textures), the
+            // lookup is empty and every sampled image falls through to
+            // the discrete-set path.
+            auto is_texture_heap_sampler = [bind_group_layout](const std::string& name) -> bool {
+                if (bind_group_layout == nullptr) {
+                    return false;
+                }
+                const Shader_resource& default_uniform_block = bind_group_layout->get_default_uniform_block();
+                for (const std::unique_ptr<Shader_resource>& member : default_uniform_block.get_members()) {
+                    if ((member->get_type() == Shader_resource::Type::sampler) && (member->get_name() == name)) {
+                        return member->get_is_texture_heap();
+                    }
+                }
+                return false;
+            };
+
             std::vector<std::pair<uint32_t, const spirv_cross::Resource*>> sorted_images;
             for (const spirv_cross::Resource& resource : pre_resources.sampled_images) {
                 uint32_t binding = compiler.get_decoration(resource.id, spv::DecorationBinding);
                 sorted_images.push_back({binding, &resource});
             }
             std::sort(sorted_images.begin(), sorted_images.end());
+
+            // Classify and place each sampled image either into the texture
+            // descriptor set (argument buffer) or into discrete set 0
+            // (direct [[texture(N)]]/[[sampler(N)]] bindings).
             uint32_t arg_offset = 0;
             for (const auto& [binding, resource_ptr] : sorted_images) {
                 const spirv_cross::SPIRType& type = compiler.get_type(resource_ptr->type_id);
                 uint32_t array_size = type.array.empty() ? 1 : type.array[0];
                 if (array_size == 0) {
-                    array_size = 1; // treat unsized arrays as size 1
+                    array_size = 1;
                 }
-                spirv_cross::MSLResourceBinding rb{};
-                rb.stage       = exec_model;
-                rb.desc_set    = texture_descriptor_set;
-                rb.binding     = binding;
-                rb.count       = array_size;
-                rb.msl_texture = arg_offset;
-                rb.msl_sampler = arg_offset + array_size;
-                compiler.add_msl_resource_binding(rb);
-                arg_offset += 2 * array_size;
+                const bool is_texture_heap = is_texture_heap_sampler(resource_ptr->name);
+                if (is_texture_heap) {
+                    // Texture-heap sampler: move into argument buffer.
+                    compiler.set_decoration(resource_ptr->id, spv::DecorationDescriptorSet, texture_descriptor_set);
+                    spirv_cross::MSLResourceBinding rb{};
+                    rb.stage       = exec_model;
+                    rb.desc_set    = texture_descriptor_set;
+                    rb.binding     = binding;
+                    rb.count       = array_size;
+                    rb.msl_texture = arg_offset;
+                    rb.msl_sampler = arg_offset + array_size;
+                    compiler.add_msl_resource_binding(rb);
+                    arg_offset += 2 * array_size;
+                } else {
+                    // Dedicated sampler: keep in discrete set 0 and assign a
+                    // direct [[texture(N)]]/[[sampler(N)]] index that matches
+                    // the SPIRV binding so set_sampled_image() can use the
+                    // same number on the host side.
+                    spirv_cross::MSLResourceBinding rb{};
+                    rb.stage       = exec_model;
+                    rb.desc_set    = 0;
+                    rb.binding     = binding;
+                    rb.count       = array_size;
+                    rb.msl_texture = binding;
+                    rb.msl_sampler = binding;
+                    compiler.add_msl_resource_binding(rb);
+                }
             }
         }
 
@@ -211,7 +273,7 @@ Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, Shade
     : m_device               {device}
     , m_create_info           {std::move(create_info)}
     , m_is_valid              {true}
-    , m_glslang_shader_stages{*this}
+    , m_glslang_shader_stages{*this, &device.get_spirv_cache()}
 {
     compile_shaders();
     link_program();
@@ -221,7 +283,7 @@ Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, const
     : m_device               {device}
     , m_create_info           {create_info}
     , m_is_valid              {true}
-    , m_glslang_shader_stages{*this}
+    , m_glslang_shader_stages{*this, &device.get_spirv_cache()}
 {
     compile_shaders();
     link_program();
@@ -300,6 +362,7 @@ auto Shader_stages_prototype_impl::link_program() -> bool
         m_glslang_shader_stages.get_spirv_binary(Shader_type::vertex_shader),
         m_create_info.name,
         "Vertex",
+        m_create_info.bind_group_layout,
         m_vertex_library
     );
 
@@ -309,6 +372,7 @@ auto Shader_stages_prototype_impl::link_program() -> bool
         m_glslang_shader_stages.get_spirv_binary(Shader_type::fragment_shader),
         m_create_info.name,
         "Fragment",
+        m_create_info.bind_group_layout,
         m_fragment_library
     );
 
@@ -318,6 +382,7 @@ auto Shader_stages_prototype_impl::link_program() -> bool
         m_glslang_shader_stages.get_spirv_binary(Shader_type::compute_shader),
         m_create_info.name,
         "Compute",
+        m_create_info.bind_group_layout,
         m_compute_library
     );
 

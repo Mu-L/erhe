@@ -10,7 +10,8 @@
 namespace erhe::graphics {
 
 Texture_impl::Texture_impl(Texture_impl&& other) noexcept
-    : m_type                  {other.m_type}
+    : m_device_impl           {other.m_device_impl}
+    , m_type                  {other.m_type}
     , m_pixelformat           {other.m_pixelformat}
     , m_fixed_sample_locations{other.m_fixed_sample_locations}
     , m_is_sparse             {other.m_is_sparse}
@@ -29,13 +30,19 @@ Texture_impl::Texture_impl(Texture_impl&& other) noexcept
 Texture_impl::~Texture_impl() noexcept
 {
     if (m_mtl_texture != nullptr) {
-        m_mtl_texture->release();
+        MTL::Texture* mtl_texture = m_mtl_texture;
         m_mtl_texture = nullptr;
+        m_device_impl.add_completion_handler(
+            [mtl_texture](Device_impl&) {
+                mtl_texture->release();
+            }
+        );
     }
 }
 
 Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_info)
-    : m_type                  {create_info.type}
+    : m_device_impl           {device.get_impl()}
+    , m_type                  {create_info.type}
     , m_pixelformat           {create_info.pixelformat}
     , m_fixed_sample_locations{create_info.fixed_sample_locations}
     , m_is_sparse             {create_info.sparse}
@@ -51,8 +58,7 @@ Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_inf
     }
     , m_debug_label           {create_info.debug_label}
 {
-    Device_impl& device_impl = device.get_impl();
-    MTL::Device* mtl_device = device_impl.get_mtl_device();
+    MTL::Device* mtl_device = m_device_impl.get_mtl_device();
     if (mtl_device == nullptr) {
         return;
     }
@@ -96,7 +102,7 @@ Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_inf
     }
 
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
-    desc->setTextureType(to_mtl_texture_type(m_type, m_sample_count, m_array_layer_count));
+    desc->setTextureType(to_mtl_texture_type(m_type, m_sample_count));
     desc->setPixelFormat(pixel_format);
     desc->setWidth(static_cast<NS::UInteger>(std::max(1, m_width)));
     desc->setHeight(static_cast<NS::UInteger>(std::max(1, m_height)));
@@ -132,11 +138,13 @@ Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_inf
 auto Texture_impl::get_mipmap_dimensions(const Texture_type type) -> int
 {
     switch (type) {
-        case Texture_type::texture_1d:       return 1;
-        case Texture_type::texture_cube_map: return 2;
-        case Texture_type::texture_2d:       return 2;
-        case Texture_type::texture_3d:       return 3;
-        default:                             return 0;
+        case Texture_type::texture_1d:             return 1;
+        case Texture_type::texture_2d:             return 2;
+        case Texture_type::texture_2d_array:       return 2;
+        case Texture_type::texture_3d:             return 3;
+        case Texture_type::texture_cube_map:       return 2;
+        case Texture_type::texture_cube_map_array: return 2;
+        default:                                   return 0;
     }
 }
 

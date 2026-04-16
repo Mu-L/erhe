@@ -8,6 +8,8 @@ namespace MTL { class Texture; }
 
 namespace erhe::graphics {
 
+class Device_impl;
+
 class Texture_impl final
 {
 public:
@@ -41,6 +43,7 @@ public:
     void set_buffer(Buffer& buffer);
 
 private:
+    Device_impl&               m_device_impl;
     Texture_type               m_type                  {Texture_type::texture_2d};
     erhe::dataformat::Format   m_pixelformat           {erhe::dataformat::Format::format_8_vec4_srgb};
     bool                       m_fixed_sample_locations{true};

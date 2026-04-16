@@ -20,7 +20,7 @@ static void metal_exception_handler(NSException* exception)
     log_startup->error("Metal validation error: {}", error_message);
 
     if (s_device != nullptr) {
-        s_device->device_error(error_message);
+        s_device->device_message(Message_severity::error, error_message);
     }
 }
 

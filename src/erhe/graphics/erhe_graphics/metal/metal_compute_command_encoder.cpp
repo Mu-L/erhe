@@ -1,4 +1,5 @@
 #include "erhe_graphics/metal/metal_compute_command_encoder.hpp"
+#include "erhe_graphics/metal/metal_compute_pipeline.hpp"
 #include "erhe_graphics/metal/metal_device.hpp"
 #include "erhe_graphics/metal/metal_buffer.hpp"
 #include "erhe_graphics/metal/metal_shader_stages.hpp"
@@ -17,30 +18,77 @@ Compute_command_encoder_impl::Compute_command_encoder_impl(Device& device)
 {
     // Create command buffer and compute encoder up front so that
     // set_buffer() can be called before set_compute_pipeline_state().
+    //
+    // Prefer the device-frame cb when one is active so compute work
+    // lands in the single per-frame commit. In that case we hold the
+    // Device_impl::m_recording_mutex for the lifetime of this encoder
+    // so other encoders (render pass, blit) can't interleave with
+    // our MTLComputeCommandEncoder - Metal only allows one encoder
+    // open on a cb at a time.
     Device_impl& device_impl = m_device.get_impl();
-    MTL::CommandQueue* queue = device_impl.get_mtl_command_queue();
-    ERHE_VERIFY(queue != nullptr);
-
-    m_command_buffer = queue->commandBuffer();
-    ERHE_VERIFY(m_command_buffer != nullptr);
+    MTL::CommandBuffer* active = device_impl.get_device_frame_command_buffer();
+    if (active != nullptr) {
+        m_recording_lock = std::unique_lock<std::mutex>{device_impl.m_recording_mutex};
+        m_command_buffer = active;
+        m_owns_command_buffer = false;
+    } else {
+        MTL::CommandQueue* queue = device_impl.get_mtl_command_queue();
+        ERHE_VERIFY(queue != nullptr);
+        m_command_buffer = queue->commandBuffer();
+        ERHE_VERIFY(m_command_buffer != nullptr);
+        m_owns_command_buffer = true;
+    }
 
     m_encoder = m_command_buffer->computeCommandEncoder();
     ERHE_VERIFY(m_encoder != nullptr);
+
+    // When recording into the device cb, serialize against prior
+    // encoders via the per-device-frame fence. See Device_impl header
+    // for the rationale (Metal does not track aliased newTextureView
+    // hazards within one cb).
+    if (!m_owns_command_buffer) {
+        MTL::Fence* fence = device_impl.get_device_frame_fence();
+        if (fence != nullptr) {
+            m_encoder->waitForFence(fence);
+        }
+    }
 }
 
 Compute_command_encoder_impl::~Compute_command_encoder_impl() noexcept
 {
     if (m_encoder != nullptr) {
+        if (!m_owns_command_buffer) {
+            MTL::Fence* fence = m_device.get_impl().get_device_frame_fence();
+            if (fence != nullptr) {
+                m_encoder->updateFence(fence);
+            }
+        }
         m_encoder->endEncoding();
         m_encoder = nullptr;
     }
     if (m_command_buffer != nullptr) {
-        m_command_buffer->commit();
+        if (m_owns_command_buffer) {
+            m_command_buffer->commit();
+        }
         m_command_buffer = nullptr;
     }
     if (m_pipeline_state != nullptr) {
-        m_pipeline_state->release();
+        if (m_owns_pipeline_state) {
+            // Only release pipeline states we created via newComputePipelineState
+            // (the dynamic-state path). Borrowed pointers from a long-lived
+            // Compute_pipeline_impl must NOT be released here -- doing so was
+            // a use-after-free that crashed the next dispatch. Even for the
+            // owned case, defer the release via add_completion_handler so the
+            // GPU has a chance to finish using the pipeline.
+            MTL::ComputePipelineState* ps = m_pipeline_state;
+            m_device.get_impl().add_completion_handler(
+                [ps](Device_impl&) {
+                    ps->release();
+                }
+            );
+        }
         m_pipeline_state = nullptr;
+        m_owns_pipeline_state = false;
     }
 }
 
@@ -78,6 +126,11 @@ void Compute_command_encoder_impl::set_buffer(const Buffer_target buffer_target,
     m_encoder->setBuffer(mtl_buffer, 0, 0);
 }
 
+void Compute_command_encoder_impl::set_bind_group_layout(const Bind_group_layout* bind_group_layout)
+{
+    static_cast<void>(bind_group_layout);
+}
+
 void Compute_command_encoder_impl::set_compute_pipeline_state(const Compute_pipeline_state& pipeline)
 {
     const Compute_pipeline_data& data = pipeline.data;
@@ -102,6 +155,7 @@ void Compute_command_encoder_impl::set_compute_pipeline_state(const Compute_pipe
         const char* error_str = (error != nullptr) ? error->localizedDescription()->utf8String() : "unknown";
         ERHE_FATAL("Metal compute pipeline state creation failed: %s", error_str);
     }
+    m_owns_pipeline_state = true;
 
     m_encoder->setComputePipelineState(m_pipeline_state);
 
@@ -115,6 +169,28 @@ void Compute_command_encoder_impl::set_compute_pipeline_state(const Compute_pipe
         m_encoder->setLabel(label);
         label->release();
     }
+}
+
+void Compute_command_encoder_impl::set_compute_pipeline(const Compute_pipeline& pipeline)
+{
+    MTL::ComputePipelineState* mtl_pipeline = pipeline.get_impl().get_mtl_pipeline();
+    if (mtl_pipeline == nullptr) {
+        return;
+    }
+    // If a previous set_compute_pipeline_state created a pipeline that this
+    // encoder owns, defer-release it now -- we are about to overwrite
+    // m_pipeline_state with a borrowed pointer.
+    if ((m_pipeline_state != nullptr) && m_owns_pipeline_state) {
+        MTL::ComputePipelineState* ps = m_pipeline_state;
+        m_device.get_impl().add_completion_handler(
+            [ps](Device_impl&) {
+                ps->release();
+            }
+        );
+    }
+    m_pipeline_state      = mtl_pipeline;
+    m_owns_pipeline_state = false;
+    m_encoder->setComputePipelineState(m_pipeline_state);
 }
 
 void Compute_command_encoder_impl::dispatch_compute(

@@ -16,7 +16,7 @@
 
 namespace erhe::graphics {
 
-Render_pass_impl*              Render_pass_impl::s_active_render_pass{nullptr};
+Render_pass_impl*              Device_impl::s_active_render_pass{nullptr};
 
 Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor& render_pass_descriptor)
     : m_device              {device}
@@ -37,7 +37,24 @@ void Render_pass_impl::on_thread_exit()  {}
 
 auto Render_pass_impl::gl_name() const -> unsigned int { return 0; }
 auto Render_pass_impl::gl_multisample_resolve_name() const -> unsigned int { return 0; }
-auto Render_pass_impl::get_sample_count() const -> unsigned int { return 1; }
+auto Render_pass_impl::get_sample_count() const -> unsigned int
+{
+    for (const Render_pass_attachment_descriptor& att : m_color_attachments) {
+        if (att.is_defined() && (att.texture != nullptr)) {
+            const int sample_count = att.texture->get_sample_count();
+            if (sample_count > 0) {
+                return static_cast<unsigned int>(sample_count);
+            }
+        }
+    }
+    if (m_depth_attachment.is_defined() && (m_depth_attachment.texture != nullptr)) {
+        const int sample_count = m_depth_attachment.texture->get_sample_count();
+        if (sample_count > 0) {
+            return static_cast<unsigned int>(sample_count);
+        }
+    }
+    return 1;
+}
 
 void Render_pass_impl::create() {}
 void Render_pass_impl::reset()  {}
@@ -50,24 +67,24 @@ auto Render_pass_impl::get_debug_label() const -> erhe::utility::Debug_label { r
 
 auto Render_pass_impl::get_active_mtl_encoder() -> MTL::RenderCommandEncoder*
 {
-    if (s_active_render_pass != nullptr) {
-        return s_active_render_pass->m_mtl_encoder;
+    if (Device_impl::s_active_render_pass != nullptr) {
+        return Device_impl::s_active_render_pass->m_mtl_encoder;
     }
     return nullptr;
 }
 
 auto Render_pass_impl::get_active_color_pixel_format(const unsigned long index) -> unsigned long
 {
-    if ((s_active_render_pass != nullptr) && (index < s_active_render_pass->m_color_pixel_formats.size())) {
-        return s_active_render_pass->m_color_pixel_formats[index];
+    if ((Device_impl::s_active_render_pass != nullptr) && (index < Device_impl::s_active_render_pass->m_color_pixel_formats.size())) {
+        return Device_impl::s_active_render_pass->m_color_pixel_formats[index];
     }
     return static_cast<unsigned long>(MTL::PixelFormatInvalid);
 }
 
 auto Render_pass_impl::get_active_depth_pixel_format() -> unsigned long
 {
-    if (s_active_render_pass != nullptr) {
-        return s_active_render_pass->m_depth_pixel_format;
+    if (Device_impl::s_active_render_pass != nullptr) {
+        return Device_impl::s_active_render_pass->m_depth_pixel_format;
     }
     return static_cast<unsigned long>(MTL::PixelFormatInvalid);
 }
@@ -76,16 +93,16 @@ auto Render_pass_impl::get_active_depth_pixel_format() -> unsigned long
 
 auto Render_pass_impl::get_active_stencil_pixel_format() -> unsigned long
 {
-    if (s_active_render_pass != nullptr) {
-        return s_active_render_pass->m_stencil_pixel_format;
+    if (Device_impl::s_active_render_pass != nullptr) {
+        return Device_impl::s_active_render_pass->m_stencil_pixel_format;
     }
     return static_cast<unsigned long>(MTL::PixelFormatInvalid);
 }
 
 auto Render_pass_impl::get_active_sample_count() -> unsigned long
 {
-    if (s_active_render_pass != nullptr) {
-        return s_active_render_pass->m_sample_count;
+    if (Device_impl::s_active_render_pass != nullptr) {
+        return Device_impl::s_active_render_pass->m_sample_count;
     }
     return 1;
 }
@@ -147,16 +164,33 @@ void configure_color_attachment(
 
 } // anonymous namespace
 
-void Render_pass_impl::start_render_pass()
+void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, Render_pass* const render_pass_after)
 {
-    s_active_render_pass = this;
+    // Metal handles cross-pass synchronization automatically via MTLFences /
+    // MTLHazardTracking, so these hints are ignored here.
+    static_cast<void>(render_pass_before);
+    static_cast<void>(render_pass_after);
+
+    Device_impl::s_active_render_pass = this;
 
     Device_impl& device_impl = m_device.get_impl();
-    MTL::CommandQueue* queue = device_impl.get_mtl_command_queue();
-    ERHE_VERIFY(queue != nullptr);
 
-    m_command_buffer = queue->commandBuffer();
-    ERHE_VERIFY(m_command_buffer != nullptr);
+    // Prefer the device-frame cb so render pass encoding lands in the
+    // single per-frame commit. Hold m_recording_mutex for the lifetime
+    // of this render pass so no other encoder (blit, compute, other
+    // render pass) can interleave with our MTLRenderCommandEncoder.
+    MTL::CommandBuffer* active_device_cb = device_impl.get_device_frame_command_buffer();
+    if (active_device_cb != nullptr) {
+        m_recording_lock = std::unique_lock<std::mutex>{device_impl.m_recording_mutex};
+        m_command_buffer = active_device_cb;
+        m_owns_command_buffer = false;
+    } else {
+        MTL::CommandQueue* queue = device_impl.get_mtl_command_queue();
+        ERHE_VERIFY(queue != nullptr);
+        m_command_buffer = queue->commandBuffer();
+        ERHE_VERIFY(m_command_buffer != nullptr);
+        m_owns_command_buffer = true;
+    }
 
     MTL::RenderPassDescriptor* render_pass_desc = MTL::RenderPassDescriptor::alloc()->init();
 
@@ -173,8 +207,12 @@ void Render_pass_impl::start_render_pass()
         if (drawable == nullptr) {
             // No drawable available (e.g. tick called from SDL event before begin_frame)
             render_pass_desc->release();
-            m_command_buffer->commit();
-            m_command_buffer = nullptr;
+            if (m_owns_command_buffer) {
+                m_command_buffer->commit();
+            }
+            m_command_buffer      = nullptr;
+            m_owns_command_buffer = false;
+            m_recording_lock      = std::unique_lock<std::mutex>{};
             return;
         }
         configure_color_attachment(render_pass_desc, 0, drawable->texture(), m_color_attachments[0]);
@@ -208,10 +246,28 @@ void Render_pass_impl::start_render_pass()
             if (m_depth_attachment.load_action == Load_action::Clear) {
                 depth_att->setClearDepth(m_depth_attachment.clear_value[0]);
             }
-            depth_att->setStoreAction(MTL::StoreActionStore);
+            depth_att->setStoreAction(to_mtl_store_action(m_depth_attachment.store_action));
             depth_att->setLevel(static_cast<NS::UInteger>(m_depth_attachment.texture_level));
             depth_att->setSlice(static_cast<NS::UInteger>(m_depth_attachment.texture_layer));
             m_depth_pixel_format = static_cast<unsigned long>(depth_texture->pixelFormat());
+
+            // MSAA depth resolve. Honor the user's resolve_texture / resolve_mode
+            // when the source is multisampled and the store action requests a
+            // multisample resolve.
+            const bool depth_resolves =
+                (m_depth_attachment.resolve_texture != nullptr) &&
+                (depth_texture->sampleCount() > 1) &&
+                ((m_depth_attachment.store_action == Store_action::Multisample_resolve) ||
+                 (m_depth_attachment.store_action == Store_action::Store_and_multisample_resolve));
+            if (depth_resolves) {
+                MTL::Texture* resolve = m_depth_attachment.resolve_texture->get_impl().get_mtl_texture();
+                if (resolve != nullptr) {
+                    depth_att->setResolveTexture(resolve);
+                    depth_att->setResolveLevel(static_cast<NS::UInteger>(m_depth_attachment.resolve_level));
+                    depth_att->setResolveSlice(static_cast<NS::UInteger>(m_depth_attachment.resolve_layer));
+                    depth_att->setDepthResolveFilter(to_mtl_depth_resolve_filter(m_depth_attachment.resolve_mode));
+                }
+            }
         }
     }
 
@@ -225,15 +281,46 @@ void Render_pass_impl::start_render_pass()
             if (m_stencil_attachment.load_action == Load_action::Clear) {
                 stencil_att->setClearStencil(static_cast<uint32_t>(m_stencil_attachment.clear_value[0]));
             }
-            stencil_att->setStoreAction(MTL::StoreActionStore);
+            stencil_att->setStoreAction(to_mtl_store_action(m_stencil_attachment.store_action));
             stencil_att->setLevel(static_cast<NS::UInteger>(m_stencil_attachment.texture_level));
             stencil_att->setSlice(static_cast<NS::UInteger>(m_stencil_attachment.texture_layer));
             m_stencil_pixel_format = static_cast<unsigned long>(stencil_texture->pixelFormat());
+
+            // MSAA stencil resolve. Stencil resolve filter has only sample0 in
+            // the cross-API enum mapping; the helper picks the right Metal value.
+            const bool stencil_resolves =
+                (m_stencil_attachment.resolve_texture != nullptr) &&
+                (stencil_texture->sampleCount() > 1) &&
+                ((m_stencil_attachment.store_action == Store_action::Multisample_resolve) ||
+                 (m_stencil_attachment.store_action == Store_action::Store_and_multisample_resolve));
+            if (stencil_resolves) {
+                MTL::Texture* resolve = m_stencil_attachment.resolve_texture->get_impl().get_mtl_texture();
+                if (resolve != nullptr) {
+                    stencil_att->setResolveTexture(resolve);
+                    stencil_att->setResolveLevel(static_cast<NS::UInteger>(m_stencil_attachment.resolve_level));
+                    stencil_att->setResolveSlice(static_cast<NS::UInteger>(m_stencil_attachment.resolve_layer));
+                    stencil_att->setStencilResolveFilter(to_mtl_stencil_resolve_filter(m_stencil_attachment.resolve_mode));
+                }
+            }
         }
     }
 
     m_mtl_encoder = m_command_buffer->renderCommandEncoder(render_pass_desc);
     render_pass_desc->release();
+
+    // Serialize against prior encoders on the device cb. Metal's
+    // automatic hazard tracking doesn't catch aliased-view reads of
+    // parent-texture writes (post-processing's mip-view pattern), so
+    // we use an explicit per-device-frame MTL::Fence.
+    if (!m_owns_command_buffer && (m_mtl_encoder != nullptr)) {
+        MTL::Fence* fence = device_impl.get_device_frame_fence();
+        if (fence != nullptr) {
+            m_mtl_encoder->waitForFence(
+                fence,
+                MTL::RenderStageVertex | MTL::RenderStageFragment
+            );
+        }
+    }
 
     ERHE_VERIFY(m_mtl_encoder != nullptr);
 
@@ -249,26 +336,49 @@ void Render_pass_impl::start_render_pass()
     }
 }
 
-void Render_pass_impl::end_render_pass()
+void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
 {
+    static_cast<void>(render_pass_after);
+
     if (m_mtl_encoder != nullptr) {
+        // Signal the per-device-frame fence so subsequent encoders on
+        // the device cb can wait for our render-pass writes.
+        if (!m_owns_command_buffer) {
+            Device_impl& device_impl = m_device.get_impl();
+            MTL::Fence* fence = device_impl.get_device_frame_fence();
+            if (fence != nullptr) {
+                m_mtl_encoder->updateFence(
+                    fence,
+                    MTL::RenderStageFragment
+                );
+            }
+        }
         m_mtl_encoder->endEncoding();
         m_mtl_encoder = nullptr;
     }
 
     if (m_command_buffer != nullptr) {
-        if (m_swapchain != nullptr) {
-            Swapchain_impl& swapchain_impl = m_swapchain->get_impl();
-            CA::MetalDrawable* drawable = swapchain_impl.get_current_drawable();
-            if (drawable != nullptr) {
-                m_command_buffer->presentDrawable(drawable);
+        if (m_owns_command_buffer) {
+            // Standalone cb path (no device frame active). Present and
+            // commit here, as before.
+            if (m_swapchain != nullptr) {
+                Swapchain_impl& swapchain_impl = m_swapchain->get_impl();
+                CA::MetalDrawable* drawable = swapchain_impl.get_current_drawable();
+                if (drawable != nullptr) {
+                    m_command_buffer->presentDrawable(drawable);
+                }
             }
+            m_command_buffer->commit();
         }
-        m_command_buffer->commit();
-        m_command_buffer = nullptr;
+        // If we borrowed the device-frame cb, Device_impl::end_frame
+        // will commit it (and, for the swapchain render pass, call
+        // presentDrawable on the latched m_pending_drawable).
+        m_command_buffer      = nullptr;
+        m_owns_command_buffer = false;
+        m_recording_lock      = std::unique_lock<std::mutex>{};
     }
 
-    s_active_render_pass = nullptr;
+    Device_impl::s_active_render_pass = nullptr;
 }
 
 } // namespace erhe::graphics

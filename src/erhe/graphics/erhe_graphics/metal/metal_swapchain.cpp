@@ -49,6 +49,16 @@ auto Swapchain_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
 auto Swapchain_impl::has_depth() const -> bool { return false; }
 auto Swapchain_impl::has_stencil() const -> bool { return false; }
 
+auto Swapchain_impl::get_color_format() const -> erhe::dataformat::Format
+{
+    return erhe::dataformat::Format::format_8_vec4_bgra_srgb;
+}
+
+auto Swapchain_impl::get_depth_format() const -> erhe::dataformat::Format
+{
+    return erhe::dataformat::Format::format_undefined; // swapchain has no depth
+}
+
 auto Swapchain_impl::get_current_drawable() const -> CA::MetalDrawable*
 {
     return m_current_drawable;

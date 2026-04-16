@@ -11,6 +11,7 @@ namespace MTL { class SamplerState; }
 namespace erhe::graphics {
 
 class Device;
+class Device_impl;
 
 class Sampler_impl
 {
@@ -25,6 +26,7 @@ public:
     [[nodiscard]] auto get_mtl_sampler  () const -> MTL::SamplerState*;
 
 private:
+    Device_impl&        m_device_impl;
     Filter              m_min_filter    {Filter::nearest};
     Filter              m_mag_filter    {Filter::nearest};
     Sampler_mipmap_mode m_mipmap_mode   {Sampler_mipmap_mode::not_mipmapped};
