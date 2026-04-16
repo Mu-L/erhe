@@ -151,6 +151,9 @@ auto get_gl_pixel_byte_count(const erhe::dataformat::Format pixelformat)-> size_
         }
     }
 
+    if (pixelformat == erhe::dataformat::Format::format_d24_unorm_s8_uint) {
+        return 4;
+    }
     if (pixelformat == erhe::dataformat::Format::format_x8_d24_unorm_pack32) {
         return 4;
     }
@@ -427,11 +430,12 @@ auto Texture_impl::get_storage_dimensions(const gl::Texture_target target) -> in
 auto Texture_impl::get_mipmap_dimensions(const Texture_type type) -> int
 {
     switch (type) {
-        //using enum gl::Texture_target;
-        case Texture_type::texture_1d:       return 1;
-        case Texture_type::texture_cube_map: return 2;
-        case Texture_type::texture_2d:       return 2;
-        case Texture_type::texture_3d:       return 3;
+        case Texture_type::texture_1d:             return 1;
+        case Texture_type::texture_2d:             return 2;
+        case Texture_type::texture_2d_array:       return 2;
+        case Texture_type::texture_cube_map:       return 2;
+        case Texture_type::texture_cube_map_array: return 2;
+        case Texture_type::texture_3d:             return 3;
         default: {
             ERHE_FATAL("Bad texture target");
         }
@@ -516,13 +520,14 @@ auto convert_to_gl_texture_target(Texture_type type, bool multisample, bool arra
                 : gl::Texture_target::texture_1d;
         }
         case Texture_type::texture_2d: {
-            return array
-                ? (multisample
-                    ? gl::Texture_target::texture_2d_multisample_array
-                    : gl::Texture_target::texture_2d_array)
-                : (multisample
-                    ? gl::Texture_target::texture_2d_multisample
-                    : gl::Texture_target::texture_2d);
+            return multisample
+                ? gl::Texture_target::texture_2d_multisample
+                : gl::Texture_target::texture_2d;
+        }
+        case Texture_type::texture_2d_array: {
+            return multisample
+                ? gl::Texture_target::texture_2d_multisample_array
+                : gl::Texture_target::texture_2d_array;
         }
         case Texture_type::texture_3d: {
             ERHE_VERIFY(!multisample);
@@ -531,9 +536,11 @@ auto convert_to_gl_texture_target(Texture_type type, bool multisample, bool arra
         }
         case Texture_type::texture_cube_map: {
             ERHE_VERIFY(!multisample);
-            return array 
-                ? gl::Texture_target::texture_cube_map_array
-                : gl::Texture_target::texture_cube_map;
+            return gl::Texture_target::texture_cube_map;
+        }
+        case Texture_type::texture_cube_map_array: {
+            ERHE_VERIFY(!multisample);
+            return gl::Texture_target::texture_cube_map_array;
         }
         default: {
             ERHE_FATAL("Bad texture type %u", static_cast<unsigned int>(type));
@@ -568,7 +575,7 @@ auto convert_to_gl_texture_target(Texture_type type, bool multisample, bool arra
         case gl::Texture_target::texture_2d_array: {
             multisample = false;
             array       = true;
-            return Texture_type::texture_2d;
+            return Texture_type::texture_2d_array;
         }
         case gl::Texture_target::texture_2d_multisample: {
             multisample = true;
@@ -578,7 +585,7 @@ auto convert_to_gl_texture_target(Texture_type type, bool multisample, bool arra
         case gl::Texture_target::texture_2d_multisample_array: {
             multisample = true;
             array       = true;
-            return Texture_type::texture_2d;
+            return Texture_type::texture_2d_array;
         }
         case gl::Texture_target::texture_3d: {
             multisample = false;
@@ -593,7 +600,7 @@ auto convert_to_gl_texture_target(Texture_type type, bool multisample, bool arra
         case gl::Texture_target::texture_cube_map_array: {
             multisample = false;
             array       = true;
-            return Texture_type::texture_cube_map;
+            return Texture_type::texture_cube_map_array;
         }
         default: {
             ERHE_FATAL("Bad gl::Texture_target %04x", static_cast<unsigned int>(gl_texture_target));
@@ -651,6 +658,15 @@ Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_inf
     , m_debug_label           {create_info.debug_label}
 {
     ERHE_PROFILE_FUNCTION();
+
+    if (m_pixelformat == erhe::dataformat::Format::format_undefined) {
+        ERHE_FATAL(
+            "Texture '%.*s' created with Format::format_undefined; caller likely passed an "
+            "unsupported format from choose_depth_stencil_format / choose_color_format",
+            static_cast<int>(m_debug_label.size()),
+            m_debug_label.data()
+        );
+    }
 
     gl::Texture_target gl_texture_target = convert_to_gl_texture_target(
         m_type,

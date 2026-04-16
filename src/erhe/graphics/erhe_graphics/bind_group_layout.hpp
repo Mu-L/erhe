@@ -1,0 +1,97 @@
+#pragma once
+
+#include "erhe_graphics/enums.hpp"
+#include "erhe_utility/debug_label.hpp"
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+namespace erhe::graphics {
+
+class Device;
+class Sampler;
+class Shader_resource;
+class Texture;
+
+enum class Binding_type : unsigned int {
+    uniform_buffer,
+    storage_buffer,
+    combined_image_sampler
+};
+
+class Bind_group_layout_binding
+{
+public:
+    uint32_t     binding_point   {0};
+    Binding_type type            {Binding_type::uniform_buffer};
+    uint32_t     descriptor_count{1};
+
+    // --- The following fields are only meaningful when
+    // type == combined_image_sampler.
+
+    // Which image aspect to bind when set_sampled_image() writes a
+    // depth+stencil texture to this binding. A sampling view must commit
+    // to a single aspect (VUID-VkDescriptorImageInfo-imageView-01976).
+    Sampler_aspect   sampler_aspect {Sampler_aspect::color};
+
+    // The GLSL identifier the shader references this sampler by, e.g.
+    // "s_shadow_compare". Required. The Bind_group_layout_impl copies
+    // this into an internal Shader_resource during construction, so the
+    // view only needs to live until the constructor returns -- string
+    // literals (which all erhe call sites use) work.
+    std::string_view name           {};
+
+    // GLSL type of the sampler uniform declaration, e.g. sampler_2d,
+    // sampler_2d_array_shadow, unsigned_int_sampler_buffer.
+    Glsl_type        glsl_type      {Glsl_type::sampler_2d};
+
+    // true if this sampler represents the bindless / argument-buffer /
+    // sampler-array texture heap (material textures), false for
+    // dedicated samplers bound via set_sampled_image() per draw.
+    bool             is_texture_heap{false};
+
+    // Explicit array size for texture-heap samplers. Ignored otherwise.
+    // 0 means "scalar" for dedicated samplers, or "use the GL sampler-
+    // array implicit s_texture sizing" when this binding is omitted.
+    uint32_t         array_size     {0};
+};
+
+class Bind_group_layout_create_info
+{
+public:
+    std::vector<Bind_group_layout_binding> bindings;
+    erhe::utility::Debug_label             debug_label;
+};
+
+class Bind_group_layout_impl;
+
+class Bind_group_layout
+{
+public:
+    Bind_group_layout (Device& device, const Bind_group_layout_create_info& create_info);
+    ~Bind_group_layout() noexcept;
+    Bind_group_layout (const Bind_group_layout&) = delete;
+    void operator=    (const Bind_group_layout&) = delete;
+    Bind_group_layout (Bind_group_layout&& other) noexcept;
+    auto operator=    (Bind_group_layout&& other) noexcept -> Bind_group_layout&;
+
+    [[nodiscard]] auto get_impl                  () -> Bind_group_layout_impl&;
+    [[nodiscard]] auto get_impl                  () const -> const Bind_group_layout_impl&;
+    [[nodiscard]] auto get_debug_label           () const -> erhe::utility::Debug_label;
+    [[nodiscard]] auto get_sampler_binding_offset() const -> uint32_t;
+
+    // The Shader_resource of type "samplers" built from the create_info's
+    // combined_image_sampler bindings plus (on GL sampler-array and Metal
+    // argument-buffer paths) an implicit texture-heap s_texture. The
+    // graphics backend emits this into the GLSL preamble as
+    // "uniform sampler* s_foo;" declarations and uses it to classify
+    // samplers as texture-heap or dedicated. Application code should not
+    // need to touch it directly.
+    [[nodiscard]] auto get_default_uniform_block () const -> const Shader_resource&;
+
+private:
+    std::unique_ptr<Bind_group_layout_impl> m_impl;
+};
+
+} // namespace erhe::graphics

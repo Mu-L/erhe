@@ -549,8 +549,8 @@ void Map_window::render()
     m_tile_renderer.end();
     int width  = static_cast<int>(extent_x);
     int height = static_cast<int>(extent_y);
-    m_tile_renderer.render(encoder, erhe::math::Viewport{0, 0, width, height});
-    m_text_renderer.render(encoder, erhe::math::Viewport{0, 0, width, height});
+    m_tile_renderer.render(encoder, *m_render_pass.get(), erhe::math::Viewport{0, 0, width, height});
+    m_text_renderer.render(encoder, *m_render_pass.get(), erhe::math::Viewport{0, 0, width, height});
 }
 
 void Map_window::blit(

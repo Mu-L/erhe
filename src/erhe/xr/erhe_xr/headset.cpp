@@ -7,6 +7,8 @@
 namespace erhe::xr {
 
 Headset::Headset(erhe::window::Context_window& context_window, const Xr_configuration& configuration)
+    : m_context_window{context_window}
+    , m_configuration {configuration}
 {
     m_xr_instance = std::make_unique<Xr_instance>(configuration);
     if (!m_xr_instance->is_available()) {
@@ -14,8 +16,23 @@ Headset::Headset(erhe::window::Context_window& context_window, const Xr_configur
         m_xr_instance.reset();
         return;
     }
+}
 
-    m_xr_session = std::make_unique<Xr_session>(*m_xr_instance.get(), context_window, configuration.mirror_mode);
+auto Headset::create_session(erhe::graphics::Device& graphics_device) -> bool
+{
+    ERHE_PROFILE_FUNCTION();
+
+    if (!m_xr_instance) {
+        return false;
+    }
+
+    m_xr_session = std::make_unique<Xr_session>(
+        *m_xr_instance.get(),
+        m_context_window,
+        graphics_device,
+        m_configuration.mirror_mode
+    );
+    return static_cast<bool>(m_xr_session);
 }
 
 Headset::~Headset() noexcept = default;

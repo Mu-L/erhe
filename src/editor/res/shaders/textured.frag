@@ -5,9 +5,11 @@ layout(location = 1) flat in uvec2 v_texture;
 
 vec4 sample_texture(vec2 texcoord)
 {
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
     sampler2D s_texture = sampler2D(v_texture);
     return texture(s_texture, v_texcoord);
+#elif defined(ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING)
+    return texture(erhe_texture_heap[v_texture.x], v_texcoord);
 #else
     return texture(s_texture[v_texture.x], v_texcoord);
 #endif
@@ -15,9 +17,11 @@ vec4 sample_texture(vec2 texcoord)
 
 vec4 sample_texture_lod_bias(vec2 texcoord, float lod_bias)
 {
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
     sampler2D s_texture = sampler2D(v_texture);
     return texture(s_texture, texcoord, lod_bias);
+#elif defined(ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING)
+    return texture(erhe_texture_heap[v_texture.x], texcoord, lod_bias);
 #else
     return texture(s_texture[v_texture.x], texcoord, lod_bias);
 #endif
@@ -25,9 +29,11 @@ vec4 sample_texture_lod_bias(vec2 texcoord, float lod_bias)
 
 vec2 get_texture_size()
 {
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
     sampler2D s_texture = sampler2D(v_texture);
     return textureSize(s_texture, 0);
+#elif defined(ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING)
+    return textureSize(erhe_texture_heap[v_texture.x], 0);
 #else
     return textureSize(s_texture[v_texture.x], 0);
 #endif

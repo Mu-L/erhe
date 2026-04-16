@@ -190,7 +190,7 @@ void dump_fbo(Device& device, const int fbo_name)
 // TODO move to graphics::Device?
 ERHE_PROFILE_MUTEX(std::mutex, Render_pass_impl::s_mutex);
 std::vector<Render_pass_impl*> Render_pass_impl::s_all_framebuffers{};
-Render_pass_impl*              Render_pass_impl::s_active_render_pass = nullptr;
+Render_pass_impl*              Device_impl::s_active_render_pass = nullptr;
 
 
 Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor& descriptor)
@@ -591,10 +591,15 @@ auto Render_pass_impl::get_debug_label() const -> erhe::utility::Debug_label
     return m_debug_label;
 }
 
-void Render_pass_impl::start_render_pass()
+void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, Render_pass* const render_pass_after)
 {
-    ERHE_VERIFY(s_active_render_pass == nullptr);
-    s_active_render_pass = this;
+    // The OpenGL driver handles all cross-pass synchronization implicitly,
+    // so these hints are ignored here.
+    static_cast<void>(render_pass_before);
+    static_cast<void>(render_pass_after);
+
+    ERHE_VERIFY(Device_impl::s_active_render_pass == nullptr);
+    Device_impl::s_active_render_pass = this;
     ERHE_VERIFY(!m_is_active);
     m_is_active = true;
 
@@ -796,10 +801,12 @@ void Render_pass_impl::start_render_pass()
 
 }
 
-void Render_pass_impl::end_render_pass()
+void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
 {
-    ERHE_VERIFY(s_active_render_pass == this);
-    s_active_render_pass = nullptr;
+    static_cast<void>(render_pass_after);
+
+    ERHE_VERIFY(Device_impl::s_active_render_pass == this);
+    Device_impl::s_active_render_pass = nullptr;
 
     ERHE_VERIFY(m_is_active);
     m_is_active = false;
@@ -931,23 +938,26 @@ void Render_pass_impl::end_render_pass()
             gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_multisample_resolve_name());
         }
 
-        // NOTE: Depth/stencil blit does not involve draw buffers
+        // NOTE: Depth/stencil blit does not involve draw buffers.
+        // glBlitFramebuffer requires GL_NEAREST when the mask includes depth
+        // or stencil -- GL_LINEAR is GL_INVALID_OPERATION for depth/stencil
+        // resolves.
         if (check_multisample_resolve(m_depth_attachment, blit_width, blit_height)) {
             if (use_dsa) {
                 gl::blit_named_framebuffer(
                     gl_name(),
                     gl_multisample_resolve_name(),
-                    0, 0, blit_width, blit_width,
+                    0, 0, blit_width, blit_height,
                     0, 0, blit_width, blit_height,
                     gl::Clear_buffer_mask::depth_buffer_bit,
-                    gl::Blit_framebuffer_filter::linear
+                    gl::Blit_framebuffer_filter::nearest
                 );
             } else {
                 gl::blit_framebuffer(
-                    0, 0, blit_width, blit_width,
+                    0, 0, blit_width, blit_height,
                     0, 0, blit_width, blit_height,
                     gl::Clear_buffer_mask::depth_buffer_bit,
-                    gl::Blit_framebuffer_filter::linear
+                    gl::Blit_framebuffer_filter::nearest
                 );
             }
         }
@@ -956,17 +966,17 @@ void Render_pass_impl::end_render_pass()
                 gl::blit_named_framebuffer(
                     gl_name(),
                     gl_multisample_resolve_name(),
-                    0, 0, blit_width, blit_width,
+                    0, 0, blit_width, blit_height,
                     0, 0, blit_width, blit_height,
                     gl::Clear_buffer_mask::stencil_buffer_bit,
-                    gl::Blit_framebuffer_filter::linear
+                    gl::Blit_framebuffer_filter::nearest
                 );
             } else {
                 gl::blit_framebuffer(
-                    0, 0, blit_width, blit_width,
+                    0, 0, blit_width, blit_height,
                     0, 0, blit_width, blit_height,
                     gl::Clear_buffer_mask::stencil_buffer_bit,
-                    gl::Blit_framebuffer_filter::linear
+                    gl::Blit_framebuffer_filter::nearest
                 );
             }
         }

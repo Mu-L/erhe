@@ -5,7 +5,7 @@
 #include "app_context.hpp"
 #include "app_rendering.hpp"
 #include "editor_log.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/programs.hpp"
 #include "rendergraph/shadow_render_node.hpp"
 #include "scene/scene_view.hpp"
@@ -13,6 +13,7 @@
 
 #include "erhe_imgui/imgui_helpers.hpp"
 #include "erhe_imgui/imgui_windows.hpp"
+#include "erhe_imgui/window_imgui_host.hpp"
 #include "erhe_rendergraph/rendergraph.hpp"
 #include "erhe_rendergraph/texture_rendergraph_node.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
@@ -30,7 +31,7 @@ namespace editor {
 Depth_to_color_rendergraph_node::Depth_to_color_rendergraph_node(
     erhe::rendergraph::Rendergraph&         rendergraph,
     erhe::scene_renderer::Forward_renderer& forward_renderer,
-    Mesh_memory&                            mesh_memory,
+    erhe::scene_renderer::Mesh_memory&      mesh_memory,
     Programs&                               programs
 )
     : erhe::rendergraph::Texture_rendergraph_node{
@@ -46,7 +47,8 @@ Depth_to_color_rendergraph_node::Depth_to_color_rendergraph_node(
     , m_mesh_memory       {mesh_memory}
     , m_empty_vertex_input{rendergraph.get_graphics_device()}
     , m_render_pipeline_state{
-        erhe::graphics::Render_pipeline_data{
+        rendergraph.get_graphics_device(),
+        erhe::graphics::Render_pipeline_create_info{
             .debug_label    = erhe::utility::Debug_label{"Debug_view"},
             .shader_stages  = &programs.debug_depth.shader_stages,
             .vertex_input   = &m_empty_vertex_input,
@@ -169,7 +171,7 @@ Depth_visualization_window::Depth_visualization_window(
     erhe::scene_renderer::Forward_renderer& forward_renderer,
     App_context&                            context,
     App_rendering&                          app_rendering,
-    Mesh_memory&                            mesh_memory,
+    erhe::scene_renderer::Mesh_memory&      mesh_memory,
     Programs&                               programs
 )
     : erhe::imgui::Imgui_window{imgui_renderer, imgui_windows, "Depth Visualization", "depth_visualization", true}
@@ -182,6 +184,21 @@ Depth_visualization_window::Depth_visualization_window(
     }
 
     m_depth_to_color_node = std::make_unique<Depth_to_color_rendergraph_node>(rendergraph, forward_renderer, mesh_memory, programs);
+
+    // Connect depth-to-color output to the Window_imgui_host so
+    // topological sort schedules it before the swapchain render pass.
+    // The ImGui host displays the depth visualization texture via
+    // Depth_visualization_window::imgui(), but without this explicit
+    // render graph edge the sort cannot infer the dependency.
+    const std::shared_ptr<erhe::imgui::Window_imgui_host>& window_imgui_host = imgui_windows.get_window_imgui_host();
+    if (window_imgui_host) {
+        window_imgui_host->register_input("depth visualization", erhe::rendergraph::Rendergraph_node_key::depth_visualization);
+        rendergraph.connect(
+            erhe::rendergraph::Rendergraph_node_key::depth_visualization,
+            m_depth_to_color_node.get(),
+            window_imgui_host.get()
+        );
+    }
 
     const auto& shadow_nodes = app_rendering.get_all_shadow_nodes();
     if (!shadow_nodes.empty()) {

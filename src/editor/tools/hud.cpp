@@ -84,18 +84,18 @@ auto Toggle_hud_visibility_command::try_call() -> bool
 #pragma endregion Commands
 
 Hud::Hud(
-    const Hud_config&               hud_config,
-    erhe::commands::Commands&       commands,
-    erhe::graphics::Device&         graphics_device,
-    erhe::imgui::Imgui_renderer&    imgui_renderer,
-    erhe::rendergraph::Rendergraph& rendergraph,
-    App_context&                    app_context,
-    App_message_bus&                app_message_bus,
-    App_windows&                    app_windows,
-    Headset_view&                   headset_view,
-    Mesh_memory&                    mesh_memory,
-    Scene_builder&                  scene_builder,
-    Tools&                          tools
+    const Hud_config&                  hud_config,
+    erhe::commands::Commands&          commands,
+    erhe::graphics::Device&            graphics_device,
+    erhe::imgui::Imgui_renderer&       imgui_renderer,
+    erhe::rendergraph::Rendergraph&    rendergraph,
+    App_context&                       app_context,
+    App_message_bus&                   app_message_bus,
+    App_windows&                       app_windows,
+    Headset_view&                      headset_view,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Scene_builder&                     scene_builder,
+    Tools&                             tools
 )
     : Tool                                {app_context}
     , m_toggle_visibility_command         {commands, app_context}

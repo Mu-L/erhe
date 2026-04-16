@@ -19,6 +19,7 @@ void Time::prepare_update()
 
     std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_mutex};
 
+    ++m_frame_number;
     int64_t host_system_frame_start_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     int64_t host_system_frame_duration_ns   = host_system_frame_start_time_ns - m_host_system_last_frame_start_time;
     int64_t simulation_frame_duration_ns    = host_system_frame_duration_ns;
@@ -29,7 +30,7 @@ void Time::prepare_update()
         const double  average_frametime_ms          = static_cast<double>(average_frametime_ns) / 1'000'000.0;
         m_frame_time_average_ms = static_cast<float>(average_frametime_ms);
     }
-    if (m_frame_start_times.size() > 20) {
+    if (m_frame_start_times.size() > 200) {
         m_frame_start_times.pop_front();
     }
     m_frame_start_times.push_back(host_system_frame_start_time_ns);

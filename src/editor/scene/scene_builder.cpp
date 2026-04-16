@@ -6,7 +6,7 @@
 #include "brushes/brush.hpp"
 #include "brushes/brush_placement.hpp"
 #include "parsers/json_polyhedron.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "content_library/content_library.hpp"
 #include "scene/scene_root.hpp"
 #include "scene/viewport_scene_views.hpp"
@@ -15,7 +15,6 @@
 
 #include "config/generated/scene_config.hpp"
 #include "erhe_graphics/device.hpp"
-#include "erhe_graphics/generated/graphics_config.hpp"
 #include "erhe_imgui/imgui_windows.hpp"
 #include "erhe_rendergraph/rendergraph.hpp"
 #include "erhe_geometry/shapes/cone.hpp"
@@ -64,26 +63,26 @@ using glm::vec3;
 using glm::vec4;
 
 Scene_builder::Scene_builder(
-    const Scene_config&             scene_config,
-    const Graphics_config&          graphics_config,
-    std::shared_ptr<Scene_root>     scene,
-    tf::Executor&                   executor,
-    erhe::graphics::Device&         graphics_device,
-    erhe::imgui::Imgui_renderer&    imgui_renderer,
-    erhe::imgui::Imgui_windows&     imgui_windows,
-    erhe::rendergraph::Rendergraph& rendergraph,
-    App_context&                    context,
-    App_message_bus&                app_message_bus,
-    App_rendering&                  app_rendering,
-    App_settings&                   app_settings,
-    Mesh_memory&                    mesh_memory,
-    Post_processing&                post_processing,
-    Tools&                          tools,
-    Scene_views&                    scene_views
+    const Scene_config&                scene_config,
+    const bool                         enable_post_processing,
+    std::shared_ptr<Scene_root>        scene,
+    tf::Executor&                      executor,
+    erhe::graphics::Device&            graphics_device,
+    erhe::imgui::Imgui_renderer&       imgui_renderer,
+    erhe::imgui::Imgui_windows&        imgui_windows,
+    erhe::rendergraph::Rendergraph&    rendergraph,
+    App_context&                       context,
+    App_message_bus&                   app_message_bus,
+    App_rendering&                     app_rendering,
+    App_settings&                      app_settings,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Post_processing&                   post_processing,
+    Tools&                             tools,
+    Scene_views&                       scene_views
 )
-    : m_context       {context}
-    , m_scene_config  {scene_config}
-    , m_graphics_config{graphics_config}
+    : m_context                {context}
+    , m_scene_config           {scene_config}
+    , m_enable_post_processing{enable_post_processing}
 {
     ERHE_PROFILE_FUNCTION();
     m_scene_root = scene;
@@ -184,7 +183,7 @@ void Scene_builder::setup_cameras(
         return;
     }
 
-    const bool enable_post_processing = m_graphics_config.post_processing;
+    const bool enable_post_processing = m_enable_post_processing;
 
     bool imgui_window_scene_view = m_scene_config.imgui_window_scene_view;
     if (!imgui_window_scene_view) {
@@ -232,7 +231,7 @@ auto Scene_builder::make_brush(Content_library_node& folder, Brush_data&& brush_
     return folder.make<Brush>(brush_create_info);
 }
 
-auto Scene_builder::build_info(Mesh_memory& mesh_memory) -> erhe::primitive::Build_info
+auto Scene_builder::build_info(erhe::scene_renderer::Mesh_memory& mesh_memory) -> erhe::primitive::Build_info
 {
     return erhe::primitive::Build_info{
         .primitive_types = {
@@ -248,7 +247,7 @@ auto Scene_builder::build_info(Mesh_memory& mesh_memory) -> erhe::primitive::Bui
 auto Scene_builder::make_brush(
     Content_library_node&                            folder,
     App_settings&                                    app_settings,
-    Mesh_memory&                                     mesh_memory,
+    erhe::scene_renderer::Mesh_memory&               mesh_memory,
     const std::shared_ptr<erhe::geometry::Geometry>& geometry
 ) -> std::shared_ptr<Brush>
 {
@@ -265,7 +264,10 @@ auto Scene_builder::make_brush(
     );
 }
 
-void Scene_builder::make_platonic_solid_brushes(App_settings& app_settings, Mesh_memory& mesh_memory)
+void Scene_builder::make_platonic_solid_brushes(
+    App_settings&                      app_settings,
+    erhe::scene_renderer::Mesh_memory& mesh_memory
+)
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -317,7 +319,10 @@ void Scene_builder::make_platonic_solid_brushes(App_settings& app_settings, Mesh
     ));
 }
 
-void Scene_builder::make_sphere_brushes(App_settings& app_settings, Mesh_memory& mesh_memory)
+void Scene_builder::make_sphere_brushes(
+    App_settings&                      app_settings,
+    erhe::scene_renderer::Mesh_memory& mesh_memory
+)
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -351,7 +356,10 @@ void Scene_builder::make_sphere_brushes(App_settings& app_settings, Mesh_memory&
     );
 }
 
-void Scene_builder::make_torus_brushes(App_settings& app_settings, Mesh_memory& mesh_memory)
+void Scene_builder::make_torus_brushes(
+    App_settings&                      app_settings,
+    erhe::scene_renderer::Mesh_memory& mesh_memory
+)
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -434,7 +442,10 @@ void Scene_builder::make_torus_brushes(App_settings& app_settings, Mesh_memory& 
     );
 }
 
-void Scene_builder::make_cylinder_brushes(App_settings& app_settings, Mesh_memory& mesh_memory)
+void Scene_builder::make_cylinder_brushes(
+    App_settings&                      app_settings, 
+    erhe::scene_renderer::Mesh_memory& mesh_memory
+)
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -478,7 +489,10 @@ void Scene_builder::make_cylinder_brushes(App_settings& app_settings, Mesh_memor
     }
 }
 
-void Scene_builder::make_cone_brushes(App_settings& app_settings, Mesh_memory& mesh_memory)
+void Scene_builder::make_cone_brushes(
+    App_settings&                      app_settings, 
+    erhe::scene_renderer::Mesh_memory& mesh_memory
+)
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -520,7 +534,12 @@ void Scene_builder::make_cone_brushes(App_settings& app_settings, Mesh_memory& m
     );
 }
 
-void Scene_builder::make_json_brushes(App_settings& app_settings, Mesh_memory& mesh_memory, tf::Taskflow* tf, Json_library& library)
+void Scene_builder::make_json_brushes(
+    App_settings&                      app_settings,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    tf::Taskflow*                      tf,
+    Json_library&                      library
+)
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -575,7 +594,11 @@ auto Scene_builder::get_brushes() -> Content_library_node&
     return *(content_library->brushes.get());
 }
 
-void Scene_builder::make_brushes(App_settings& app_settings, Mesh_memory& mesh_memory, tf::Executor& executor)
+void Scene_builder::make_brushes(
+    App_settings&                      app_settings,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    tf::Executor&                      executor
+)
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -1004,7 +1027,7 @@ void Scene_builder::add_cubes(glm::ivec3 shape, float scale, float gap)
     GEO::Mesh cube_geo_mesh;
     erhe::geometry::shapes::make_cube(cube_geo_mesh, scale);
 
-    Mesh_memory& mesh_memory = *m_context.mesh_memory;
+    erhe::scene_renderer::Mesh_memory& mesh_memory = *m_context.mesh_memory;
 
     erhe::primitive::Buffer_mesh buffer_mesh{};
     const bool buffer_mesh_ok = erhe::primitive::build_buffer_mesh(

@@ -30,9 +30,21 @@ public:
 
 class Frame_state;
 class Frame_end_info;
+class Render_pass_impl;
 class Ring_buffer_client;
 class Surface;
 class Swapchain;
+
+// Mirrors Vulkan's Device_frame_state. Tracks lifecycle of new-style
+// begin_swapchain_frame / end_swapchain_frame API, and backs
+// is_in_device_frame / is_in_swapchain_frame.
+enum class Device_frame_state : uint8_t
+{
+    idle,
+    waited,
+    recording,
+    in_swapchain_frame
+};
 
 class Device;
 class Device_impl final
@@ -46,15 +58,30 @@ public:
     ~Device_impl() noexcept;
 
     [[nodiscard]] auto wait_frame (Frame_state& out_frame_state) -> bool;
+    [[nodiscard]] auto begin_frame() -> bool;
+    [[nodiscard]] auto end_frame  () -> bool;
     [[nodiscard]] auto begin_frame(const Frame_begin_info& frame_begin_info) -> bool;
     [[nodiscard]] auto end_frame  (const Frame_end_info& frame_end_info) -> bool;
 
+    [[nodiscard]] auto begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool;
+    void               end_swapchain_frame  (const Frame_end_info& frame_end_info);
+    void               wait_idle            ();
+    [[nodiscard]] auto is_in_device_frame   () const -> bool;
+    [[nodiscard]] auto is_in_swapchain_frame() const -> bool;
+
     void resize_swapchain_to_window();
+    void start_frame_capture       ();
+    void end_frame_capture         ();
+
+    // Active render pass tracking
+    static Render_pass_impl* s_active_render_pass;
     void memory_barrier            (Memory_barrier_mask barriers);
     void clear_texture             (const Texture& texture, std::array<double, 4> clear_value);
+    void transition_texture_layout (const Texture& texture, Image_layout new_layout);
+    void cmd_texture_barrier       (uint64_t usage_before, uint64_t usage_after);
     void upload_to_buffer          (const Buffer& buffer, size_t offset, const void* data, size_t length);
     void upload_to_texture         (const Texture& texture, int level, int x, int y, int width, int height, erhe::dataformat::Format pixelformat, const void* data, int row_stride);
-    void add_completion_handler    (std::function<void()> callback);
+    void add_completion_handler    (std::function<void(Device_impl&)> callback);
     void on_thread_enter           ();
 
     [[nodiscard]] auto get_surface                        () -> Surface*;
@@ -67,6 +94,7 @@ public:
     [[nodiscard]] auto make_compute_command_encoder       () -> Compute_command_encoder;
     [[nodiscard]] auto make_render_command_encoder        () -> Render_command_encoder;
     [[nodiscard]] auto get_format_properties              (erhe::dataformat::Format format) const -> Format_properties;
+    [[nodiscard]] auto probe_image_format_support         (erhe::dataformat::Format format, uint64_t usage_mask) const -> bool;
     [[nodiscard]] auto get_supported_depth_stencil_formats() const -> std::vector<erhe::dataformat::Format>;
                   void sort_depth_stencil_formats         (std::vector<erhe::dataformat::Format>& formats, unsigned int sort_flags, int requested_sample_count) const;
     [[nodiscard]] auto choose_depth_stencil_format        (const std::vector<erhe::dataformat::Format>& formats) const -> erhe::dataformat::Format;
@@ -101,13 +129,14 @@ private:
     friend class Render_command_encoder_impl;
     friend class Render_pass_impl;
 
-    Device&                   m_device;
-    std::unique_ptr<Surface>  m_surface{};
-    Shader_monitor            m_shader_monitor;
-    OpenGL_state_tracker      m_gl_state_tracker;
-    Gl_binding_state          m_gl_binding_state;
-    Gl_context_provider       m_gl_context_provider;
-    Device_info               m_info;
+    Device&                       m_device;
+    std::unique_ptr<Surface>      m_surface{};
+    Shader_monitor                m_shader_monitor;
+    OpenGL_state_tracker          m_gl_state_tracker;
+    Gl_binding_state              m_gl_binding_state;
+    Gl_context_provider           m_gl_context_provider;
+    Device_info                   m_info;
+    erhe::window::Context_window* m_context_window{nullptr};
 
     std::unordered_map<gl::Internal_format, Format_properties> format_properties;
 
@@ -116,6 +145,8 @@ private:
 
     std::array<Frame_sync, 16>            m_frame_syncs;
     uint64_t                              m_frame_index{1};
+    Device_frame_state                    m_state{Device_frame_state::idle};
+    bool                                  m_had_swapchain_frame{false};
     std::chrono::steady_clock::time_point m_last_ok_frame_timestamp;
     std::vector<uint64_t>                 m_pending_frames;
     std::vector<uint64_t>                 m_completed_frames;
@@ -123,15 +154,16 @@ private:
 
     std::unique_ptr<Ring_buffer_client>   m_staging_buffer;
 
+    // RenderDoc
+    //erhe::window::Context_window* m_context_window           {nullptr};
 
     class Completion_handler
     {
     public:
-        uint64_t              frame_number;
-        std::function<void()> callback;
+        uint64_t                          frame_number;
+        std::function<void(Device_impl&)> callback;
     };
     std::vector<Completion_handler> m_completion_handlers;
 };
-
 
 } // namespace erhe::graphics

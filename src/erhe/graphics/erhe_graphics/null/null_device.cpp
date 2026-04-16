@@ -85,6 +85,11 @@ auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
     return true;
 }
 
+auto Device_impl::begin_frame() -> bool
+{
+    return true;
+}
+
 auto Device_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bool
 {
     static_cast<void>(frame_begin_info);
@@ -96,6 +101,41 @@ auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
     static_cast<void>(frame_end_info);
     ++m_frame_index;
     return true;
+}
+
+auto Device_impl::end_frame() -> bool
+{
+    ++m_frame_index;
+    return true;
+}
+
+auto Device_impl::begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool
+{
+    static_cast<void>(frame_begin_info);
+    out_frame_state.predicted_display_time   = 0;
+    out_frame_state.predicted_display_period = 0;
+    out_frame_state.should_render            = false;
+    return false;
+}
+
+void Device_impl::end_swapchain_frame(const Frame_end_info& frame_end_info)
+{
+    static_cast<void>(frame_end_info);
+}
+
+void Device_impl::wait_idle()
+{
+    // No-op for null backend
+}
+
+auto Device_impl::is_in_device_frame() const -> bool
+{
+    return false;
+}
+
+auto Device_impl::is_in_swapchain_frame() const -> bool
+{
+    return false;
 }
 
 auto Device_impl::get_surface() -> Surface*
@@ -121,6 +161,48 @@ void Device_impl::clear_texture(const Texture& texture, const std::array<double,
     // No-op for null backend
 }
 
+void Device_impl::start_frame_capture() {}
+void Device_impl::end_frame_capture() {}
+void Device_impl::set_queue_annotation    (const char* key, const bool        value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_queue_annotation    (const char* key, const int32_t     value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_queue_annotation    (const char* key, const uint32_t    value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_queue_annotation    (const char* key, const int64_t     value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_queue_annotation    (const char* key, const uint64_t    value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_queue_annotation    (const char* key, const float       value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_queue_annotation    (const char* key, const double      value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_queue_annotation    (const char* key, const char*       value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::clear_queue_annotation  (const char* key)                          { static_cast<void>(key); }
+void Device_impl::set_command_annotation  (const char* key, const bool        value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_command_annotation  (const char* key, const int32_t     value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_command_annotation  (const char* key, const uint32_t    value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_command_annotation  (const char* key, const int64_t     value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_command_annotation  (const char* key, const uint64_t    value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_command_annotation  (const char* key, const float       value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_command_annotation  (const char* key, const double      value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_command_annotation  (const char* key, const char*       value) { static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::clear_command_annotation(const char* key)                          { static_cast<void>(key); }
+void Device_impl::set_object_annotation   (const uint64_t object_handle, const char* key, const bool     value) { static_cast<void>(object_handle); static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_object_annotation   (const uint64_t object_handle, const char* key, const int32_t  value) { static_cast<void>(object_handle); static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_object_annotation   (const uint64_t object_handle, const char* key, const uint32_t value) { static_cast<void>(object_handle); static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_object_annotation   (const uint64_t object_handle, const char* key, const int64_t  value) { static_cast<void>(object_handle); static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_object_annotation   (const uint64_t object_handle, const char* key, const uint64_t value) { static_cast<void>(object_handle); static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_object_annotation   (const uint64_t object_handle, const char* key, const float    value) { static_cast<void>(object_handle); static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_object_annotation   (const uint64_t object_handle, const char* key, const double   value) { static_cast<void>(object_handle); static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::set_object_annotation   (const uint64_t object_handle, const char* key, const char*    value) { static_cast<void>(object_handle); static_cast<void>(key); static_cast<void>(value); }
+void Device_impl::clear_object_annotation (const uint64_t object_handle, const char* key)                       { static_cast<void>(object_handle); static_cast<void>(key); }
+
+void Device_impl::transition_texture_layout(const Texture& texture, Image_layout new_layout)
+{
+    static_cast<void>(texture);
+    static_cast<void>(new_layout);
+}
+
+void Device_impl::cmd_texture_barrier(uint64_t usage_before, uint64_t usage_after)
+{
+    static_cast<void>(usage_before);
+    static_cast<void>(usage_after);
+}
+
 void Device_impl::upload_to_buffer(const Buffer& buffer, const size_t offset, const void* data, const size_t length)
 {
     static_cast<void>(buffer);
@@ -130,7 +212,7 @@ void Device_impl::upload_to_buffer(const Buffer& buffer, const size_t offset, co
     // No-op for null backend
 }
 
-void Device_impl::add_completion_handler(std::function<void()> callback)
+void Device_impl::add_completion_handler(std::function<void(Device_impl&)> callback)
 {
     static_cast<void>(callback);
     // No-op for null backend
@@ -220,6 +302,13 @@ auto Device_impl::get_format_properties(const erhe::dataformat::Format format) c
     Format_properties properties{};
     properties.supported = true;
     return properties;
+}
+
+auto Device_impl::probe_image_format_support(const erhe::dataformat::Format format, const uint64_t usage_mask) const -> bool
+{
+    static_cast<void>(format);
+    static_cast<void>(usage_mask);
+    return true;
 }
 
 auto Device_impl::get_supported_depth_stencil_formats() const -> std::vector<erhe::dataformat::Format>

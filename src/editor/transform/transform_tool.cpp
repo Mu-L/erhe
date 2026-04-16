@@ -9,7 +9,7 @@
 #include "operations/compound_operation.hpp"
 #include "operations/node_transform_operation.hpp"
 #include "operations/operation_stack.hpp"
-#include "renderers/mesh_memory.hpp" // need to be able to pass to visualization
+#include "erhe_scene_renderer/mesh_memory.hpp" // need to be able to pass to visualization
 #include "renderers/render_context.hpp"
 #include "scene/node_raytrace.hpp"
 #include "scene/scene_root.hpp"
@@ -103,22 +103,22 @@ void Transform_tool_drag_command::on_inactive()
 #pragma endregion Commands
 
 Transform_tool::Transform_tool(
-    const Transform_tool_config& transform_tool_config,
-    tf::Executor&                executor,
-    erhe::commands::Commands&    commands,
-    erhe::imgui::Imgui_renderer& imgui_renderer,
-    erhe::imgui::Imgui_windows&  imgui_windows,
-    App_context&                 app_context,
-    App_message_bus&             app_message_bus,
-    Headset_view&                headset_view,
-    Mesh_memory&                 mesh_memory,
-    Tools&                       tools,
-    Move_tool&                   move_tool,
-    Rotate_tool&                 rotate_tool,
-    Scale_tool&                  scale_tool
+    const Transform_tool_config&       transform_tool_config,
+    tf::Executor&                      executor,
+    erhe::commands::Commands&          commands,
+    erhe::imgui::Imgui_renderer&       imgui_renderer,
+    erhe::imgui::Imgui_windows&        imgui_windows,
+    App_context&                       app_context,
+    App_message_bus&                   app_message_bus,
+    Headset_view&                      headset_view,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Tools&                             tools,
+    Move_tool&                         move_tool,
+    Rotate_tool&                       rotate_tool,
+    Scale_tool&                        scale_tool
 )
-    : Tool    {app_context, tools}
-    , m_window{imgui_renderer, imgui_windows, "Transform", "transform", [this]() { window_imgui(); }}
+    : Tool                          {app_context, tools}
+    , m_window                      {imgui_renderer, imgui_windows, "Transform", "transform", [this]() { window_imgui(); }}
     , m_drag_command                {commands, app_context}
     , m_drag_redirect_update_command{commands, m_drag_command}
     , m_drag_enable_command         {commands, m_drag_redirect_update_command}

@@ -7,40 +7,6 @@ namespace example {
 
 Programs::Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer::Program_interface& program_interface)
     : shader_path{std::filesystem::path("res") / std::filesystem::path("shaders")}
-    , default_uniform_block{graphics_device}
-    , shadow_sampler_compare{
-        graphics_device.get_info().use_bindless_texture
-            ? nullptr
-            : default_uniform_block.add_sampler(
-                "s_shadow_compare",
-                erhe::graphics::Glsl_type::sampler_2d_array_shadow,
-                erhe::scene_renderer::c_texture_heap_slot_shadow_compare
-            )
-    }
-    , shadow_sampler_no_compare{
-        graphics_device.get_info().use_bindless_texture
-            ? nullptr
-            : default_uniform_block.add_sampler(
-                "s_shadow_no_compare",
-                erhe::graphics::Glsl_type::sampler_2d_array,
-                erhe::scene_renderer::c_texture_heap_slot_shadow_no_compare
-            )
-    }
-    , texture_sampler{
-        graphics_device.get_info().use_bindless_texture
-            ? nullptr
-            : default_uniform_block.add_sampler(
-                "s_texture",
-                erhe::graphics::Glsl_type::sampler_2d,
-                erhe::scene_renderer::c_texture_heap_slot_count_reserved,
-                // TODO
-                std::min(
-                    graphics_device.get_info().max_per_stage_descriptor_samplers - erhe::scene_renderer::c_texture_heap_slot_count_reserved,
-                    uint32_t{64}
-                )
-            )
-    }
-
     , nearest_sampler{
         graphics_device,
         erhe::graphics::Sampler_create_info{
@@ -74,10 +40,7 @@ Programs::Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer
             program_interface.make_prototype(
                 shader_path,
                 erhe::graphics::Shader_stages_create_info{
-                    .name                  = "standard",
-                    .default_uniform_block = graphics_device.get_info().use_bindless_texture
-                        ? nullptr
-                        : &default_uniform_block,
+                    .name              = "standard",
                     .dump_interface    = false,
                     .dump_final_source = false
                 }

@@ -32,14 +32,16 @@ static constexpr std::string_view c_shadow_renderer_initialize_component{"Shadow
 
 Shadow_renderer::Shadow_renderer(erhe::graphics::Device& graphics_device, Program_interface& program_interface)
     : m_graphics_device{graphics_device}
+    , m_empty_fragment_outputs{{}}
     , m_shader_stages{
         graphics_device,
         program_interface.make_prototype(
             "res/shaders",
             erhe::graphics::Shader_stages_create_info{
-                .name           = "depth_only",
-                .dump_interface = false,
-                .build          = true
+                .name             = "depth_only",
+                .fragment_outputs = &m_empty_fragment_outputs,
+                .dump_interface   = false,
+                .build            = true
             }
         )
     }
@@ -69,16 +71,17 @@ Shadow_renderer::Shadow_renderer(erhe::graphics::Device& graphics_device, Progra
             m_graphics_device,
             *m_dummy_texture.get(),
             m_fallback_sampler,
-            erhe::scene_renderer::c_texture_heap_slot_count_reserved
+            program_interface.bind_group_layout.get()
         )
     }
 {
+    m_bind_group_layout = program_interface.bind_group_layout.get();
     m_pipeline_cache_entries.resize(8);
 }
 
 Shadow_renderer::~Shadow_renderer() noexcept = default;
 
-auto Shadow_renderer::get_pipeline(const Vertex_input_state* vertex_input_state, const bool reverse_depth) -> erhe::graphics::Render_pipeline_state&
+auto Shadow_renderer::get_pipeline(const Vertex_input_state* vertex_input_state, const bool reverse_depth) -> erhe::graphics::Lazy_render_pipeline&
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -98,15 +101,17 @@ auto Shadow_renderer::get_pipeline(const Vertex_input_state* vertex_input_state,
     ERHE_VERIFY(lru_entry != nullptr);
     lru_entry->serial        = m_pipeline_cache_serial;
     lru_entry->reverse_depth = reverse_depth;
-    lru_entry->pipeline = erhe::graphics::Render_pipeline_state{
-        erhe::graphics::Render_pipeline_data{
-            .debug_label    = erhe::utility::Debug_label{"Shadow Renderer"},
-            .shader_stages  = &m_shader_stages.shader_stages,
-            .vertex_input   = vertex_input_state,
-            .input_assembly = Input_assembly_state::triangle,
-            .rasterization  = Rasterization_state::cull_mode_none,
-            .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth),
-            .color_blend    = Color_blend_state::color_writes_disabled
+    lru_entry->pipeline = erhe::graphics::Lazy_render_pipeline{
+        m_graphics_device,
+        erhe::graphics::Render_pipeline_create_info{
+            .debug_label      = erhe::utility::Debug_label{"Shadow Renderer"},
+            .shader_stages    = &m_shader_stages.shader_stages,
+            .vertex_input     = vertex_input_state,
+            .input_assembly   = Input_assembly_state::triangle,
+            .rasterization    = Rasterization_state::cull_mode_none,
+            .depth_stencil    = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth),
+            .color_blend      = Color_blend_state::color_writes_disabled,
+            .bind_group_layout = m_bind_group_layout
         }
     };
     return lru_entry->pipeline;
@@ -155,12 +160,13 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
     m_texture_heap->reset_heap();
     Ring_buffer_range material_range = m_material_buffer.update(*m_texture_heap.get(), parameters.materials);
     Ring_buffer_range joint_range    = m_joint_buffer.update(glm::uvec4{0, 0, 0, 0}, {}, parameters.skins);
-    Ring_buffer_range light_range    = m_light_buffer.update(lights, &parameters.light_projections, glm::vec3{0.0f}, *m_texture_heap.get());
+    Ring_buffer_range light_range    = m_light_buffer.update(lights, &parameters.light_projections, glm::vec3{0.0f});
 
     log_shadow_renderer->trace("Rendering shadow map to '{}'", parameters.texture->get_debug_label().string_view());
 
     const erhe::primitive::Primitive_mode primitive_mode{erhe::primitive::Primitive_mode::polygon_fill};
 
+    erhe::graphics::Render_pass* previous_render_pass = nullptr;
     for (const auto& light : lights) {
         if (!light->cast_shadow) {
             continue;
@@ -171,16 +177,30 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
             //// log_render->warn("Light {} has no light projection transforms", light->name());
             continue;
         }
-        const std::size_t light_index = light_projection_transform->index;
-        if (light_index >= parameters.render_passes.size()) {
+        const std::size_t light_index  = light_projection_transform->index;
+        const std::size_t shadow_index = light_projection_transform->shadow_index;
+        if (shadow_index >= parameters.render_passes.size()) {
             continue;
         }
 
         erhe::graphics::Render_command_encoder encoder = m_graphics_device.make_render_command_encoder();
-        erhe::graphics::Scoped_render_pass scoped_render_pass{*parameters.render_passes[light_index].get()};
+        erhe::graphics::Scoped_render_pass scoped_render_pass{*parameters.render_passes[shadow_index].get(), previous_render_pass, nullptr};
+        previous_render_pass = parameters.render_passes[shadow_index].get();
+
+        erhe::graphics::Render_pipeline* render_pipeline = pipeline.get_pipeline_for(parameters.render_passes[shadow_index]->get_descriptor());
+        if (render_pipeline == nullptr) {
+            continue;
+        }
 
         // TODO Multiple vertex buffer bindings
-        encoder.set_render_pipeline_state(pipeline);
+        encoder.set_bind_group_layout(m_bind_group_layout);
+        encoder.set_render_pipeline(*render_pipeline);
+        encoder.set_viewport_rect(
+            parameters.light_camera_viewport.x,
+            parameters.light_camera_viewport.y,
+            parameters.light_camera_viewport.width,
+            parameters.light_camera_viewport.height
+        );
         encoder.set_index_buffer(parameters.index_buffer);
         encoder.set_vertex_buffer(parameters.vertex_buffer0, 0, 0);
         encoder.set_vertex_buffer(parameters.vertex_buffer1, 0, 1);

@@ -199,6 +199,7 @@ auto Xr_instance::create_instance() -> bool
 //    enabled_extensions.push_back(XR_KHR_OPENGL_WAYLAND_EXTENSION_NAME);
 //# endif
 #endif
+
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
     enabled_extensions.push_back(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
 #endif
@@ -362,6 +363,13 @@ auto Xr_instance::create_instance() -> bool
     xrGetOpenGLGraphicsRequirementsKHR = get_proc_addr<PFN_xrGetOpenGLGraphicsRequirementsKHR>("xrGetOpenGLGraphicsRequirementsKHR");
 #endif
 
+#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+    xrGetVulkanGraphicsRequirements2KHR = get_proc_addr<PFN_xrGetVulkanGraphicsRequirements2KHR>("xrGetVulkanGraphicsRequirements2KHR");
+    xrCreateVulkanInstanceKHR           = get_proc_addr<PFN_xrCreateVulkanInstanceKHR          >("xrCreateVulkanInstanceKHR");
+    xrGetVulkanGraphicsDevice2KHR       = get_proc_addr<PFN_xrGetVulkanGraphicsDevice2KHR      >("xrGetVulkanGraphicsDevice2KHR");
+    xrCreateVulkanDeviceKHR             = get_proc_addr<PFN_xrCreateVulkanDeviceKHR            >("xrCreateVulkanDeviceKHR");
+#endif
+
     XrInstanceProperties instance_properties {
         .type           = XR_TYPE_INSTANCE_PROPERTIES,
         .next           = nullptr,
@@ -455,6 +463,111 @@ auto Xr_instance::get_xr_environment_blend_mode() const -> XrEnvironmentBlendMod
 {
     return m_xr_environment_blend_mode;
 }
+
+#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+auto Xr_instance::make_vulkan_external_creators() const -> erhe::graphics::Vulkan_external_creators
+{
+    erhe::graphics::Vulkan_external_creators creators;
+
+    const XrInstance                   xr_instance  = m_xr_instance;
+    const XrSystemId                   xr_system_id = m_xr_system_id;
+    PFN_xrCreateVulkanInstanceKHR      xr_create_instance_fn      = xrCreateVulkanInstanceKHR;
+    PFN_xrGetVulkanGraphicsDevice2KHR  xr_get_graphics_device_fn  = xrGetVulkanGraphicsDevice2KHR;
+    PFN_xrCreateVulkanDeviceKHR        xr_create_device_fn        = xrCreateVulkanDeviceKHR;
+
+    creators.create_instance = [xr_instance, xr_system_id, xr_create_instance_fn](
+        const VkInstanceCreateInfo* vk_create_info,
+        VkInstance*                 vk_instance_out
+    ) -> VkResult {
+        if (xr_create_instance_fn == nullptr) {
+            log_xr->error("xrCreateVulkanInstanceKHR not loaded");
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        const XrVulkanInstanceCreateInfoKHR xr_vulkan_instance_create_info{
+            .type                   = XR_TYPE_VULKAN_INSTANCE_CREATE_INFO_KHR,
+            .next                   = nullptr,
+            .systemId               = xr_system_id,
+            .createFlags            = 0,
+            .pfnGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(vkGetInstanceProcAddr),
+            .vulkanCreateInfo       = vk_create_info,
+            .vulkanAllocator        = nullptr
+        };
+        VkResult vk_result = VK_SUCCESS;
+        const XrResult xr_result = xr_create_instance_fn(
+            xr_instance,
+            &xr_vulkan_instance_create_info,
+            vk_instance_out,
+            &vk_result
+        );
+        if (xr_result != XR_SUCCESS) {
+            log_xr->error("xrCreateVulkanInstanceKHR failed: {}", c_str(xr_result));
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        return vk_result;
+    };
+
+    creators.pick_physical_device = [xr_instance, xr_system_id, xr_get_graphics_device_fn](
+        VkInstance        vk_instance,
+        VkPhysicalDevice* vk_physical_device_out
+    ) -> VkResult {
+        if (xr_get_graphics_device_fn == nullptr) {
+            log_xr->error("xrGetVulkanGraphicsDevice2KHR not loaded");
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        const XrVulkanGraphicsDeviceGetInfoKHR xr_get_info{
+            .type           = XR_TYPE_VULKAN_GRAPHICS_DEVICE_GET_INFO_KHR,
+            .next           = nullptr,
+            .systemId       = xr_system_id,
+            .vulkanInstance = vk_instance
+        };
+        const XrResult xr_result = xr_get_graphics_device_fn(
+            xr_instance,
+            &xr_get_info,
+            vk_physical_device_out
+        );
+        if (xr_result != XR_SUCCESS) {
+            log_xr->error("xrGetVulkanGraphicsDevice2KHR failed: {}", c_str(xr_result));
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        return VK_SUCCESS;
+    };
+
+    creators.create_device = [xr_instance, xr_system_id, xr_create_device_fn](
+        VkPhysicalDevice          vk_physical_device,
+        const VkDeviceCreateInfo* vk_create_info,
+        VkDevice*                 vk_device_out
+    ) -> VkResult {
+        if (xr_create_device_fn == nullptr) {
+            log_xr->error("xrCreateVulkanDeviceKHR not loaded");
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        const XrVulkanDeviceCreateInfoKHR xr_vulkan_device_create_info{
+            .type                   = XR_TYPE_VULKAN_DEVICE_CREATE_INFO_KHR,
+            .next                   = nullptr,
+            .systemId               = xr_system_id,
+            .createFlags            = 0,
+            .pfnGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(vkGetInstanceProcAddr),
+            .vulkanPhysicalDevice   = vk_physical_device,
+            .vulkanCreateInfo       = vk_create_info,
+            .vulkanAllocator        = nullptr
+        };
+        VkResult vk_result = VK_SUCCESS;
+        const XrResult xr_result = xr_create_device_fn(
+            xr_instance,
+            &xr_vulkan_device_create_info,
+            vk_device_out,
+            &vk_result
+        );
+        if (xr_result != XR_SUCCESS) {
+            log_xr->error("xrCreateVulkanDeviceKHR failed: {}", c_str(xr_result));
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        return vk_result;
+    };
+
+    return creators;
+}
+#endif
 
 auto Xr_instance::enumerate_layers() -> bool
 {

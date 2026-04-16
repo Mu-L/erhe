@@ -1,9 +1,53 @@
 #include "erhe_graphics/compute_pipeline_state.hpp"
 
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
+#   include "erhe_graphics/gl/gl_compute_pipeline.hpp"
+#elif defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+#   include "erhe_graphics/vulkan/vulkan_compute_pipeline.hpp"
+#elif defined(ERHE_GRAPHICS_LIBRARY_METAL)
+#   include "erhe_graphics/metal/metal_compute_pipeline.hpp"
+#elif defined(ERHE_GRAPHICS_LIBRARY_NONE)
+#   include "erhe_graphics/null/null_compute_pipeline.hpp"
+#endif
+
 #include <algorithm>
 #include <vector>
 
 namespace erhe::graphics {
+
+// --- Compute_pipeline ---
+
+Compute_pipeline::Compute_pipeline(Device& device, const Compute_pipeline_data& data)
+    : m_data{data}
+    , m_impl{std::make_unique<Compute_pipeline_impl>(device, data)}
+{
+}
+
+Compute_pipeline::~Compute_pipeline() noexcept = default;
+
+Compute_pipeline::Compute_pipeline(Compute_pipeline&& other) noexcept = default;
+
+auto Compute_pipeline::operator=(Compute_pipeline&& other) noexcept -> Compute_pipeline& = default;
+
+auto Compute_pipeline::get_impl() -> Compute_pipeline_impl&
+{
+    return *m_impl;
+}
+
+auto Compute_pipeline::get_impl() const -> const Compute_pipeline_impl&
+{
+    return *m_impl;
+}
+
+auto Compute_pipeline::is_valid() const -> bool
+{
+    return (m_impl != nullptr) && m_impl->is_valid();
+}
+
+auto Compute_pipeline::get_data() const -> const Compute_pipeline_data&
+{
+    return m_data;
+}
 
 // TODO Move to graphics device?
 ERHE_PROFILE_MUTEX(std::mutex, Compute_pipeline_state::s_mutex);

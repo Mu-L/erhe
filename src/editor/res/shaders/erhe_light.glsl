@@ -35,10 +35,9 @@ float sample_light_visibility(vec4 position, uint light_index, float N_dot_L) {
         return 1.0;
     }
 
-#   if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
-    sampler2DArrayShadow s_shadow_compare    = sampler2DArrayShadow(light_block.shadow_texture_compare);
-    sampler2DArray       s_shadow_no_compare = sampler2DArray      (light_block.shadow_texture_no_compare);
-#   endif
+    // s_shadow_compare and s_shadow_no_compare are declared as uniforms
+    // in the generated shader preamble (from default_uniform_block) and
+    // bound via Render_command_encoder::set_sampled_image() for all backends.
 
     Light light                                 = light_block.lights[light_index];
     float array_layer                           = float(light_index);
@@ -138,9 +137,9 @@ float sample_light_visibility(vec4 position, uint light_index, float N_dot_L) {
         }
 #       else // Path 3: Shader depth texture comparison
         {   // Shader comparison - direction-aware
-            float D_ref        = position_in_light_texture.z + 2.0 * slopeBias;
-            vec3  uv_layer     = vec3(position_in_light_texture.xy, array_layer);
-            float depth_sample = texture(s_shadow_no_compare, uv_layer).r;
+            float D_ref         = position_in_light_texture.z + 2.0 * slopeBias;
+            vec3  uv_layer      = vec3(position_in_light_texture.xy, array_layer);
+            float depth_sample  = texture(s_shadow_no_compare, uv_layer).r;
             float D_ref_rounded = (-cdd) * ceil((-cdd) * D_ref * 65535.0) / 65535.0;
             return ((-cdd) * D_ref_rounded) > ((-cdd) * depth_sample) ? 1.0 : 0.0;
         }

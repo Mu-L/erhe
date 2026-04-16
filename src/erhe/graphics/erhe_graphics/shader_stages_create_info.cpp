@@ -6,6 +6,7 @@
 # include "erhe_gl/wrapper_enums.hpp"
 #endif
 
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/glsl_file_loader.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/device.hpp"
@@ -182,9 +183,12 @@ auto Shader_stages_create_info::final_source(
         sb << "#extension GL_ARB_shader_storage_buffer_object : enable\n";
         sb << "#define ERHE_HAS_ARB_SHADER_STORAGE_BUFFER_OBJECT 1\n";
     }
-    if (graphics_device.get_info().use_bindless_texture) {
+    if (graphics_device.get_info().texture_heap_path == Texture_heap_path::opengl_bindless_textures) {
         sb << "#extension GL_ARB_bindless_texture : enable\n";
-        sb << "#define ERHE_HAS_ARB_BINDLESS_TEXTURE 1\n";
+        sb << "#define ERHE_TEXTURE_HEAP_OPENGL_BINDLESS 1\n";
+    }
+    if (graphics_device.get_info().texture_heap_path == Texture_heap_path::opengl_sampler_array) {
+        sb << "#define ERHE_TEXTURE_HEAP_OPENGL_SAMPLER_ARRAY 1\n";
     }
     if (gl::is_extension_supported(gl::Extension::Extension_GL_ARB_shading_language_packing)) {
         sb << "#extension GL_ARB_shading_language_packing : enable\n";
@@ -229,7 +233,21 @@ auto Shader_stages_create_info::final_source(
     sb << "\n";
 #endif
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    sb << "#define ERHE_DRAW_ID gl_DrawID\n";
+    if (graphics_device.get_info().use_multi_draw_indirect_core) {
+        sb << "#define ERHE_DRAW_ID gl_DrawID\n";
+    } else {
+        // Emulate multi-draw indirect with per-draw push constants.
+        // Only emit for vertex/compute -- fragment shaders receive draw ID via interpolated varying.
+        if (shader.type == Shader_type::vertex_shader || shader.type == Shader_type::compute_shader) {
+            sb << "layout(push_constant) uniform Erhe_draw_id_block { int ERHE_DRAW_ID; };\n";
+        }
+    }
+    sb << "#define ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING 1\n";
+    sb << "#extension GL_EXT_nonuniform_qualifier : enable\n";
+    sb << "layout(set = 1, binding = 0) uniform sampler2D erhe_texture_heap[];\n";
+    // Vulkan SPIR-V uses gl_VertexIndex / gl_InstanceIndex instead of gl_VertexID / gl_InstanceID
+    sb << "#define gl_VertexID gl_VertexIndex\n";
+    sb << "#define gl_InstanceID gl_InstanceIndex\n";
 #endif
 #if defined(ERHE_GRAPHICS_LIBRARY_METAL)
     // Metal does not support multi-draw indirect / gl_DrawID; emulate with push constant.
@@ -237,6 +255,18 @@ auto Shader_stages_create_info::final_source(
     if (shader.type == Shader_type::vertex_shader || shader.type == Shader_type::compute_shader) {
         sb << "layout(push_constant) uniform Erhe_draw_id_block { int ERHE_DRAW_ID; };\n";
     }
+    sb << "#define ERHE_BACKEND_METAL 1\n";
+    // ERHE_TEXTURE_HEAP_METAL_ARGUMENT_BUFFER is the Metal-specific shader code
+    // path for the texture heap. It is intentionally kept distinct from the
+    // OpenGL/Vulkan defines so that the Metal branch in cross-backend GLSL
+    // helpers (e.g. erhe_texture.glsl) can diverge in the future. Today its
+    // body samples from the same `s_texture[]` sampler array that the
+    // default uniform block declares -- which is what the Metal
+    // Texture_heap_impl actually fills via its argument encoder. We do NOT
+    // declare a separate `erhe_texture_heap[]` here: there is no host code
+    // backing it on Metal, and a duplicate (set=1, binding=0) sampler image
+    // collides with the default-uniform-block samplers under SPIRV-Cross.
+    sb << "#define ERHE_TEXTURE_HEAP_METAL_ARGUMENT_BUFFER 1\n";
     // Vulkan SPIR-V uses gl_VertexIndex / gl_InstanceIndex instead of gl_VertexID / gl_InstanceID
     sb << "#define gl_VertexID gl_VertexIndex\n";
     sb << "#define gl_InstanceID gl_InstanceIndex\n";
@@ -259,10 +289,22 @@ auto Shader_stages_create_info::final_source(
     sb << struct_types_source();
     sb << interface_blocks_source();
 
-    if (default_uniform_block != nullptr) {
-        sb << "// Default uniform block\n";
-        sb << default_uniform_block->get_source();
-        sb << "\n";
+    // Default uniform block: the sampler declarations are owned by the
+    // bind_group_layout and synthesized from its create_info bindings.
+    // The shader source emitter pulls them out here and injects them
+    // into the GLSL preamble as uniform sampler2D / sampler2DArrayShadow /
+    // ... declarations.
+    if (bind_group_layout != nullptr) {
+        const Shader_resource& default_uniform_block = bind_group_layout->get_default_uniform_block();
+        if (!default_uniform_block.get_members().empty()) {
+            const uint32_t sampler_offset = bind_group_layout->get_sampler_binding_offset();
+            if (sampler_offset > 0) {
+                sb << "#define ERHE_SAMPLER_BINDING_OFFSET " << sampler_offset << "\n";
+            }
+            sb << "// Default uniform block\n";
+            sb << default_uniform_block.get_source(0, sampler_offset);
+            sb << "\n";
+        }
     }
 
     if (!shader.source.empty()) {

@@ -21,6 +21,7 @@
 #include "erhe_graphics/gl/gl_render_command_encoder.hpp"
 #include "erhe_graphics/draw_indirect.hpp"
 #include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/renderdoc_app.h"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
@@ -28,6 +29,7 @@
 #include "erhe_graphics/surface.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_utility/align.hpp"
+#include "erhe_window/renderdoc_capture.hpp"
 #include "erhe_window/window.hpp"
 
 #if !defined(WIN32)
@@ -195,8 +197,9 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     const bool force_emulate_multi_draw_indirect = graphics_config.force_emulate_multi_draw_indirect;
     const int  force_gl_version                  = graphics_config.force_gl_version;
     const int  force_glsl_version                = graphics_config.force_glsl_version;
-    bool       capture_support                   = graphics_config.renderdoc_capture_support;
     const bool initial_clear                     = graphics_config.initial_clear;
+
+    m_context_window = surface_create_info.context_window;
 
     if (force_gl_version > 0) {
         m_info.gl_version = force_gl_version;
@@ -309,29 +312,33 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     gl::get_integer_v(gl::Get_p_name::max_tess_control_uniform_blocks,    &m_info.max_tess_control_uniform_blocks);
     gl::get_integer_v(gl::Get_p_name::max_tess_evaluation_uniform_blocks, &m_info.max_tess_evaluation_uniform_blocks);
 
-    if (gl::is_extension_supported(gl::Extension::Extension_GL_ARB_bindless_texture)) {
-        m_info.use_bindless_texture = true;
-    }
-    if (m_info.vendor == Vendor::Intel) {
-        m_info.use_bindless_texture = false;
-    }
-    log_startup->info("GL_ARB_bindless_texture supported : {}", m_info.use_bindless_texture);
-    if (m_info.use_bindless_texture) {
+    {
+        bool bindless_supported = gl::is_extension_supported(gl::Extension::Extension_GL_ARB_bindless_texture);
+        if (m_info.vendor == Vendor::Intel) {
+            bindless_supported = false;
+        }
+        log_startup->info("GL_ARB_bindless_texture supported : {}", bindless_supported);
+        bool use_bindless = bindless_supported;
+        if (use_bindless) {
 #if defined(ERHE_SPIRV)
-        // 'GL_ARB_bindless_texture' : not allowed when using generating SPIR-V codes
-        m_info.use_bindless_texture = false;
-        log_startup->warn("Force disabled GL_ARB_bindless_texture due to ERHE_SPIRV cmake setting");
+            // 'GL_ARB_bindless_texture' : not allowed when using generating SPIR-V codes
+            use_bindless = false;
+            log_startup->warn("Force disabled GL_ARB_bindless_texture due to ERHE_SPIRV cmake setting");
 #else
-        if (force_bindless_textures_off) {
-            m_info.use_bindless_texture = false;
-            log_startup->warn("Force disabled GL_ARB_bindless_texture due to config setting force_bindless_textures_off");
-        }
-        else
-        if (capture_support) {
-            m_info.use_bindless_texture = false;
-            log_startup->warn("Force disabled GL_ARB_bindless_texture due to config enabling RenderDoc capture");
-        }
+            if (force_bindless_textures_off) {
+                use_bindless = false;
+                log_startup->warn("Force disabled GL_ARB_bindless_texture due to config setting force_bindless_textures_off");
+            }
+            else
+            if (graphics_config.renderdoc_capture_support) {
+                use_bindless = false;
+                log_startup->warn("Force disabled GL_ARB_bindless_texture due to config enabling RenderDoc capture");
+            }
 #endif
+        }
+        m_info.texture_heap_path = use_bindless
+            ? Texture_heap_path::opengl_bindless_textures
+            : Texture_heap_path::opengl_sampler_array;
     }
     m_info.use_clear_texture = (m_info.gl_version >= 440) || gl::is_extension_supported(gl::Extension::Extension_GL_ARB_clear_texture);
     log_startup->info("GL_ARB_clear_texture supported : {}", m_info.use_clear_texture);
@@ -683,6 +690,38 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         const int global_max_texture_size       = m_info.max_texture_size;
         const int global_max_array_texture_layers = m_info.max_array_texture_layers;
 
+        // Helper: probe supported MSAA sample counts for a given internal format
+        // by calling renderbuffer_storage_multisample with candidate counts and
+        // checking for GL errors. GL 4.1 lacks glGetInternalformativ (4.2+), so
+        // we must probe explicitly. Returns sorted ascending counts that include 1.
+        auto probe_sample_counts = [&drain_gl_errors](gl::Internal_format format, int max_samples) -> std::vector<int>
+        {
+            std::vector<int> result;
+            result.push_back(1);
+            if (max_samples <= 1) {
+                return result;
+            }
+            const int candidates[] = { 2, 4, 8, 16, 32 };
+            for (const int count : candidates) {
+                if (count > max_samples) {
+                    break;
+                }
+                drain_gl_errors();
+                GLuint rb = 0;
+                gl::gen_renderbuffers(1, &rb);
+                gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, rb);
+                gl::renderbuffer_storage_multisample(gl::Renderbuffer_target::renderbuffer, count, format, 4, 4);
+                const bool ok = (gl::get_error() == gl::Error_code::no_error);
+                gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, 0);
+                gl::delete_renderbuffers(1, &rb);
+                drain_gl_errors();
+                if (ok) {
+                    result.push_back(count);
+                }
+            }
+            return result;
+        };
+
         // Determine pixel format and type for tex_image_2d probing of color formats
         struct Color_format_info
         {
@@ -789,6 +828,12 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
                 properties.framebuffer_blend = properties.color_renderable;
             }
 
+            // Probe supported MSAA sample counts. The current color_format_table
+            // contains no integer formats, so GL_MAX_COLOR_TEXTURE_SAMPLES (and
+            // GL_MAX_SAMPLES as the overall cap) is the appropriate bound.
+            const int color_sample_cap = std::min(m_info.max_samples, m_info.max_color_texture_samples);
+            properties.texture_2d_sample_counts = probe_sample_counts(info.internal_format, color_sample_cap);
+
             std::stringstream ss;
             ss << "    " << gl::c_str(info.internal_format)
                << ": R" << properties.red_size
@@ -797,6 +842,12 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
                << " A" << properties.alpha_size;
             if (properties.color_renderable) {
                 ss << " color-renderable";
+            }
+            if (!properties.texture_2d_sample_counts.empty()) {
+                ss << ", sample counts:";
+                for (const int count : properties.texture_2d_sample_counts) {
+                    ss << ' ' << count;
+                }
             }
             log_startup->info(ss.str());
 
@@ -896,6 +947,11 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
             gl::delete_renderbuffers(1, &rb);
             drain_gl_errors();
 
+            // Probe supported MSAA sample counts. Depth/stencil formats are
+            // capped by GL_MAX_DEPTH_TEXTURE_SAMPLES and GL_MAX_SAMPLES.
+            const int depth_sample_cap = std::min(m_info.max_samples, m_info.max_depth_texture_samples);
+            properties.texture_2d_sample_counts = probe_sample_counts(format, depth_sample_cap);
+
             std::stringstream ss;
             ss << "    " << gl::c_str(format)
                << ": D" << properties.depth_size
@@ -905,6 +961,12 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
             }
             if (properties.stencil_renderable) {
                 ss << " stencil-renderable";
+            }
+            if (!properties.texture_2d_sample_counts.empty()) {
+                ss << ", sample counts:";
+                for (const int count : properties.texture_2d_sample_counts) {
+                    ss << ' ' << count;
+                }
             }
             log_startup->info(ss.str());
 
@@ -938,6 +1000,14 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     m_info.coordinate_conventions.native_depth_range = m_info.use_clip_control
         ? erhe::math::Depth_range::zero_to_one
         : erhe::math::Depth_range::negative_one_to_one;
+
+    // OpenGL only supports the equivalent of "sample 0" for depth/stencil
+    // multisample resolves: glBlitFramebuffer requires GL_NEAREST when the
+    // mask includes depth or stencil, and there is no filter selection.
+    m_info.supported_depth_resolve_modes          = Resolve_mode_flag_bit_mask::sample_zero;
+    m_info.supported_stencil_resolve_modes        = Resolve_mode_flag_bit_mask::sample_zero;
+    m_info.independent_depth_stencil_resolve      = true;
+    m_info.independent_depth_stencil_resolve_none = true;
 
     if (
         (surface_create_info.context_window != nullptr) &&
@@ -979,7 +1049,7 @@ void Device_impl::resize_swapchain_to_window()
 
 auto Device_impl::get_handle(const Texture& texture, const Sampler& sampler) const -> uint64_t
 {
-    if (m_info.use_bindless_texture) {
+    if (m_info.texture_heap_path == Texture_heap_path::opengl_bindless_textures) {
         return gl::get_texture_sampler_handle_arb(texture.get_impl().gl_name(), sampler.get_impl().gl_name());
     } else {
         const uint64_t texture_name  = static_cast<uint64_t>(texture.get_impl().gl_name());
@@ -1087,7 +1157,15 @@ auto Device_impl::choose_depth_stencil_format(const unsigned int sort_flags, con
 {
     std::vector<erhe::dataformat::Format> formats = get_supported_depth_stencil_formats();
     sort_depth_stencil_formats(formats, sort_flags, requested_sample_count);
-    return choose_depth_stencil_format(formats);
+    const erhe::dataformat::Format result = choose_depth_stencil_format(formats);
+    if (result == erhe::dataformat::Format::format_undefined) {
+        ERHE_FATAL(
+            "No supported depth/stencil format matches sort_flags=0x%x with sample_count=%d",
+            sort_flags,
+            requested_sample_count
+        );
+    }
+    return result;
 }
 
 auto Device_impl::create_dummy_texture(const erhe::dataformat::Format format) -> std::shared_ptr<Texture>
@@ -1295,9 +1373,9 @@ void Device_impl::upload_to_texture(
     }
 }
 
-void Device_impl::add_completion_handler(std::function<void()> callback)
+void Device_impl::add_completion_handler(std::function<void(Device_impl&)> callback)
 {
-    m_completion_handlers.emplace_back(m_frame_index, callback);
+    m_completion_handlers.emplace_back(m_frame_index, std::move(callback));
 }
 
 void Device_impl::on_thread_enter()
@@ -1312,7 +1390,7 @@ void Device_impl::frame_completed(const uint64_t completed_frame)
     }
     for (const Completion_handler& entry : m_completion_handlers) {
         if (entry.frame_number == completed_frame) {
-            entry.callback();
+            entry.callback(*this);
         }
     }
     auto i = std::remove_if(
@@ -1327,39 +1405,63 @@ void Device_impl::frame_completed(const uint64_t completed_frame)
 
 auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
 {
+    ERHE_VERIFY(m_state == Device_frame_state::idle);
+
+    bool result = false;
     if (m_surface) {
         Swapchain* swapchain = m_surface->get_swapchain();
         if (swapchain != nullptr) {
-            return swapchain->wait_frame(out_frame_state);
+            result = swapchain->get_impl().wait_frame(out_frame_state);
         }
     }
-    out_frame_state.predicted_display_time   = 0;
-    out_frame_state.predicted_display_period = 0;
-    out_frame_state.should_render            = false;
-    return false;
+    if (!result) {
+        out_frame_state.predicted_display_time   = 0;
+        out_frame_state.predicted_display_period = 0;
+        out_frame_state.should_render            = false;
+        return false;
+    }
+
+    m_state = Device_frame_state::waited;
+    return true;
+}
+
+auto Device_impl::begin_frame() -> bool
+{
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
+    m_had_swapchain_frame = false;
+    m_state = Device_frame_state::recording;
+    return true;
 }
 
 auto Device_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bool
 {
-    bool result = true;
-    if (m_surface) {
-        Swapchain* swapchain = m_surface->get_swapchain();
-        if (swapchain != nullptr) {
-            result = swapchain->begin_frame(frame_begin_info);
-        }
+    const bool device_ok = begin_frame();
+    if (!device_ok) {
+        return false;
     }
-    return result;
+    Frame_state dummy_state{};
+    return begin_swapchain_frame(frame_begin_info, dummy_state);
 }
 
 auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
 {
+    ERHE_VERIFY(
+        (m_state == Device_frame_state::in_swapchain_frame) ||
+        (m_state == Device_frame_state::recording)
+    );
+
+    if (m_state == Device_frame_state::in_swapchain_frame) {
+        end_swapchain_frame(frame_end_info);
+    }
+
     bool result = true;
-    if (m_surface) {
+    if (m_had_swapchain_frame && m_surface) {
         Swapchain* swapchain = m_surface->get_swapchain();
         if (swapchain != nullptr) {
-            result = swapchain->end_frame(frame_end_info);
+            result = swapchain->get_impl().end_frame(frame_end_info);
         }
     }
+    m_had_swapchain_frame = false;
 
     // Check previous frame fences for completion
     m_completed_frames.clear();
@@ -1426,7 +1528,83 @@ auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
 
     ++m_frame_index;
 
+    m_state = Device_frame_state::idle;
     return result;
+}
+
+auto Device_impl::end_frame() -> bool
+{
+    return end_frame(Frame_end_info{});
+}
+
+auto Device_impl::begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool
+{
+    ERHE_VERIFY(m_state == Device_frame_state::recording);
+
+    if (!m_surface) {
+        out_frame_state.should_render = false;
+        return false;
+    }
+    Swapchain* swapchain = m_surface->get_swapchain();
+    if (swapchain == nullptr) {
+        out_frame_state.should_render = false;
+        return false;
+    }
+
+    const bool ok = swapchain->get_impl().begin_frame(frame_begin_info);
+    out_frame_state.should_render = ok;
+    if (ok) {
+        m_state = Device_frame_state::in_swapchain_frame;
+        m_had_swapchain_frame = true;
+    }
+    return ok;
+}
+
+void Device_impl::end_swapchain_frame(const Frame_end_info& /*frame_end_info*/)
+{
+    ERHE_VERIFY(m_state == Device_frame_state::in_swapchain_frame);
+    m_state = Device_frame_state::recording;
+}
+
+void Device_impl::wait_idle()
+{
+    // Block CPU until all submitted GL commands have completed on the GPU.
+    gl::finish();
+
+    // Treat every outstanding pending frame as completed: fire the ring
+    // buffer frame_completed callbacks and drain matching completion
+    // handlers. Any fence syncs left in m_frame_syncs are now guaranteed
+    // to be signaled; delete them and clear the slot.
+    std::vector<uint64_t> completed_frames;
+    completed_frames.swap(m_pending_frames);
+    std::sort(completed_frames.begin(), completed_frames.end());
+    for (Frame_sync& frame_sync : m_frame_syncs) {
+        if (frame_sync.fence_sync != nullptr) {
+            gl::delete_sync(static_cast<GLsync>(frame_sync.fence_sync));
+            frame_sync.fence_sync = nullptr;
+        }
+    }
+    for (uint64_t frame : completed_frames) {
+        frame_completed(frame);
+    }
+
+    // Anything left in m_completion_handlers is for a frame that was
+    // never paired with a fence sync; drain it too.
+    for (const Completion_handler& entry : m_completion_handlers) {
+        entry.callback(*this);
+    }
+    m_completion_handlers.clear();
+}
+
+auto Device_impl::is_in_device_frame() const -> bool
+{
+    return (m_state == Device_frame_state::recording) ||
+           (m_state == Device_frame_state::in_swapchain_frame);
+}
+
+auto Device_impl::is_in_swapchain_frame() const -> bool
+{
+    return m_state == Device_frame_state::in_swapchain_frame;
 }
 
 auto Device_impl::get_frame_index() const -> uint64_t
@@ -1502,7 +1680,23 @@ auto Device_impl::get_format_properties(const erhe::dataformat::Format format) c
     if (i == format_properties.end()) {
         return {};
     }
-    return i->second;
+
+    // format_x8_d24_unorm_pack32 maps to depth24_stencil8
+    Format_properties result = i->second;
+    if (erhe::dataformat::get_stencil_size_bits(format) == 0) {
+        result.stencil_size = 0;
+    }
+    return result;
+}
+
+auto Device_impl::probe_image_format_support(const erhe::dataformat::Format format, const uint64_t usage_mask) const -> bool
+{
+    // OpenGL has no direct equivalent of vkGetPhysicalDeviceImageFormatProperties2.
+    // The probe concept is Vulkan-specific; on GL we conservatively report "supported"
+    // and let downstream texture creation fail if the combination is not renderable.
+    static_cast<void>(format);
+    static_cast<void>(usage_mask);
+    return true;
 }
 
 void Device_impl::clear_texture(const Texture& texture, const std::array<double, 4> value)
@@ -1564,6 +1758,7 @@ void Device_impl::clear_texture(const Texture& texture, const std::array<double,
     }
 
     Render_pass_descriptor render_pass_descriptor{};
+    render_pass_descriptor.debug_label = erhe::utility::Debug_label{"Device_impl::clear_texture"};
     if (format_kind != erhe::dataformat::Format_kind::format_kind_depth_stencil) {
         render_pass_descriptor.color_attachments[0].texture        = &texture;
         render_pass_descriptor.color_attachments[0].load_action    = Load_action::Clear;
@@ -1571,16 +1766,28 @@ void Device_impl::clear_texture(const Texture& texture, const std::array<double,
         render_pass_descriptor.color_attachments[0].clear_value[1] = value[1];
         render_pass_descriptor.color_attachments[0].clear_value[2] = value[2];
         render_pass_descriptor.color_attachments[0].clear_value[3] = value[3];
+        render_pass_descriptor.color_attachments[0].usage_before   = Image_usage_flag_bit_mask::color_attachment;
+        render_pass_descriptor.color_attachments[0].layout_before  = Image_layout::color_attachment_optimal;
+        render_pass_descriptor.color_attachments[0].usage_after    = Image_usage_flag_bit_mask::color_attachment;
+        render_pass_descriptor.color_attachments[0].layout_after   = Image_layout::color_attachment_optimal;
     } else {
         if (depth_size_bits > 0) {
             render_pass_descriptor.depth_attachment.texture        = &texture;
             render_pass_descriptor.depth_attachment.load_action    = Load_action::Clear;
             render_pass_descriptor.depth_attachment.clear_value[0] = value[0];
+            render_pass_descriptor.depth_attachment.usage_before   = Image_usage_flag_bit_mask::depth_stencil_attachment;
+            render_pass_descriptor.depth_attachment.layout_before  = Image_layout::depth_stencil_attachment_optimal;
+            render_pass_descriptor.depth_attachment.usage_after    = Image_usage_flag_bit_mask::depth_stencil_attachment;
+            render_pass_descriptor.depth_attachment.layout_after   = Image_layout::depth_stencil_attachment_optimal;
         }
         if (stencil_size_bits > 0) {
             render_pass_descriptor.stencil_attachment.texture        = &texture;
             render_pass_descriptor.stencil_attachment.load_action    = Load_action::Clear;
             render_pass_descriptor.stencil_attachment.clear_value[0] = value[1];
+            render_pass_descriptor.stencil_attachment.usage_before   = Image_usage_flag_bit_mask::depth_stencil_attachment;
+            render_pass_descriptor.stencil_attachment.layout_before  = Image_layout::depth_stencil_attachment_optimal;
+            render_pass_descriptor.stencil_attachment.usage_after    = Image_usage_flag_bit_mask::depth_stencil_attachment;
+            render_pass_descriptor.stencil_attachment.layout_after   = Image_layout::depth_stencil_attachment_optimal;
         }
     }
     render_pass_descriptor.render_target_width  = texture.get_width();
@@ -1589,6 +1796,53 @@ void Device_impl::clear_texture(const Texture& texture, const std::array<double,
 
     Render_command_encoder clear_render_encoder = make_render_command_encoder();
     Scoped_render_pass scoped_render_pass{render_pass};
+}
+
+void Device_impl::start_frame_capture()
+{
+    RENDERDOC_API_1_7_0* api = static_cast<RENDERDOC_API_1_7_0*>(erhe::window::get_renderdoc_api());
+    if (api == nullptr) {
+        return;
+    }
+    RENDERDOC_DevicePointer device = (m_context_window != nullptr) ? m_context_window->get_device_pointer() : nullptr;
+    RENDERDOC_WindowHandle  window = (m_context_window != nullptr) ? m_context_window->get_window_handle()  : nullptr;
+    api->SetActiveWindow(device, window);
+    api->StartFrameCapture(device, window);
+    log_context->info("RenderDoc: StartFrameCapture()");
+}
+
+void Device_impl::end_frame_capture()
+{
+    RENDERDOC_API_1_7_0* api = static_cast<RENDERDOC_API_1_7_0*>(erhe::window::get_renderdoc_api());
+    if (api == nullptr) {
+        return;
+    }
+    RENDERDOC_DevicePointer device = (m_context_window != nullptr) ? m_context_window->get_device_pointer() : nullptr;
+    RENDERDOC_WindowHandle  window = (m_context_window != nullptr) ? m_context_window->get_window_handle()  : nullptr;
+    uint32_t result = api->EndFrameCapture(device, window);
+    if (result == 0) {
+        log_context->warn("RenderDoc: EndFrameCapture() failed");
+        return;
+    }
+    if (api->IsTargetControlConnected()) {
+        api->ShowReplayUI();
+    } else {
+        api->LaunchReplayUI(1, nullptr);
+    }
+}
+
+void Device_impl::transition_texture_layout(const Texture& texture, Image_layout new_layout)
+{
+    // No-op for OpenGL -- image layouts are implicit
+    static_cast<void>(texture);
+    static_cast<void>(new_layout);
+}
+
+void Device_impl::cmd_texture_barrier(uint64_t usage_before, uint64_t usage_after)
+{
+    // No-op for OpenGL -- synchronization is implicit
+    static_cast<void>(usage_before);
+    static_cast<void>(usage_after);
 }
 
 auto Device_impl::make_blit_command_encoder() -> Blit_command_encoder

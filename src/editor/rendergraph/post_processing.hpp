@@ -1,10 +1,12 @@
 #pragma once
 
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/enums.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
 #include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/shader_resource.hpp"
@@ -35,9 +37,12 @@ public:
     auto get_referenced_texture() const -> const erhe::graphics::Texture* override;
 
 private:
-    std::shared_ptr<Post_processing_node> m_node;
-    int                                   m_direction;
-    size_t                                m_level;
+    // Weak, to break the owning cycle: Post_processing_node owns
+    // texture_references, whose entries would otherwise own back the node
+    // and keep its GPU textures alive across shutdown.
+    std::weak_ptr<Post_processing_node> m_node;
+    int                                 m_direction;
+    size_t                              m_level;
 };
 
 class Post_processing_node : public erhe::rendergraph::Rendergraph_node
@@ -66,12 +71,14 @@ public:
     void update_parameters();
 
     float                                                     upsample_radius{1.0f};
-    std::shared_ptr<erhe::graphics::Texture>                  downsample_texture;
-    std::shared_ptr<erhe::graphics::Texture>                  upsample_texture;
+    // Per-level non-mipmapped textures. downsample_textures[k] stores pyramid
+    // level k+1 (pyramid starts at half resolution = level 1). upsample_textures[k]
+    // stores pyramid level k. The deepest pyramid level (only written by
+    // downsample, never rendered by upsample) has no upsample texture.
+    std::vector<std::shared_ptr<erhe::graphics::Texture>>     downsample_textures;
+    std::vector<std::shared_ptr<erhe::graphics::Texture>>     upsample_textures;
     std::vector<std::unique_ptr<erhe::graphics::Render_pass>> downsample_render_passes;
     std::vector<std::unique_ptr<erhe::graphics::Render_pass>> upsample_render_passes;
-    std::vector<std::shared_ptr<erhe::graphics::Texture>>     downsample_texture_views;
-    std::vector<std::shared_ptr<erhe::graphics::Texture>>     upsample_texture_views;
     std::vector<int>                                          level_widths;
     std::vector<int>                                          level_heights;
     std::vector<size_t>                                       downsample_source_levels;
@@ -155,18 +162,19 @@ private:
         erhe::graphics::Reloadable_shader_stages upsample_last;
     };
     struct Pipelines {
-        erhe::graphics::Render_pipeline_state downsample_with_lowpass_input;
-        erhe::graphics::Render_pipeline_state downsample_with_lowpass;
-        erhe::graphics::Render_pipeline_state downsample;
-        erhe::graphics::Render_pipeline_state upsample_first;
-        erhe::graphics::Render_pipeline_state upsample;
-        erhe::graphics::Render_pipeline_state upsample_last;
+        erhe::graphics::Lazy_render_pipeline downsample_with_lowpass_input;
+        erhe::graphics::Lazy_render_pipeline downsample_with_lowpass;
+        erhe::graphics::Lazy_render_pipeline downsample;
+        erhe::graphics::Lazy_render_pipeline upsample_first;
+        erhe::graphics::Lazy_render_pipeline upsample;
+        erhe::graphics::Lazy_render_pipeline upsample_last;
     };
 
     static constexpr int    s_input_texture               = 0;
     static constexpr int    s_downsample_texture          = 1;
     static constexpr int    s_upsample_texture            = 2;
-    static constexpr int    s_reserved_texture_slot_count = 3;
+    static constexpr int    s_downsample_dst_texture      = 3;
+    static constexpr int    s_reserved_texture_slot_count = 4;
     static constexpr size_t s_max_level_count = 20;
 
     App_context&                                       m_context;
@@ -177,12 +185,9 @@ private:
     erhe::graphics::Sampler                            m_sampler_linear;
     erhe::graphics::Sampler                            m_sampler_linear_mipmap_nearest;
     erhe::graphics::Shader_resource                    m_parameter_block;
+    erhe::graphics::Bind_group_layout                  m_bind_group_layout;
     Offsets                                            m_offsets;
     erhe::graphics::Vertex_input_state                 m_empty_vertex_input;
-    erhe::graphics::Shader_resource                    m_default_uniform_block;       // containing sampler uniforms for non bindless textures
-    const erhe::graphics::Shader_resource*             m_input_texture_resource;      // for non bindless textures
-    const erhe::graphics::Shader_resource*             m_downsample_texture_resource; // for non bindless textures
-    const erhe::graphics::Shader_resource*             m_upsample_texture_resource;   // for non bindless textures
     std::filesystem::path                              m_shader_path;
     Shader_stages                                      m_shader_stages;
     Pipelines                                          m_pipelines;

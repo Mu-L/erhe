@@ -3,15 +3,47 @@ set(_target "rendering_test")
 add_executable(${_target})
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+    config/erhe_graphics.json
+    config/logging.json
+    config/mesh_memory.json
+    config/rendering_test_settings.json
+    config/rendering_test_scene_wideline_scene.json
+    config/rendering_test_wideline_scene_wideline.json
+    config/rendering_test_cube_sphere.json
+    config/rendering_test_sphere_cube.json
+    config/rendering_test_cube_sphere_masked.json
+    config/rendering_test_sphere_cube_masked.json
+    config/rendering_test_pipeline_switch_AB.json
+    config/rendering_test_pipeline_switch_BA.json
+    config/rendering_test_pipeline_switch_AC.json
+    config/rendering_test_pipeline_switch_CA.json
+    config/rendering_test_wideline_pipe_switch.json
+    config/rendering_test_wel_then_stencil_wl.json
+    config/rendering_test_minimal_compute_AB.json
+    config/rendering_test_minimal_compute_BA.json
+    config/rendering_test_minimal_compute_CD.json
+    config/rendering_test_minimal_stw1_then_D.json
+    config/rendering_test_minimal_C_stw1_D.json
+    config/rendering_test_minimal_C_and_stw1_then_D.json
+    config/window.json
+
     main.cpp
-    mesh_memory.cpp
-    mesh_memory.hpp
     programs.cpp
     programs.hpp
     rendering_test.cpp
     rendering_test.hpp
+    rendering_test_app.hpp
+    rendering_test_setup.cpp
     rendering_test_log.cpp
     rendering_test_log.hpp
+    cell_scene.cpp
+    cell_textured_quad.cpp
+    cell_multi_texture.cpp
+    cell_separate_samplers.cpp
+    cell_depth_visualize.cpp
+    cell_stencil.cpp
+    cell_stencil_wide_line.cpp
+    cell_minimal_compute_triangle.cpp
     res/shaders/standard.vert
     res/shaders/standard.frag
     res/shaders/textured_quad.vert
@@ -19,37 +51,16 @@ erhe_target_sources_grouped(
     res/shaders/multi_texture_test.vert
     res/shaders/multi_texture_test.frag
     res/shaders/separate_samplers_test.frag
-    res/shaders/wide_lines.vert
-    res/shaders/wide_lines.geom
-    res/shaders/wide_lines.frag
+    res/shaders/stencil_color.vert
+    res/shaders/stencil_color.frag
     res/shaders/compute_before_content_line.comp
+    res/shaders/minimal_compute_triangle.comp
+    res/shaders/minimal_triangle.vert
+    res/shaders/minimal_triangle.frag
     res/shaders/line_after_compute.vert
     res/shaders/line_after_compute.frag
-    erhe.json
-    logging.json
-    rendering_test_mesh_memory.json
+    res/shaders/content_line_after_compute.frag
 )
-
-# Codegen for rendering test config
-set(_defs "${CMAKE_CURRENT_SOURCE_DIR}/definitions")
-set(_gen  "${CMAKE_CURRENT_BINARY_DIR}/generated")
-
-erhe_codegen_generate(
-    TARGET          ${_target}
-    DEFINITIONS_DIR "${_defs}"
-    OUTPUT_DIR      "${_gen}"
-    DEFINITIONS
-        "${_defs}/rendering_test_mesh_memory.py"
-)
-
-set(_codegen_sources
-    ${_gen}/rendering_test_mesh_memory.hpp
-    ${_gen}/rendering_test_mesh_memory_serialization.hpp
-    ${_gen}/rendering_test_mesh_memory.cpp
-)
-set_source_files_properties(${_codegen_sources} PROPERTIES GENERATED TRUE)
-target_sources(${_target} PRIVATE ${_codegen_sources})
-source_group("codegen generated" FILES ${_codegen_sources})
 
 # Graphics_config serialize/deserialize must compile here (same target as
 # other simdjson users) to avoid ABI mismatch from differing arch flags.
@@ -61,6 +72,36 @@ set(_gfx_ser_sources
 set_source_files_properties(${_gfx_ser_sources} PROPERTIES GENERATED TRUE)
 target_sources(${_target} PRIVATE ${_gfx_ser_sources})
 source_group("codegen generated/graphics" FILES ${_gfx_ser_sources})
+
+set(_scene_renderer_gen "${CMAKE_BINARY_DIR}/src/erhe/scene_renderer/erhe_scene_renderer/generated")
+set(_scene_renderer_ser_sources
+    ${_scene_renderer_gen}/mesh_memory_config_serialization.hpp
+    ${_scene_renderer_gen}/mesh_memory_config.cpp
+)
+set_source_files_properties(${_scene_renderer_ser_sources} PROPERTIES GENERATED TRUE)
+target_sources(${_target} PRIVATE ${_scene_renderer_ser_sources})
+source_group("codegen generated/scene_renderer" FILES ${_scene_renderer_ser_sources})
+
+# Rendering test settings codegen (struct + serialization live in this target only)
+set(_rt_config_defs "${CMAKE_CURRENT_SOURCE_DIR}/definitions")
+set(_rt_config_out  "${CMAKE_CURRENT_BINARY_DIR}/rendering_test/generated")
+
+erhe_codegen_generate(
+    TARGET          ${_target}
+    DEFINITIONS_DIR "${_rt_config_defs}"
+    OUTPUT_DIR      "${_rt_config_out}"
+    DEFINITIONS
+        "${_rt_config_defs}/rendering_test_settings.py"
+)
+
+set(_rt_ser_sources
+    ${_rt_config_out}/rendering_test_settings.hpp
+    ${_rt_config_out}/rendering_test_settings_serialization.hpp
+    ${_rt_config_out}/rendering_test_settings.cpp
+)
+set_source_files_properties(${_rt_ser_sources} PROPERTIES GENERATED TRUE)
+target_sources(${_target} PRIVATE ${_rt_ser_sources})
+source_group("codegen generated/rendering_test" FILES ${_rt_ser_sources})
 
 target_include_directories(${_target} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

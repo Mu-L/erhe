@@ -79,6 +79,19 @@ public:
     );
 
     // Block (uniform block or shader storage block)
+    class Block_create_info
+    {
+    public:
+        std::string_view           name;
+        int                        binding_point;
+        Type                       type;
+        std::optional<std::size_t> array_size{};
+        bool                       readonly {false};
+        bool                       writeonly{false};
+    };
+    Shader_resource(Device& device, const Block_create_info& create_info);
+
+    // Block (uniform block or shader storage block) -- legacy positional arguments
     Shader_resource(
         Device&                    device,
         std::string_view           block_name,
@@ -103,6 +116,8 @@ public:
         Shader_resource*           parent,
         int                        location,
         Glsl_type                  sampler_type,
+        Sampler_aspect             sampler_aspect,
+        bool                       is_texture_heap,
         std::optional<std::size_t> array_size = {},
         std::optional<int>         dedicated_texture_unit = {}
     );
@@ -131,6 +146,8 @@ public:
     [[nodiscard]] auto get_binding_point   () const -> unsigned int;
     [[nodiscard]] auto get_binding_target  () const -> Buffer_target;
     [[nodiscard]] auto get_texture_unit    () const -> int;
+    [[nodiscard]] auto get_sampler_aspect  () const -> Sampler_aspect;
+    [[nodiscard]] auto get_is_texture_heap () const -> bool;
 
     // Returns size of block.
     // For arrays, size of one element is returned.
@@ -138,9 +155,9 @@ public:
     [[nodiscard]] auto get_offset            () const -> std::size_t;
     [[nodiscard]] auto get_next_member_offset() const -> std::size_t;
     [[nodiscard]] auto get_type_string       () const -> std::string;
-    [[nodiscard]] auto get_layout_string     () const -> std::string;
+    [[nodiscard]] auto get_layout_string     (uint32_t sampler_binding_offset = 0) const -> std::string;
 
-    [[nodiscard]] auto get_source(int indent_level = 0) const -> std::string;
+    [[nodiscard]] auto get_source(int indent_level = 0, uint32_t sampler_binding_offset = 0) const -> std::string;
 
     static constexpr const std::size_t unsized_array = 0;
 
@@ -158,6 +175,8 @@ public:
     auto add_sampler(
         std::string_view           name,
         Glsl_type                  sampler_type,
+        Sampler_aspect             sampler_aspect,
+        bool                       is_texture_heap,
         std::optional<uint32_t>    dedicated_texture_unit = {},
         std::optional<std::size_t> array_size = {}
     ) -> Shader_resource*;
@@ -256,6 +275,25 @@ private:
 
     // For default uniform block hosted blocks and texture samplers (texture unit)
     int               m_binding_point{-1};
+
+    // Only used when m_type == Type::sampler. Annotates which image aspect
+    // (color/depth/stencil) the sampler reads, so the texture heap can pick
+    // the right VkImageView aspect mask without inspecting texture formats.
+    Sampler_aspect    m_sampler_aspect{Sampler_aspect::color};
+
+    // Only used when m_type == Type::sampler. true means this sampler is
+    // bound through the bindless Texture_heap (argument buffer on Metal,
+    // descriptor indexing array on Vulkan). false means it is bound directly
+    // by Render_command_encoder::set_sampled_image() at draw time, with a
+    // dedicated descriptor / [[texture(N)]] binding. The two paths are
+    // mutually exclusive: a texture_heap sampler must NOT also have a
+    // dedicated_texture_unit.
+    // TODO: Maybe is_texture_heap is redundant once all callers settle on
+    // the convention "dedicated_texture_unit set <=> is_texture_heap == false";
+    // see the assert in add_sampler. If the assert holds for every callsite
+    // we can drop this flag and derive it from the dedicated_texture_unit
+    // optional.
+    bool              m_is_texture_heap{false};
 
     bool              m_readonly {false};
     bool              m_writeonly{false};

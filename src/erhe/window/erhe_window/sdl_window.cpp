@@ -4,6 +4,7 @@
 # include "erhe_gl/dynamic_load.hpp"
 # include "erhe_gl/wrapper_functions.hpp"
 #endif
+#include "erhe_window/renderdoc_capture.hpp"
 #include "erhe_window/window_log.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_time/sleep.hpp"
@@ -231,6 +232,9 @@ int Context_window::s_window_count{0};
 Context_window::Context_window(const Window_configuration& configuration)
 {
     ERHE_PROFILE_FUNCTION();
+    if (configuration.initialize_frame_capture) {
+        initialize_frame_capture();
+    }
 
     const bool ok = open(configuration);
     ERHE_VERIFY(ok);
@@ -317,8 +321,13 @@ auto Context_window::open(const Window_configuration& configuration) -> bool
 
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
     bool vulkan_load_library_status = SDL_Vulkan_LoadLibrary(nullptr);
+#if defined(__APPLE__)
     if (!vulkan_load_library_status) {
-        fputs("SDL_Vulkan_LoadLibrary() failed", stderr);
+        vulkan_load_library_status = SDL_Vulkan_LoadLibrary("/usr/local/lib/libvulkan.dylib");
+    }
+#endif
+    if (!vulkan_load_library_status) {
+        log_window->error("SDL_Vulkan_LoadLibrary() failed: {}", SDL_GetError());
         return false;
     }
 #endif

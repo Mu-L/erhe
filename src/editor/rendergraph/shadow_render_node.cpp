@@ -3,7 +3,7 @@
 #include "app_context.hpp"
 #include "content_library/content_library.hpp"
 #include "editor_log.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "scene/scene_root.hpp"
 #include "scene/scene_view.hpp"
 
@@ -120,8 +120,9 @@ void Shadow_render_node::reconfigure(erhe::graphics::Device& graphics_device, co
                 .device            = graphics_device,
                 .usage_mask        =
                     erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
-                    erhe::graphics::Image_usage_flag_bit_mask::sampled,
-                .type              = erhe::graphics::Texture_type::texture_2d,
+                    erhe::graphics::Image_usage_flag_bit_mask::sampled |
+                    erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
+                .type              = erhe::graphics::Texture_type::texture_2d_array,
                 .pixelformat       = depth_format,
                 .width             = std::max(1, resolution),
                 .height            = std::max(1, resolution),
@@ -131,13 +132,13 @@ void Shadow_render_node::reconfigure(erhe::graphics::Device& graphics_device, co
             }
         );
 
-        if (resolution <= 1) {
+        {
             const double depth_clear_value = reverse_depth ? 0.0 : 1.0;
             graphics_device.clear_texture(*m_texture.get(), { depth_clear_value, 0.0, 0.0, 0.0 });
         }
     }
 
-    log_render->debug("updating render passes");
+    log_render->debug("updating render passes, light_count = {}", light_count);
     m_render_passes.clear();
     for (int i = 0; i < light_count; ++i) {
         erhe::graphics::Render_pass_descriptor render_pass_descriptor;
@@ -146,6 +147,10 @@ void Shadow_render_node::reconfigure(erhe::graphics::Device& graphics_device, co
         render_pass_descriptor.depth_attachment.texture_layer  = static_cast<unsigned int>(i);
         render_pass_descriptor.depth_attachment.load_action    = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.depth_attachment.store_action   = erhe::graphics::Store_action::Store;
+        render_pass_descriptor.depth_attachment.usage_before   = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+        render_pass_descriptor.depth_attachment.layout_before  = erhe::graphics::Image_layout::depth_stencil_read_only_optimal;
+        render_pass_descriptor.depth_attachment.usage_after    = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+        render_pass_descriptor.depth_attachment.layout_after   = erhe::graphics::Image_layout::depth_stencil_read_only_optimal;
         render_pass_descriptor.depth_attachment.clear_value[0] = reverse_depth ? 0.0 : 1.0;
         render_pass_descriptor.render_target_width             = resolution;
         render_pass_descriptor.render_target_height            = resolution;

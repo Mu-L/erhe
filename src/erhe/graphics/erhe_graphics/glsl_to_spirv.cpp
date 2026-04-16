@@ -2,6 +2,7 @@
 #include "erhe_graphics/glsl_to_spirv.hpp"
 #include "erhe_graphics/glsl_format_source.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/spirv_cache.hpp"
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
 # include "erhe_graphics/gl/gl_shader_stages.hpp"
@@ -79,8 +80,9 @@ namespace erhe::graphics {
     return resources;
 }
 
-Glslang_shader_stages::Glslang_shader_stages(Shader_stages_prototype_impl& shader_stages_prototype)
+Glslang_shader_stages::Glslang_shader_stages(Shader_stages_prototype_impl& shader_stages_prototype, Spirv_cache* cache)
     : m_shader_stages_prototype{shader_stages_prototype}
+    , m_cache{cache}
 {
 }
 
@@ -187,18 +189,74 @@ auto Glslang_shader_stages::link_program() -> bool
         .optimizerAllowExpandedIDBound    = false
     };
 
+    const Shader_stages_create_info& create_info = m_shader_stages_prototype.create_info();
+
     for (::EShLanguage stage : m_active_stages) {
-        spv::SpvBuildLogger       logger;
-        auto*                     intermediate  = m_glslang_program->getIntermediate(stage);
-        std::vector<unsigned int> spirv_binary;
-        GlslangToSpv(*intermediate, spirv_binary, &logger, &spirv_options);
-        const std::string spv_messages = logger.getAllMessages();
-        if (!spv_messages.empty()) {
-            log_glsl->info("SPIR_V messages::\n{}\n", spv_messages);
+        // Try cache first per-stage
+        bool from_cache = false;
+        if (m_cache != nullptr) {
+            for (const Shader_stage& shader : create_info.shaders) {
+                if (to_glslang(shader.type) == stage) {
+                    const std::string source = m_shader_stages_prototype.get_final_source(shader, std::nullopt);
+                    std::vector<unsigned int> cached = m_cache->get(source, shader.type);
+                    if (!cached.empty()) {
+                        m_spirv_shaders[stage] = std::move(cached);
+                        from_cache = true;
+                    }
+                    break;
+                }
+            }
         }
-        m_spirv_shaders[stage] = std::move(spirv_binary);
+
+        if (!from_cache) {
+            spv::SpvBuildLogger       logger;
+            auto*                     intermediate  = m_glslang_program->getIntermediate(stage);
+            std::vector<unsigned int> spirv_binary;
+            GlslangToSpv(*intermediate, spirv_binary, &logger, &spirv_options);
+            const std::string spv_messages = logger.getAllMessages();
+            if (!spv_messages.empty()) {
+                log_glsl->info("SPIR_V messages::\n{}\n", spv_messages);
+            }
+            m_spirv_shaders[stage] = std::move(spirv_binary);
+
+            // Store in cache
+            if (m_cache != nullptr) {
+                for (const Shader_stage& shader : create_info.shaders) {
+                    if (to_glslang(shader.type) == stage) {
+                        const std::string source = m_shader_stages_prototype.get_final_source(shader, std::nullopt);
+                        m_cache->put(source, shader.type, m_spirv_shaders[stage]);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
+    return true;
+}
+
+auto Glslang_shader_stages::try_load_all_from_cache(Device& /*device*/) -> bool
+{
+    if (m_cache == nullptr) {
+        return false;
+    }
+
+    const Shader_stages_create_info& create_info = m_shader_stages_prototype.create_info();
+    std::unordered_map<::EShLanguage, std::vector<unsigned int>> cached_spirv;
+
+    for (const Shader_stage& shader : create_info.shaders) {
+        const std::string source   = m_shader_stages_prototype.get_final_source(shader, std::nullopt);
+        const EShLanguage language = to_glslang(shader.type);
+
+        std::vector<unsigned int> spirv = m_cache->get(source, shader.type);
+        if (spirv.empty()) {
+            return false; // Cache miss on any stage means we must compile all
+        }
+        cached_spirv[language] = std::move(spirv);
+    }
+
+    // All stages cached
+    m_spirv_shaders = std::move(cached_spirv);
     return true;
 }
 

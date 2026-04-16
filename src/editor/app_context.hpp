@@ -2,9 +2,6 @@
 
 #include <atomic>
 
-namespace erhe::commands {
-    class Commands;
-}
 namespace erhe::graphics {
     class Device;
     class Swapchain;
@@ -20,24 +17,27 @@ namespace erhe::renderer {
     class Jolt_debug_renderer;
 #endif
 }
-namespace erhe::rendergraph {
-    class Rendergraph;
-}
+namespace erhe::rendergraph { class Rendergraph; }
 namespace erhe::scene_renderer {
     class Content_wide_line_renderer;
     class Forward_renderer;
+    class Mesh_memory;
     class Shadow_renderer;
 }
-namespace erhe::window {
-    class Context_window;
-}
+namespace erhe::commands { class Commands; }
+namespace erhe::window { class Context_window; }
 
 namespace tf {
     class Executor;
 }
 
-struct Erhe_config;
+struct Developer_config;
 struct Editor_settings_config;
+struct Graphics_config;
+struct Mesh_memory_config;
+struct Renderer_config;
+struct Text_renderer_config;
+struct Window_config;
 
 namespace editor {
 
@@ -69,7 +69,6 @@ class Input_state;
 class Jolt_debug_renderer;
 class Material_paint_tool;
 class Material_preview;
-class Mesh_memory;
 class Move_tool;
 class Operation_stack;
 class Paint_tool;
@@ -103,8 +102,13 @@ public:
     bool  use_sleep     {false};
     float sleep_margin  {0.0f}; // TODO
 
-    Erhe_config*             erhe_config{nullptr};
-    Editor_settings_config*  editor_settings{nullptr};
+    Developer_config*       developer_config    {nullptr};
+    Graphics_config*        graphics_config     {nullptr};
+    Mesh_memory_config*     mesh_memory_config  {nullptr};
+    Renderer_config*        renderer_config     {nullptr};
+    Text_renderer_config*   text_renderer_config{nullptr};
+    Window_config*          window_config       {nullptr};
+    Editor_settings_config* editor_settings     {nullptr};
 
     tf::Executor*                           executor              {nullptr};
     std::atomic_int                         pending_async_ops     {};
@@ -149,7 +153,7 @@ public:
     Material_paint_tool*                    material_paint_tool   {nullptr};
     Material_preview*                       material_preview      {nullptr};
     Brush_preview*                          brush_preview         {nullptr};
-    Mesh_memory*                            mesh_memory           {nullptr};
+    erhe::scene_renderer::Mesh_memory*      mesh_memory           {nullptr};
     Move_tool*                              move_tool             {nullptr};
     Operation_stack*                        operation_stack       {nullptr};
     Paint_tool*                             paint_tool            {nullptr};

@@ -6,7 +6,7 @@
 #include "app_rendering.hpp"
 #include "app_scenes.hpp"
 #include "rendertarget_imgui_host.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/render_context.hpp"
 #include "rendergraph/shadow_render_node.hpp"
 #include "scene/scene_root.hpp"
@@ -34,7 +34,7 @@
 #include "erhe_rendergraph/rendergraph.hpp"
 #include "erhe_scene/camera.hpp"
 #include "erhe_scene/scene.hpp"
-#include "erhe_window/renderdoc_capture.hpp"
+#include "erhe_graphics/device.hpp"
 #include "erhe_xr/headset.hpp"
 #include "erhe_xr/xr_instance.hpp"
 #include "erhe_xr/xr_session.hpp"
@@ -134,8 +134,10 @@ Headset_view::Headset_view(
     if (m_context.OpenXR_mirror) {
         erhe::graphics::Render_pass_descriptor render_pass_descriptor;
         render_pass_descriptor.swapchain = graphics_device.get_surface()->get_swapchain();
-        render_pass_descriptor.color_attachments[0].load_action = erhe::graphics::Load_action::Clear;
-        render_pass_descriptor.depth_attachment    .load_action = erhe::graphics::Load_action::Clear;
+        render_pass_descriptor.color_attachments[0].load_action  = erhe::graphics::Load_action::Clear;
+        render_pass_descriptor.color_attachments[0].usage_after  = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_after = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.depth_attachment    .load_action  = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.stencil_attachment  .load_action = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.render_target_width  = context_window.get_width();
         render_pass_descriptor.render_target_height = context_window.get_height();
@@ -144,7 +146,7 @@ Headset_view::Headset_view(
     }
 }
 
-void Headset_view::attach_to_scene(std::shared_ptr<Scene_root> scene_root, Mesh_memory& mesh_memory)
+void Headset_view::attach_to_scene(std::shared_ptr<Scene_root> scene_root, erhe::scene_renderer::Mesh_memory& mesh_memory)
 {
     m_scene_root = scene_root;
 
@@ -395,7 +397,7 @@ auto Headset_view::render_headset() -> bool
     }
 
     if (m_request_renderdoc_capture) {
-        erhe::window::start_frame_capture(m_context_window);
+        m_app_context.graphics_device->start_frame_capture();
         m_renderdoc_capture_started = true;
         m_request_renderdoc_capture = false;
     }
@@ -487,14 +489,22 @@ auto Headset_view::render_headset() -> bool
             m_context.app_rendering ->render_viewport_renderables(render_context);
 
             if (m_context.debug_renderer->use_compute()) {
-                erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder();
-                m_context.debug_renderer->compute(compute_encoder);
+                {
+                    erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder();
+                    m_context.debug_renderer->compute(compute_encoder);
+                }
+                // Compute -> vertex-attribute barrier; must be emitted
+                // after the compute encoder scope ends.
+                graphics_device.memory_barrier(
+                    erhe::graphics::Memory_barrier_mask::vertex_attrib_array_barrier_bit
+                );
             }
 
             {
                 erhe::graphics::Render_command_encoder encoder = graphics_device.make_render_command_encoder();
                 erhe::graphics::Scoped_render_pass scoped_render_pass{*render_pass};
-                render_context.encoder = &encoder;
+                render_context.encoder     = &encoder;
+                render_context.render_pass = render_pass;
                 ERHE_VERIFY(render_view.width  == static_cast<uint32_t>(render_pass->get_render_target_width()));
                 ERHE_VERIFY(render_view.height == static_cast<uint32_t>(render_pass->get_render_target_height()));
 
@@ -517,7 +527,7 @@ auto Headset_view::render_headset() -> bool
                     render_context.override_shader_stages = override_shader_stages;
 
                     m_context.app_rendering ->render_composer(render_context);
-                    m_context.debug_renderer->render(encoder, render_context.viewport);
+                    m_context.debug_renderer->render(encoder, *render_pass, render_context.viewport);
                 }
             } // end of render encoder scope - end of render pass
             m_context.debug_renderer->end_frame();
@@ -593,7 +603,7 @@ auto Headset_view::render_headset() -> bool
     }
 
     if (m_renderdoc_capture_started) {
-        erhe::window::end_frame_capture(m_context_window);
+        m_app_context.graphics_device->end_frame_capture();
         m_renderdoc_capture_started = false;
     }
 

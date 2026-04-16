@@ -7,8 +7,9 @@
 
 namespace erhe::graphics {
     class Device;
+    class Lazy_render_pipeline;
     class Render_command_encoder;
-    class Render_pipeline_state;
+    class Render_pass;
 }
 namespace erhe::scene    { class Camera; }
 namespace erhe::math     { class Viewport; }
@@ -30,7 +31,8 @@ public:
     public:
         Cube_instance_buffer&                   cube_instance_buffer;
         erhe::graphics::Render_command_encoder& render_encoder;
-        erhe::graphics::Render_pipeline_state&  render_pipeline_state;
+        erhe::graphics::Lazy_render_pipeline&   render_pipeline_state;
+        const erhe::graphics::Render_pass&      render_pass;
         const erhe::scene::Camera*              camera{nullptr};
         std::shared_ptr<erhe::scene::Node>      node{};
         Primitive_interface_settings            primitive_settings{};

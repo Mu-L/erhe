@@ -38,8 +38,8 @@ public:
 
 private:
     friend class Render_pass;
-    void start_render_pass();
-    void end_render_pass  ();
+    void start_render_pass(Render_pass* render_pass_before, Render_pass* render_pass_after);
+    void end_render_pass  (Render_pass* render_pass_after);
 
 private:
     Device&                    m_device;
@@ -48,9 +48,9 @@ private:
     int                        m_render_target_height{0};
     erhe::utility::Debug_label m_debug_label;
 
+    friend class Device_impl;
     static std::mutex                     s_mutex;
     static std::vector<Render_pass_impl*> s_all_framebuffers;
-    static Render_pass_impl*              s_active_render_pass;
 };
 
 } // namespace erhe::graphics

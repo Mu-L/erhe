@@ -3,9 +3,10 @@ set(_target "hextiles")
 add_executable(${_target})
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    erhe.json
-    logging.json
-    windows.ini
+    config/erhe_graphics.json
+    config/logging.json
+    config/window.json
+
     hextiles.cpp
     hextiles.hpp
     coordinate.cpp
@@ -87,6 +88,17 @@ erhe_target_sources_grouped(
     res/shaders/tile.frag
 )
 
+# Graphics_config serialize/deserialize must compile here (same target as
+# other simdjson users) to avoid ABI mismatch from differing arch flags.
+set(_gfx_gen "${CMAKE_BINARY_DIR}/src/erhe/graphics/erhe_graphics/generated")
+set(_gfx_ser_sources
+    ${_gfx_gen}/graphics_config_serialization.hpp
+    ${_gfx_gen}/graphics_config.cpp
+)
+set_source_files_properties(${_gfx_ser_sources} PROPERTIES GENERATED TRUE)
+target_sources(${_target} PRIVATE ${_gfx_ser_sources})
+source_group("codegen generated/graphics" FILES ${_gfx_ser_sources})
+
 if (ERHE_GRAPHICS_API_OPENGL)
     target_link_libraries(${_target} PRIVATE erhe::gl)
 endif ()
@@ -99,6 +111,7 @@ target_link_libraries(
     ${_target}
     PRIVATE
         etl::etl
+        erhe::codegen
         erhe::commands
         erhe::file
         erhe::geometry

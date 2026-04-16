@@ -24,6 +24,10 @@ Render_command_encoder::Render_command_encoder(Device& device)
 }
 
 Render_command_encoder::~Render_command_encoder() noexcept = default;
+void Render_command_encoder::set_bind_group_layout(const Bind_group_layout* bind_group_layout)
+{
+    m_impl->set_bind_group_layout(bind_group_layout);
+}
 void Render_command_encoder::set_buffer(Buffer_target buffer_target, const Buffer* buffer, std::uintptr_t offset,
     std::uintptr_t length, std::uintptr_t index)
 {
@@ -32,6 +36,14 @@ void Render_command_encoder::set_buffer(Buffer_target buffer_target, const Buffe
 void Render_command_encoder::set_buffer(Buffer_target buffer_target, const Buffer* buffer)
 {
     m_impl->set_buffer(buffer_target, buffer);
+}
+void Render_command_encoder::set_sampled_image(uint32_t binding_point, const Texture& texture, const Sampler& sampler)
+{
+    m_impl->set_sampled_image(binding_point, texture, sampler);
+}
+void Render_command_encoder::set_render_pipeline(const Render_pipeline& pipeline)
+{
+    m_impl->set_render_pipeline(pipeline);
 }
 void Render_command_encoder::set_render_pipeline_state(const Render_pipeline_state& pipeline)
 {

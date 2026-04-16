@@ -2,10 +2,13 @@
 
 #include "hello_swap_log.hpp"
 
+#include "erhe_codegen/config_io.hpp"
 #include "erhe_file/file.hpp"
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
 #   include "erhe_gl/gl_log.hpp"
 #endif
+#include "erhe_graphics/generated/graphics_config.hpp"
+#include "erhe_graphics/generated/graphics_config_serialization.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
@@ -28,11 +31,14 @@ class Hello_swap : public erhe::window::Input_event_handler
 {
 public:
     Hello_swap()
-        : m_window{
+        : m_graphics_config{ erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json") }
+        // TODO m_window_config etc.
+        , m_window{
             erhe::window::Window_configuration{
-                .use_depth = false,
-                .size      = glm::ivec2{1920, 1080},
-                .title     = "erhe hello_swap"
+                .use_depth                = false,
+                .size                     = glm::ivec2{1920, 1080},
+                .title                    = "erhe hello_swap",
+                .initialize_frame_capture = m_graphics_config.renderdoc_capture_support
             }
         }
         , m_graphics_device{
@@ -40,7 +46,8 @@ public:
                 .context_window            = &m_window,
                 .prefer_low_bandwidth      = false,
                 .prefer_high_dynamic_range = false
-            }
+            },
+            m_graphics_config
         }
     {
         m_last_window_width  = m_window.get_width();
@@ -200,6 +207,10 @@ private:
         render_pass_descriptor.color_attachments[0].clear_value[1] = 0.02;
         render_pass_descriptor.color_attachments[0].clear_value[2] = 0.1;
         render_pass_descriptor.color_attachments[0].clear_value[3] = 1.0;
+        render_pass_descriptor.color_attachments[0].usage_before   = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.color_attachments[0].usage_after    = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::present_src;
         render_pass_descriptor.depth_attachment    .load_action    = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.stencil_attachment  .load_action    = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.render_target_width  = width;
@@ -208,6 +219,7 @@ private:
         m_render_pass = std::make_unique<erhe::graphics::Render_pass>(m_graphics_device, render_pass_descriptor);
     }
 
+    Graphics_config                              m_graphics_config;
     erhe::window::Context_window                 m_window;
     erhe::graphics::Device                       m_graphics_device;
     std::unique_ptr<erhe::graphics::Render_pass> m_render_pass;
@@ -224,9 +236,15 @@ void run()
 {
     // Workaround for
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
-    erhe::file::ensure_working_directory_contains("hello_swap", "erhe.json");
+    erhe::file::ensure_working_directory_contains("hello_swap", "config/erhe_graphics.json");
 
     erhe::log::initialize_log_sinks();
+    {
+        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        if (contents.has_value()) {
+            erhe::log::load_log_configuration(contents.value());
+        }
+    }
 
     hello_swap::initialize_logging();
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
@@ -236,7 +254,7 @@ void run()
     erhe::math::initialize_logging();
     erhe::window::initialize_logging();
     // TODO: RenderDoc vulkan support
-    // erhe::window::initialize_frame_capture();
+    erhe::window::initialize_frame_capture();
 
     Hello_swap hello_swap{};
     hello_swap.run();

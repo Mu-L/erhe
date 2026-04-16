@@ -1,7 +1,7 @@
 #pragma once
 
 #include "erhe_renderer/view.hpp"
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/device.hpp"
 
@@ -13,6 +13,7 @@
 namespace erhe::graphics {
     class Compute_command_encoder;
     class Render_command_encoder;
+    class Render_pass;
     class Shader_stages;
 }
 
@@ -57,13 +58,13 @@ public:
     void clear           ();
     auto match           (const Debug_renderer_config& config) const -> bool;
     void dispatch_compute(erhe::graphics::Compute_command_encoder& command_encoder);
-    void render          (erhe::graphics::Render_command_encoder& render_encoder, bool draw_hidden, bool draw_visible);
+    void render          (erhe::graphics::Render_command_encoder& render_encoder, const erhe::graphics::Render_pass& render_pass, bool draw_hidden, bool draw_visible);
     void release_buffers ();
     auto make_draw       (std::size_t vertex_byte_count, std::size_t primitive_count) -> std::span<std::byte>;
     void start_view      (const View& view);
 
 private:
-    [[nodiscard]] auto make_pipeline     (bool visible) -> erhe::graphics::Render_pipeline_state;
+    [[nodiscard]] auto make_pipeline     (bool visible) -> erhe::graphics::Lazy_render_pipeline;
     [[nodiscard]] auto update_view_buffer(const View& view) -> erhe::graphics::Ring_buffer_range;
 
     erhe::graphics::Device&               m_graphics_device;
@@ -72,20 +73,19 @@ private:
     bool                                  m_use_geometry_shader;
     erhe::graphics::Ring_buffer_client    m_view_buffer;
 
-    // Compute path: line vertices → compute shader → triangle vertices → render triangles
+    // Compute path: line vertices -> compute shader -> triangle vertices -> render triangles
     std::optional<erhe::graphics::Ring_buffer_client> m_vertex_ssbo_buffer;
     std::optional<erhe::graphics::Ring_buffer_client> m_triangle_vertex_buffer;
 
-    // Non-compute path: line vertices → render GL_LINES directly
+    // Non-compute path: line vertices -> render GL_LINES directly
     std::optional<erhe::graphics::Ring_buffer_client> m_line_vertex_buffer;
 
-    Debug_renderer_config                 m_config;
-    erhe::graphics::Render_pipeline_state m_pipeline_visible;
-    erhe::graphics::Render_pipeline_state m_pipeline_hidden;
-    std::vector<Debug_draw_entry>         m_draws;
-    std::vector<Debug_draw_view_span>     m_view_spans;
-    bool                                  m_start_new_draw{true};
+    Debug_renderer_config                  m_config;
+    erhe::graphics::Lazy_render_pipeline   m_pipeline_visible;
+    erhe::graphics::Lazy_render_pipeline   m_pipeline_hidden;
+    std::vector<Debug_draw_entry>          m_draws;
+    std::vector<Debug_draw_view_span>      m_view_spans;
+    bool                                   m_start_new_draw{true};
 };
 
 } // namespace erhe::renderer
-

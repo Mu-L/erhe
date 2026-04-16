@@ -1,7 +1,7 @@
 #pragma once
 
 #include "erhe_rendergraph/texture_rendergraph_node.hpp"
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
 
 #include <memory>
@@ -42,8 +42,8 @@ private:
     std::shared_ptr<erhe::primitive::Material> m_material;
 
     erhe::graphics::Vertex_input_state                  m_empty_vertex_input;
-    erhe::graphics::Render_pipeline_state               m_render_pipeline_state;
-    std::vector<erhe::graphics::Render_pipeline_state*> m_render_pipeline_states;
+    erhe::graphics::Lazy_render_pipeline                m_render_pipeline_state;
+    std::vector<erhe::graphics::Lazy_render_pipeline*> m_render_pipeline_states;
     int                                                 m_area_size{0};
 };
 

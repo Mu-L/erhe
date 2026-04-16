@@ -12,6 +12,7 @@
 #include "tile_renderer.hpp"
 #include "tiles.hpp"
 
+#include "erhe_codegen/config_io.hpp"
 #include "erhe_commands/commands.hpp"
 #include "erhe_commands/commands_log.hpp"
 #include "erhe_file/file.hpp"
@@ -19,6 +20,8 @@
 # include "erhe_gl/gl_log.hpp"
 #endif
 #include "erhe_graph/graph_log.hpp"
+#include "erhe_graphics/generated/graphics_config.hpp"
+#include "erhe_graphics/generated/graphics_config_serialization.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/swapchain.hpp"
@@ -34,7 +37,6 @@
 #include "erhe_renderer/text_renderer.hpp"
 #include "erhe_rendergraph/rendergraph.hpp"
 #include "erhe_rendergraph/rendergraph_log.hpp"
-#include "erhe_window/renderdoc_capture.hpp"
 #include "erhe_window/window_log.hpp"
 #include "erhe_window/window.hpp"
 #include "erhe_window/window_event_handler.hpp"
@@ -53,10 +55,15 @@ class Hextiles : public erhe::window::Input_event_handler
 {
 public:
     Hextiles()
-        : m_window{
+        : m_graphics_config{
+            erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json")
+        }
+        // TODO m_window_config etc.
+        , m_window{
             erhe::window::Window_configuration{
-                .size   = glm::ivec2{1920, 1080},
-                .title  = "erhe HexTiles by Timo Suoranta"
+                .size                     = glm::ivec2{1920, 1080},
+                .title                    = "erhe HexTiles by Timo Suoranta",
+                .initialize_frame_capture = m_graphics_config.renderdoc_capture_support
             }
         }
         , m_settings{m_window}
@@ -67,6 +74,14 @@ public:
                 .context_window            = &m_window,
                 .prefer_low_bandwidth      = false,
                 .prefer_high_dynamic_range = false
+            },
+            erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json"),
+            [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
+                if (severity == erhe::graphics::Message_severity::error) {
+                    std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
+                    SDL_SetClipboardText(clipboard_text.c_str());
+                    ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
+                }
             }
         }
 
@@ -76,13 +91,6 @@ public:
                     std::string clipboard_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
                     SDL_SetClipboardText(clipboard_text.c_str());
                     ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
-                }
-            ),
-            m_graphics_device.set_device_error_callback(
-                [](const std::string& error_message, const std::string& callstack) {
-                    std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
-                    SDL_SetClipboardText(clipboard_text.c_str());
-                    ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
                 }
             ),
             m_graphics_device.set_trace_callback(
@@ -113,6 +121,9 @@ public:
 
         m_window.register_redraw_callback(
             [this](){
+                if (m_in_tick.load()) {
+                    return;
+                }
                 if (
                     (m_last_window_width  != m_window.get_width()) ||
                     (m_last_window_height != m_window.get_height())
@@ -133,6 +144,7 @@ public:
     uint32_t          m_swapchain_width       {0};
     uint32_t          m_swapchain_height      {0};
     std::atomic<bool> m_request_resize_pending{false};
+    std::atomic<bool> m_in_tick              {false};
 
     auto on_window_resize_event(const erhe::window::Input_event& input_event) -> bool override
     {
@@ -305,6 +317,7 @@ public:
 
     void tick(float dt_s, int64_t timestamp_ns)
     {
+        m_in_tick.store(true);
         std::lock_guard<std::mutex> lock{m_mutex};
 
         erhe::graphics::Frame_state frame_state{};
@@ -344,6 +357,7 @@ public:
 
         const bool end_frame_ok = m_graphics_device.end_frame(frame_end_info);
         ERHE_VERIFY(end_frame_ok);
+        m_in_tick.store(false);
     }
 
     auto on_window_close_event(const erhe::window::Input_event&) -> bool override
@@ -352,6 +366,7 @@ public:
         return true;
     }
 
+    Graphics_config                  m_graphics_config;
     erhe::window::Context_window     m_window;
     Hextiles_settings                m_settings;
     erhe::commands::Commands         m_commands;
@@ -391,9 +406,15 @@ void run_hextiles()
 {
     // Workaround for
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
-    erhe::file::ensure_working_directory_contains("hextiles", "erhe.json");
+    erhe::file::ensure_working_directory_contains("hextiles", "config/erhe_graphics.json");
 
     erhe::log::initialize_log_sinks();
+    {
+        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        if (contents.has_value()) {
+            erhe::log::load_log_configuration(contents.value());
+        }
+    }
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     gl::initialize_logging();
 #endif
@@ -405,7 +426,6 @@ void run_hextiles()
     erhe::rendergraph::initialize_logging();
     erhe::window::initialize_logging();
     erhe::ui::initialize_logging();
-    erhe::window::initialize_frame_capture();
     hextiles::initialize_logging();
 
     std::unique_ptr<Hextiles> hextiles = std::make_unique<Hextiles>();

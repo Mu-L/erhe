@@ -1,4 +1,5 @@
 layout(location = 0) flat in int v_draw_id;
+layout(location = 1) flat in int v_primitive_id;
 
 vec3 vec3_from_uint(uint i)
 {
@@ -11,7 +12,7 @@ vec3 vec3_from_uint(uint i)
 
 void main(void)
 {
-    uint triangle_id = uint(gl_PrimitiveID);
+    uint triangle_id = uint(v_primitive_id);
     vec3 id_rgb      = vec3_from_uint(triangle_id);
     vec3 id          = id_rgb + primitive.primitives[v_draw_id].color.xyz;
     // Debug: Overflow detection

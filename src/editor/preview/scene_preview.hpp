@@ -3,7 +3,7 @@
 #include "renderers/composer.hpp"
 #include "scene/scene_view.hpp"
 
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_scene_renderer/light_buffer.hpp"
 
 #include <glm/glm.hpp>
@@ -25,13 +25,13 @@ namespace erhe::scene {
     class Mesh;
     class Node;
 }
+namespace erhe::scene_renderer { class Mesh_memory; }
 
 namespace editor {
 
 class App_context;
 class App_rendering;
 class Content_library;
-class Mesh_memory;
 class Programs;
 class Scene_root;
 class Tools;
@@ -40,11 +40,11 @@ class Scene_preview : public Scene_view
 {
 public:
     Scene_preview(
-        erhe::graphics::Device& graphics_device,
-        App_context&            app_context,
-        Mesh_memory&            mesh_memory,
-        Programs&               programs,
-        bool                    reverse_depth
+        erhe::graphics::Device&            graphics_device,
+        App_context&                       app_context,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Programs&                          programs,
+        bool                               reverse_depth
     );
     ~Scene_preview() noexcept;
 
@@ -78,8 +78,8 @@ protected:
     std::unique_ptr<erhe::graphics::Texture>            m_depth_texture;
     std::shared_ptr<erhe::graphics::Render_pass>        m_render_pass;
     erhe::scene_renderer::Light_projections             m_light_projections;
-    erhe::graphics::Render_pipeline_state               m_render_pipeline_state;
-    std::vector<erhe::graphics::Render_pipeline_state*> m_render_pipeline_states;
+    erhe::graphics::Lazy_render_pipeline                m_render_pipeline_state;
+    std::vector<erhe::graphics::Lazy_render_pipeline*> m_render_pipeline_states;
     Composer                                            m_composer;
     std::shared_ptr<Scene_root>                         m_scene_root_shared;
     std::shared_ptr<erhe::scene::Node>                  m_camera_node;

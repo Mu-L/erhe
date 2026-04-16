@@ -17,7 +17,9 @@
 
 #include "erhe_utility/bit_helpers.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/texture_heap.hpp"
+#include "erhe_verify/verify.hpp"
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_imgui/imgui_helpers.hpp"
 #include "erhe_imgui/imgui_window.hpp"
@@ -116,16 +118,15 @@ Debug_visualizations::Debug_visualizations(
     , m_empty_vertex_input{graphics_device, erhe::graphics::Vertex_input_state_data{}}
     , m_shadow_texel_renderer{std::make_unique<erhe::scene_renderer::Texel_renderer>(graphics_device, program_interface)}
     , m_shadow_texel_pipeline{
-        erhe::graphics::Render_pipeline_state{
-            erhe::graphics::Render_pipeline_data{
-                .debug_label    = erhe::utility::Debug_label{"Shadow_debug"},
-                .shader_stages  = &programs.debug_shadow.shader_stages,
-                .vertex_input   = &m_empty_vertex_input,
-                .input_assembly = erhe::graphics::Input_assembly_state::triangle,
-                .rasterization  = erhe::graphics::Rasterization_state::cull_mode_none,
-                .depth_stencil  = erhe::graphics::Depth_stencil_state::depth_test_enabled_stencil_test_disabled(),
-                .color_blend    = erhe::graphics::Color_blend_state::color_blend_disabled
-            }
+        graphics_device,
+        erhe::graphics::Render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Shadow_debug"},
+            .shader_stages  = &programs.debug_shadow.shader_stages,
+            .vertex_input   = &m_empty_vertex_input,
+            .input_assembly = erhe::graphics::Input_assembly_state::triangle,
+            .rasterization  = erhe::graphics::Rasterization_state::cull_mode_none,
+            .depth_stencil  = erhe::graphics::Depth_stencil_state::depth_test_enabled_stencil_test_disabled(),
+            .color_blend    = erhe::graphics::Color_blend_state::color_blend_disabled
         }
     }
 {
@@ -1506,9 +1507,11 @@ void Debug_visualizations::shadow_debug(const Render_context& render_context)
 {
     const std::shared_ptr<Scene_root>& scene_root = render_context.scene_view.get_scene_root();
     const Scene_layers&                layers     = scene_root->layers();
+    ERHE_VERIFY(render_context.render_pass != nullptr);
     erhe::scene_renderer::Texel_renderer::Render_parameters parameters{
         .render_encoder    = *render_context.encoder,
         .pipeline          = m_shadow_texel_pipeline,
+        .render_pass       = *render_context.render_pass,
         .camera            = render_context.camera,
         .light_projections = render_context.scene_view.get_light_projections(),
         .lights            = layers.light()->lights,

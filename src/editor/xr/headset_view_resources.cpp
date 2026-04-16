@@ -50,6 +50,8 @@ Headset_view_resources::Headset_view_resources(
             .height            = m_height,
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
             .wrap_texture_name = render_view.color_texture,
+#elif defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+            .wrap_texture_name = render_view.vk_color_image,
 #endif
             .debug_label       = erhe::utility::Debug_label{fmt::format("XR color {}", slot)}
         }
@@ -67,6 +69,8 @@ Headset_view_resources::Headset_view_resources(
             .height            = m_height,
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
             .wrap_texture_name = render_view.depth_stencil_texture,
+#elif defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+            .wrap_texture_name = render_view.vk_depth_stencil_image,
 #endif
             .debug_label       = erhe::utility::Debug_label{fmt::format("XR depth stencil {}", slot)}
         }
@@ -88,15 +92,27 @@ Headset_view_resources::Headset_view_resources(
     render_pass_descriptor.color_attachments[0].texture      = m_color_texture.get();
     render_pass_descriptor.color_attachments[0].load_action  = erhe::graphics::Load_action::Clear;
     render_pass_descriptor.color_attachments[0].store_action = erhe::graphics::Store_action::Store;
+    render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::shader_read_only_optimal;
+    render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::shader_read_only_optimal;
     if (erhe::dataformat::get_depth_size_bits(render_view.depth_stencil_format) > 0) {
         render_pass_descriptor.depth_attachment.texture      = m_depth_stencil_texture.get();
         render_pass_descriptor.depth_attachment.load_action  = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.depth_attachment.store_action = erhe::graphics::Store_action::Store;
+        render_pass_descriptor.depth_attachment.usage_before  = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+        render_pass_descriptor.depth_attachment.layout_before = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+        render_pass_descriptor.depth_attachment.usage_after   = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+        render_pass_descriptor.depth_attachment.layout_after  = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
     }
     if (erhe::dataformat::get_stencil_size_bits(render_view.depth_stencil_format) > 0) {
-        render_pass_descriptor.stencil_attachment.texture      = m_depth_stencil_texture.get();
-        render_pass_descriptor.stencil_attachment.load_action  = erhe::graphics::Load_action::Clear;
-        render_pass_descriptor.stencil_attachment.store_action = erhe::graphics::Store_action::Dont_care;
+        render_pass_descriptor.stencil_attachment.texture       = m_depth_stencil_texture.get();
+        render_pass_descriptor.stencil_attachment.load_action   = erhe::graphics::Load_action::Clear;
+        render_pass_descriptor.stencil_attachment.store_action  = erhe::graphics::Store_action::Dont_care;
+        render_pass_descriptor.stencil_attachment.usage_before  = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+        render_pass_descriptor.stencil_attachment.layout_before = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+        render_pass_descriptor.stencil_attachment.usage_after   = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+        render_pass_descriptor.stencil_attachment.layout_after  = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
     }
     render_pass_descriptor.render_target_width  = m_width;
     render_pass_descriptor.render_target_height = m_height;

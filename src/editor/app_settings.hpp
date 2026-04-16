@@ -13,7 +13,7 @@ namespace erhe::window { class Context_window; }
 
 namespace editor {
 
-static const char* const c_graphics_presets_file_path = "graphics_presets.json";
+static const char* const c_graphics_presets_file_path = "config/graphics_presets.json";
 
 class App_message_bus;
 

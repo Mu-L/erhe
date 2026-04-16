@@ -4,7 +4,7 @@
 #include "brushes/brush.hpp"
 #include "content_library/content_library.hpp"
 #include "editor_log.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/programs.hpp"
 #include "renderers/render_context.hpp"
 #include "renderers/composition_pass.hpp"
@@ -30,11 +30,11 @@
 namespace editor {
 
 Material_preview::Material_preview(
-    erhe::graphics::Device&         graphics_device,
-    App_context&                    app_context,
-    Mesh_memory&                    mesh_memory,
-    Programs&                       programs,
-    const bool                      reverse_depth
+    erhe::graphics::Device&            graphics_device,
+    App_context&                       app_context,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Programs&                          programs,
+    const bool                         reverse_depth
 )
     : Scene_preview{graphics_device, app_context, mesh_memory, programs, reverse_depth}
 {
@@ -48,7 +48,7 @@ Material_preview::~Material_preview() noexcept
 {
 }
 
-void Material_preview::make_preview_scene(Mesh_memory& mesh_memory)
+void Material_preview::make_preview_scene(erhe::scene_renderer::Mesh_memory& mesh_memory)
 {
     ERHE_PROFILE_FUNCTION();
 

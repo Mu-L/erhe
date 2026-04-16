@@ -22,5 +22,26 @@ struct("Editor_settings_config",
         field("graphics_preset_name", String, added_in=1, default='"Medium"'),
         field("imgui",                StructRef("Imgui_settings_config"), added_in=1),
         field("icons",                StructRef("Icon_settings_config"),  added_in=1),
+        field("threading",            StructRef("Threading_config"),     added_in=1),
+        field(
+            "post_processing",
+            Bool,
+            added_in=1,
+            default="true",
+            short_desc="Post Processing",
+            long_desc="Enable Post Processing",
+            visible=True,
+            developer=False
+        ),
+        field(
+            "quit_after_frames",
+            Int,
+            added_in=1,
+            default="0",
+            short_desc="Quit After Frames",
+            long_desc="Exit editor after this many frames. 0 to disable.",
+            visible=True,
+            developer=True
+        ),
     ],
 )

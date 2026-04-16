@@ -77,12 +77,20 @@ void Window_imgui_host::update_render_pass(int width, int height)
     erhe::graphics::Render_pass_descriptor render_pass_descriptor;
     render_pass_descriptor.swapchain = m_graphics_device.get_surface()->get_swapchain();
     render_pass_descriptor.color_attachments[0].load_action    = erhe::graphics::Load_action::Clear;
-    render_pass_descriptor.color_attachments[0].clear_value[0] = 0.05; // TODO expose API to set clear color
-    render_pass_descriptor.color_attachments[0].clear_value[1] = 0.05;
-    render_pass_descriptor.color_attachments[0].clear_value[2] = 0.05;
-    render_pass_descriptor.color_attachments[0].clear_value[3] = 1.00;
+    render_pass_descriptor.color_attachments[0].clear_value[0] = 0.0;
+    render_pass_descriptor.color_attachments[0].clear_value[1] = 0.0;
+    render_pass_descriptor.color_attachments[0].clear_value[2] = 0.0;
+    render_pass_descriptor.color_attachments[0].clear_value[3] = 0.0;
+    render_pass_descriptor.color_attachments[0].usage_before   = erhe::graphics::Image_usage_flag_bit_mask::present;
+    render_pass_descriptor.color_attachments[0].layout_before  = erhe::graphics::Image_layout::present_src;
+    render_pass_descriptor.color_attachments[0].usage_after    = erhe::graphics::Image_usage_flag_bit_mask::present;
+    render_pass_descriptor.color_attachments[0].layout_after   = erhe::graphics::Image_layout::present_src;
     render_pass_descriptor.depth_attachment    .load_action    = erhe::graphics::Load_action::Dont_care;
-    render_pass_descriptor.stencil_attachment  .load_action    = erhe::graphics::Load_action::Dont_care;
+    // Swapchain depth has no user-controlled stencil aspect: the Vulkan and
+    // Metal backends both gate stencil routing on stencil_attachment.is_defined(),
+    // and we never set stencil_attachment.texture for an imgui swapchain pass.
+    // Setting load_action here would be silently dropped, so leave it at the
+    // default and rely on the backend's DONT_CARE fallback.
     render_pass_descriptor.render_target_width  = width;
     render_pass_descriptor.render_target_height = height;
     render_pass_descriptor.debug_label          = erhe::utility::Debug_label{"Window_imgui_host Render_pass"};
@@ -244,7 +252,7 @@ void Window_imgui_host::execute_rendergraph_node()
 
     erhe::graphics::Render_command_encoder render_encoder = m_graphics_device.make_render_command_encoder();
     erhe::graphics::Scoped_render_pass scoped_render_pass{*m_render_pass.get()};
-    m_imgui_renderer.render_draw_data(render_encoder);
+    m_imgui_renderer.render_draw_data(render_encoder, *m_render_pass);
 }
 
 auto Window_imgui_host::get_viewport() const -> erhe::math::Viewport

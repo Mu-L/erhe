@@ -59,10 +59,14 @@ void Render_target::update(int width, int height, erhe::graphics::Swapchain* swa
 
     if (swapchain != nullptr) {
         erhe::graphics::Render_pass_descriptor render_pass_descriptor{};
-        render_pass_descriptor.swapchain            = swapchain;
-        render_pass_descriptor.render_target_width  = width;
-        render_pass_descriptor.render_target_height = height;
-        render_pass_descriptor.debug_label          = m_debug_label;
+        render_pass_descriptor.swapchain                         = swapchain;
+        render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.render_target_width               = width;
+        render_pass_descriptor.render_target_height              = height;
+        render_pass_descriptor.debug_label                       = m_debug_label;
         m_render_pass = std::make_unique<Render_pass>(m_graphics_device, render_pass_descriptor);
     }
 
@@ -163,10 +167,18 @@ void Render_target::update(int width, int height, erhe::graphics::Swapchain* swa
                 render_pass_descriptor.color_attachments[0].resolve_texture = m_color_texture.get();
                 render_pass_descriptor.color_attachments[0].load_action     = erhe::graphics::Load_action::Clear;
                 render_pass_descriptor.color_attachments[0].store_action    = erhe::graphics::Store_action::Multisample_resolve;
+                render_pass_descriptor.color_attachments[0].usage_before    = erhe::graphics::Image_usage_flag_bit_mask::color_attachment;
+                render_pass_descriptor.color_attachments[0].layout_before  = erhe::graphics::Image_layout::color_attachment_optimal;
+                render_pass_descriptor.color_attachments[0].usage_after     = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+                render_pass_descriptor.color_attachments[0].layout_after   = erhe::graphics::Image_layout::shader_read_only_optimal;
             } else {
                 render_pass_descriptor.color_attachments[0].texture         = m_color_texture.get();
                 render_pass_descriptor.color_attachments[0].load_action     = erhe::graphics::Load_action::Clear;
                 render_pass_descriptor.color_attachments[0].store_action    = erhe::graphics::Store_action::Store;
+                render_pass_descriptor.color_attachments[0].usage_before    = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+                render_pass_descriptor.color_attachments[0].layout_before  = erhe::graphics::Image_layout::shader_read_only_optimal;
+                render_pass_descriptor.color_attachments[0].usage_after     = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+                render_pass_descriptor.color_attachments[0].layout_after   = erhe::graphics::Image_layout::shader_read_only_optimal;
             }
             if (m_depth_stencil_texture) {
                 if (erhe::dataformat::get_depth_size_bits(m_depth_stencil_format) > 0) {
@@ -174,11 +186,19 @@ void Render_target::update(int width, int height, erhe::graphics::Swapchain* swa
                     render_pass_descriptor.depth_attachment.load_action     = erhe::graphics::Load_action::Clear;
                     render_pass_descriptor.depth_attachment.store_action    = erhe::graphics::Store_action::Dont_care;
                     render_pass_descriptor.depth_attachment.clear_value[0]  = m_reverse_depth ? 0.0 : 1.0;
+                    render_pass_descriptor.depth_attachment.usage_before    = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+                    render_pass_descriptor.depth_attachment.layout_before  = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+                    render_pass_descriptor.depth_attachment.usage_after     = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+                    render_pass_descriptor.depth_attachment.layout_after   = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
                 }
                 if (erhe::dataformat::get_stencil_size_bits(m_depth_stencil_format) > 0) {
                     render_pass_descriptor.stencil_attachment.texture      = m_depth_stencil_texture.get();
                     render_pass_descriptor.stencil_attachment.load_action  = erhe::graphics::Load_action::Clear;
                     render_pass_descriptor.stencil_attachment.store_action = erhe::graphics::Store_action::Dont_care;
+                    render_pass_descriptor.stencil_attachment.usage_before  = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+                    render_pass_descriptor.stencil_attachment.layout_before = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+                    render_pass_descriptor.stencil_attachment.usage_after   = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+                    render_pass_descriptor.stencil_attachment.layout_after  = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
                 }
             }
             render_pass_descriptor.render_target_width  = width;

@@ -9,6 +9,23 @@ Render_command_encoder_impl::Render_command_encoder_impl(Device& device)
 
 Render_command_encoder_impl::~Render_command_encoder_impl() noexcept = default;
 
+void Render_command_encoder_impl::set_bind_group_layout(const Bind_group_layout* bind_group_layout)
+{
+    static_cast<void>(bind_group_layout);
+}
+
+void Render_command_encoder_impl::set_sampled_image(uint32_t binding_point, const Texture& texture, const Sampler& sampler)
+{
+    static_cast<void>(binding_point);
+    static_cast<void>(texture);
+    static_cast<void>(sampler);
+}
+
+void Render_command_encoder_impl::set_render_pipeline(const Render_pipeline& pipeline)
+{
+    static_cast<void>(pipeline);
+}
+
 void Render_command_encoder_impl::set_render_pipeline_state(const Render_pipeline_state& pipeline)
 {
     static_cast<void>(pipeline);

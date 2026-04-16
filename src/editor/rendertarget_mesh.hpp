@@ -10,9 +10,7 @@
 
 #include <memory>
 
-namespace erhe {
-    class Item_host;
-}
+namespace erhe { class Item_host; }
 namespace erhe::graphics {
     class Render_pass;
     class Device;
@@ -20,9 +18,8 @@ namespace erhe::graphics {
     class Sampler;
     class Texture;
 }
-namespace erhe::primitive {
-    class Material;
-}
+namespace erhe::primitive { class Material; }
+namespace erhe::scene_renderer { class Mesh_memory; }
 
 namespace editor {
 
@@ -30,7 +27,6 @@ class App_context;
 class App_message;
 class Forward_renderer;
 class Hand_tracker;
-class Mesh_memory;
 class Render_context;
 class Scene_root;
 class Scene_view;
@@ -41,11 +37,11 @@ class Rendertarget_mesh : public erhe::scene::Mesh
 {
 public:
     Rendertarget_mesh(
-        erhe::graphics::Device& graphics_device,
-        Mesh_memory&            mesh_memory,
-        int                     width,
-        int                     height,
-        float                   pixels_per_meter
+        erhe::graphics::Device&            graphics_device,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        int                                width,
+        int                                height,
+        float                              pixels_per_meter
     );
 
     // Implements Item_base
@@ -71,10 +67,10 @@ public:
     void render_done   (App_context& context); // generates mipmaps, updates lod bias
 
     void resize_rendertarget(
-        erhe::graphics::Device& graphics_device,
-        Mesh_memory&            mesh_memory,
-        int                     width,
-        int                     height
+        erhe::graphics::Device&            graphics_device,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        int                                width,
+        int                                height
     );
 
     static void set_mesh_lod_bias(float lod_bias);

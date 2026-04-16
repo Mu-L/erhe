@@ -28,21 +28,6 @@ Swapchain::~Swapchain() noexcept
 {
 }
 
-auto Swapchain::wait_frame(Frame_state& out_frame_state) -> bool
-{
-    return m_impl->wait_frame(out_frame_state);
-}
-
-auto Swapchain::begin_frame(const Frame_begin_info& frame_begin_info) -> bool
-{
-    return m_impl->begin_frame(frame_begin_info);
-}
-
-auto Swapchain::end_frame(const Frame_end_info& frame_end_info) -> bool
-{
-    return m_impl->end_frame(frame_end_info);
-}
-
 auto Swapchain::has_depth() const -> bool
 {
     return m_impl->has_depth();
@@ -50,6 +35,16 @@ auto Swapchain::has_depth() const -> bool
 auto Swapchain::has_stencil() const -> bool
 {
     return m_impl->has_stencil();
+}
+
+auto Swapchain::get_color_format() const -> erhe::dataformat::Format
+{
+    return m_impl->get_color_format();
+}
+
+auto Swapchain::get_depth_format() const -> erhe::dataformat::Format
+{
+    return m_impl->get_depth_format();
 }
 
 auto Swapchain::get_impl() -> Swapchain_impl&

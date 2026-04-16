@@ -1,0 +1,6 @@
+{
+    "_version": 1,
+    "initial_clear": true,
+    "vulkan_validation_layers": false,
+    "shader_monitor_enabled": false
+}

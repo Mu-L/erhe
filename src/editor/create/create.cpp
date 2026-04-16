@@ -7,7 +7,7 @@
 #include "create/create_preview_settings.hpp"
 #include "operations/item_insert_remove_operation.hpp"
 #include "operations/operation_stack.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/render_context.hpp"
 #include "scene/scene_commands.hpp"
 #include "scene/scene_root.hpp"

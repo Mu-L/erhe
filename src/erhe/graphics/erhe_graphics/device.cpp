@@ -3,6 +3,7 @@
 #include "erhe_graphics/device.hpp"
 
 #include "erhe_graphics/blit_command_encoder.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_verify/verify.hpp"
 #include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/compute_command_encoder.hpp"
@@ -30,11 +31,27 @@
 
 namespace erhe::graphics {
 
-Device::Device(const Surface_create_info& surface_create_info, const Graphics_config& graphics_config)
-    : m_impl{std::make_unique<Device_impl>(*this, surface_create_info, graphics_config)}
+Device::Device(
+    const Surface_create_info&      surface_create_info,
+    const Graphics_config&          graphics_config,
+    Device_message_callback         device_message_callback,
+    const Vulkan_external_creators* vulkan_external_creators
+)
+    : m_device_message_callback{std::move(device_message_callback)}
+#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+    , m_impl      {std::make_unique<Device_impl>(*this, surface_create_info, graphics_config, vulkan_external_creators)}
+#else
+    , m_impl      {std::make_unique<Device_impl>(*this, surface_create_info, graphics_config)}
+#endif
+    , m_spirv_cache{std::filesystem::path{"spirv_cache"}}
 {
+#if !defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+    static_cast<void>(vulkan_external_creators);
+#endif
 }
+
 Device::~Device() noexcept = default;
+
 auto Device::get_surface() -> Surface*
 {
     return m_impl->get_surface();
@@ -57,7 +74,11 @@ void Device::upload_to_texture(const Texture& texture, int level, int x, int y, 
 }
 void Device::add_completion_handler(std::function<void()> callback)
 {
-    m_impl->add_completion_handler(callback);
+    m_impl->add_completion_handler(
+        [cb = std::move(callback)](Device_impl&) {
+            cb();
+        }
+    );
 }
 void Device::on_thread_enter()
 {
@@ -71,6 +92,14 @@ auto Device::wait_frame(Frame_state& out_frame_state) -> bool
 {
     return m_impl->wait_frame(out_frame_state);
 }
+auto Device::begin_frame() -> bool
+{
+    return m_impl->begin_frame();
+}
+auto Device::end_frame() -> bool
+{
+    return m_impl->end_frame();
+}
 auto Device::begin_frame(const Frame_begin_info& frame_begin_info) -> bool
 {
     return m_impl->begin_frame(frame_begin_info);
@@ -78,6 +107,26 @@ auto Device::begin_frame(const Frame_begin_info& frame_begin_info) -> bool
 auto Device::end_frame(const Frame_end_info& frame_end_info) -> bool
 {
     return m_impl->end_frame(frame_end_info);
+}
+auto Device::begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool
+{
+    return m_impl->begin_swapchain_frame(frame_begin_info, out_frame_state);
+}
+void Device::end_swapchain_frame(const Frame_end_info& frame_end_info)
+{
+    m_impl->end_swapchain_frame(frame_end_info);
+}
+void Device::wait_idle()
+{
+    m_impl->wait_idle();
+}
+auto Device::is_in_device_frame() const -> bool
+{
+    return m_impl->is_in_device_frame();
+}
+auto Device::is_in_swapchain_frame() const -> bool
+{
+    return m_impl->is_in_swapchain_frame();
 }
 auto Device::get_frame_index() const -> uint64_t
 {
@@ -95,6 +144,10 @@ auto Device::get_format_properties(erhe::dataformat::Format format) const -> For
 {
     return m_impl->get_format_properties(format);
 }
+auto Device::probe_image_format_support(erhe::dataformat::Format format, uint64_t usage_mask) const -> bool
+{
+    return m_impl->probe_image_format_support(format, usage_mask);
+}
 auto Device::get_supported_depth_stencil_formats() const -> std::vector<erhe::dataformat::Format>
 {
     return m_impl->get_supported_depth_stencil_formats();
@@ -111,13 +164,34 @@ auto Device::choose_depth_stencil_format(const unsigned int sort_flags, const in
 {
     return m_impl->choose_depth_stencil_format(sort_flags, requested_sample_count);
 }
+void Device::start_frame_capture()
+{
+    m_impl->start_frame_capture();
+}
+void Device::end_frame_capture()
+{
+    m_impl->end_frame_capture();
+}
 void Device::clear_texture(const Texture& texture, std::array<double, 4> value)
 {
     m_impl->clear_texture(texture, value);
 }
+void Device::transition_texture_layout(const Texture& texture, Image_layout new_layout)
+{
+    m_impl->transition_texture_layout(texture, new_layout);
+}
+void Device::cmd_texture_barrier(uint64_t usage_before, uint64_t usage_after)
+{
+    m_impl->cmd_texture_barrier(usage_before, usage_after);
+}
 auto Device::make_render_command_encoder() -> Render_command_encoder
 {
     return m_impl->make_render_command_encoder();
+}
+
+auto Device::create_render_pipeline(const Render_pipeline_create_info& create_info) -> std::unique_ptr<Render_pipeline>
+{
+    return std::make_unique<Render_pipeline>(*this, create_info);
 }
 auto Device::make_blit_command_encoder() -> Blit_command_encoder
 {
@@ -143,6 +217,10 @@ auto Device::get_impl() const -> const Device_impl&
 {
     return *m_impl.get();
 }
+auto Device::get_spirv_cache() -> Spirv_cache&
+{
+    return m_spirv_cache;
+}
 void Device::set_shader_error_callback(Shader_error_callback callback)
 {
     m_shader_error_callback = std::move(callback);
@@ -153,14 +231,10 @@ void Device::shader_error(const std::string& error_log, const std::string& shade
         m_shader_error_callback(error_log, shader_source, erhe_get_callstack());
     }
 }
-void Device::set_device_error_callback(Device_error_callback callback)
+void Device::device_message(Message_severity severity, const std::string& message)
 {
-    m_device_error_callback = std::move(callback);
-}
-void Device::device_error(const std::string& error_message)
-{
-    if (m_device_error_callback) {
-        m_device_error_callback(error_message, erhe_get_callstack());
+    if (m_device_message_callback) {
+        m_device_message_callback(severity, message, erhe_get_callstack());
     }
 }
 void Device::set_state_dump_callback(State_dump_callback callback)
@@ -182,6 +256,14 @@ void Device::trace(const std::string& message)
     if (m_trace_callback) {
         m_trace_callback(message);
     }
+}
+auto Device::get_active_render_pass() const -> Render_pass*
+{
+    return m_active_render_pass;
+}
+void Device::set_active_render_pass(Render_pass* render_pass)
+{
+    m_active_render_pass = render_pass;
 }
 
 // // // // //

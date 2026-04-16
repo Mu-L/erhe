@@ -11,7 +11,7 @@
 #include "preview/brush_preview.hpp"
 #include "preview/material_preview.hpp"
 #include "erhe_primitive/material.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "scene/node_raytrace.hpp"
 #include "scene/scene_builder.hpp"
 #include "scene/scene_root.hpp"
@@ -194,16 +194,16 @@ auto Hotbar_rotate_tool_command::try_call() -> bool
 #pragma endregion Commands
 
 Hotbar::Hotbar(
-    const Hotbar_config&         hotbar_config,
-    erhe::commands::Commands&    commands,
-    erhe::imgui::Imgui_renderer& imgui_renderer,
-    erhe::imgui::Imgui_windows&  imgui_windows,
-    App_context&                 app_context,
-    App_message_bus&             app_message_bus,
-    Headset_view&                headset_view,
-    Mesh_memory&                 mesh_memory,
-    Scene_builder&               scene_builder,
-    Tools&                       tools
+    const Hotbar_config&               hotbar_config,
+    erhe::commands::Commands&          commands,
+    erhe::imgui::Imgui_renderer&       imgui_renderer,
+    erhe::imgui::Imgui_windows&        imgui_windows,
+    App_context&                       app_context,
+    App_message_bus&                   app_message_bus,
+    Headset_view&                      headset_view,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Scene_builder&                     scene_builder,
+    Tools&                             tools
 )
     : Tool                       {app_context}
     , m_window                   {imgui_renderer, imgui_windows, "Hotbar", "", [this]() { window_imgui(); }}
@@ -357,7 +357,7 @@ void Hotbar::init_hotbar()
     set_mesh_visibility(m_show);
 }
 
-void Hotbar::init_radial_menu(Mesh_memory& mesh_memory, Scene_root&  scene_root)
+void Hotbar::init_radial_menu(erhe::scene_renderer::Mesh_memory& mesh_memory, Scene_root&  scene_root)
 {
     const float outer_radius = 1.0f;
     const float inner_radius = 0.125f;

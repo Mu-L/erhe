@@ -957,7 +957,7 @@ auto has_stencil(const gl::Internal_format format) -> bool
         case erhe::dataformat::Format::format_packed1010102_vec4_uint:  return gl::Internal_format::rgb10_a2ui;
         case erhe::dataformat::Format::format_packed111110_vec3_unorm:  return gl::Internal_format::r11f_g11f_b10f;
         case erhe::dataformat::Format::format_d16_unorm:                return gl::Internal_format::depth_component16;
-        case erhe::dataformat::Format::format_x8_d24_unorm_pack32:      return gl::Internal_format::depth32f_stencil8;
+        case erhe::dataformat::Format::format_x8_d24_unorm_pack32:      return gl::Internal_format::depth24_stencil8;
         case erhe::dataformat::Format::format_d32_sfloat:               return gl::Internal_format::depth_component32f;
         case erhe::dataformat::Format::format_s8_uint:                  return gl::Internal_format::stencil_index8;
         case erhe::dataformat::Format::format_d24_unorm_s8_uint:        return gl::Internal_format::depth24_stencil8;

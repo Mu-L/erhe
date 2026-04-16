@@ -19,7 +19,7 @@ auto to_string(const std::filesystem::path& path) -> std::string
         auto s = std::string(reinterpret_cast<char const*>(utf8.data()), utf8.size());
         return s;
     } catch (...) {
-        log_file->error("Exception was thrown in erhe::file::to_string()");
+        if (log_file) log_file->error("Exception was thrown in erhe::file::to_string()");
         return {};
     }
 }
@@ -29,7 +29,7 @@ auto from_string(const std::string& path) -> std::filesystem::path
     try {
         return std::filesystem::path((const char8_t*)&*path.c_str());
     } catch (...) {
-        log_file->error("Exception was thrown in erhe::file::from_string()");
+        if (log_file) log_file->error("Exception was thrown in erhe::file::from_string()");
         return {};
     }
 }
@@ -44,7 +44,7 @@ auto from_string(const std::string& path) -> std::filesystem::path
         std::error_code error_code;
         const bool exists = std::filesystem::exists(path, error_code);
         if (error_code) {
-            log_file->warn(
+            if (log_file) log_file->warn(
                 "{}: std::filesystem::exists('{}') returned error code {}: {}",
                 description,
                 to_string(path),
@@ -55,13 +55,13 @@ auto from_string(const std::string& path) -> std::filesystem::path
         }
         if (!exists) {
             if (!silent_if_not_exists) {
-                log_file->warn("{}: File '{}' not found", description, to_string(path));
+                if (log_file) log_file->warn("{}: File '{}' not found", description, to_string(path));
             }
             return false;
         }
         const bool is_regular_file = std::filesystem::is_regular_file(path, error_code);
         if (error_code) {
-            log_file->warn(
+            if (log_file) log_file->warn(
                 "{}: std::filesystem::is_regular_file('{}') returned error code {}: {}",
                 description,
                 to_string(path),
@@ -71,12 +71,12 @@ auto from_string(const std::string& path) -> std::filesystem::path
             return false;
         }
         if (!is_regular_file) {
-            log_file->warn("{}: File '{}' is not regular file", description, to_string(path));
+            if (log_file) log_file->warn("{}: File '{}' is not regular file", description, to_string(path));
             return false;
         }
         const bool is_empty = std::filesystem::is_empty(path, error_code);
         if (error_code) {
-            log_file->warn(
+            if (log_file) log_file->warn(
                 "{}: std::filesystem::is_empty('{}') returned error code {}",
                 to_string(path),
                 error_code.value(),
@@ -89,7 +89,7 @@ auto from_string(const std::string& path) -> std::filesystem::path
         }
         return true;
     } catch (...) {
-        log_file->error("Exception was thrown in erhe::file::check_is_existing_non_empty_regular_file()");
+        if (log_file) log_file->error("Exception was thrown in erhe::file::check_is_existing_non_empty_regular_file()");
         return false;
     }
 }
@@ -110,7 +110,7 @@ auto read(const std::string_view description, const std::filesystem::path& path)
             std::fopen(path.c_str(), "rb");
     #endif
         if (file == nullptr) {
-            log_file->error("{}: Could not open file '{}' for reading", description, to_string(path));
+            if (log_file) log_file->error("{}: Could not open file '{}' for reading", description, to_string(path));
             return {};
         }
 
@@ -120,7 +120,7 @@ auto read(const std::string_view description, const std::filesystem::path& path)
         do {
             const auto read_byte_count = std::fread(result.data() + bytes_read, 1, bytes_to_read, file);
             if (read_byte_count == 0) {
-                log_file->error("{}: Error reading file '{}'", description, to_string(path));
+                if (log_file) log_file->error("{}: Error reading file '{}'", description, to_string(path));
                 return {};
             }
             bytes_read += read_byte_count;
@@ -131,7 +131,7 @@ auto read(const std::string_view description, const std::filesystem::path& path)
 
         return std::optional<std::string>(result);
     } catch (...) {
-        log_file->error("Exception was thrown in erhe::file::read()");
+        if (log_file) log_file->error("Exception was thrown in erhe::file::read()");
         return {};
     }
 }
@@ -141,24 +141,24 @@ auto write_file(std::filesystem::path path, const std::string& text) -> bool
 {
     try {
         if (path.empty()) {
-            log_file->error("write_file(): path is empty");
+            if (log_file) log_file->error("write_file(): path is empty");
             return false;
         }
 
         FILE* const file = _wfopen(path.wstring().c_str(), L"wb");
         if (file == nullptr) {
-            log_file->error("Failed to open '{}' for writing", path);
+            if (log_file) log_file->error("Failed to open '{}' for writing", path);
             return false;
         }
         const size_t res = std::fwrite(text.data(), 1, text.size(), file);
         std::fclose(file);
         if (res != text.size()) {
-            log_file->error("Failed to write '{}'", path);
+            if (log_file) log_file->error("Failed to write '{}'", path);
             return false;
         }
         return true;
     } catch (...) {
-        log_file->error("Exception was thrown in erhe::file::write_file()");
+        if (log_file) log_file->error("Exception was thrown in erhe::file::write_file()");
         return false;
     }
 }
@@ -212,7 +212,7 @@ auto select_file_for_read() -> std::optional<std::filesystem::path>
 
         return std::filesystem::path(path);
     } catch (...) {
-        log_file->error("Exception was thrown in erhe::file::select_file_for_read()");
+        if (log_file) log_file->error("Exception was thrown in erhe::file::select_file_for_read()");
         return {};
     }
 }
@@ -266,7 +266,7 @@ auto select_file_for_write() -> std::optional<std::filesystem::path>
 
         return std::filesystem::path(path);
     } catch (...) {
-        log_file->error("Exception was thrown in erhe::file::select_file_for_write()");
+        if (log_file) log_file->error("Exception was thrown in erhe::file::select_file_for_write()");
         return {};
     }
 }
@@ -276,13 +276,13 @@ auto select_file_for_write() -> std::optional<std::filesystem::path>
 auto write_file(std::filesystem::path path, const std::string& text) -> bool
 {
     if (path.empty()) {
-        log_file->error("write_file(): path is empty");
+        if (log_file) log_file->error("write_file(): path is empty");
         return false;
     }
 
     FILE* file = std::fopen(path.c_str(), "wb");
     if (file == nullptr) {
-        log_file->error("Failed to open '{}' for writing", path.string());
+        if (log_file) log_file->error("Failed to open '{}' for writing", path.string());
         return false;
     }
 
@@ -290,7 +290,7 @@ auto write_file(std::filesystem::path path, const std::string& text) -> bool
     std::fclose(file);
 
     if (res != text.size()) {
-        log_file->error("Failed to write '{}'", path.string());
+        if (log_file) log_file->error("Failed to write '{}'", path.string());
         return false;
     }
 
@@ -365,7 +365,7 @@ auto ensure_directory_exists(std::filesystem::path path) -> bool
     std::error_code error_code{};
     const bool exists = std::filesystem::exists(path, error_code);
     if (error_code) {
-        log_file->warn(
+        if (log_file) log_file->warn(
             "std::filesystem::exists('{}') returned error code {}: {}",
             to_string(path),
             error_code.value(),
@@ -385,7 +385,7 @@ auto ensure_directory_exists(std::filesystem::path path) -> bool
         }
         const bool create_ok = std::filesystem::create_directory(path, error_code);
         if (error_code) {
-            log_file->warn(
+            if (log_file) log_file->warn(
                 "std::filesystem::create_directory('{}') returned error code {}: {}",
                 to_string(path),
                 error_code.value(),

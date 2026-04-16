@@ -17,7 +17,7 @@
 #   include "xr/headset_view.hpp"
 #endif
 
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_profile/profile.hpp"
 
 namespace erhe::commands {
@@ -47,29 +47,36 @@ class Scene_views;
 class Tools_pipeline_renderpasses
 {
 public:
-    Tools_pipeline_renderpasses(erhe::graphics::Device& graphics_device, Mesh_memory& mesh_memory, Programs& programs, bool reverse_depth = true);
+    Tools_pipeline_renderpasses(
+        erhe::graphics::Device&            graphics_device,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Programs&                          programs,
+        bool                               reverse_depth = true
+    );
+
     void rebuild_depth_state(bool reverse_depth);
-    bool                                  m_y_flip;
-    erhe::graphics::Render_pipeline_state tool1_hidden_stencil;
-    erhe::graphics::Render_pipeline_state tool2_visible_stencil;
-    erhe::graphics::Render_pipeline_state tool3_depth_clear;
-    erhe::graphics::Render_pipeline_state tool4_depth;
-    erhe::graphics::Render_pipeline_state tool5_visible_color;
-    erhe::graphics::Render_pipeline_state tool6_hidden_color;
+
+    bool                                 m_y_flip;
+    erhe::graphics::Lazy_render_pipeline tool1_hidden_stencil;
+    erhe::graphics::Lazy_render_pipeline tool2_visible_stencil;
+    erhe::graphics::Lazy_render_pipeline tool3_depth_clear;
+    erhe::graphics::Lazy_render_pipeline tool4_depth;
+    erhe::graphics::Lazy_render_pipeline tool5_visible_color;
+    erhe::graphics::Lazy_render_pipeline tool6_hidden_color;
 };
 
 class Tools
 {
 public:
     Tools(
-        erhe::graphics::Device&      graphics_device,
-        erhe::imgui::Imgui_renderer& imgui_renderer,
-        erhe::imgui::Imgui_windows&  imgui_windows,
-        App_context&                 context,
-        App_rendering&               app_rendering,
-        App_settings&                app_settings,
-        Mesh_memory&                 mesh_memory,
-        Programs&                    programs
+        erhe::graphics::Device&            graphics_device,
+        erhe::imgui::Imgui_renderer&       imgui_renderer,
+        erhe::imgui::Imgui_windows&        imgui_windows,
+        App_context&                       context,
+        App_rendering&                     app_rendering,
+        App_settings&                      app_settings,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Programs&                          programs
     );
 
     // Public API

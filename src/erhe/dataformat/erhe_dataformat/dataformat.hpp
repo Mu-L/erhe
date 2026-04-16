@@ -43,6 +43,8 @@ enum class Format : unsigned int {
     format_8_vec3_uint,
     format_8_vec3_sint,
     format_8_vec4_srgb,
+    format_8_vec4_bgra_srgb,
+    format_8_vec4_bgra_unorm,
     format_8_vec4_unorm,
     format_8_vec4_snorm,
     format_8_vec4_uscaled,

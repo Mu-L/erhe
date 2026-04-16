@@ -11,7 +11,7 @@
 #include "operations/operation_stack.hpp"
 #include "parsers/geogram.hpp"
 #include "parsers/gltf.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "scene/scene_builder.hpp"
 #include "scene/scene_root.hpp"
 #include "windows/item_tree_window.hpp"

@@ -1,14 +1,15 @@
 #pragma once
 
 #include "renderers/composer.hpp"
-#include "renderers/mesh_memory.hpp"
 #include "renderers/composition_pass.hpp" // TODO remove - for Fill_mode, Blend_mode, Selection_mode
 #include "erhe_commands/command.hpp"
 #include "app_message.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
+#include "erhe_graphics/gpu_timer.hpp"
+#include "erhe_graphics/state/vertex_input_state.hpp"
 #include "erhe_message_bus/message_bus.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_rendergraph/rendergraph.hpp"
-#include "erhe_scene_renderer/shadow_renderer.hpp"
 
 #include <glm/glm.hpp>
 
@@ -16,7 +17,7 @@
 
 namespace erhe::commands       { class Commands; }
 namespace erhe::imgui          { class Imgui_windows; }
-namespace erhe::scene_renderer { class Content_wide_line_renderer; }
+namespace erhe::scene_renderer { class Content_wide_line_renderer; class Mesh_memory; }
 namespace erhe::window         { class Context_window; }
 
 struct Graphics_preset_entry;
@@ -27,7 +28,6 @@ class App_context;
 class App_message_bus;
 class App_rendering;
 class App_settings;
-class Mesh_memory;
 class Programs;
 class Render_context;
 class Renderable;
@@ -47,38 +47,43 @@ private:
 class Pipeline_renderpasses
 {
 public:
-    Pipeline_renderpasses(erhe::graphics::Device& graphics_device, Mesh_memory& mesh_memory, Programs& programs, bool reverse_depth = true);
+    Pipeline_renderpasses(
+        erhe::graphics::Device&            graphics_device,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Programs&                          programs,
+        bool                               reverse_depth = true
+    );
     void rebuild_depth_state(bool reverse_depth);
 
-    bool                                  m_y_flip;
-    erhe::graphics::Vertex_input_state    m_empty_vertex_input;
-    erhe::graphics::Render_pipeline_state polygon_fill_standard_opaque_positive_determinant;
-    erhe::graphics::Render_pipeline_state polygon_fill_standard_opaque_negative_determinant;
-    erhe::graphics::Render_pipeline_state polygon_fill_standard_opaque_selected_positive_determinant;
-    erhe::graphics::Render_pipeline_state polygon_fill_standard_opaque_selected_negative_determinant;
-    erhe::graphics::Render_pipeline_state polygon_fill_standard_translucent;
-    erhe::graphics::Render_pipeline_state line_hidden_blend;
-    erhe::graphics::Render_pipeline_state brush_back;
-    erhe::graphics::Render_pipeline_state brush_front;
-    erhe::graphics::Render_pipeline_state edge_lines;
-    erhe::graphics::Render_pipeline_state outline;
-    erhe::graphics::Render_pipeline_state corner_points;
-    erhe::graphics::Render_pipeline_state polygon_centroids;
-    erhe::graphics::Render_pipeline_state rendertarget_meshes;
-    erhe::graphics::Render_pipeline_state sky;
-    erhe::graphics::Render_pipeline_state grid;
+    bool                                   m_y_flip;
+    erhe::graphics::Vertex_input_state     m_empty_vertex_input;
+    erhe::graphics::Lazy_render_pipeline   polygon_fill_standard_opaque_positive_determinant;
+    erhe::graphics::Lazy_render_pipeline   polygon_fill_standard_opaque_negative_determinant;
+    erhe::graphics::Lazy_render_pipeline   polygon_fill_standard_opaque_selected_positive_determinant;
+    erhe::graphics::Lazy_render_pipeline   polygon_fill_standard_opaque_selected_negative_determinant;
+    erhe::graphics::Lazy_render_pipeline   polygon_fill_standard_translucent;
+    erhe::graphics::Lazy_render_pipeline   line_hidden_blend;
+    erhe::graphics::Lazy_render_pipeline   brush_back;
+    erhe::graphics::Lazy_render_pipeline   brush_front;
+    erhe::graphics::Lazy_render_pipeline   edge_lines;
+    erhe::graphics::Lazy_render_pipeline   outline;
+    erhe::graphics::Lazy_render_pipeline   corner_points;
+    erhe::graphics::Lazy_render_pipeline   polygon_centroids;
+    erhe::graphics::Lazy_render_pipeline   rendertarget_meshes;
+    erhe::graphics::Lazy_render_pipeline   sky;
+    erhe::graphics::Lazy_render_pipeline   grid;
 };
 
 class App_rendering
 {
 public:
     App_rendering(
-        erhe::commands::Commands& commands,
-        erhe::graphics::Device&   graphics_device,
-        App_context&              context,
-        App_message_bus&          app_message_bus,
-        Mesh_memory&              mesh_memory,
-        Programs&                 programs
+        erhe::commands::Commands&          commands,
+        erhe::graphics::Device&            graphics_device,
+        App_context&                       context,
+        App_message_bus&                   app_message_bus,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Programs&                          programs
     );
 
     [[nodiscard]] auto create_shadow_node_for_scene_view(
@@ -127,7 +132,7 @@ private:
         erhe::renderer::Blend_mode blend_mode,
         bool                       selected,
         bool                       negative_determinant
-    ) -> erhe::graphics::Render_pipeline_state*;
+    ) -> erhe::graphics::Lazy_render_pipeline*;
 
     [[nodiscard]] auto width () const -> int;
     [[nodiscard]] auto height() const -> int;
@@ -143,7 +148,7 @@ private:
     std::shared_ptr<Composition_pass> m_grid_composition_pass;
 
     // Compute wide line pipeline states (created when Content_wide_line_renderer is ready)
-    std::vector<std::unique_ptr<erhe::graphics::Render_pipeline_state>> m_compute_wide_line_pipeline_states;
+    std::vector<std::unique_ptr<erhe::graphics::Lazy_render_pipeline>> m_compute_wide_line_pipeline_states;
 
     erhe::graphics::Gpu_timer m_content_timer;
     erhe::graphics::Gpu_timer m_selection_timer;

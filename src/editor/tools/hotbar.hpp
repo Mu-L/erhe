@@ -32,6 +32,8 @@ namespace erhe::scene {
 
 namespace erhe::primitive { class Material; }
 
+namespace erhe::scene_renderer { class Mesh_memory; }
+
 struct Hotbar_config;
 
 namespace editor {
@@ -44,7 +46,6 @@ struct Tool_select_message;
 class Brush;
 class Hotbar;
 class Icon_set;
-class Mesh_memory;
 class Rendertarget_imgui_host;
 class Rendertarget_mesh;
 class Scene_builder;
@@ -56,8 +57,8 @@ class Headset_view;
 class Slot_entry
 {
 public:
-    Tool*                                     tool    {nullptr};
-    std::shared_ptr<Brush>                    brush   {};  // Non-null for brush slots
+    Tool*                                      tool    {nullptr};
+    std::shared_ptr<Brush>                     brush   {};  // Non-null for brush slots
     std::shared_ptr<erhe::primitive::Material> material{}; // Non-null for material slots
 };
 
@@ -113,16 +114,16 @@ class Hotbar : public Tool
 {
 public:
     Hotbar(
-        const Hotbar_config&         hotbar_config,
-        erhe::commands::Commands&    commands,
-        erhe::imgui::Imgui_renderer& imgui_renderer,
-        erhe::imgui::Imgui_windows&  imgui_windows,
-        App_context&                 context,
-        App_message_bus&             app_message_bus,
-        Headset_view&                headset_view,
-        Mesh_memory&                 mesh_memory,
-        Scene_builder&               scene_builder,
-        Tools&                       tools
+        const Hotbar_config&               hotbar_config,
+        erhe::commands::Commands&          commands,
+        erhe::imgui::Imgui_renderer&       imgui_renderer,
+        erhe::imgui::Imgui_windows&        imgui_windows,
+        App_context&                       context,
+        App_message_bus&                   app_message_bus,
+        Headset_view&                      headset_view,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Scene_builder&                     scene_builder,
+        Tools&                             tools
     );
 
     void get_all_tools();
@@ -150,7 +151,7 @@ private:
     void update_slot_from_tool (Tool* tool);
 
     void init_hotbar();
-    void init_radial_menu(Mesh_memory& mesh_memory, Scene_root& scene_root);
+    void init_radial_menu(erhe::scene_renderer::Mesh_memory& mesh_memory, Scene_root& scene_root);
 
     // Window callbacks
     void             window_imgui   ();

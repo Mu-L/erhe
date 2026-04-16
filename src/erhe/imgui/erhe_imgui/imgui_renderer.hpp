@@ -1,9 +1,11 @@
 #pragma once
 
 #include "erhe_dataformat/vertex_format.hpp"
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
 #include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/shader_resource.hpp"
@@ -17,11 +19,13 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 namespace erhe::graphics {
     class Device;
     class Render_command_encoder;
+    class Render_pass;
     class Sampler;
     class Texture;
     class Texture_heap;
@@ -79,7 +83,6 @@ public:
 
     erhe::graphics::Fragment_outputs fragment_outputs;
     erhe::dataformat::Vertex_format  vertex_format;
-    erhe::graphics::Shader_resource  default_uniform_block; // containing sampler uniforms for non bindless textures
 };
 
 class Draw_texture_parameters
@@ -96,6 +99,7 @@ public:
     erhe::graphics::Filter                             filter           {erhe::graphics::Filter::nearest};
     erhe::graphics::Sampler_mipmap_mode                mipmap_mode      {erhe::graphics::Sampler_mipmap_mode::not_mipmapped};
     int                                                array_layer      {-1}; // -1 = sampler2D, >= 0 = sampler2DArray layer
+    int                                                lod              {-1}; // -1 = use mipmap_mode as-is, >= 0 = snap to exact mip via sampler min_lod == max_lod
     erhe::utility::Debug_label                         debug_label      {};
 };
 
@@ -120,7 +124,10 @@ public:
     auto image       (Draw_texture_parameters&& parameters) -> bool;
     auto image_button(Draw_texture_parameters&& parameters) -> bool;
 
-    void render_draw_data(erhe::graphics::Render_command_encoder& encoder);
+    void render_draw_data(
+        erhe::graphics::Render_command_encoder& encoder,
+        const erhe::graphics::Render_pass&      render_pass
+    );
 
     void begin_frame    ();
     void at_end_of_frame(std::function<void()>&& func);
@@ -152,6 +159,11 @@ private:
         erhe::graphics::Filter              filter,
         erhe::graphics::Sampler_mipmap_mode mipmap_mode
     ) const -> const erhe::graphics::Sampler&;
+    [[nodiscard]] auto get_lod_clamped_sampler(
+        erhe::graphics::Filter              filter,
+        erhe::graphics::Sampler_mipmap_mode mipmap_mode,
+        int                                 lod
+    ) const -> const erhe::graphics::Sampler&;
 
     static constexpr std::size_t s_max_draw_count     =    64'000;
     static constexpr std::size_t s_max_index_count    = 2'400'000;
@@ -159,13 +171,14 @@ private:
 
     erhe::graphics::Device&                       m_graphics_device;
     Imgui_program_interface                       m_imgui_program_interface;
+    erhe::graphics::Bind_group_layout             m_bind_group_layout;
     erhe::graphics::Shader_stages                 m_shader_stages;
     erhe::graphics::Ring_buffer_client            m_vertex_buffer;
     erhe::graphics::Ring_buffer_client            m_index_buffer;
     erhe::graphics::Ring_buffer_client            m_draw_parameter_buffer;
     erhe::graphics::Ring_buffer_client            m_draw_indirect_buffer;
     erhe::graphics::Vertex_input_state            m_vertex_input;
-    erhe::graphics::Render_pipeline_state         m_pipeline;
+    erhe::graphics::Lazy_render_pipeline          m_pipeline;
     Imgui_settings                                m_imgui_settings;
     std::unique_ptr<erhe::graphics::Texture_heap> m_texture_heap;
 
@@ -184,6 +197,14 @@ private:
     erhe::graphics::Sampler                  m_linear_mipmap_nearest_sampler;
     erhe::graphics::Sampler                  m_nearest_mipmap_linear_sampler;
     erhe::graphics::Sampler                  m_linear_mipmap_linear_sampler;
+
+    // Lazy cache of samplers with (min_lod, max_lod) clamped to a specific mip
+    // level. Keyed by (filter, mipmap_mode, lod) packed into a uint64_t so the
+    // Draw_texture_parameters::lod knob can snap sampling to an exact mip of a
+    // full mipmapped texture without creating a per-mip Texture view (needed
+    // on GL 4.1 where ARB_texture_view is unavailable).
+    mutable std::unordered_map<uint64_t, std::unique_ptr<erhe::graphics::Sampler>> m_lod_clamped_samplers;
+
     erhe::graphics::Gpu_timer                m_gpu_timer;
 
     std::recursive_mutex                     m_mutex;

@@ -42,8 +42,10 @@ Thumbnails::Thumbnails(const Thumbnails_config& thumbnails_config, erhe::graphic
             .device            = graphics_device,
             .usage_mask        =
                 erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
-                erhe::graphics::Image_usage_flag_bit_mask::sampled,
-            .type              = erhe::graphics::Texture_type::texture_2d,
+                erhe::graphics::Image_usage_flag_bit_mask::sampled |
+                erhe::graphics::Image_usage_flag_bit_mask::transfer_src |
+                erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
+            .type              = erhe::graphics::Texture_type::texture_2d_array,
             .pixelformat       = erhe::dataformat::Format::format_8_vec4_unorm, // TODO sRGB?
             .use_mipmaps       = true,
             .width             = m_size_pixels,
@@ -52,12 +54,14 @@ Thumbnails::Thumbnails(const Thumbnails_config& thumbnails_config, erhe::graphic
             .debug_label       = "Thumbnails color texture"
         }
     );
+    graphics_device.clear_texture(*m_color_texture, {0.0, 0.0, 0.0, 0.0});
 
     if (graphics_device.get_info().use_texture_view) {
         for (int i = 0; i < capacity; ++i) {
             Thumbnail& t = m_thumbnails[i];
 
             erhe::graphics::Texture_create_info texture_create_info = erhe::graphics::Texture_create_info::make_view(m_graphics_device, m_color_texture);
+            texture_create_info.type                  = erhe::graphics::Texture_type::texture_2d; // Single-layer view sampled as sampler2D
             texture_create_info.usage_mask            =
                 erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
                 erhe::graphics::Image_usage_flag_bit_mask::sampled,

@@ -12,9 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace erhe::geometry {
-    class Geometry;
-}
+namespace erhe::geometry { class Geometry; }
 namespace erhe::primitive {
     class Primitive;
     class Material;
@@ -23,11 +21,11 @@ namespace erhe::scene {
     class Mesh;
     class Node;
 }
+namespace erhe::scene_renderer { class Mesh_memory; }
 
 namespace editor {
 
 class App_context;
-class Mesh_memory;
 class Raytrace_primitive;
 class Scene_view;
 class Tools;
@@ -38,7 +36,7 @@ enum class Handle : unsigned int;
 class Handle_visualizations
 {
 public:
-    Handle_visualizations(App_context& app_context, Mesh_memory& mesh_memory, Tools& tools);
+    Handle_visualizations(App_context& app_context, erhe::scene_renderer::Mesh_memory& mesh_memory, Tools& tools);
 
     enum class Mode : unsigned int {
         Normal = 0,
@@ -52,7 +50,7 @@ public:
     {
     public:
         Part(
-            Mesh_memory&                                     mesh_memory,
+            erhe::scene_renderer::Mesh_memory&               mesh_memory,
             const std::shared_ptr<erhe::geometry::Geometry>& render_geometry,
             const std::shared_ptr<erhe::geometry::Geometry>& collision_geometry
         );
@@ -73,10 +71,10 @@ public:
     void set_anchor(const erhe::scene::Trs_transform& world_from_anchor);
 
 private:
-    [[nodiscard]] auto make_arrow_cylinder(Mesh_memory& mesh_memory) -> Part;
-    [[nodiscard]] auto make_arrow_cone    (Mesh_memory& mesh_memory) -> Part;
-    [[nodiscard]] auto make_box           (Mesh_memory& mesh_memory, bool uniform) -> Part;
-    [[nodiscard]] auto make_rotate_ring   (Mesh_memory& mesh_memory) -> Part;
+    [[nodiscard]] auto make_arrow_cylinder(erhe::scene_renderer::Mesh_memory& mesh_memory) -> Part;
+    [[nodiscard]] auto make_arrow_cone    (erhe::scene_renderer::Mesh_memory& mesh_memory) -> Part;
+    [[nodiscard]] auto make_box           (erhe::scene_renderer::Mesh_memory& mesh_memory, bool uniform) -> Part;
+    [[nodiscard]] auto make_rotate_ring   (erhe::scene_renderer::Mesh_memory& mesh_memory) -> Part;
 
     [[nodiscard]] auto make_material(
         Tools&           tools,

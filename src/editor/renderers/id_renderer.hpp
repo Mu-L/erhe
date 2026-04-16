@@ -7,7 +7,7 @@
 #include "erhe_scene_renderer/camera_buffer.hpp"
 #include "erhe_scene_renderer/primitive_buffer.hpp"
 
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_math/viewport.hpp"
 
 #include <glm/glm.hpp>
@@ -30,6 +30,7 @@ namespace erhe::scene {
 }
 namespace erhe::scene_renderer {
     class Program_interface;
+    class Mesh_memory;
 }
 
 struct Id_renderer_config;
@@ -37,7 +38,6 @@ struct Id_renderer_config;
 namespace editor {
 
 class Programs;
-class Mesh_memory;
 
 class Id_renderer final
 {
@@ -60,7 +60,7 @@ public:
         const Id_renderer_config&                id_renderer_config,
         erhe::graphics::Device&                  graphics_device,
         erhe::scene_renderer::Program_interface& program_interface,
-        Mesh_memory&                             mesh_memory,
+        erhe::scene_renderer::Mesh_memory&       mesh_memory,
         Programs&                                programs
     );
     ~Id_renderer() noexcept;
@@ -119,15 +119,15 @@ private:
 
     // TODO Do not store these here?
     erhe::graphics::Device&                      m_graphics_device;
-    Mesh_memory&                                 m_mesh_memory;
+    erhe::scene_renderer::Mesh_memory&           m_mesh_memory;
     bool                                         m_y_flip;
 
     erhe::scene_renderer::Camera_buffer          m_camera_buffers;
     erhe::renderer::Draw_indirect_buffer         m_draw_indirect_buffers;
     erhe::scene_renderer::Primitive_buffer       m_primitive_buffers;
 
-    erhe::graphics::Render_pipeline_state        m_pipeline;
-    erhe::graphics::Render_pipeline_state        m_selective_depth_clear_pipeline;
+    erhe::graphics::Lazy_render_pipeline         m_pipeline;
+    erhe::graphics::Lazy_render_pipeline         m_selective_depth_clear_pipeline;
     std::unique_ptr<erhe::graphics::Texture>     m_color_texture;
     std::unique_ptr<erhe::graphics::Texture>     m_depth_texture;
     std::unique_ptr<erhe::graphics::Render_pass> m_render_pass;

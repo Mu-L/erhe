@@ -34,6 +34,7 @@ namespace erhe::scene {
     class Light;
 }
 namespace erhe::scene_renderer {
+    class Mesh_memory;
     class Shadow_renderer;
 }
 
@@ -43,7 +44,6 @@ namespace tf {
 }
 
 struct Scene_config;
-struct Graphics_config;
 
 namespace editor {
 
@@ -58,7 +58,6 @@ class App_scenes;
 class App_settings;
 class Fly_camera_tool;
 class Json_library;
-class Mesh_memory;
 class Post_processing;
 class Scene_root;
 class Settings_window;
@@ -81,22 +80,22 @@ class Scene_builder final
 {
 public:
     Scene_builder(
-        const Scene_config&             scene_config,
-        const Graphics_config&          graphics_config,
-        std::shared_ptr<Scene_root>     scene,
-        tf::Executor&                   executor,
-        erhe::graphics::Device&         graphics_device,
-        erhe::imgui::Imgui_renderer&    imgui_renderer,
-        erhe::imgui::Imgui_windows&     imgui_windows,
-        erhe::rendergraph::Rendergraph& rendergraph,
-        App_context&                    app_context,
-        App_message_bus&                app_message_bus,
-        App_rendering&                  app_rendering,
-        App_settings&                   app_settings,
-        Mesh_memory&                    mesh_memory,
-        Post_processing&                post_processing,
-        Tools&                          tools,
-        Scene_views&                    scene_views
+        const Scene_config&                scene_config,
+        bool                               enable_post_processing,
+        std::shared_ptr<Scene_root>        scene,
+        tf::Executor&                      executor,
+        erhe::graphics::Device&            graphics_device,
+        erhe::imgui::Imgui_renderer&       imgui_renderer,
+        erhe::imgui::Imgui_windows&        imgui_windows,
+        erhe::rendergraph::Rendergraph&    rendergraph,
+        App_context&                       app_context,
+        App_message_bus&                   app_message_bus,
+        App_rendering&                     app_rendering,
+        App_settings&                      app_settings,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Post_processing&                   post_processing,
+        Tools&                             tools,
+        Scene_views&                       scene_views
     );
     ~Scene_builder() noexcept;
 
@@ -136,20 +135,20 @@ private:
     auto make_brush(Content_library_node& folder, Brush_data&& brush_create_info) -> std::shared_ptr<Brush>;
 
     //// auto make_brush(
-    ////     Content_library_node& folder,
-    ////     App_settings&         app_settings,
-    ////     Mesh_memory&          mesh_memory,
-    ////     GEO::Mesh&&           geo_mesh
+    ////     Content_library_node&              folder,
+    ////     App_settings&                      app_settings,
+    ////     erhe::scene_renderer::Mesh_memory& mesh_memory,
+    ////     GEO::Mesh&&                        geo_mesh
     //// ) -> std::shared_ptr<Brush>;
 
     auto make_brush(
         Content_library_node&                            folder,
         App_settings&                                    app_settings,
-        Mesh_memory&                                     mesh_memory,
+        erhe::scene_renderer::Mesh_memory&               mesh_memory,
         const std::shared_ptr<erhe::geometry::Geometry>& geometry
     ) -> std::shared_ptr<Brush>;
 
-    [[nodiscard]] auto build_info(Mesh_memory& mesh_memory) -> erhe::primitive::Build_info;
+    [[nodiscard]] auto build_info(erhe::scene_renderer::Mesh_memory& mesh_memory) -> erhe::primitive::Build_info;
 
     void setup_cameras(
         erhe::graphics::Device&         graphics_device,
@@ -169,19 +168,19 @@ private:
 
     auto get_brushes() -> Content_library_node&;
 
-    void make_brushes               (App_settings& app_settings, Mesh_memory& mesh_memory, tf::Executor& executor);
-    void make_platonic_solid_brushes(App_settings& app_settings, Mesh_memory& mesh_memory);
-    void make_sphere_brushes        (App_settings& app_settings, Mesh_memory& mesh_memory);
-    void make_torus_brushes         (App_settings& app_settings, Mesh_memory& mesh_memory);
-    void make_cylinder_brushes      (App_settings& app_settings, Mesh_memory& mesh_memory);
-    void make_cone_brushes          (App_settings& app_settings, Mesh_memory& mesh_memory);
-    void make_json_brushes          (App_settings& app_settings, Mesh_memory& mesh_memory, tf::Taskflow* tf, Json_library& library);
+    void make_brushes               (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory, tf::Executor& executor);
+    void make_platonic_solid_brushes(App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
+    void make_sphere_brushes        (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
+    void make_torus_brushes         (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
+    void make_cylinder_brushes      (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
+    void make_cone_brushes          (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
+    void make_json_brushes          (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory, tf::Taskflow* tf, Json_library& library);
     void make_mesh_nodes            (const Make_mesh_config& config, std::vector<std::shared_ptr<Brush>>& brushes);
     void setup_lights               ();
 
     App_context&          m_context;
     const Scene_config&   m_scene_config;
-    const Graphics_config& m_graphics_config;
+    bool                  m_enable_post_processing;
 
     // Self owned parts
     ERHE_PROFILE_MUTEX(std::mutex,      m_brush_mutex);

@@ -97,11 +97,13 @@ enum class Buffer_target : unsigned int
 
 enum class Texture_type : unsigned int
 {
-    texture_buffer   = 0,
-    texture_1d       = 1,
-    texture_2d       = 2,
-    texture_3d       = 3,
-    texture_cube_map = 4
+    texture_buffer         = 0,
+    texture_1d             = 1,
+    texture_2d             = 2,
+    texture_2d_array       = 3,
+    texture_3d             = 4,
+    texture_cube_map       = 5,
+    texture_cube_map_array = 6
 };
 
 enum class Filter : unsigned int
@@ -122,6 +124,18 @@ enum class Sampler_address_mode : unsigned int
     repeat = 0,
     clamp_to_edge,
     mirrored_repeat
+};
+
+// Which image aspect a sampler reads. Annotated on sampler shader resources
+// so the texture heap (and any other code that binds image views as
+// descriptors) knows which single aspect to request from a depth+stencil
+// texture without having to inspect the texture format. Color is the default
+// for non-depth/stencil samplers; depth is for shadow / depth visualization
+// samplers; stencil is rare but supported.
+enum class Sampler_aspect : unsigned int {
+    color   = 0,
+    depth   = 1,
+    stencil = 2
 };
 
 enum class Blend_equation_mode : unsigned int
@@ -216,6 +230,40 @@ enum class Stencil_op : unsigned int
     keep      = 6,
     replace   = 7
 };
+
+// MSAA resolve filter selection. Used for depth/stencil resolve attachments
+// where the choice of how to collapse multiple samples to one is not unique
+// (color resolves are always averaged and ignore this field).
+//
+// Capability:
+//   - Vulkan: maps to VkResolveModeFlagBits. Spec guarantees only SAMPLE_ZERO
+//     for both depth and stencil; query Device_info::supported_*_resolve_modes
+//     before relying on the others.
+//   - Metal:  maps to MTLMultisampleDepth/StencilResolveFilter. The stencil
+//     filter has no min/max/average modes -- those collapse to sample_zero.
+//   - OpenGL: glBlitFramebuffer for depth/stencil only supports nearest
+//     (effectively sample_zero); other modes also collapse to sample_zero.
+enum class Resolve_mode : unsigned int {
+    sample_zero = 0, // pick sample index 0; universally supported
+    average     = 1, // arithmetic mean; depth + color only, never stencil
+    min         = 2, // minimum across samples
+    max         = 3  // maximum across samples
+};
+
+class Resolve_mode_flag_bit_mask
+{
+public:
+    static constexpr uint32_t none        = 0u;
+    static constexpr uint32_t sample_zero = 1u << static_cast<unsigned int>(Resolve_mode::sample_zero);
+    static constexpr uint32_t average     = 1u << static_cast<unsigned int>(Resolve_mode::average);
+    static constexpr uint32_t min         = 1u << static_cast<unsigned int>(Resolve_mode::min);
+    static constexpr uint32_t max         = 1u << static_cast<unsigned int>(Resolve_mode::max);
+};
+
+[[nodiscard]] constexpr auto resolve_mode_bit(Resolve_mode mode) -> uint32_t
+{
+    return 1u << static_cast<unsigned int>(mode);
+}
 
 enum class Buffer_usage : unsigned int {
     none          = 0x0000u,
@@ -368,25 +416,38 @@ template<> struct Enable_bit_mask_operators<Memory_barrier_mask> { static const 
 [[nodiscard]] auto c_str          (Polygon_mode         polygon_mode) -> const char*;
 [[nodiscard]] auto c_str          (Stencil_op           stencil_op) -> const char*;
 [[nodiscard]] auto c_str          (Shader_type          shader_type) -> const char*;
+[[nodiscard]] auto c_str          (Resolve_mode         resolve_mode) -> const char*;
+[[nodiscard]] auto c_str          (Sampler_aspect       sampler_aspect) -> const char*;
 
 class Image_usage_flag_bit
 {
 public:
-    static constexpr uint64_t transfer_src             = 0;
-    static constexpr uint64_t transfer_dst             = 1;
-    static constexpr uint64_t sampled                  = 2;
-    static constexpr uint64_t storage                  = 3;
-    static constexpr uint64_t color_attachment         = 4;
-    static constexpr uint64_t depth_stencil_attachment = 5;
-    static constexpr uint64_t transient_attachment     = 6;
-    static constexpr uint64_t input_attachment         = 7;
-    static constexpr uint64_t host_transfer            = 8;
+    static constexpr uint64_t invalid                  = 0;
+    static constexpr uint64_t none                     = 1;
+    static constexpr uint64_t transfer_src             = 2;
+    static constexpr uint64_t transfer_dst             = 3;
+    static constexpr uint64_t sampled                  = 4;
+    static constexpr uint64_t storage                  = 5;
+    static constexpr uint64_t color_attachment         = 6;
+    static constexpr uint64_t depth_stencil_attachment = 7;
+    static constexpr uint64_t transient_attachment     = 8;
+    static constexpr uint64_t input_attachment         = 9;
+    static constexpr uint64_t host_transfer            = 10;
+    static constexpr uint64_t present                  = 11;
+
+    // Modifier bit: when set on usage_after alongside sampled (or other
+    // usage bits), the framework skips the automatic end-of-renderpass
+    // barrier that would otherwise transition the attachment for the
+    // declared next use. The caller is responsible for inserting an
+    // explicit barrier via Device::cmd_texture_barrier() instead.
+    static constexpr uint64_t user_synchronized        = 12;
 };
 
 class Image_usage_flag_bit_mask
 {
 public:
-    static constexpr uint64_t none                     = uint64_t{0};
+    static constexpr uint64_t invalid                  = {0};
+    static constexpr uint64_t none                     = uint64_t{1} << Image_usage_flag_bit::none                    ;
     static constexpr uint64_t transfer_src             = uint64_t{1} << Image_usage_flag_bit::transfer_src            ;
     static constexpr uint64_t transfer_dst             = uint64_t{1} << Image_usage_flag_bit::transfer_dst            ;
     static constexpr uint64_t sampled                  = uint64_t{1} << Image_usage_flag_bit::sampled                 ;
@@ -396,6 +457,29 @@ public:
     static constexpr uint64_t transient_attachment     = uint64_t{1} << Image_usage_flag_bit::transient_attachment    ;
     static constexpr uint64_t input_attachment         = uint64_t{1} << Image_usage_flag_bit::input_attachment        ;
     static constexpr uint64_t host_transfer            = uint64_t{1} << Image_usage_flag_bit::host_transfer           ;
+    static constexpr uint64_t present                  = uint64_t{1} << Image_usage_flag_bit::present                 ;
+    static constexpr uint64_t user_synchronized        = uint64_t{1} << Image_usage_flag_bit::user_synchronized       ;
 };
+
+enum class Image_layout : unsigned int {
+    undefined,
+    general,
+    shader_read_only_optimal,
+    transfer_dst_optimal,
+    transfer_src_optimal,
+    color_attachment_optimal,
+    depth_stencil_attachment_optimal,
+    depth_stencil_read_only_optimal,
+    present_src
+};
+
+enum class Message_severity : unsigned int {
+    verbose = 0,
+    info    = 1,
+    warning = 2,
+    error   = 3
+};
+
+[[nodiscard]] auto c_str          (Message_severity     message_severity) -> const char*;
 
 } // namespace erhe::graphics

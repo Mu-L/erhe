@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_dataformat/dataformat.hpp"
+#include "erhe_graphics/enums.hpp"
 #include "erhe_utility/debug_label.hpp"
 
 #include <array>
@@ -46,6 +47,11 @@ public:
     Texture*              resolve_texture{nullptr};
     unsigned int          resolve_level  {0};
     unsigned int          resolve_layer  {0};
+    Resolve_mode          resolve_mode   {Resolve_mode::sample_zero};
+    uint64_t              usage_before   {Image_usage_flag_bit_mask::invalid};
+    uint64_t              usage_after    {Image_usage_flag_bit_mask::invalid};
+    Image_layout          layout_before  {Image_layout::undefined};
+    Image_layout          layout_after   {Image_layout::undefined};
 };
 
 class Render_pass_descriptor
@@ -79,22 +85,41 @@ public:
     [[nodiscard]] auto get_render_target_height() const -> int;
     [[nodiscard]] auto get_swapchain           () const -> Swapchain*;
     [[nodiscard]] auto get_debug_label         () const -> erhe::utility::Debug_label;
+    [[nodiscard]] auto get_descriptor          () const -> const Render_pass_descriptor&;
     [[nodiscard]] auto get_impl                () -> Render_pass_impl&;
     [[nodiscard]] auto get_impl                () const -> const Render_pass_impl&;
 
 private:
     friend class Scoped_render_pass;
-    void start_render_pass();
-    void end_render_pass  ();
+    // render_pass_before: the immediately preceding render pass whose output
+    //                     this pass consumes (or nullptr if none). Used by
+    //                     the graphics backend to infer cross-submission
+    //                     synchronization.
+    // render_pass_after : the immediately succeeding render pass that will
+    //                     consume this pass's output (or nullptr if none).
+    //                     Used for debug-time validation of usage
+    //                     continuity and potential future sync optimization.
+    void start_render_pass(Render_pass* render_pass_before, Render_pass* render_pass_after);
+    void end_render_pass  (Render_pass* render_pass_after);
 
 private:
+    Device&                           m_device;
+    Render_pass_descriptor            m_descriptor;
     std::unique_ptr<Render_pass_impl> m_impl;
 };
 
 class Scoped_render_pass final
 {
 public:
-    Scoped_render_pass (Render_pass& render_pass);
+    // render_pass_before / render_pass_after let the graphics backend provide
+    // precise synchronization between render passes without having to guess
+    // at the rendergraph topology. See Render_pass::start_render_pass for
+    // details. nullptr means "no known predecessor / successor".
+    Scoped_render_pass(
+        Render_pass& render_pass,
+        Render_pass* render_pass_before = nullptr,
+        Render_pass* render_pass_after  = nullptr
+    );
     ~Scoped_render_pass() noexcept;
     Scoped_render_pass (const Scoped_render_pass&) = delete;
     void operator=(const Scoped_render_pass&) = delete;
@@ -105,6 +130,7 @@ private:
     friend class Render_pass;
 
     Render_pass& m_render_pass;
+    Render_pass* m_render_pass_after{nullptr};
 };
 
 } // namespace erhe::graphics

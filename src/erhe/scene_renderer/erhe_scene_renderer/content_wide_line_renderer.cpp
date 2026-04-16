@@ -4,6 +4,8 @@
 #include "erhe_graphics/compute_command_encoder.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/span.hpp"
@@ -76,22 +78,26 @@ Content_wide_line_renderer::Content_wide_line_renderer(
 
     m_edge_line_vertex_buffer_block = std::make_unique<erhe::graphics::Shader_resource>(
         graphics_device,
-        "edge_line_vertex_buffer",
-        0,
-        erhe::graphics::Shader_resource::Type::shader_storage_block
+        erhe::graphics::Shader_resource::Block_create_info{
+            .name          = "edge_line_vertex_buffer",
+            .binding_point = 0,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
+            .readonly      = true
+        }
     );
-    m_edge_line_vertex_buffer_block->set_readonly(true);
     m_edge_line_vertex_buffer_block->add_struct("vertices", m_edge_line_vertex_struct.get(), erhe::graphics::Shader_resource::unsized_array);
 
     // Triangle output SSBO
     m_triangle_vertex_struct = std::make_unique<erhe::graphics::Shader_resource>(graphics_device, "triangle_vertex");
     m_triangle_vertex_buffer_block = std::make_unique<erhe::graphics::Shader_resource>(
         graphics_device,
-        "triangle_vertex_buffer",
-        1,
-        erhe::graphics::Shader_resource::Type::shader_storage_block
+        erhe::graphics::Shader_resource::Block_create_info{
+            .name          = "triangle_vertex_buffer",
+            .binding_point = 1,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
+            .writeonly     = true
+        }
     );
-    m_triangle_vertex_buffer_block->set_writeonly(true);
     erhe::graphics::add_vertex_stream(
         m_triangle_vertex_format.streams.front(),
         *m_triangle_vertex_struct.get(),
@@ -117,12 +123,29 @@ Content_wide_line_renderer::Content_wide_line_renderer(
     m_padding1_offset               = m_view_block->add_float("_padding1"              )->get_offset_in_parent();
     m_view_position_in_world_offset = m_view_block->add_vec4 ("view_position_in_world" )->get_offset_in_parent();
 
+    m_bind_group_layout = std::make_unique<erhe::graphics::Bind_group_layout>(
+        graphics_device,
+        erhe::graphics::Bind_group_layout_create_info{
+            .bindings = {
+                {m_edge_line_vertex_buffer_block->get_binding_point(), erhe::graphics::Binding_type::storage_buffer},
+                {m_triangle_vertex_buffer_block->get_binding_point(),  erhe::graphics::Binding_type::storage_buffer},
+                {m_view_block->get_binding_point(),
+                    (m_view_block->get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
+                        ? erhe::graphics::Binding_type::storage_buffer
+                        : erhe::graphics::Binding_type::uniform_buffer},
+            },
+            .debug_label = "Content wide line"
+        }
+    );
+
     if ((m_compute_shader_stages != nullptr) && m_compute_shader_stages->is_valid() &&
         (m_graphics_shader_stages != nullptr) && m_graphics_shader_stages->is_valid()) {
         m_compute_pipeline.emplace(
+            m_graphics_device,
             erhe::graphics::Compute_pipeline_data{
-                .name          = "compute_before_content_line",
-                .shader_stages = m_compute_shader_stages
+                .name              = "compute_before_content_line",
+                .shader_stages     = m_compute_shader_stages,
+                .bind_group_layout = m_bind_group_layout.get()
             }
         );
         m_enabled = true;
@@ -147,9 +170,11 @@ void Content_wide_line_renderer::set_shader_stages(
     if ((m_compute_shader_stages != nullptr) && m_compute_shader_stages->is_valid() &&
         (m_graphics_shader_stages != nullptr) && m_graphics_shader_stages->is_valid()) {
         m_compute_pipeline.emplace(
+            m_graphics_device,
             erhe::graphics::Compute_pipeline_data{
-                .name          = "compute_before_content_line",
-                .shader_stages = m_compute_shader_stages
+                .name              = "compute_before_content_line",
+                .shader_stages     = m_compute_shader_stages,
+                .bind_group_layout = m_bind_group_layout.get()
             }
         );
         m_enabled = true;
@@ -161,6 +186,7 @@ auto Content_wide_line_renderer::get_edge_line_vertex_buffer_block() const -> er
 auto Content_wide_line_renderer::get_triangle_vertex_struct       () const -> erhe::graphics::Shader_resource* { return m_triangle_vertex_struct.get(); }
 auto Content_wide_line_renderer::get_triangle_vertex_buffer_block () const -> erhe::graphics::Shader_resource* { return m_triangle_vertex_buffer_block.get(); }
 auto Content_wide_line_renderer::get_view_block                   () const -> erhe::graphics::Shader_resource* { return m_view_block.get(); }
+auto Content_wide_line_renderer::get_bind_group_layout            () const -> erhe::graphics::Bind_group_layout* { return m_bind_group_layout.get(); }
 auto Content_wide_line_renderer::get_fragment_outputs             () -> erhe::graphics::Fragment_outputs&       { return m_fragment_outputs; }
 auto Content_wide_line_renderer::get_triangle_vertex_format       () -> erhe::dataformat::Vertex_format&       { return m_triangle_vertex_format; }
 auto Content_wide_line_renderer::get_vertex_input                 () -> erhe::graphics::Vertex_input_state*    { return &m_vertex_input; }
@@ -233,7 +259,8 @@ void Content_wide_line_renderer::compute(
     }
 
     ERHE_VERIFY(m_compute_pipeline.has_value());
-    command_encoder.set_compute_pipeline_state(m_compute_pipeline.value());
+    command_encoder.set_bind_group_layout(m_bind_group_layout.get());
+    command_encoder.set_compute_pipeline(m_compute_pipeline.value());
 
     const erhe::scene::Node* camera_node = camera.get_node();
     ERHE_VERIFY(camera_node != nullptr);
@@ -313,23 +340,39 @@ void Content_wide_line_renderer::compute(
         dispatch.dispatched = true;
         view_buffer_range.release();
     }
+
+    // Note: the compute->vertex-attribute memory barrier that pairs
+    // with these dispatches is emitted by the caller AFTER the compute
+    // encoder scope ends. memory_barrier() inside compute() would be
+    // illegal on Metal (cb cannot be split while a compute encoder is
+    // open) and unnecessary on Vulkan (the call must happen between
+    // encoders, not within one).
 }
 
 void Content_wide_line_renderer::render(
-    erhe::graphics::Render_command_encoder&      render_encoder,
-    const erhe::graphics::Render_pipeline_state& pipeline_state,
-    const uint32_t                               group
+    erhe::graphics::Render_command_encoder& render_encoder,
+    erhe::graphics::Lazy_render_pipeline&   pipeline_state,
+    const erhe::graphics::Render_pass&      render_pass,
+    const uint32_t                          group
 )
 {
     if (!m_enabled || m_dispatches.empty()) {
         return;
     }
 
-    m_graphics_device.memory_barrier(erhe::graphics::Memory_barrier_mask::vertex_attrib_array_barrier_bit);
+    // Note: the compute->vertex-attribute memory barrier is emitted by
+    // Content_wide_line_renderer::compute() after the last dispatch,
+    // before any render pass begins. Emitting it here would be inside
+    // the active render pass and therefore invalid on Vulkan.
 
     erhe::graphics::Scoped_debug_group debug_scope{"Content_wide_line_renderer::render"};
 
-    render_encoder.set_render_pipeline_state(pipeline_state);
+    erhe::graphics::Render_pipeline* render_pipeline = pipeline_state.get_pipeline_for(render_pass.get_descriptor());
+    if (render_pipeline == nullptr) {
+        return;
+    }
+    render_encoder.set_bind_group_layout(m_bind_group_layout.get());
+    render_encoder.set_render_pipeline(*render_pipeline);
 
     for (const Dispatch_entry& dispatch : m_dispatches) {
         if (!dispatch.dispatched || (dispatch.group != group)) {
@@ -360,7 +403,19 @@ void Content_wide_line_renderer::end_frame()
     }
     m_dispatches.clear();
 
-    m_graphics_device.memory_barrier(erhe::graphics::Memory_barrier_mask::shader_storage_barrier_bit);
+    // No cross-frame memory_barrier is emitted here. Across device
+    // frames the triangle vertex buffer is accessed through a
+    // Ring_buffer_client that hands out disjoint byte ranges per
+    // dispatch: frame N writes range R_N, frame N-1 reads range
+    // R_(N-1), R_N != R_(N-1). Vulkan tracks hazards per byte range,
+    // so even if the GPU overlaps frame N-1's draws with frame N's
+    // compute across submit boundaries there is no WAR on the same
+    // bytes. Range reuse is gated by the ring buffer's per-frame
+    // bookkeeping, which is informed by the frame fence (so a range
+    // is only returned to the free pool after its frame is known
+    // complete on the GPU). The previous memory_barrier call here
+    // was also illegal under Vulkan because this function is invoked
+    // from inside an active render pass.
 }
 
 } // namespace erhe::scene_renderer

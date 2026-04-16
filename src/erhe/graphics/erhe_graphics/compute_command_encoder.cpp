@@ -24,6 +24,10 @@ Compute_command_encoder::Compute_command_encoder(Device& device)
 Compute_command_encoder::~Compute_command_encoder() noexcept
 {
 }
+void Compute_command_encoder::set_bind_group_layout(const Bind_group_layout* bind_group_layout)
+{
+    m_impl->set_bind_group_layout(bind_group_layout);
+}
 void Compute_command_encoder::set_buffer(Buffer_target buffer_target, const Buffer* buffer, std::uintptr_t offset, std::uintptr_t length, std::uintptr_t index)
 {
     m_impl->set_buffer(buffer_target, buffer, offset, length, index);
@@ -35,6 +39,10 @@ void Compute_command_encoder::set_buffer(Buffer_target buffer_target, const Buff
 void Compute_command_encoder::set_compute_pipeline_state(const Compute_pipeline_state& pipeline)
 {
     m_impl->set_compute_pipeline_state(pipeline);
+}
+void Compute_command_encoder::set_compute_pipeline(const Compute_pipeline& pipeline)
+{
+    m_impl->set_compute_pipeline(pipeline);
 }
 void Compute_command_encoder::dispatch_compute(
     const std::uintptr_t x_size,

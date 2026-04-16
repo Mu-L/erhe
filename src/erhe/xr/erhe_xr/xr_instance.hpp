@@ -8,6 +8,7 @@
 
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
 # include "volk.h"
+# include "erhe_graphics/vulkan_external_creators.hpp"
 #endif
 
 #include <openxr/openxr.h>
@@ -57,6 +58,15 @@ public:
     [[nodiscard]] auto poll_xr_events                 (Xr_session& session) -> bool;
     [[nodiscard]] auto get_xr_instance                () const -> XrInstance;
     [[nodiscard]] auto get_xr_system_id               () const -> XrSystemId;
+
+#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+    // Build a Vulkan_external_creators struct whose hooks wrap the
+    // XR_KHR_vulkan_enable2 entry points. The returned struct is meant to be
+    // passed to erhe::graphics::Device so that instance / physical device /
+    // device creation goes through the OpenXR runtime.
+    [[nodiscard]] auto make_vulkan_external_creators() const -> erhe::graphics::Vulkan_external_creators;
+#endif
+
     [[nodiscard]] auto get_xr_view_configuration_type () const -> XrViewConfigurationType;
     [[nodiscard]] auto get_xr_view_configuration_views() const -> const std::vector<XrViewConfigurationView>&;
     [[nodiscard]] auto get_xr_environment_blend_mode  () const -> XrEnvironmentBlendMode;
@@ -124,6 +134,12 @@ public:
     PFN_xrGetVisibilityMaskKHR             xrGetVisibilityMaskKHR            {nullptr};
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     PFN_xrGetOpenGLGraphicsRequirementsKHR xrGetOpenGLGraphicsRequirementsKHR{nullptr};
+#endif
+#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+    PFN_xrGetVulkanGraphicsRequirements2KHR xrGetVulkanGraphicsRequirements2KHR{nullptr};
+    PFN_xrCreateVulkanInstanceKHR           xrCreateVulkanInstanceKHR          {nullptr};
+    PFN_xrGetVulkanGraphicsDevice2KHR       xrGetVulkanGraphicsDevice2KHR      {nullptr};
+    PFN_xrCreateVulkanDeviceKHR             xrCreateVulkanDeviceKHR            {nullptr};
 #endif
 
     PFN_xrCreateHandTrackerEXT             xrCreateHandTrackerEXT            {nullptr};

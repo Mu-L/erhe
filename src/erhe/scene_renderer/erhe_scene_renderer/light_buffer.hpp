@@ -11,6 +11,7 @@
 #include <memory>
 
 namespace erhe::graphics {
+    class Render_command_encoder;
     class Texture;
     class Texture_heap;
 }
@@ -56,7 +57,6 @@ public:
 
 static constexpr uint32_t c_texture_heap_slot_shadow_compare   {0};
 static constexpr uint32_t c_texture_heap_slot_shadow_no_compare{1};
-static constexpr uint32_t c_texture_heap_slot_count_reserved   {2};
 
 class Light_interface
 {
@@ -115,9 +115,18 @@ public:
     auto update(
         const std::span<const std::shared_ptr<erhe::scene::Light>>& lights,
         const Light_projections*                                    light_projections,
-        const glm::vec3&                                            ambient_light,
-        erhe::graphics::Texture_heap&                               texture_heap
+        const glm::vec3&                                            ambient_light
     ) -> erhe::graphics::Ring_buffer_range;
+
+    // Bind the shadow map textures to the s_shadow_compare and
+    // s_shadow_no_compare sampler bindings declared in the bind group layout.
+    // Callers that read shadows in their fragment shader (e.g. forward
+    // renderer) must call this before draw; callers that don't (e.g. shadow
+    // renderer, texel renderer) can skip it.
+    void bind_shadow_samplers(
+        erhe::graphics::Render_command_encoder& encoder,
+        const Light_projections*                light_projections
+    );
 
     auto update_control(std::size_t light_index) -> erhe::graphics::Ring_buffer_range;
 
@@ -125,6 +134,7 @@ public:
     void bind_control_buffer(erhe::graphics::Command_encoder& encoder, const erhe::graphics::Ring_buffer_range& range);
 
 private:
+    erhe::graphics::Device&                  m_graphics_device;
     Light_interface&                         m_light_interface;
     erhe::graphics::Ring_buffer_client       m_light_buffer;
     erhe::graphics::Ring_buffer_client       m_control_buffer;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/compute_pipeline_state.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
@@ -22,7 +23,9 @@ namespace erhe::graphics {
     class Buffer;
     class Compute_command_encoder;
     class Device;
+    class Lazy_render_pipeline;
     class Render_command_encoder;
+    class Render_pass;
     class Shader_stages;
 }
 namespace erhe::primitive {
@@ -68,6 +71,7 @@ public:
     [[nodiscard]] auto get_triangle_vertex_struct       () const -> erhe::graphics::Shader_resource*;
     [[nodiscard]] auto get_triangle_vertex_buffer_block () const -> erhe::graphics::Shader_resource*;
     [[nodiscard]] auto get_view_block                   () const -> erhe::graphics::Shader_resource*;
+    [[nodiscard]] auto get_bind_group_layout            () const -> erhe::graphics::Bind_group_layout*;
     [[nodiscard]] auto get_fragment_outputs             () -> erhe::graphics::Fragment_outputs&;
     [[nodiscard]] auto get_triangle_vertex_format       () -> erhe::dataformat::Vertex_format&;
     [[nodiscard]] auto get_vertex_input                 () -> erhe::graphics::Vertex_input_state*;
@@ -97,9 +101,10 @@ public:
 
     // Render the expanded triangles for a specific group (call inside render pass)
     void render(
-        erhe::graphics::Render_command_encoder&      render_encoder,
-        const erhe::graphics::Render_pipeline_state& pipeline_state,
-        uint32_t                                     group = 0
+        erhe::graphics::Render_command_encoder& render_encoder,
+        erhe::graphics::Lazy_render_pipeline&   pipeline_state,
+        const erhe::graphics::Render_pass&      render_pass,
+        uint32_t                                group = 0
     );
 
     void end_frame();
@@ -129,6 +134,7 @@ private:
     std::unique_ptr<erhe::graphics::Shader_resource>       m_triangle_vertex_struct;
     std::unique_ptr<erhe::graphics::Shader_resource>       m_triangle_vertex_buffer_block;
     std::unique_ptr<erhe::graphics::Shader_resource>       m_view_block;
+    std::unique_ptr<erhe::graphics::Bind_group_layout>    m_bind_group_layout;
     erhe::dataformat::Vertex_format                        m_triangle_vertex_format;
 
     // Offsets within view UBO
@@ -147,7 +153,7 @@ private:
     // Shader stages provided by app
     erhe::graphics::Shader_stages*                         m_compute_shader_stages {nullptr};
     erhe::graphics::Shader_stages*                         m_graphics_shader_stages{nullptr};
-    std::optional<erhe::graphics::Compute_pipeline_state>  m_compute_pipeline;
+    std::optional<erhe::graphics::Compute_pipeline>         m_compute_pipeline;
     erhe::graphics::Vertex_input_state                     m_vertex_input;
 
     // Ring buffer clients

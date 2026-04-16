@@ -4,6 +4,7 @@
 #include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/ring_buffer_range.hpp"
 #include "erhe_graphics/shader_stages.hpp"
@@ -37,20 +38,16 @@ auto Text_renderer::build_shader_stages() -> erhe::graphics::Shader_stages_proto
         .shaders = {
             { Shader_type::vertex_shader,   vs_path },
             { Shader_type::fragment_shader, fs_path }
-        }
+        },
+        .bind_group_layout = &m_bind_group_layout,
     };
 
     if (m_use_buffer_texture) {
         create_info.defines.emplace_back("ERHE_VERTEX_DATA_TEXTURE_BUFFER", "1");
     }
 
-    if (!m_graphics_device.get_info().use_bindless_texture) {
-        m_default_uniform_block.add_sampler("s_texture", erhe::graphics::Glsl_type::sampler_2d, 0);
-        if (m_use_buffer_texture) {
-            m_default_uniform_block.add_sampler("s_vertex_data", erhe::graphics::Glsl_type::unsigned_int_sampler_buffer, 1);
-        }
-        create_info.default_uniform_block = &m_default_uniform_block;
-    }
+    // Named sampler declarations (s_texture, s_vertex_data) come from the
+    // bind_group_layout's combined_image_sampler bindings above.
 
     Shader_stages_prototype prototype{m_graphics_device, create_info};
     if (!prototype.is_valid()) {
@@ -63,15 +60,17 @@ auto Text_renderer::build_shader_stages() -> erhe::graphics::Shader_stages_proto
 
 Text_renderer::Text_renderer(erhe::graphics::Device& graphics_device, const bool enabled, const int font_size)
     : m_graphics_device          {graphics_device}
-    , m_default_uniform_block    {graphics_device}
     , m_projection_block         {graphics_device, "projection", 0, erhe::graphics::Shader_resource::Type::uniform_block}
     , m_vertex_ssbo_block{
         graphics_device,
-        "vertex_ssbo",
-        1,
-        graphics_device.get_info().use_shader_storage_buffers
-            ? erhe::graphics::Shader_resource::Type::shader_storage_block
-            : erhe::graphics::Shader_resource::Type::uniform_block
+        {
+            .name          = "vertex_ssbo",
+            .binding_point = 1,
+            .type          = graphics_device.get_info().use_shader_storage_buffers
+                ? erhe::graphics::Shader_resource::Type::shader_storage_block
+                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .readonly      = true
+        }
     }
     , m_clip_from_window_resource  {m_projection_block.add_mat4 ("clip_from_window")}
     , m_texture_resource           {m_projection_block.add_uvec2("texture")}
@@ -109,6 +108,50 @@ Text_renderer::Text_renderer(erhe::graphics::Device& graphics_device, const bool
             .debug_label = "Text_renderer::m_nearest_sampler"
         }
     }
+    , m_bind_group_layout{
+        graphics_device,
+        [&]{
+            std::vector<erhe::graphics::Bind_group_layout_binding> bindings{
+                {m_projection_block.get_binding_point(),
+                    (m_projection_block.get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
+                        ? erhe::graphics::Binding_type::storage_buffer
+                        : erhe::graphics::Binding_type::uniform_buffer},
+                {m_vertex_ssbo_block.get_binding_point(),
+                    (m_vertex_ssbo_block.get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
+                        ? erhe::graphics::Binding_type::storage_buffer
+                        : erhe::graphics::Binding_type::uniform_buffer},
+                // s_texture: bound via Render_command_encoder::set_sampled_image()
+                // before each draw. Declared on the layout so the Vulkan
+                // pipeline layout has matching descriptor slots, the shader
+                // preamble gets the uniform declaration, and the Metal
+                // backend knows the Sampler_aspect.
+                {
+                    .binding_point   = 0,
+                    .type            = erhe::graphics::Binding_type::combined_image_sampler,
+                    .sampler_aspect  = erhe::graphics::Sampler_aspect::color,
+                    .name            = "s_texture",
+                    .glsl_type       = erhe::graphics::Glsl_type::sampler_2d,
+                    .is_texture_heap = false
+                }
+            };
+            if (m_use_buffer_texture) {
+                // s_vertex_data: only used when SSBO storage isn't available
+                // (the buffer-texture vertex data path).
+                bindings.push_back({
+                    .binding_point   = 1,
+                    .type            = erhe::graphics::Binding_type::combined_image_sampler,
+                    .sampler_aspect  = erhe::graphics::Sampler_aspect::color,
+                    .name            = "s_vertex_data",
+                    .glsl_type       = erhe::graphics::Glsl_type::unsigned_int_sampler_buffer,
+                    .is_texture_heap = false
+                });
+            }
+            return erhe::graphics::Bind_group_layout_create_info{
+                .bindings = std::move(bindings),
+                .debug_label = "Text renderer"
+            };
+        }()
+    }
     , m_shader_stages     {graphics_device, build_shader_stages()}
     , m_vertex_ssbo_buffer{
         graphics_device,
@@ -124,7 +167,8 @@ Text_renderer::Text_renderer(erhe::graphics::Device& graphics_device, const bool
     }
     , m_vertex_input      {graphics_device, {}}
     , m_pipeline{
-        erhe::graphics::Render_pipeline_data{
+        graphics_device,
+        erhe::graphics::Render_pipeline_create_info{
             .debug_label    = erhe::utility::Debug_label{"Text renderer"},
             .shader_stages  = &m_shader_stages,
             .vertex_input   = &m_vertex_input,
@@ -179,7 +223,7 @@ Text_renderer::Text_renderer(erhe::graphics::Device& graphics_device, const bool
         m_graphics_device,
         *m_font->texture(),
         m_nearest_sampler,
-        m_use_buffer_texture ? 2u : 0u // slots 0,1 reserved: font at unit 0, buffer texture at unit 1
+        &m_bind_group_layout
     );
 }
 
@@ -256,7 +300,7 @@ auto Text_renderer::measure(const std::string_view text) const -> erhe::ui::Rect
     return m_font ? m_font->measure(text) : erhe::ui::Rectangle{};
 }
 
-void Text_renderer::render(erhe::graphics::Render_command_encoder& encoder, erhe::math::Viewport viewport)
+void Text_renderer::render(erhe::graphics::Render_command_encoder& encoder, const erhe::graphics::Render_pass& render_pass, erhe::math::Viewport viewport)
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -277,19 +321,26 @@ void Text_renderer::render(erhe::graphics::Render_command_encoder& encoder, erhe
         1.0f
     );
 
-    // When using buffer texture: assign font to slot 0 (unit 0 = s_texture),
-    // buffer texture to slot 1 (unit 1 = s_vertex_data).
-    // Otherwise: allocate font texture normally.
-    const uint64_t shader_handle = m_use_buffer_texture
-        ? m_texture_heap->assign(0, m_font->texture(), &m_nearest_sampler)
-        : m_texture_heap->allocate(m_font->texture(), &m_nearest_sampler);
-    if (m_use_buffer_texture) {
-        m_texture_heap->assign(1, m_vertex_buffer_texture.get(), &m_nearest_sampler);
-    }
+    // Allocate font texture in the heap (for bindless handle / descriptor
+    // indexing paths that read the handle from a UBO).
+    const uint64_t shader_handle = m_texture_heap->allocate(m_font->texture(), &m_nearest_sampler);
 
     encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
-    encoder.set_render_pipeline_state(m_pipeline);
+    encoder.set_bind_group_layout(&m_bind_group_layout);
+    erhe::graphics::Render_pipeline* pipeline = m_pipeline.get_pipeline_for(render_pass.get_descriptor());
+    if (pipeline == nullptr) {
+        return;
+    }
+    encoder.set_render_pipeline(*pipeline);
     m_texture_heap->bind();
+    // Bind the named scalar samplers explicitly. On Metal these are direct
+    // [[texture(N)]] bindings; on Vulkan they are pushed via push descriptors.
+    // The texture heap above still populates the bindless slots used by the
+    // Vulkan-descriptor-indexing shader path.
+    encoder.set_sampled_image(0, *m_font->texture(), m_nearest_sampler);
+    if (m_use_buffer_texture) {
+        encoder.set_sampled_image(1, *m_vertex_buffer_texture, m_nearest_sampler);
+    }
 
     const std::size_t vertex_ssbo_stride = m_u_vertex_data_size;
     const std::size_t bytes_per_quad     = 4 * vertex_ssbo_stride;

@@ -207,6 +207,8 @@ auto c_str(const Format format) -> const char*
         case Format::format_8_vec3_uint:              return "format_8_vec3_uint";
         case Format::format_8_vec3_sint:              return "format_8_vec3_sint";
         case Format::format_8_vec4_srgb:              return "format_8_vec4_srgb";
+        case Format::format_8_vec4_bgra_srgb:         return "format_8_vec4_bgra_srgb";
+        case Format::format_8_vec4_bgra_unorm:        return "format_8_vec4_bgra_unorm";
         case Format::format_8_vec4_unorm:             return "format_8_vec4_unorm";
         case Format::format_8_vec4_snorm:             return "format_8_vec4_snorm";
         case Format::format_8_vec4_uscaled:           return "format_8_vec4_uscaled";
@@ -294,6 +296,8 @@ auto get_format_kind(const Format format) -> Format_kind
         case Format::format_8_vec3_uint:              return Format_kind::format_kind_unsigned_integer;
         case Format::format_8_vec3_sint:              return Format_kind::format_kind_signed_integer;
         case Format::format_8_vec4_srgb:              return Format_kind::format_kind_float;
+        case Format::format_8_vec4_bgra_srgb:         return Format_kind::format_kind_float;
+        case Format::format_8_vec4_bgra_unorm:        return Format_kind::format_kind_float;
         case Format::format_8_vec4_unorm:             return Format_kind::format_kind_float;
         case Format::format_8_vec4_snorm:             return Format_kind::format_kind_float;
         case Format::format_8_vec4_uscaled:           return Format_kind::format_kind_float;
@@ -383,6 +387,8 @@ auto get_component_count(const Format format) -> std::size_t
         case Format::format_8_vec3_uint:              return 3;
         case Format::format_8_vec3_sint:              return 3;
         case Format::format_8_vec4_srgb:              return 4;
+        case Format::format_8_vec4_bgra_srgb:         return 4;
+        case Format::format_8_vec4_bgra_unorm:        return 4;
         case Format::format_8_vec4_unorm:             return 4;
         case Format::format_8_vec4_snorm:             return 4;
         case Format::format_8_vec4_uscaled:           return 4;
@@ -474,6 +480,8 @@ auto get_component_byte_size(const Format format) -> std::size_t
         case Format::format_8_vec3_uint:              return 1;
         case Format::format_8_vec3_sint:              return 1;
         case Format::format_8_vec4_srgb:              return 1;
+        case Format::format_8_vec4_bgra_srgb:         return 1;
+        case Format::format_8_vec4_bgra_unorm:        return 1;
         case Format::format_8_vec4_unorm:             return 1;
         case Format::format_8_vec4_snorm:             return 1;
         case Format::format_8_vec4_uscaled:           return 1;
@@ -565,6 +573,8 @@ auto has_color(const Format format) -> bool
         case Format::format_8_vec3_uint:              return true;
         case Format::format_8_vec3_sint:              return true;
         case Format::format_8_vec4_srgb:              return true;
+        case Format::format_8_vec4_bgra_srgb:         return true;
+        case Format::format_8_vec4_bgra_unorm:        return true;
         case Format::format_8_vec4_unorm:             return true;
         case Format::format_8_vec4_snorm:             return true;
         case Format::format_8_vec4_uscaled:           return true;
@@ -656,6 +666,8 @@ auto get_format_size_bytes(const Format format) -> std::size_t
         case Format::format_8_vec3_uint:              return 3 * 1;
         case Format::format_8_vec3_sint:              return 3 * 1;
         case Format::format_8_vec4_srgb:              return 4 * 1;
+        case Format::format_8_vec4_bgra_srgb:         return 4 * 1;
+        case Format::format_8_vec4_bgra_unorm:        return 4 * 1;
         case Format::format_8_vec4_unorm:             return 4 * 1;
         case Format::format_8_vec4_snorm:             return 4 * 1;
         case Format::format_8_vec4_uscaled:           return 4 * 1;
@@ -747,6 +759,8 @@ auto get_rgba_size_bytes(const Format format) -> std::size_t
         case Format::format_8_vec3_uint:
         case Format::format_8_vec3_sint:
         case Format::format_8_vec4_srgb:
+        case Format::format_8_vec4_bgra_srgb:
+        case Format::format_8_vec4_bgra_unorm:
         case Format::format_8_vec4_unorm:
         case Format::format_8_vec4_snorm:
         case Format::format_8_vec4_uscaled:
@@ -1043,6 +1057,22 @@ void convert(const void* src, const Format src_format, void* dst, const Format d
             f_value[1] = srgb_to_linear(snorm8_to_float(i_src[1]));
             f_value[2] = srgb_to_linear(snorm8_to_float(i_src[2]));
             f_value[3] = snorm8_to_float(i_src[3]);
+            break;
+        }
+        case Format::format_8_vec4_bgra_srgb: {
+            const int8_t* i_src = reinterpret_cast<const int8_t*>(src);
+            f_value[0] = srgb_to_linear(snorm8_to_float(i_src[2]));
+            f_value[1] = srgb_to_linear(snorm8_to_float(i_src[1]));
+            f_value[2] = srgb_to_linear(snorm8_to_float(i_src[0]));
+            f_value[3] = snorm8_to_float(i_src[3]);
+            break;
+        }
+        case Format::format_8_vec4_bgra_unorm: {
+            const uint8_t* ui_src = reinterpret_cast<const uint8_t*>(src);
+            f_value[0] = unorm8_to_float(ui_src[2]);
+            f_value[1] = unorm8_to_float(ui_src[1]);
+            f_value[2] = unorm8_to_float(ui_src[0]);
+            f_value[3] = unorm8_to_float(ui_src[3]);
             break;
         }
 
@@ -1558,6 +1588,35 @@ void convert(const void* src, const Format src_format, void* dst, const Format d
             ui[1] = float_to_unorm8(srgb_y);
             ui[2] = float_to_unorm8(srgb_z);
             ui[3] = float_to_unorm8(fw);
+            memcpy(dst, &ui[0], 4 * sizeof(uint8_t));
+            break;
+        }
+        case Format::format_8_vec4_bgra_srgb: {
+            const float fx     = f_value[0] / scale;
+            const float fy     = f_value[1] / scale;
+            const float fz     = f_value[2] / scale;
+            const float fw     = f_value[3] / scale;
+            const float srgb_x = linear_rgb_to_srgb(fx);
+            const float srgb_y = linear_rgb_to_srgb(fy);
+            const float srgb_z = linear_rgb_to_srgb(fz);
+            uint8_t ui[4];
+            ui[0] = float_to_unorm8(srgb_z); // B
+            ui[1] = float_to_unorm8(srgb_y); // G
+            ui[2] = float_to_unorm8(srgb_x); // R
+            ui[3] = float_to_unorm8(fw);     // A
+            memcpy(dst, &ui[0], 4 * sizeof(uint8_t));
+            break;
+        }
+        case Format::format_8_vec4_bgra_unorm: {
+            const float fx = f_value[0] / scale;
+            const float fy = f_value[1] / scale;
+            const float fz = f_value[2] / scale;
+            const float fw = f_value[3] / scale;
+            uint8_t ui[4];
+            ui[0] = float_to_unorm8(fz); // B
+            ui[1] = float_to_unorm8(fy); // G
+            ui[2] = float_to_unorm8(fx); // R
+            ui[3] = float_to_unorm8(fw); // A
             memcpy(dst, &ui[0], 4 * sizeof(uint8_t));
             break;
         }

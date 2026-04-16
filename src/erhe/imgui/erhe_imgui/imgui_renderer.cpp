@@ -17,6 +17,7 @@
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/draw_indirect.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
@@ -30,6 +31,8 @@
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
+
+#include <string>
 
 namespace erhe::imgui {
 
@@ -49,7 +52,7 @@ constexpr std::string_view c_vertex_shader_source = R"NUL(
 layout(location = 0) out vec4 v_color;
 layout(location = 1) out vec2 v_texcoord;
 
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
 layout(location = 2) flat out uvec2 v_texture;
 #else
 layout(location = 2) flat out uint v_texture_id;
@@ -90,7 +93,7 @@ void main()
     gl_ClipDistance[2] = clip_rect[2] - a_position.x;
     gl_ClipDistance[3] = clip_rect[3] - a_position.y;
     v_texcoord         = a_texcoord_0;
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
     v_texture          = draw.draw_parameters[ERHE_DRAW_ID].texture;
 #else
     v_texture_id       = draw.draw_parameters[ERHE_DRAW_ID].texture.x;
@@ -104,7 +107,7 @@ const std::string_view c_fragment_shader_source = R"NUL(
 layout(location = 0) in vec4 v_color;
 layout(location = 1) in vec2 v_texcoord;
 
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
 layout(location = 2) flat in uvec2 v_texture;
 #else
 layout(location = 2) flat in uint v_texture_id;
@@ -113,9 +116,18 @@ layout(location = 3) flat in uint v_array_layer;
 
 void main()
 {
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
     sampler2D s_texture = sampler2D(v_texture);
     vec4 texture_sample = texture(s_texture, v_texcoord.st);
+#elif defined(ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING)
+    vec4 texture_sample = texture(erhe_texture_heap[v_texture_id], v_texcoord.st);
+#elif defined(ERHE_TEXTURE_HEAP_METAL_ARGUMENT_BUFFER)
+    vec4 texture_sample;
+    if (v_array_layer != 0xFFFFFFFFu) {
+        texture_sample = texture(s_texture_array, vec3(v_texcoord.st, float(v_array_layer)));
+    } else {
+        texture_sample = texture(s_texture[v_texture_id], v_texcoord.st);
+    }
 #else
     vec4 texture_sample;
     if (v_array_layer != 0xFFFFFFFFu) {
@@ -131,26 +143,17 @@ void main()
 } // anonymous namespace
 
 #pragma region Imgui_program_interface
-auto get_shader_default_uniform_block(erhe::graphics::Device& graphics_device, const int dedicated_texture_unit) -> erhe::graphics::Shader_resource
-{
-    erhe::graphics::Shader_resource default_uniform_block{graphics_device};
-    if (!graphics_device.get_info().use_bindless_texture) {
-        // Unit 0 reserved for sampler2DArray (array texture support for non-bindless path)
-        default_uniform_block.add_sampler("s_texture_array", erhe::graphics::Glsl_type::sampler_2d_array, 0);
-        // Units 1..N-1 for regular sampler2D textures
-        default_uniform_block.add_sampler("s_textures", erhe::graphics::Glsl_type::sampler_2d, 1, dedicated_texture_unit - 1);
-    }
-    return default_uniform_block;
-}
-
 Imgui_program_interface::Imgui_program_interface(erhe::graphics::Device& graphics_device)
     : draw_parameter_block{
         graphics_device,
-        "draw",
-        0,
-        graphics_device.get_info().use_shader_storage_buffers
-            ? erhe::graphics::Shader_resource::Type::shader_storage_block
-            : erhe::graphics::Shader_resource::Type::uniform_block
+        {
+            .name          = "draw",
+            .binding_point = 0,
+            .type          = graphics_device.get_info().use_shader_storage_buffers
+                ? erhe::graphics::Shader_resource::Type::shader_storage_block
+                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .readonly      = true
+        }
     }
     , draw_parameter_struct{graphics_device, "Draw_parameters"}
     , draw_parameter_struct_offsets{
@@ -187,20 +190,71 @@ Imgui_program_interface::Imgui_program_interface(erhe::graphics::Device& graphic
             }
         }
     }
-    , default_uniform_block{
-        get_shader_default_uniform_block(
-            graphics_device,
-            graphics_device.get_info().max_per_stage_descriptor_samplers
-        )
-    }
 {
+    static_cast<void>(graphics_device);
 }
 
 #pragma endregion Imgui_program_interface
 
+namespace {
+
+[[nodiscard]] auto make_imgui_bind_group_layout_create_info(
+    const erhe::graphics::Device&          graphics_device,
+    const erhe::graphics::Shader_resource& draw_parameter_block
+) -> erhe::graphics::Bind_group_layout_create_info
+{
+    erhe::graphics::Bind_group_layout_create_info create_info{
+        .bindings = {
+            {
+                draw_parameter_block.get_binding_point(),
+                (draw_parameter_block.get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
+                    ? erhe::graphics::Binding_type::storage_buffer
+                    : erhe::graphics::Binding_type::uniform_buffer
+            },
+            // Slot 0: array texture (sampler2DArray) for glyph-atlas style
+            // draws. Dedicated: bound via set_sampled_image(), not in the
+            // texture heap.
+            {
+                .binding_point   = 0,
+                .type            = erhe::graphics::Binding_type::combined_image_sampler,
+                .sampler_aspect  = erhe::graphics::Sampler_aspect::color,
+                .name            = "s_texture_array",
+                .glsl_type       = erhe::graphics::Glsl_type::sampler_2d_array,
+                .is_texture_heap = false
+            }
+        },
+        .debug_label = "ImGui"
+    };
+    // Slot 1+: the texture-heap sampler2D array ("s_textures"). Only
+    // materialized on the GL sampler-array path where the imgui shader
+    // accesses it by name; on GL bindless, Vulkan, and Metal the shader
+    // uses sampler2D(v_texture) with a bindless/argument-buffer handle
+    // and doesn't reference s_textures.
+    if (graphics_device.get_info().texture_heap_path == erhe::graphics::Texture_heap_path::opengl_sampler_array) {
+        const uint32_t max_units = graphics_device.get_info().max_per_stage_descriptor_samplers;
+        const uint32_t array_size = (max_units > 1u) ? (max_units - 1u) : 0u;
+        create_info.bindings.push_back({
+            .binding_point   = 1,
+            .type            = erhe::graphics::Binding_type::combined_image_sampler,
+            .sampler_aspect  = erhe::graphics::Sampler_aspect::color,
+            .name            = "s_textures",
+            .glsl_type       = erhe::graphics::Glsl_type::sampler_2d,
+            .is_texture_heap = true,
+            .array_size      = array_size
+        });
+    }
+    return create_info;
+}
+
+} // anonymous namespace
+
 Imgui_renderer::Imgui_renderer(erhe::graphics::Device& graphics_device, Imgui_settings& settings)
     : m_graphics_device{graphics_device}
     , m_imgui_program_interface{graphics_device}
+    , m_bind_group_layout{
+        graphics_device,
+        make_imgui_bind_group_layout_create_info(graphics_device, m_imgui_program_interface.draw_parameter_block)
+    }
     , m_shader_stages{
         graphics_device,
         erhe::graphics::Shader_stages_prototype{
@@ -212,11 +266,11 @@ Imgui_renderer::Imgui_renderer(erhe::graphics::Device& graphics_device, Imgui_se
                 .interface_blocks      = { &m_imgui_program_interface.draw_parameter_block },
                 .fragment_outputs      = &m_imgui_program_interface.fragment_outputs,
                 .vertex_format         = &m_imgui_program_interface.vertex_format,
-                .default_uniform_block = graphics_device.get_info().use_bindless_texture ? nullptr : &m_imgui_program_interface.default_uniform_block,
                 .shaders = {
                     { erhe::graphics::Shader_type::vertex_shader,   c_vertex_shader_source   },
                     { erhe::graphics::Shader_type::fragment_shader, c_fragment_shader_source }
                 },
+                .bind_group_layout     = &m_bind_group_layout,
                 .build = true
             }
         }
@@ -244,7 +298,8 @@ Imgui_renderer::Imgui_renderer(erhe::graphics::Device& graphics_device, Imgui_se
     }
     , m_vertex_input{graphics_device, erhe::graphics::Vertex_input_state_data::make(m_imgui_program_interface.vertex_format)}
     , m_pipeline{
-        erhe::graphics::Render_pipeline_data{
+        graphics_device,
+        erhe::graphics::Render_pipeline_create_info{
             .debug_label    = erhe::utility::Debug_label{"ImGui Renderer"},
             .shader_stages  = &m_shader_stages,
             .vertex_input   = &m_vertex_input,
@@ -255,6 +310,24 @@ Imgui_renderer::Imgui_renderer(erhe::graphics::Device& graphics_device, Imgui_se
         }
     }
     , m_dummy_texture{graphics_device.create_dummy_texture(erhe::dataformat::Format::format_8_vec4_srgb)}
+    , m_dummy_array_texture{
+        std::make_shared<erhe::graphics::Texture>(
+            graphics_device,
+            erhe::graphics::Texture_create_info{
+                .device            = graphics_device,
+                .usage_mask        = erhe::graphics::Image_usage_flag_bit_mask::sampled | erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
+                .type              = erhe::graphics::Texture_type::texture_2d_array,
+                .pixelformat       = erhe::dataformat::Format::format_8_vec4_srgb,
+                .use_mipmaps       = false,
+                .sample_count      = 0,
+                .width             = 2,
+                .height            = 2,
+                .depth             = 1,
+                .array_layer_count = 1,
+                .debug_label       = erhe::utility::Debug_label{"imgui dummy array texture"}
+            }
+        )
+    }
     , m_nearest_sampler{
         graphics_device,
         {
@@ -350,29 +423,11 @@ Imgui_renderer::Imgui_renderer(erhe::graphics::Device& graphics_device, Imgui_se
     // (3) If you have multiple imgui contexts, they also need to have a matching value for ImGuiBackendFlags_RendererHasTextures.
     m_font_atlas.RendererHasTextures = true;
 
-    if (!m_graphics_device.get_info().use_bindless_texture) {
-        // Create dummy 1x1x1 array texture for the reserved sampler2DArray slot
-        const erhe::graphics::Texture_create_info array_tex_create_info{
-            .device            = m_graphics_device,
-            .usage_mask        = erhe::graphics::Image_usage_flag_bit_mask::sampled,
-            .type              = erhe::graphics::Texture_type::texture_2d,
-            .pixelformat       = erhe::dataformat::Format::format_8_vec4_srgb,
-            .use_mipmaps       = false,
-            .sample_count      = 0,
-            .width             = 1,
-            .height            = 1,
-            .array_layer_count = 1,
-            .debug_label       = erhe::utility::Debug_label{"ImGui dummy array texture"}
-        };
-        m_dummy_array_texture = std::make_shared<erhe::graphics::Texture>(m_graphics_device, array_tex_create_info);
-    }
-
     m_texture_heap = std::make_unique<erhe::graphics::Texture_heap>(
         m_graphics_device,
         *m_dummy_texture.get(),
         m_nearest_sampler,
-        m_graphics_device.get_info().use_bindless_texture ? 0u : 1u, // slot 0 reserved for array texture
-        m_graphics_device.get_info().use_bindless_texture ? nullptr : &m_imgui_program_interface.default_uniform_block
+        &m_bind_group_layout
     );
 }
 
@@ -678,10 +733,56 @@ auto Imgui_renderer::get_font_atlas() -> ImFontAtlas*
 
 auto Imgui_renderer::get_sampler(const Erhe_ImTextureID& texture_id) const -> const erhe::graphics::Sampler&
 {
-    return get_sampler(
-        static_cast<erhe::graphics::Filter             >(texture_id.filter),
-        static_cast<erhe::graphics::Sampler_mipmap_mode>(texture_id.mipmap_mode)
+    const erhe::graphics::Filter              filter      = static_cast<erhe::graphics::Filter             >(texture_id.filter);
+    const erhe::graphics::Sampler_mipmap_mode mipmap_mode = static_cast<erhe::graphics::Sampler_mipmap_mode>(texture_id.mipmap_mode);
+    if (texture_id.lod >= 0) {
+        return get_lod_clamped_sampler(filter, mipmap_mode, texture_id.lod);
+    }
+    return get_sampler(filter, mipmap_mode);
+}
+
+auto Imgui_renderer::get_lod_clamped_sampler(
+    const erhe::graphics::Filter              filter,
+    const erhe::graphics::Sampler_mipmap_mode mipmap_mode,
+    const int                                 lod
+) const -> const erhe::graphics::Sampler&
+{
+    // Force mipmap selection even if the caller did not specify one. With
+    // mipmap_mode == not_mipmapped the GL min_filter degenerates to GL_LINEAR
+    // (not GL_LINEAR_MIPMAP_*) which ignores min_lod/max_lod and always reads
+    // mip 0 -- the opposite of what we want here. "nearest" mip selection
+    // combined with min_lod == max_lod snaps cleanly to the requested mip.
+    const erhe::graphics::Sampler_mipmap_mode effective_mipmap_mode =
+        (mipmap_mode == erhe::graphics::Sampler_mipmap_mode::not_mipmapped)
+            ? erhe::graphics::Sampler_mipmap_mode::nearest
+            : mipmap_mode;
+
+    const uint64_t key =
+        (static_cast<uint64_t>(filter)                & 0xffu) |
+        ((static_cast<uint64_t>(effective_mipmap_mode) & 0xffu) << 8) |
+        (static_cast<uint64_t>(lod)                   << 16);
+    auto i = m_lod_clamped_samplers.find(key);
+    if (i != m_lod_clamped_samplers.end()) {
+        return *i->second;
+    }
+    const float lod_f = static_cast<float>(lod);
+    auto sampler = std::make_unique<erhe::graphics::Sampler>(
+        m_graphics_device,
+        erhe::graphics::Sampler_create_info{
+            .min_filter  = filter,
+            .mag_filter  = filter,
+            .mipmap_mode = effective_mipmap_mode,
+            .lod_bias    = 0.0f,
+            .max_lod     = lod_f,
+            .min_lod     = lod_f,
+            .debug_label = erhe::utility::Debug_label{
+                std::string{"Imgui_renderer lod-clamped "} + std::to_string(lod)
+            }
+        }
     );
+    const erhe::graphics::Sampler& ref = *sampler;
+    m_lod_clamped_samplers.emplace(key, std::move(sampler));
+    return ref;
 }
 
 auto Imgui_renderer::get_sampler(
@@ -739,6 +840,7 @@ auto Imgui_renderer::image(Draw_texture_parameters&& parameters) -> bool
                 .filter            = static_cast<unsigned int>(parameters.filter),
                 .mipmap_mode       = static_cast<unsigned int>(parameters.mipmap_mode),
                 .array_layer       = parameters.array_layer,
+                .lod               = parameters.lod,
                 .debug_label       = parameters.debug_label.string_view()
             },
             ImVec2{static_cast<float>(parameters.width), static_cast<float>(parameters.height)},
@@ -789,6 +891,7 @@ auto Imgui_renderer::image_button(Draw_texture_parameters&& parameters) -> bool
             .filter            = static_cast<unsigned int>(parameters.filter),
             .mipmap_mode       = static_cast<unsigned int>(parameters.mipmap_mode),
             .array_layer       = parameters.array_layer,
+            .lod               = parameters.lod,
             .debug_label       = parameters.debug_label.string_view()
         },
         ImVec2{static_cast<float>(parameters.width), static_cast<float>(parameters.height)},
@@ -875,11 +978,12 @@ void Imgui_renderer::update_texture(ImTextureData* tex)
 
         tex->SetTexID(
             Erhe_ImTextureID{
-                texture.get(),
-                static_cast<unsigned int>(erhe::graphics::Filter::linear),
-                static_cast<unsigned int>(erhe::graphics::Sampler_mipmap_mode::not_mipmapped),
-                -1,
-                "ImGui texture"
+                .texture_reference = texture.get(),
+                .filter            = static_cast<unsigned int>(erhe::graphics::Filter::linear),
+                .mipmap_mode       = static_cast<unsigned int>(erhe::graphics::Sampler_mipmap_mode::not_mipmapped),
+                .array_layer       = -1,
+                .lod               = -1,
+                .debug_label       = "ImGui texture"
             }
         );
         tex->SetStatus(ImTextureStatus_OK);
@@ -973,7 +1077,10 @@ void Imgui_renderer::update_texture(ImTextureData* tex)
     }
 }
 
-void Imgui_renderer::render_draw_data(erhe::graphics::Render_command_encoder& render_encoder)
+void Imgui_renderer::render_draw_data(
+    erhe::graphics::Render_command_encoder& render_encoder,
+    const erhe::graphics::Render_pass&      render_pass
+)
 {
     SPDLOG_LOGGER_TRACE(log_frame, "begin Imgui_renderer::render_draw_data()");
 
@@ -1039,12 +1146,16 @@ void Imgui_renderer::render_draw_data(erhe::graphics::Render_command_encoder& re
 
     // This binds vertex input states (VAO) and shader stages (shader program)
     // and most other state
-    render_encoder.set_render_pipeline_state(m_pipeline);
+    render_encoder.set_bind_group_layout(&m_bind_group_layout);
+    erhe::graphics::Render_pipeline* pipeline = m_pipeline.get_pipeline_for(render_pass.get_descriptor());
+    if (pipeline == nullptr) {
+        return;
+    }
+    render_encoder.set_render_pipeline(*pipeline);
+    render_encoder.set_viewport_rect(0, 0, fb_width, fb_height);
+    render_encoder.set_scissor_rect(0, 0, fb_width, fb_height);
 
     m_texture_heap->reset_heap();
-    if (m_dummy_array_texture) {
-        m_texture_heap->assign(0, m_dummy_array_texture.get(), &m_nearest_sampler);
-    }
 
     for (int n = 0; n < draw_data->CmdListsCount; n++) {
         erhe::graphics::Scoped_debug_group cmd_list_scope{"CmdList"};
@@ -1109,9 +1220,11 @@ void Imgui_renderer::render_draw_data(erhe::graphics::Render_command_encoder& re
                 cmd_batch_end = cmd_i;
             }
 
-            // Assign array texture to reserved slot 0 for this batch
+            // Always bind s_texture_array so Metal has a valid sampler at the slot.
             if (batch_array_texture != nullptr) {
-                m_texture_heap->assign(0, batch_array_texture, batch_array_sampler);
+                render_encoder.set_sampled_image(0, *batch_array_texture, *batch_array_sampler);
+            } else {
+                render_encoder.set_sampled_image(0, *m_dummy_array_texture, m_nearest_sampler);
             }
             if (
                 (draw_parameter_byte_count == 0) ||
@@ -1309,9 +1422,6 @@ void Imgui_renderer::render_draw_data(erhe::graphics::Render_command_encoder& re
                 break;
             } else {
                 m_texture_heap->reset_heap();
-                if (m_dummy_array_texture) {
-                    m_texture_heap->assign(0, m_dummy_array_texture.get(), &m_nearest_sampler);
-                }
             }
         } // outer loop going throught batches of commands
     } // for all cmd lists

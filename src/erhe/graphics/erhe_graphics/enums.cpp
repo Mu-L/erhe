@@ -256,11 +256,13 @@ auto is_indexed(const Buffer_target buffer_target) -> bool
 auto c_str(const Texture_type type) -> const char*
 {
     switch (type) {
-        case Texture_type::texture_buffer  : return "texture_buffer";
-        case Texture_type::texture_1d      : return "texture_1d";
-        case Texture_type::texture_2d      : return "texture_2d";
-        case Texture_type::texture_3d      : return "texture_3d";
-        case Texture_type::texture_cube_map: return "texture_cube_map";
+        case Texture_type::texture_buffer        : return "texture_buffer";
+        case Texture_type::texture_1d            : return "texture_1d";
+        case Texture_type::texture_2d            : return "texture_2d";
+        case Texture_type::texture_2d_array      : return "texture_2d_array";
+        case Texture_type::texture_3d            : return "texture_3d";
+        case Texture_type::texture_cube_map      : return "texture_cube_map";
+        case Texture_type::texture_cube_map_array: return "texture_cube_map_array";
         default: return "?";
     }
 }
@@ -362,6 +364,38 @@ auto c_str(const Shader_type shader_type) -> const char*
         case Shader_type::geometry_shader       : return "geometry_shader";
         case Shader_type::tess_control_shader   : return "tess_control_shader";
         case Shader_type::tess_evaluation_shader: return "tess_evaluation_shader";
+        default: return "?";
+    }
+}
+
+auto c_str(const Resolve_mode resolve_mode) -> const char*
+{
+    switch (resolve_mode) {
+        case Resolve_mode::sample_zero: return "sample_zero";
+        case Resolve_mode::average:     return "average";
+        case Resolve_mode::min:         return "min";
+        case Resolve_mode::max:         return "max";
+        default: return "?";
+    }
+}
+
+auto c_str(const Sampler_aspect sampler_aspect) -> const char*
+{
+    switch (sampler_aspect) {
+        case Sampler_aspect::color:   return "color";
+        case Sampler_aspect::depth:   return "depth";
+        case Sampler_aspect::stencil: return "stencil";
+        default: return "?";
+    }
+}
+
+auto c_str(const Message_severity message_severity) -> const char*
+{
+    switch (message_severity) {
+        case Message_severity::verbose: return "verbose";
+        case Message_severity::info:    return "info";
+        case Message_severity::warning: return "warning";
+        case Message_severity::error:   return "error";
         default: return "?";
     }
 }

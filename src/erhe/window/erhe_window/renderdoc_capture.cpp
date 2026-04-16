@@ -29,7 +29,7 @@ namespace erhe::window {
 
 namespace {
 
-RENDERDOC_API_1_6_0* renderdoc_api{nullptr};
+RENDERDOC_API_1_7_0* renderdoc_api{nullptr};
 bool is_initialized{false};
 
 }
@@ -47,7 +47,7 @@ void initialize_frame_capture()
             return;
         }
 
-        int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_6_0, (void **)&renderdoc_api);
+        int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, (void **)&renderdoc_api);
         log_renderdoc->trace("Loaded RenderDoc DLL, RENDERDOC_GetAPI() return value = {}", ret);
         ERHE_VERIFY(ret == 1);
 
@@ -73,6 +73,12 @@ void initialize_frame_capture()
     is_initialized = true;
 }
 
+auto get_renderdoc_api() -> void*
+{
+    return renderdoc_api;
+}
+
+#if 0
 void start_frame_capture(const erhe::window::Context_window& context_window)
 {
     if (!renderdoc_api || !is_initialized) {
@@ -115,5 +121,6 @@ void end_frame_capture(const erhe::window::Context_window& context_window)
         log_renderdoc->warn("RenderDoc: LaunchReplayUI() failed");
     }
 }
+#endif
 
 }

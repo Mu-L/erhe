@@ -19,6 +19,8 @@ erhe_target_sources_grouped(
     erhe_scene_renderer/light_buffer.hpp
     erhe_scene_renderer/material_buffer.cpp
     erhe_scene_renderer/material_buffer.hpp
+    erhe_scene_renderer/mesh_memory.cpp
+    erhe_scene_renderer/mesh_memory.hpp
     erhe_scene_renderer/primitive_buffer.cpp
     erhe_scene_renderer/primitive_buffer.hpp
     erhe_scene_renderer/program_interface.cpp
@@ -36,6 +38,7 @@ target_link_libraries(
         erhe::codegen
         erhe::dataformat
         erhe::graphics
+        erhe::graphics_buffer_sink
         erhe::math
         erhe::primitive
         erhe::renderer
@@ -57,12 +60,18 @@ erhe_codegen_generate(
     OUTPUT_DIR      "${_scene_renderer_gen}"
     DEFINITIONS
         "${_scene_renderer_defs}/primitive_color_source.py"
+        "${_scene_renderer_defs}/mesh_memory_config.py"
 )
 
 # Only the enum header -- serialize/deserialize .cpp compiles in the editor
 set_source_files_properties(${_scene_renderer_gen}/primitive_color_source.hpp PROPERTIES GENERATED TRUE)
 target_sources(${_target} PRIVATE ${_scene_renderer_gen}/primitive_color_source.hpp)
 source_group("codegen generated" FILES ${_scene_renderer_gen}/primitive_color_source.hpp)
+
+# Mesh_memory_config struct -- header only here, serialization .cpp compiles in the editor
+set_source_files_properties(${_scene_renderer_gen}/mesh_memory_config.hpp PROPERTIES GENERATED TRUE)
+target_sources(${_target} PRIVATE ${_scene_renderer_gen}/mesh_memory_config.hpp)
+source_group("codegen generated" FILES ${_scene_renderer_gen}/mesh_memory_config.hpp)
 
 target_include_directories(${_target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 

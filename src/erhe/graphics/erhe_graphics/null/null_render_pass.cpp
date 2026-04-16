@@ -1,11 +1,12 @@
 #include "erhe_graphics/null/null_render_pass.hpp"
+#include "erhe_graphics/null/null_device.hpp"
 #include "erhe_graphics/device.hpp"
 
 namespace erhe::graphics {
 
 std::mutex                     Render_pass_impl::s_mutex;
 std::vector<Render_pass_impl*> Render_pass_impl::s_all_framebuffers;
-Render_pass_impl*              Render_pass_impl::s_active_render_pass{nullptr};
+Render_pass_impl*              Device_impl::s_active_render_pass{nullptr};
 
 Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor& render_pass_descriptor)
     : m_device              {device}
@@ -87,14 +88,17 @@ auto Render_pass_impl::get_debug_label() const -> erhe::utility::Debug_label
     return m_debug_label;
 }
 
-void Render_pass_impl::start_render_pass()
+void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, Render_pass* const render_pass_after)
 {
     // No-op in null backend
+    static_cast<void>(render_pass_before);
+    static_cast<void>(render_pass_after);
 }
 
-void Render_pass_impl::end_render_pass()
+void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
 {
     // No-op in null backend
+    static_cast<void>(render_pass_after);
 }
 
 } // namespace erhe::graphics

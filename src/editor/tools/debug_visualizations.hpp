@@ -3,6 +3,7 @@
 #include "renderable.hpp"
 #include "windows/property_editor.hpp"
 
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
 #include "erhe_imgui/imgui_window.hpp"
 #include "app_message.hpp"
@@ -192,7 +193,7 @@ private:
 
     erhe::graphics::Vertex_input_state                    m_empty_vertex_input;
     std::unique_ptr<erhe::scene_renderer::Texel_renderer> m_shadow_texel_renderer;
-    erhe::graphics::Render_pipeline_state                 m_shadow_texel_pipeline;
+    erhe::graphics::Lazy_render_pipeline                  m_shadow_texel_pipeline;
 };
 
 }

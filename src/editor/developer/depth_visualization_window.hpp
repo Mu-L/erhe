@@ -2,12 +2,14 @@
 
 #include "erhe_rendergraph/texture_rendergraph_node.hpp"
 #include "erhe_imgui/imgui_window.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
 
 namespace erhe::graphics       { class Device; }
 namespace erhe::imgui          { class Imgui_windows; }
 namespace erhe::rendergraph    { class Rendergraph; }
 namespace erhe::scene_renderer { class Forward_renderer; }
+namespace erhe::scene_renderer { class Mesh_memory; }
 
 namespace editor {
 
@@ -15,7 +17,6 @@ class Depth_visualization_window;
 class Depth_to_color_rendergraph_node;
 class App_context;
 class App_rendering;
-class Mesh_memory;
 class Programs;
 class Shadow_render_node;
 
@@ -26,7 +27,7 @@ public:
     Depth_to_color_rendergraph_node(
         erhe::rendergraph::Rendergraph&         rendergraph,
         erhe::scene_renderer::Forward_renderer& forward_renderer,
-        Mesh_memory&                            mesh_memory,
+        erhe::scene_renderer::Mesh_memory&      mesh_memory,
         Programs&                               programs
     );
 
@@ -38,13 +39,13 @@ public:
 
 private:
     erhe::scene_renderer::Forward_renderer& m_forward_renderer;
-    Mesh_memory&                            m_mesh_memory;
+    erhe::scene_renderer::Mesh_memory&      m_mesh_memory;
 
     // TODO These resources should not be per node
-    erhe::graphics::Vertex_input_state                  m_empty_vertex_input;
-    erhe::graphics::Render_pipeline_state               m_render_pipeline_state;
-    std::vector<erhe::graphics::Render_pipeline_state*> m_render_pipeline_states;
-    int                                                 m_light_index{};
+    erhe::graphics::Vertex_input_state                 m_empty_vertex_input;
+    erhe::graphics::Lazy_render_pipeline               m_render_pipeline_state;
+    std::vector<erhe::graphics::Lazy_render_pipeline*> m_render_pipeline_states;
+    int                                                m_light_index{};
 };
 
 /// Rendergraph sink node for showing texture in ImGui window
@@ -58,7 +59,7 @@ public:
         erhe::scene_renderer::Forward_renderer& forward_renderer,
         App_context&                            context,
         App_rendering&                          app_rendering,
-        Mesh_memory&                            mesh_memory,
+        erhe::scene_renderer::Mesh_memory&      mesh_memory,
         Programs&                               programs
     );
 

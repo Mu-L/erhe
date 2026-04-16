@@ -6,8 +6,9 @@
 
 namespace erhe::graphics {
     class Device;
+    class Lazy_render_pipeline;
     class Render_command_encoder;
-    class Render_pipeline_state;
+    class Render_pass;
 }
 namespace erhe::scene { class Camera; }
 namespace erhe::math  { class Viewport; }
@@ -27,7 +28,8 @@ public:
     {
     public:
         erhe::graphics::Render_command_encoder&                     render_encoder;
-        erhe::graphics::Render_pipeline_state&                      pipeline;
+        erhe::graphics::Lazy_render_pipeline&                       pipeline;
+        const erhe::graphics::Render_pass&                          render_pass;
         const erhe::scene::Camera*                                  camera           {nullptr};
         const Light_projections*                                    light_projections{nullptr};
         const std::span<const std::shared_ptr<erhe::scene::Light>>& lights           {};

@@ -90,18 +90,14 @@ static constexpr const char* c_shader_stages_variant_strings[] =
 class Programs
 {
 public:
-    explicit Programs(erhe::graphics::Device& graphics_device);
+    Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer::Program_interface& program_interface);
 
     void load_programs(tf::Executor& executor, erhe::graphics::Device& graphics_device, erhe::scene_renderer::Program_interface& program_interface);
 
     [[nodiscard]] auto get_variant_shader_stages(Shader_stages_variant variant) const -> const erhe::graphics::Shader_stages*;
 
     // Public members
-    std::filesystem::path            shader_path;
-    erhe::graphics::Shader_resource  default_uniform_block; // for non-bindless textures
-    erhe::graphics::Shader_resource* shadow_sampler_compare;
-    erhe::graphics::Shader_resource* shadow_sampler_no_compare;
-    erhe::graphics::Shader_resource* texture_sampler;
+    std::filesystem::path                    shader_path;
     erhe::graphics::Reloadable_shader_stages error;
     erhe::graphics::Reloadable_shader_stages brdf_slice;
     erhe::graphics::Reloadable_shader_stages brush;

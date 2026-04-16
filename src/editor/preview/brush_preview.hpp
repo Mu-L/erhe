@@ -10,11 +10,11 @@ class Brush_preview : public Scene_preview
 {
 public:
     Brush_preview(
-        erhe::graphics::Device&         graphics_device,
-        App_context&                    app_context,
-        Mesh_memory&                    mesh_memory,
-        Programs&                       programs,
-        bool                            reverse_depth
+        erhe::graphics::Device&            graphics_device,
+        App_context&                       app_context,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Programs&                          programs,
+        bool                               reverse_depth
     );
     ~Brush_preview() noexcept;
 

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/fragment_outputs.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
@@ -85,12 +86,14 @@ private:
     public:
         uint64_t                              serial       {0};
         bool                                  reverse_depth{true};
-        erhe::graphics::Render_pipeline_state pipeline     {};
+        erhe::graphics::Lazy_render_pipeline pipeline;
     };
 
-    [[nodiscard]] auto get_pipeline(const erhe::graphics::Vertex_input_state* vertex_input_state, bool reverse_depth) -> erhe::graphics::Render_pipeline_state&;
+    [[nodiscard]] auto get_pipeline(const erhe::graphics::Vertex_input_state* vertex_input_state, bool reverse_depth) -> erhe::graphics::Lazy_render_pipeline&;
 
     erhe::graphics::Device&                       m_graphics_device;
+    erhe::graphics::Fragment_outputs              m_empty_fragment_outputs;
+    erhe::graphics::Bind_group_layout*            m_bind_group_layout{nullptr};
     uint64_t                                      m_pipeline_cache_serial{0};
     std::vector<Pipeline_cache_entry>             m_pipeline_cache_entries;
     erhe::graphics::Reloadable_shader_stages      m_shader_stages;

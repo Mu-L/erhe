@@ -1,8 +1,9 @@
 #pragma once
 
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
 #include "erhe_graphics/device.hpp"
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/shader_resource.hpp"
@@ -22,6 +23,7 @@ namespace erhe::graphics {
     class Device;
     class OpenGL_state_tracker;
     class Render_command_encoder;
+    class Render_pass;
     class Sampler;
     class Shader_monitor;
     class Shader_stages;
@@ -57,7 +59,7 @@ public:
     [[nodiscard]] auto font_size() -> float;
     [[nodiscard]] auto measure  (std::string_view text) const -> erhe::ui::Rectangle;
 
-    void render(erhe::graphics::Render_command_encoder& encoder, erhe::math::Viewport viewport);
+    void render(erhe::graphics::Render_command_encoder& encoder, const erhe::graphics::Render_pass& render_pass, erhe::math::Viewport viewport);
     void rebuild_depth_state(bool reverse_depth);
 
 private:
@@ -74,7 +76,6 @@ private:
     static constexpr std::size_t index_stride            {2};
 
     erhe::graphics::Device&                m_graphics_device;
-    erhe::graphics::Shader_resource        m_default_uniform_block; // containing sampler uniforms for non bindless textures
     erhe::graphics::Shader_resource        m_projection_block;
     erhe::graphics::Shader_resource        m_vertex_ssbo_block;
     erhe::graphics::Shader_resource*       m_clip_from_window_resource;
@@ -92,12 +93,13 @@ private:
     bool                                   m_use_buffer_texture             {false};
     erhe::graphics::Fragment_outputs       m_fragment_outputs;
     erhe::graphics::Sampler                m_nearest_sampler;
+    erhe::graphics::Bind_group_layout      m_bind_group_layout;
     erhe::graphics::Shader_stages          m_shader_stages;
     std::unique_ptr<erhe::ui::Font>        m_font;
     erhe::graphics::Ring_buffer_client     m_vertex_ssbo_buffer;
     erhe::graphics::Ring_buffer_client     m_projection_buffer;
     erhe::graphics::Vertex_input_state     m_vertex_input;
-    erhe::graphics::Render_pipeline_state  m_pipeline;
+    erhe::graphics::Lazy_render_pipeline    m_pipeline;
 
     std::vector<erhe::graphics::Ring_buffer_range> m_vertex_buffer_ranges;
     std::unique_ptr<erhe::graphics::Texture_heap>  m_texture_heap;

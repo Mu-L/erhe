@@ -6,9 +6,9 @@
 #include "erhe_renderer/renderer_config.hpp"
 
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/render_command_encoder.hpp"
 #include "erhe_graphics/span.hpp"
 #include "erhe_graphics/texture.hpp"
-#include "erhe_graphics/texture_heap.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/light.hpp"
 #include "erhe_scene/node.hpp"
@@ -102,7 +102,8 @@ auto Light_interface::get_sampler(const bool compare, const bool reverse_depth) 
 }
 
 Light_buffer::Light_buffer(erhe::graphics::Device& graphics_device, Light_interface& light_interface)
-    : m_light_interface{light_interface}
+    : m_graphics_device{graphics_device}
+    , m_light_interface{light_interface}
     , m_light_buffer{
         graphics_device,
         erhe::graphics::Buffer_target::uniform,
@@ -120,8 +121,8 @@ Light_buffer::Light_buffer(erhe::graphics::Device& graphics_device, Light_interf
             graphics_device,
             erhe::graphics::Texture_create_info {
                 .device            = graphics_device,
-                .usage_mask        = erhe::graphics::Image_usage_flag_bit_mask::sampled,
-                .type              = erhe::graphics::Texture_type::texture_2d,
+                .usage_mask        = erhe::graphics::Image_usage_flag_bit_mask::sampled | erhe::graphics::Image_usage_flag_bit_mask::transfer_dst | erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment,
+                .type              = erhe::graphics::Texture_type::texture_2d_array,
                 .pixelformat       = graphics_device.choose_depth_stencil_format(erhe::graphics::format_flag_require_depth, 0),
                 .width             = 1,
                 .height            = 1,
@@ -132,6 +133,11 @@ Light_buffer::Light_buffer(erhe::graphics::Device& graphics_device, Light_interf
         )
     }
 {
+    // Initialize fallback shadow texture contents (clear to far-plane depth) and
+    // leave it in DEPTH_STENCIL_READ_ONLY_OPTIMAL. A bare UNDEFINED -> READ_ONLY
+    // transition would discard contents and is flagged by the validation layer
+    // as a best-practices error.
+    graphics_device.clear_texture(*m_fallback_shadow_texture.get(), {1.0, 0.0, 0.0, 0.0});
 }
 
 void Light_projections::apply(
@@ -157,11 +163,15 @@ void Light_projections::apply(
 
     light_projection_transforms.clear();
 
+    std::size_t shadow_index_counter = 0;
     for (const auto& light : lights) {
         const std::size_t light_index = light_projection_transforms.size();
-        //log_render->info("update light projection for {} index {}", light->describe(), light_index);
         auto transforms = light->projection_transforms(parameters);
         transforms.index = light_index;
+        if (light->cast_shadow) {
+            transforms.shadow_index = shadow_index_counter;
+            ++shadow_index_counter;
+        }
         light_projection_transforms.push_back(transforms);
     }
 
@@ -196,8 +206,7 @@ auto Light_projections::get_light_projection_transforms_for_light(const erhe::sc
 auto Light_buffer::update(
     const std::span<const std::shared_ptr<erhe::scene::Light>>& lights,
     const Light_projections*                                    light_projections,
-    const glm::vec3&                                            ambient_light,
-    erhe::graphics::Texture_heap&                               texture_heap
+    const glm::vec3&                                            ambient_light
 ) -> erhe::graphics::Ring_buffer_range
 {
     ERHE_PROFILE_FUNCTION();
@@ -231,9 +240,18 @@ auto Light_buffer::update(
         shadow_map_texture = m_fallback_shadow_texture.get();
     }
     if (shadow_map_texture != nullptr) {
-        shadow_map_texture_handle_compare    = texture_heap.assign(c_texture_heap_slot_shadow_compare,    shadow_map_texture, compare_sampler);
-        shadow_map_texture_handle_no_compare = texture_heap.assign(c_texture_heap_slot_shadow_no_compare, shadow_map_texture, no_compare_sampler);
-        log_render->trace   (
+        // The handles written into the UBO are only used as a "shadow
+        // texture present" sentinel on all backends: the shader reads
+        // shadow_texture_compare.x and treats max_u32 as "no shadow map".
+        // Actual shadow sampling goes through the named s_shadow_compare /
+        // s_shadow_no_compare uniform bindings declared in the default
+        // uniform block, which bind_shadow_samplers() below binds via
+        // set_sampled_image() for every backend. A zero handle stub from
+        // backends without GL_ARB_bindless_texture is fine for the sentinel
+        // check.
+        shadow_map_texture_handle_compare    = m_graphics_device.get_handle(*shadow_map_texture, *compare_sampler);
+        shadow_map_texture_handle_no_compare = m_graphics_device.get_handle(*shadow_map_texture, *no_compare_sampler);
+        log_render->trace(
             "Shadow texture assigned: texture='{}' handle_compare={} handle_no_compare={}",
             shadow_map_texture->get_debug_label().data(),
             shadow_map_texture_handle_compare,
@@ -334,6 +352,37 @@ auto Light_buffer::update(
     SPDLOG_LOGGER_TRACE(log_draw, "wrote up to {} entries to light buffer", padding_light_offset);
 
     return buffer_range;
+}
+
+void Light_buffer::bind_shadow_samplers(
+    erhe::graphics::Render_command_encoder& encoder,
+    const Light_projections*                light_projections
+)
+{
+    // Bind the shadow map to the named sampler bindings declared in the
+    // bind group layout (s_shadow_compare and s_shadow_no_compare). The
+    // depth aspect comes from the layout binding's Sampler_aspect::depth
+    // annotation set in program_interface.cpp; the encoder's
+    // set_sampled_image() implementation reads it and creates a
+    // depth-aspect VkImageView. The fallback texture (always created in
+    // the constructor) ensures we always have a valid texture to bind.
+    erhe::graphics::Texture* shadow_map_texture = (light_projections != nullptr)
+        ? light_projections->shadow_map_texture.get()
+        : nullptr;
+    if (shadow_map_texture == nullptr) {
+        shadow_map_texture = m_fallback_shadow_texture.get();
+    }
+    if (shadow_map_texture == nullptr) {
+        return;
+    }
+    const bool reverse_depth = (light_projections != nullptr) ? light_projections->parameters.reverse_depth : true;
+    const erhe::graphics::Sampler* compare_sampler    = m_light_interface.get_sampler(true, reverse_depth);
+    const erhe::graphics::Sampler* no_compare_sampler = m_light_interface.get_sampler(false);
+    // Bind shadow textures to the uniform sampler declarations in the
+    // default uniform block. All backends use set_sampled_image() for
+    // dedicated (non-texture-heap) samplers.
+    encoder.set_sampled_image(c_texture_heap_slot_shadow_compare,    *shadow_map_texture, *compare_sampler);
+    encoder.set_sampled_image(c_texture_heap_slot_shadow_no_compare, *shadow_map_texture, *no_compare_sampler);
 }
 
 auto Light_buffer::update_control(const std::size_t light_index) -> erhe::graphics::Ring_buffer_range

@@ -11,10 +11,11 @@
 
 #include <memory>
 
-namespace erhe::graphics    { class Device; }
-namespace erhe::imgui       { class Imgui_renderer; }
-namespace erhe::rendergraph { class Rendergraph; }
-namespace erhe::scene       { class Node; };
+namespace erhe::graphics       { class Device; }
+namespace erhe::imgui          { class Imgui_renderer; }
+namespace erhe::rendergraph    { class Rendergraph; }
+namespace erhe::scene          { class Node; };
+namespace erhe::scene_renderer { class Mesh_memory; }
 
 struct Hud_config;
 
@@ -25,7 +26,6 @@ class App_message_bus;
 class App_windows;
 class Headset_view;
 class Icon_set;
-class Mesh_memory;
 class Rendertarget_imgui_host;
 class Rendertarget_mesh;
 class Scene_builder;
@@ -61,18 +61,18 @@ class Hud
 {
 public:
     Hud(
-        const Hud_config&               hud_config,
-        erhe::commands::Commands&       commands,
-        erhe::graphics::Device&         graphics_device,
-        erhe::imgui::Imgui_renderer&    imgui_renderer,
-        erhe::rendergraph::Rendergraph& rendergraph,
-        App_context&                    context,
-        App_message_bus&                app_message_bus,
-        App_windows&                    app_windows,
-        Headset_view&                   headset_view,
-        Mesh_memory&                    mesh_memory,
-        Scene_builder&                  scene_builder,
-        Tools&                          tools
+        const Hud_config&                  hud_config,
+        erhe::commands::Commands&          commands,
+        erhe::graphics::Device&            graphics_device,
+        erhe::imgui::Imgui_renderer&       imgui_renderer,
+        erhe::rendergraph::Rendergraph&    rendergraph,
+        App_context&                       context,
+        App_message_bus&                   app_message_bus,
+        App_windows&                       app_windows,
+        Headset_view&                      headset_view,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Scene_builder&                     scene_builder,
+        Tools&                             tools
     );
 
     // Implements Tool

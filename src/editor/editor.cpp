@@ -8,11 +8,21 @@
 #include "editor.hpp"
 
 #include "app_context.hpp"
-#include "config/generated/erhe_config.hpp"
-#include "config/generated/erhe_config_serialization.hpp"
+#include "config/generated/developer_config.hpp"
+#include "config/generated/developer_config_serialization.hpp"
 #include "config/generated/editor_settings_config.hpp"
 #include "config/generated/editor_settings_config_serialization.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config_serialization.hpp"
+#include "config/generated/renderer_config.hpp"
+#include "config/generated/renderer_config_serialization.hpp"
+#include "config/generated/text_renderer_config.hpp"
+#include "config/generated/text_renderer_config_serialization.hpp"
+#include "config/generated/window_config.hpp"
+#include "config/generated/window_config_serialization.hpp"
 #include "erhe_codegen/config_io.hpp"
+#include "erhe_graphics/generated/graphics_config.hpp"
+#include "erhe_graphics/generated/graphics_config_serialization.hpp"
 #include "items.hpp"
 #include "editor_log.hpp"
 #include "app_message_bus.hpp"
@@ -51,7 +61,7 @@
 #include "preview/brush_preview.hpp"
 #include "preview/material_preview.hpp"
 #include "renderers/id_renderer.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/programs.hpp"
 #include "rendergraph/post_processing.hpp"
 #include "rendertarget_imgui_host.hpp"
@@ -76,15 +86,14 @@
 #if defined(ERHE_XR_LIBRARY_OPENXR)
 #   include "xr/hand_tracker.hpp"
 //#   include "xr/theremin.hpp"
+#   include "erhe_xr/headset.hpp"
 #   include "erhe_xr/xr_log.hpp"
 #   include "erhe_xr/xr_instance.hpp"
+#   if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+#       include "erhe_graphics/vulkan_external_creators.hpp"
+#   endif
 #endif
 
-#include "erhe_imgui/generated/logger_entry.hpp"
-#include "erhe_imgui/generated/logger_entry_serialization.hpp"
-#include "erhe_imgui/generated/logging_config.hpp"
-#include "erhe_imgui/generated/logging_config_serialization.hpp"
-#include "erhe_codegen/config_io.hpp"
 #include "erhe_commands/commands.hpp"
 #include "erhe_commands/commands_log.hpp"
 #include "erhe_dataformat/dataformat_log.hpp"
@@ -130,6 +139,7 @@
 #include "erhe_scene_renderer/forward_renderer.hpp"
 #include "erhe_scene_renderer/program_interface.hpp"
 #include "erhe_scene_renderer/scene_renderer_log.hpp"
+#include "erhe_scene_renderer/shadow_renderer.hpp"
 #include "erhe_scene_renderer/texel_renderer.hpp"
 #include "erhe_time/sleep.hpp"
 #include "erhe_profile/profile.hpp"
@@ -221,17 +231,38 @@ class Editor : public erhe::window::Input_event_handler
 {
 public:
     std::mutex m_mutex;
+    // Coarse wall-clock accumulators for the tick phases. Printed at info
+    // every 60 frames so a long-running frame time regression is visible
+    // without enabling per-frame trace logs.
+    struct Phase_timing {
+        double wait_frame_us       {0.0};
+        double imgui_us            {0.0};
+        double begin_device_us     {0.0};
+        double begin_swap_us       {0.0};
+        double rendergraph_us      {0.0};
+        double end_frame_us        {0.0};
+        double full_tick_us        {0.0};
+        unsigned int frame_count   {0};
+    };
+    Phase_timing m_phase_timing{};
+
     void tick()
     {
+        m_in_tick.store(true);
         std::lock_guard<std::mutex> lock{m_mutex};
 
         ERHE_PROFILE_FUNCTION();
         m_frame_log_window->on_frame_begin();
 
+        using clock = std::chrono::steady_clock;
+        const clock::time_point t_tick_begin = clock::now();
+
         // log_frame->trace("tick() begin");
+        const clock::time_point t_wait_begin = clock::now();
         erhe::graphics::Frame_state frame_state{};
         const bool wait_ok = m_graphics_device->wait_frame(frame_state);
         ERHE_VERIFY(wait_ok);
+        const clock::time_point t_wait_end = clock::now();
 
         // log_input_frame->trace("----------------------- Editor::tick() -----------------------");
 
@@ -301,12 +332,14 @@ public:
         m_hover_tool->reset_item_tree_hover();
         m_hotbar->rebuild_if_needed();
 
+        const clock::time_point t_imgui_begin = clock::now();
         // log_frame->trace("Imgui_windows::begin_frame()");
         m_imgui_windows->begin_frame();
         // log_frame->trace("Imgui_windows::draw_imgui_windows()");
         m_imgui_windows->draw_imgui_windows();
         // log_frame->trace("Imgui_windows::end_frame()");
         m_imgui_windows->end_frame();
+        const clock::time_point t_imgui_end = clock::now();
 
         // - Apply all command bindings (OpenXR bindings were already executed above)
 
@@ -332,6 +365,15 @@ public:
 
         // Rendering
         m_graphics_device->get_shader_monitor().update_once_per_frame();
+
+        // Open the device frame before any GPU-producing work. Init-time
+        // uploads will eventually record into this frame's command buffer;
+        // today they still go through the immediate-commands path.
+        const clock::time_point t_begin_device_begin = clock::now();
+        const bool begin_device_frame_ok = m_graphics_device->begin_frame();
+        ERHE_VERIFY(begin_device_frame_ok);
+        const clock::time_point t_begin_device_end = clock::now();
+
         m_mesh_memory->buffer_transfer_queue.flush();
 
         const erhe::graphics::Frame_begin_info frame_begin_info{
@@ -341,8 +383,11 @@ public:
         };
         m_request_resize_pending.store(false);
 
-        const bool begin_frame_ok = m_graphics_device->begin_frame(frame_begin_info);
-        ERHE_VERIFY(begin_frame_ok);
+        erhe::graphics::Frame_state swapchain_frame_state{};
+        const clock::time_point t_begin_swap_begin = clock::now();
+        const bool begin_swapchain_ok = m_graphics_device->begin_swapchain_frame(frame_begin_info, swapchain_frame_state);
+        ERHE_VERIFY(begin_swapchain_ok);
+        const clock::time_point t_begin_swap_end = clock::now();
 
         m_app_rendering->begin_frame(); // tests renderdoc capture start
 
@@ -356,16 +401,21 @@ public:
         }
 
         // Execute rendergraph
+        const clock::time_point t_rg_begin = clock::now();
         m_rendergraph->execute();
+        const clock::time_point t_rg_end = clock::now();
 
         m_imgui_renderer->next_frame();
         m_app_rendering->end_frame();
 
+        const clock::time_point t_end_begin = clock::now();
         const erhe::graphics::Frame_end_info frame_end_info{
             .requested_display_time = 0
         };
-        const bool end_frame_ok = m_graphics_device->end_frame(frame_end_info);
+        m_graphics_device->end_swapchain_frame(frame_end_info);
+        const bool end_frame_ok = m_graphics_device->end_frame();
         ERHE_VERIFY(end_frame_ok);
+        const clock::time_point t_end_end = clock::now();
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         //if (!m_app_context.OpenXR) {
@@ -392,11 +442,42 @@ public:
 #endif // TODO
         // log_frame->trace("tick() end");
         m_frame_log_window->on_frame_end();
+
+        const clock::time_point t_tick_end = clock::now();
+
+        const auto to_us = [](clock::time_point a, clock::time_point b) {
+            return std::chrono::duration<double, std::micro>(b - a).count();
+        };
+        m_phase_timing.wait_frame_us   += to_us(t_wait_begin,         t_wait_end);
+        m_phase_timing.imgui_us        += to_us(t_imgui_begin,        t_imgui_end);
+        m_phase_timing.begin_device_us += to_us(t_begin_device_begin, t_begin_device_end);
+        m_phase_timing.begin_swap_us   += to_us(t_begin_swap_begin,   t_begin_swap_end);
+        m_phase_timing.rendergraph_us  += to_us(t_rg_begin,           t_rg_end);
+        m_phase_timing.end_frame_us    += to_us(t_end_begin,          t_end_end);
+        m_phase_timing.full_tick_us    += to_us(t_tick_begin,         t_tick_end);
+        ++m_phase_timing.frame_count;
+        if (m_phase_timing.frame_count >= 60) {
+            const double n = static_cast<double>(m_phase_timing.frame_count);
+            log_draw->info(
+                "frame phase (avg over {} frames, us): tick={:.0f} wait_frame={:.0f} imgui={:.0f} begin_device={:.0f} begin_swap={:.0f} rendergraph={:.0f} end_frame={:.0f}",
+                m_phase_timing.frame_count,
+                m_phase_timing.full_tick_us    / n,
+                m_phase_timing.wait_frame_us   / n,
+                m_phase_timing.imgui_us        / n,
+                m_phase_timing.begin_device_us / n,
+                m_phase_timing.begin_swap_us   / n,
+                m_phase_timing.rendergraph_us  / n,
+                m_phase_timing.end_frame_us    / n
+            );
+            m_phase_timing = Phase_timing{};
+        }
+
+        m_in_tick.store(false);
     }
 
     [[nodiscard]] static auto get_windows_ini_path(bool openxr) -> std::string
     {
-        return openxr ? "openxr_windows.json" : "windows.json";
+        return openxr ? "config/openxr_windows.json" : "config/windows.json";
     }
 
     [[nodiscard]] static auto conditionally_enable_window_imgui_host(erhe::window::Context_window* context_window, bool openxr)
@@ -404,20 +485,25 @@ public:
         return openxr ? nullptr : context_window;
     }
 
-    [[nodiscard]] auto create_window(const Erhe_config& erhe_config, const Editor_settings_config& editor_settings) -> std::unique_ptr<erhe::window::Context_window>
+    [[nodiscard]] auto create_window(
+        const Developer_config&       developer_config,
+        const Graphics_config&        graphics_config,
+        const Window_config&          window_config,
+        const Editor_settings_config& editor_settings
+    ) -> std::unique_ptr<erhe::window::Context_window>
     {
         m_app_context.OpenXR        = editor_settings.headset.openxr;
         m_app_context.OpenXR_mirror = editor_settings.headset.openxr_mirror;
 
-        m_app_context.developer_mode = erhe_config.developer.enable;
+        m_app_context.developer_mode = developer_config.enable;
 
-        m_app_context.renderdoc = erhe_config.graphics.renderdoc_capture_support;
+        m_app_context.renderdoc = graphics_config.renderdoc_capture_support;
         if (m_app_context.renderdoc) {
             m_app_context.developer_mode = true;
         }
 
-        m_app_context.use_sleep    = erhe_config.window.use_sleep;
-        m_app_context.sleep_margin = erhe_config.window.sleep_margin;
+        m_app_context.use_sleep    = window_config.use_sleep;
+        m_app_context.sleep_margin = window_config.sleep_margin;
 
         if (m_app_context.OpenXR) {
             m_app_context.sleep_margin = 0.0f;
@@ -428,25 +514,34 @@ public:
             .use_stencil       = m_app_context.OpenXR_mirror,
             .msaa_sample_count = m_app_context.OpenXR_mirror ? 0 : 0,
             .size              = glm::ivec2{1920, 1080},
-            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta")
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
+            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta - OpenGL"),
+#elif defined(ERHE_GRAPHICS_LIBRARY_METAL)
+            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta - Metal"),
+#elif defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta - Vulkan"),
+#else
+            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta"),
+#endif
+            .initialize_frame_capture = m_graphics_config.renderdoc_capture_support
         };
 
-        configuration.show                     = erhe_config.window.show;
-        configuration.fullscreen               = erhe_config.window.fullscreen;
-        configuration.high_pixel_density       = erhe_config.window.high_pixel_density;
-        configuration.framebuffer_transparency = erhe_config.window.use_transparency;
+        configuration.show                     = window_config.show;
+        configuration.fullscreen               = window_config.fullscreen;
+        configuration.high_pixel_density       = window_config.high_pixel_density;
+        configuration.framebuffer_transparency = window_config.use_transparency;
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-        configuration.gl_major                 = erhe_config.window.gl_major;
-        configuration.gl_minor                 = erhe_config.window.gl_minor;
+        configuration.gl_major                 = window_config.gl_major;
+        configuration.gl_minor                 = window_config.gl_minor;
 # if defined(ERHE_OS_OSX)
         configuration.gl_major                 = 4;
         configuration.gl_minor                 = 1;
 # endif
 #endif
-        configuration.size                     = erhe_config.window.size;
-        configuration.swap_interval            = erhe_config.window.swap_interval;
-        configuration.enable_joystick          = erhe_config.window.enable_joystick;
-        configuration.color_bit_depth          = erhe_config.window.color_bit_depth;
+        configuration.size                     = window_config.size;
+        configuration.swap_interval            = window_config.swap_interval;
+        configuration.enable_joystick          = window_config.enable_joystick;
+        configuration.color_bit_depth          = window_config.color_bit_depth;
 
         if (m_app_context.OpenXR) {
             configuration.swap_interval = 0;
@@ -463,10 +558,18 @@ public:
     }
 
     Editor()
-        : m_erhe_config     {erhe::codegen::load_config<Erhe_config>("erhe.json")}
-        , m_editor_settings {erhe::codegen::load_config<Editor_settings_config>("editor_settings.json")}
+        : m_developer_config     {erhe::codegen::load_config<Developer_config>      ("config/developer.json")}
+        , m_graphics_config      {erhe::codegen::load_config<Graphics_config>       ("config/erhe_graphics.json")}
+        , m_mesh_memory_config   {erhe::codegen::load_config<Mesh_memory_config>    ("config/mesh_memory.json")}
+        , m_renderer_config      {erhe::codegen::load_config<Renderer_config>       ("config/renderer.json")}
+        , m_text_renderer_config {erhe::codegen::load_config<Text_renderer_config>  ("config/text_renderer.json")}
+        , m_window_config        {erhe::codegen::load_config<Window_config>         ("config/window.json")}
+        , m_editor_settings      {erhe::codegen::load_config<Editor_settings_config>("config/editor_settings.json")}
     {
-        const int thread_count = m_erhe_config.threading.thread_count;
+        if (m_graphics_config.renderdoc_capture_support) {
+            m_app_context.renderdoc = true;
+        }
+        const int thread_count = m_editor_settings.threading.thread_count;
 
         // Note: m_executor is also used at runtime, so it cannot be
         //       skipped even if parallel init is not used.
@@ -504,7 +607,55 @@ public:
 #endif
 
             // Window and graphics context creation - in main thread
-            m_window = create_window(m_erhe_config, m_editor_settings);
+            m_window = create_window(m_developer_config, m_graphics_config, m_window_config, m_editor_settings);
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+            // First-phase OpenXR initialization: build Xr_instance before the
+            // graphics Device. On Vulkan the Device needs to create its
+            // VkInstance / VkDevice through the OpenXR runtime hooks, which are
+            // exposed by Xr_instance via make_vulkan_external_creators(). On
+            // OpenGL this only builds the instance; the session is created
+            // later via headset->create_session(*device) on the main thread so
+            // the GL context is still current.
+            erhe::xr::Xr_configuration xr_configuration{};
+            if (m_app_context.OpenXR) {
+                ERHE_PROFILE_SCOPE("make xr::Headset (instance)");
+                xr_configuration = erhe::xr::Xr_configuration{
+                    .debug             = m_editor_settings.headset.debug,
+                    .api_dump          = m_editor_settings.headset.api_dump,
+                    .validation        = m_editor_settings.headset.validation,
+                    .quad_view         = m_editor_settings.headset.quad_view,
+                    .depth             = m_editor_settings.headset.depth,
+                    .visibility_mask   = m_editor_settings.headset.visibility_mask,
+                    .hand_tracking     = m_editor_settings.headset.hand_tracking,
+                    .composition_alpha = m_editor_settings.headset.composition_alpha,
+                    .mirror_mode       = m_app_context.OpenXR_mirror,
+                    .passthrough_fb    = m_editor_settings.headset.passthrough_fb
+                };
+                m_headset = std::make_unique<erhe::xr::Headset>(*m_window.get(), xr_configuration);
+                if (m_headset->get_xr_instance() == nullptr) {
+                    log_headset->info("OpenXR instance not available. Disabling OpenXR.");
+                    m_app_context.OpenXR = false;
+                    m_headset.reset();
+                }
+            }
+#endif
+
+#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN) && defined(ERHE_XR_LIBRARY_OPENXR)
+            // Fetch XR-owned Vulkan creators if an Xr_instance is available, so
+            // that the Vulkan graphics device creates its instance / physical
+            // device / device via the OpenXR runtime.
+            erhe::graphics::Vulkan_external_creators vulkan_xr_creators;
+            bool                                     have_vulkan_xr_creators = false;
+            if (m_headset && (m_headset->get_xr_instance() != nullptr)) {
+                vulkan_xr_creators      = m_headset->get_xr_instance()->make_vulkan_external_creators();
+                have_vulkan_xr_creators = true;
+            }
+            const erhe::graphics::Vulkan_external_creators* vulkan_xr_creators_ptr =
+                have_vulkan_xr_creators ? &vulkan_xr_creators : nullptr;
+#else
+            const erhe::graphics::Vulkan_external_creators* vulkan_xr_creators_ptr = nullptr;
+#endif
 
             // Graphics context state init after window - in main thread
             m_graphics_device = std::make_unique<erhe::graphics::Device>(
@@ -513,25 +664,27 @@ public:
                     .prefer_low_bandwidth      = false,
                     .prefer_high_dynamic_range = false
                 },
-                [this]() {
-                    Graphics_config config = m_erhe_config.graphics;
-                    config.shader_monitor_enabled = m_erhe_config.shader_monitor.enabled;
-                    return config;
-                }()
+                m_graphics_config,
+                [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
+                    std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
+                    SDL_SetClipboardText(clipboard_text.c_str());
+                    if (severity == erhe::graphics::Message_severity::error) {
+                        ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
+                    } else {
+                        static int counter = 0;
+                        ++counter;
+                    }
+                },
+                vulkan_xr_creators_ptr
             );
+
+            // RenderDoc capture is auto-initialized by Device based on Graphics_config
 
             m_graphics_device->set_shader_error_callback(
                 [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {
                     std::string clipboard_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
                     SDL_SetClipboardText(clipboard_text.c_str());
                     ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
-                }
-            );
-            m_graphics_device->set_device_error_callback(
-                [](const std::string& error_message, const std::string& callstack) {
-                    std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
-                    SDL_SetClipboardText(clipboard_text.c_str());
-                    ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
                 }
             );
             m_graphics_device->set_trace_callback(
@@ -553,24 +706,19 @@ public:
             );
 
 #if defined(ERHE_XR_LIBRARY_OPENXR)
-            // Apparently it is necessary to create OpenXR session in the main thread / original OpenGL
-            // context, instead of using shared context / worker thread
-            if (m_app_context.OpenXR) {
-                ERHE_PROFILE_SCOPE("make xr::Headset");
-                erhe::xr::Xr_configuration configuration{
-                    .debug             = m_editor_settings.headset.debug,
-                    .api_dump          = m_editor_settings.headset.api_dump,
-                    .validation        = m_editor_settings.headset.validation,
-                    .quad_view         = m_editor_settings.headset.quad_view,
-                    .depth             = m_editor_settings.headset.depth,
-                    .visibility_mask   = m_editor_settings.headset.visibility_mask,
-                    .hand_tracking     = m_editor_settings.headset.hand_tracking,
-                    .composition_alpha = m_editor_settings.headset.composition_alpha,
-                    .mirror_mode       = m_app_context.OpenXR_mirror,
-                    .passthrough_fb    = m_editor_settings.headset.passthrough_fb
-                };
-                m_headset = std::make_unique<erhe::xr::Headset>(*m_window.get(), configuration);
-                if (!m_headset->is_valid()) {
+            // Second-phase OpenXR initialization: build the Xr_session now that
+            // the graphics Device exists. Apparently it is necessary to create
+            // OpenXR session in the main thread / original OpenGL context,
+            // instead of using shared context / worker thread. On Vulkan the
+            // session uses the Device's VkInstance / VkDevice / queue indices
+            // to build the XrGraphicsBindingVulkan2KHR.
+            if (m_headset) {
+                ERHE_PROFILE_SCOPE("make xr::Headset (session)");
+                if (!m_headset->create_session(*m_graphics_device.get())) {
+                    log_headset->info("Headset session creation failed. Disabling OpenXR.");
+                    m_app_context.OpenXR = false;
+                    m_headset.reset();
+                } else if (!m_headset->is_valid()) {
                     log_headset->info("Headset initialization failed. Disabling OpenXR.");
                     m_app_context.OpenXR = false;
                     m_headset.reset();
@@ -628,19 +776,19 @@ public:
             m_scene_commands       = std::make_unique<Scene_commands>(commands, m_app_context);
             m_debug_draw           = std::make_unique<Debug_draw    >(m_app_context);
             erhe::scene_renderer::Program_interface_config program_interface_config{
-                .max_camera_count    = m_erhe_config.renderer.max_camera_count,
-                .max_joint_count     = m_erhe_config.renderer.max_joint_count,
-                .max_light_count     = m_erhe_config.renderer.max_light_count,
-                .max_material_count  = m_erhe_config.renderer.max_material_count,
-                .max_primitive_count = m_erhe_config.renderer.max_primitive_count,
-                .max_draw_count      = m_erhe_config.renderer.max_draw_count
+                .max_camera_count    = m_renderer_config.max_camera_count,
+                .max_joint_count     = m_renderer_config.max_joint_count,
+                .max_light_count     = m_renderer_config.max_light_count,
+                .max_material_count  = m_renderer_config.max_material_count,
+                .max_primitive_count = m_renderer_config.max_primitive_count,
+                .max_draw_count      = m_renderer_config.max_draw_count
             };
             m_program_interface    = std::make_unique<erhe::scene_renderer::Program_interface>(
                 *m_graphics_device.get(),
                 m_vertex_format,
                 program_interface_config
             );
-            m_programs             = std::make_unique<Programs>(*m_graphics_device.get());
+            m_programs             = std::make_unique<Programs>(*m_graphics_device.get(), *m_program_interface.get());
 
             ERHE_TASK_HEADER(programs_load_task)
             {
@@ -691,8 +839,8 @@ public:
                 ERHE_GET_GL_CONTEXT
                 m_text_renderer = std::make_unique<erhe::renderer::Text_renderer>(
                     *m_graphics_device.get(),
-                    m_erhe_config.text_renderer.enabled,
-                    m_erhe_config.text_renderer.font_size
+                    m_text_renderer_config.enabled,
+                    m_text_renderer_config.font_size
                 );
             }
             ERHE_TASK_FOOTER( .name("Text_renderer") );
@@ -702,8 +850,7 @@ public:
                 ERHE_GET_GL_CONTEXT
                 m_forward_renderer = std::make_unique<erhe::scene_renderer::Forward_renderer>(
                     *m_graphics_device.get(),
-                    *m_program_interface.get(),
-                    m_programs ? &m_programs->default_uniform_block : nullptr
+                    *m_program_interface.get()
                 );
             }
             ERHE_TASK_FOOTER( .name("Forward_renderer") );
@@ -718,7 +865,7 @@ public:
             ERHE_TASK_HEADER(mesh_memory_task)
             {
                 ERHE_GET_GL_CONTEXT
-                m_mesh_memory = std::make_unique<Mesh_memory>(m_erhe_config.mesh_memory, *m_graphics_device.get(), m_vertex_format);
+                m_mesh_memory = std::make_unique<erhe::scene_renderer::Mesh_memory>(m_mesh_memory_config, *m_graphics_device.get(), m_vertex_format);
             }
             ERHE_TASK_FOOTER( .name("Mesh_memory") );
 
@@ -747,24 +894,38 @@ public:
                                 m_content_wide_line_renderer->get_triangle_vertex_buffer_block(),
                                 m_content_wide_line_renderer->get_view_block()
                             },
-                            .shaders = { { Shader_type::compute_shader, shader_path / "compute_before_content_line.comp" } }
+                            .shaders = { { Shader_type::compute_shader, shader_path / "compute_before_content_line.comp" } },
+                            .bind_group_layout = m_content_wide_line_renderer->get_bind_group_layout(),
                         };
                         Shader_stages_prototype prototype{*m_graphics_device, create_info};
                         if (prototype.is_valid()) {
                             m_content_wide_line_compute_stages = std::make_unique<Shader_stages>(*m_graphics_device, std::move(prototype));
                         }
                     }
-                    // Graphics shader (renders compute output)
+                    // Graphics shader (renders compute output).
+                    //
+                    // Uses the SHARED program_interface bind_group_layout (the
+                    // same one forward_renderer/debug_renderer use) so the
+                    // descriptor set bound by surrounding renderers (camera
+                    // buffer at camera_buffer_binding_point, etc.) remains
+                    // compatible. Wide-line render() therefore doesn't need
+                    // to bind anything for the graphics path -- it relies on
+                    // the camera_buffer being already bound by an earlier
+                    // forward_renderer call in the same render pass, and the
+                    // fragment shader reads camera.cameras[0].viewport.xy to
+                    // convert gl_FragCoord into viewport-relative pixel coords.
                     {
                         Shader_stages_create_info create_info{
                             .name             = "content_line_after_compute",
-                            .interface_blocks = { m_content_wide_line_renderer->get_view_block() },
+                            .struct_types     = { &m_program_interface->camera_interface.camera_struct },
+                            .interface_blocks = { &m_program_interface->camera_interface.camera_block  },
                             .fragment_outputs = &m_content_wide_line_renderer->get_fragment_outputs(),
                             .vertex_format    = &m_content_wide_line_renderer->get_triangle_vertex_format(),
                             .shaders = {
-                                { Shader_type::vertex_shader,   shader_path / "line_after_compute.vert" },
-                                { Shader_type::fragment_shader, shader_path / "line_after_compute.frag" }
-                            }
+                                { Shader_type::vertex_shader,   shader_path / "line_after_compute.vert"        },
+                                { Shader_type::fragment_shader, shader_path / "content_line_after_compute.frag" }
+                            },
+                            .bind_group_layout = m_program_interface->bind_group_layout.get(),
                         };
                         Shader_stages_prototype prototype{*m_graphics_device, create_info};
                         if (prototype.is_valid()) {
@@ -928,8 +1089,8 @@ public:
             {
                 ERHE_GET_GL_CONTEXT
                 m_scene_builder = std::make_unique<Scene_builder>(
-                    m_editor_settings.scene,          //const Scene_config&             scene_config
-                    m_erhe_config.graphics,       //const Graphics_config&          graphics_config
+                    m_editor_settings.scene,               //const Scene_config&             scene_config
+                    m_editor_settings.post_processing,     //bool                            enable_post_processing
                     m_default_scene,                //std::shared_ptr<Scene_root>     scene
                     *m_executor.get(),              //tf::Executor&                   executor
                     *m_graphics_device.get(),       //erhe::graphics::Device&         graphics_device
@@ -940,7 +1101,7 @@ public:
                     *m_app_message_bus.get(),       //App_message_bus&                app_message_bus
                     *m_app_rendering.get(),         //App_rendering&                  app_rendering
                     *m_app_settings.get(),          //App_settings&                   app_settings
-                    *m_mesh_memory.get(),           //Mesh_memory&                    mesh_memory
+                    *m_mesh_memory.get(),           //erhe::scene_renderer::Mesh_memory& mesh_memory
                     *m_post_processing.get(),       //Post_processing&                post_processing
                     *m_tools.get(),                 //Tools&                          tools
                     *m_viewport_scene_views.get()   //Scene_views&                    scene_views
@@ -1212,7 +1373,29 @@ public:
 #if defined(ERHE_PARALLEL_INIT)
             std::string graph_dump = taskflow.dump();
             erhe::file::write_file("erhe_init_graph.dot", graph_dump);
-            m_executor->run(taskflow).wait();
+
+            // Wrap the parallel-init taskflow in a device frame so every
+            // upload_to_buffer / upload_to_texture / clear_texture / blit
+            // encoder call from worker threads records into the device
+            // command buffer and shares a single submit. Staging buffer
+            // destruction is deferred to the frame-completion handler.
+            // wait_idle at the end flushes the init-frame completion
+            // handlers before rendering starts.
+            erhe::graphics::Frame_state init_frame_state{};
+            const bool init_wait_ok = m_graphics_device->wait_frame(init_frame_state);
+            if (init_wait_ok) {
+                const bool init_begin_ok = m_graphics_device->begin_frame();
+                ERHE_VERIFY(init_begin_ok);
+                m_executor->run(taskflow).wait();
+                const bool init_end_ok = m_graphics_device->end_frame();
+                ERHE_VERIFY(init_end_ok);
+                m_graphics_device->wait_idle();
+            } else {
+                // No swapchain available (e.g. headless backend): run the
+                // taskflow without a device-frame wrap; upload paths fall
+                // back to the immediate-commands path.
+                m_executor->run(taskflow).wait();
+            }
 #endif
         } catch (std::runtime_error& e) {
             log_startup->error("exception: {}", e.what());
@@ -1422,7 +1605,7 @@ public:
 
         m_window->register_redraw_callback(
             [this](){
-                if (!m_run_started) {
+                if (!m_run_started || m_in_tick.load()) {
                     return;
                 }
                 if (
@@ -1488,7 +1671,12 @@ public:
         m_app_context.app_rendering            = m_app_rendering         .get();
         m_app_context.app_scenes               = m_app_scenes            .get();
         m_app_context.app_settings             = m_app_settings          .get();
-        m_app_context.erhe_config              = &m_erhe_config;
+        m_app_context.developer_config         = &m_developer_config;
+        m_app_context.graphics_config          = &m_graphics_config;
+        m_app_context.mesh_memory_config       = &m_mesh_memory_config;
+        m_app_context.renderer_config          = &m_renderer_config;
+        m_app_context.text_renderer_config     = &m_text_renderer_config;
+        m_app_context.window_config            = &m_window_config;
         m_app_context.editor_settings          = &m_editor_settings;
         m_app_context.app_windows              = m_app_windows           .get();
         m_app_context.fly_camera_tool          = m_fly_camera_tool       .get();
@@ -1595,6 +1783,11 @@ public:
             }
             tick();
 
+            if ((m_editor_settings.quit_after_frames > 0) &&
+                (m_time->get_frame_number() >= static_cast<uint64_t>(m_editor_settings.quit_after_frames))) {
+                m_close_requested = true;
+            }
+
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
             ERHE_PROFILE_FRAME_END
 #endif // TODO
@@ -1603,11 +1796,17 @@ public:
     }
 
     bool m_close_requested{false};
-    bool m_run_started    {false};
+    bool                                    m_run_started{false};
+    std::atomic<bool>                       m_in_tick    {false};
     bool m_run_stopped    {false};
 
 
-    Erhe_config                         m_erhe_config;
+    Developer_config                    m_developer_config;
+    Graphics_config                     m_graphics_config;
+    Mesh_memory_config                  m_mesh_memory_config;
+    Renderer_config                     m_renderer_config;
+    Text_renderer_config                m_text_renderer_config;
+    Window_config                       m_window_config;
     Editor_settings_config              m_editor_settings;
 
     std::unique_ptr<tf::Executor>       m_executor;
@@ -1641,7 +1840,7 @@ public:
     std::unique_ptr<Programs                              >  m_programs;
     std::unique_ptr<erhe::scene_renderer::Forward_renderer>  m_forward_renderer;
     std::unique_ptr<erhe::scene_renderer::Shadow_renderer >  m_shadow_renderer;
-    std::unique_ptr<Mesh_memory                           >  m_mesh_memory;
+    std::unique_ptr<erhe::scene_renderer::Mesh_memory     >  m_mesh_memory;
     std::unique_ptr<erhe::scene_renderer::Content_wide_line_renderer> m_content_wide_line_renderer;
     std::unique_ptr<erhe::graphics::Shader_stages>                   m_content_wide_line_compute_stages;
     std::unique_ptr<erhe::graphics::Shader_stages>                   m_content_wide_line_graphics_stages;
@@ -1739,23 +1938,23 @@ void run_editor()
 #if defined(ERHE_PROFILE_LIBRARY_NVTX)
     nvtxInitialize(nullptr);
 #endif
+    // Workaround for
+    // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
+    erhe::file::ensure_working_directory_contains("editor", "config/editor_settings.json");
+
+    // initialize_log_sinks creates "logs/log.txt" relative to cwd; must
+    // run AFTER ensure_working_directory_contains so the file lands in
+    // the same logs/ directory used by graphics_log (logs/vulkan.txt).
     {
         ERHE_PROFILE_SCOPE("erhe::log::initialize_log_sinks()");
         erhe::log::initialize_log_sinks();
     }
 
-    // Workaround for
-    // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
-    erhe::file::ensure_working_directory_contains("editor", "erhe.json");
-
     {
-        Logging_config log_config = erhe::codegen::load_config<Logging_config>(erhe::log::c_logging_configuration_file_path);
-        std::vector<std::pair<std::string, std::string>> levels;
-        levels.reserve(log_config.loggers.size());
-        for (const Logger_entry& entry : log_config.loggers) {
-            levels.emplace_back(entry.name, entry.level);
+        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        if (contents.has_value()) {
+            erhe::log::load_log_configuration(contents.value());
         }
-        erhe::log::configure_log_levels(levels);
     }
 
     {
@@ -1810,14 +2009,6 @@ void run_editor()
         // TODO
         // GEO::Logger::unregister_all_clients();
         // GEO::Logger::register_client(s_geogram_logger_client.get());
-    }
-
-    {
-        ERHE_PROFILE_SCOPE("init renderdoc");
-        const Erhe_config early_config = erhe::codegen::load_config<Erhe_config>("erhe.json");
-        if (early_config.graphics.renderdoc_capture_support) {
-            erhe::window::initialize_frame_capture();
-        }
     }
 
     {

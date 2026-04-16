@@ -1,6 +1,8 @@
 #include "erhe_scene_renderer/program_interface.hpp"
+#include "erhe_scene_renderer/buffer_binding_points.hpp"
 #include "erhe_scene_renderer/scene_renderer_log.hpp"
 
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_file/file.hpp"
 #include "erhe_profile/profile.hpp"
@@ -25,13 +27,13 @@ Program_interface::Program_interface(
             .location = 0
         }
     }
-    , vertex_format      {vertex_format}
-    , config             {config}
-    , camera_interface   {graphics_device, config.max_camera_count}
-    , cube_interface     {graphics_device}
-    , joint_interface    {graphics_device, config.max_joint_count}
-    , light_interface    {graphics_device, config.max_light_count}
-    , material_interface {graphics_device, config.max_material_count}
+    , vertex_format     {vertex_format}
+    , config            {config}
+    , camera_interface  {graphics_device, config.max_camera_count}
+    , cube_interface    {graphics_device}
+    , joint_interface   {graphics_device, config.max_joint_count}
+    , light_interface   {graphics_device, config.max_light_count}
+    , material_interface{graphics_device, config.max_material_count}
     , primitive_interface{graphics_device, config.max_primitive_count}
 {
     // Write clamped values back to config so callers see actual UBO limits
@@ -40,6 +42,44 @@ Program_interface::Program_interface(
     config.max_light_count     = static_cast<int>(light_interface.max_light_count);
     config.max_material_count  = static_cast<int>(material_interface.max_material_count);
     config.max_primitive_count = static_cast<int>(primitive_interface.max_primitive_count);
+
+    // Create bind group layout describing the descriptor types for all
+    // interface blocks plus the dedicated shadow samplers.
+    auto to_binding_type = [](const erhe::graphics::Shader_resource& block) -> erhe::graphics::Binding_type {
+        return (block.get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
+            ? erhe::graphics::Binding_type::storage_buffer
+            : erhe::graphics::Binding_type::uniform_buffer;
+    };
+    erhe::graphics::Bind_group_layout_create_info layout_create_info{
+        .bindings = {
+            {material_buffer_binding_point,      to_binding_type(material_interface.material_block)},
+            {light_buffer_binding_point,         to_binding_type(light_interface.light_block)},
+            {light_control_buffer_binding_point, to_binding_type(light_interface.light_control_block)},
+            {primitive_buffer_binding_point,     to_binding_type(primitive_interface.primitive_block)},
+            {camera_buffer_binding_point,        to_binding_type(camera_interface.camera_block)},
+            {cube_instance_buffer_binding_point, to_binding_type(cube_interface.cube_instance_block)},
+            {cube_control_buffer_binding_point,  to_binding_type(cube_interface.cube_control_block)},
+            {joint_buffer_binding_point,         to_binding_type(joint_interface.joint_block)},
+            {
+                .binding_point   = c_texture_heap_slot_shadow_compare,
+                .type            = erhe::graphics::Binding_type::combined_image_sampler,
+                .sampler_aspect  = erhe::graphics::Sampler_aspect::depth,
+                .name            = "s_shadow_compare",
+                .glsl_type       = erhe::graphics::Glsl_type::sampler_2d_array_shadow,
+                .is_texture_heap = false
+            },
+            {
+                .binding_point   = c_texture_heap_slot_shadow_no_compare,
+                .type            = erhe::graphics::Binding_type::combined_image_sampler,
+                .sampler_aspect  = erhe::graphics::Sampler_aspect::depth,
+                .name            = "s_shadow_no_compare",
+                .glsl_type       = erhe::graphics::Glsl_type::sampler_2d_array,
+                .is_texture_heap = false
+            },
+        },
+        .debug_label = "Scene renderer"
+    };
+    bind_group_layout = std::make_unique<erhe::graphics::Bind_group_layout>(graphics_device, layout_create_info);
 }
 
 auto Program_interface::make_prototype(
@@ -66,8 +106,12 @@ auto Program_interface::make_prototype(
     const std::filesystem::path gs_path = shader_path / std::filesystem::path(create_info.name + ".geom");
     const std::filesystem::path vs_path = shader_path / std::filesystem::path(create_info.name + ".vert");
 
-    create_info.fragment_outputs = &fragment_outputs,
-    create_info.vertex_format    = &vertex_format;
+    if (create_info.fragment_outputs == nullptr) {
+        create_info.fragment_outputs = &fragment_outputs;
+    }
+    if (!create_info.no_vertex_input) {
+        create_info.vertex_format = &vertex_format;
+    }
     create_info.struct_types.push_back(&material_interface.material_struct);
     create_info.struct_types.push_back(&light_interface.light_struct);
     create_info.struct_types.push_back(&camera_interface.camera_struct);
@@ -86,6 +130,7 @@ auto Program_interface::make_prototype(
     create_info.add_interface_block(&cube_interface.cube_control_block);
     create_info.add_interface_block(&primitive_interface.primitive_block);
     create_info.add_interface_block(&joint_interface.joint_block);
+    create_info.bind_group_layout = bind_group_layout.get();
     create_info.defines.emplace_back("ERHE_SHADOW_MAPS", "1");
 
     bool found = false;
@@ -99,7 +144,9 @@ auto Program_interface::make_prototype(
 
     process_shader(erhe::graphics::Shader_type::compute_shader,  cs_path);
     process_shader(erhe::graphics::Shader_type::fragment_shader, fs_path);
+#if !defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
     process_shader(erhe::graphics::Shader_type::geometry_shader, gs_path);
+#endif
     process_shader(erhe::graphics::Shader_type::vertex_shader,   vs_path);
 
     if (!found) {

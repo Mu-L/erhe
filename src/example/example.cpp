@@ -2,7 +2,6 @@
 
 #include "example_log.hpp"
 #include "frame_controller.hpp"
-#include "mesh_memory.hpp"
 #include "programs.hpp"
 
 #include "erhe_dataformat/dataformat_log.hpp"
@@ -16,12 +15,16 @@
 #include <SDL3/SDL.h>
 #include "erhe_gltf/gltf_log.hpp"
 #include "erhe_gltf/image_transfer.hpp"
+#include "erhe_codegen/config_io.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config_serialization.hpp"
 #include "erhe_graphics/buffer_transfer_queue.hpp"
+#include "erhe_graphics/generated/graphics_config_serialization.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
 #include "erhe_graphics/render_pass.hpp"
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/swapchain.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_item/item_log.hpp"
@@ -36,6 +39,7 @@
 #include "erhe_scene/scene.hpp"
 #include "erhe_scene/scene_log.hpp"
 #include "erhe_scene_renderer/forward_renderer.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_scene_renderer/program_interface.hpp"
 #include "erhe_scene_renderer/scene_renderer_log.hpp"
 #include "erhe_ui/ui_log.hpp"
@@ -56,11 +60,13 @@ class Example : public erhe::window::Input_event_handler
 {
 public:
     Example()
-        : m_window{
+        : m_graphics_config{erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json")}
+        , m_window{
             erhe::window::Window_configuration{
-                .use_depth = true,
-                .size      = glm::ivec2{1920, 1080},
-                .title     = "erhe example"
+                .use_depth                = true,
+                .size                     = glm::ivec2{1920, 1080},
+                .title                    = "erhe example",
+                .initialize_frame_capture = m_graphics_config.renderdoc_capture_support
             }
         }
         , m_graphics_device{
@@ -68,37 +74,61 @@ public:
                 .context_window            = &m_window,
                 .prefer_low_bandwidth      = false,
                 .prefer_high_dynamic_range = false
-            }
-        }
-        , m_shader_error_callback_set{(
-            m_graphics_device.set_shader_error_callback(
-                [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {
-                    std::string clipboard_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
-                    SDL_SetClipboardText(clipboard_text.c_str());
-                    ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
-                }
-            ),
-            m_graphics_device.set_device_error_callback(
-                [](const std::string& error_message, const std::string& callstack) {
+            },
+            m_graphics_config,
+            [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
+                if (severity == erhe::graphics::Message_severity::error) {
                     std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
                     SDL_SetClipboardText(clipboard_text.c_str());
                     ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
                 }
-            ),
-            m_graphics_device.set_trace_callback(
-                [](const std::string& message) {
-                    SDL_SetClipboardText(message.c_str());
-                }
-            ),
-        true)}
+            }
+        }
+        , m_shader_error_callback_set{
+            (
+                m_graphics_device.set_shader_error_callback(
+                    [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {
+                        std::string clipboard_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
+                        SDL_SetClipboardText(clipboard_text.c_str());
+                        ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
+                    }
+                ),
+                m_graphics_device.set_trace_callback(
+                    [](const std::string& message) {
+                        SDL_SetClipboardText(message.c_str());
+                    }
+                ),
+                true
+            )
+        }
         , m_y_flip{m_graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
         , m_image_transfer   {m_graphics_device}
-        , m_mesh_memory      {m_graphics_device}
+        , m_vertex_format{
+            {
+                0,
+                {
+                    { erhe::dataformat::Format::format_32_vec3_float, erhe::dataformat::Vertex_attribute_usage::position, 0 },
+                }
+            },
+            {
+                1,
+                {
+                    { erhe::dataformat::Format::format_32_vec3_float, erhe::dataformat::Vertex_attribute_usage::normal,    0 },
+                    { erhe::dataformat::Format::format_32_vec4_float, erhe::dataformat::Vertex_attribute_usage::tangent,   0 },
+                    { erhe::dataformat::Format::format_32_vec2_float, erhe::dataformat::Vertex_attribute_usage::tex_coord, 0 },
+                    { erhe::dataformat::Format::format_32_vec4_float, erhe::dataformat::Vertex_attribute_usage::color,     0 },
+                }
+            }
+        }
+        , m_mesh_memory      {erhe::codegen::load_config<Mesh_memory_config>("config/mesh_memory.json"), m_graphics_device, m_vertex_format}
         , m_program_interface{m_graphics_device, m_mesh_memory.vertex_format, m_program_interface_config}
         , m_programs         {m_graphics_device, m_program_interface}
-        , m_forward_renderer {m_graphics_device, m_program_interface, &m_programs.default_uniform_block}
+        , m_forward_renderer {m_graphics_device, m_program_interface}
         , m_scene            {"example scene", nullptr}
     {
+        if (m_graphics_config.renderdoc_capture_support) {
+            erhe::window::initialize_frame_capture();
+        }
         const unsigned int thread_count = std::thread::hardware_concurrency();
         tf::Executor executor{thread_count};
 
@@ -151,6 +181,9 @@ public:
 #if !defined(ERHE_GRAPHICS_LIBRARY_METAL)
         m_window.register_redraw_callback(
             [this](){
+                if (!m_first_frame_rendered || m_in_tick.load()) {
+                    return;
+                }
                 if (
                     (m_last_window_width  != m_window.get_width ()) ||
                     (m_last_window_height != m_window.get_height())
@@ -159,7 +192,6 @@ public:
                     m_last_window_width  = m_window.get_width();
                     m_last_window_height = m_window.get_height();
                 }
-                tick();
             }
         );
 #endif
@@ -269,7 +301,10 @@ public:
             const bool begin_frame_ok = m_graphics_device.begin_frame(frame_begin_info);
             ERHE_VERIFY(begin_frame_ok);
 
+            m_in_tick.store(true);
             tick();
+            m_in_tick.store(false);
+            m_first_frame_rendered = true;
 
             const erhe::graphics::Frame_end_info frame_end_info{
                 .requested_display_time = 0 // TODO
@@ -348,8 +383,8 @@ public:
                 .render_encoder         = render_encoder,
                 .index_type             = erhe::dataformat::Format::format_32_scalar_uint,
                 .index_buffer           = &m_mesh_memory.index_buffer,
-                .vertex_buffer0         = &m_mesh_memory.position_vertex_buffer,
-                .vertex_buffer1         = &m_mesh_memory.non_position_vertex_buffer,
+                .vertex_buffer0         = &m_mesh_memory.vertex_buffer_position,
+                .vertex_buffer1         = &m_mesh_memory.vertex_buffer_non_position,
                 .ambient_light          = glm::vec3{0.1f, 0.1f, 0.1f},
                 .camera                 = m_camera.get(),
                 .light_projections      = &m_light_projections,
@@ -387,8 +422,12 @@ private:
         render_pass_descriptor.color_attachments[0].clear_value[1] = 0.02;
         render_pass_descriptor.color_attachments[0].clear_value[2] = 0.02;
         render_pass_descriptor.color_attachments[0].clear_value[3] = 1.0;
+        render_pass_descriptor.color_attachments[0].usage_before   = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.color_attachments[0].usage_after    = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::present_src;
         render_pass_descriptor.depth_attachment    .load_action    = erhe::graphics::Load_action::Clear;
-        render_pass_descriptor.stencil_attachment  .load_action    = erhe::graphics::Load_action::Clear;
+        render_pass_descriptor.depth_attachment    .clear_value[0] = 0.0; // reverse depth
         render_pass_descriptor.render_target_width  = width;
         render_pass_descriptor.render_target_height = height;
         render_pass_descriptor.debug_label          = erhe::utility::Debug_label{"Example Render_pass"};
@@ -397,8 +436,9 @@ private:
 
     void make_render_pipeline_states()
     {
-        m_standard_render_pipeline_state = std::make_unique<erhe::graphics::Render_pipeline_state>(
-            erhe::graphics::Render_pipeline_data{
+        m_standard_render_pipeline_state = std::make_unique<erhe::graphics::Lazy_render_pipeline>(
+            m_graphics_device,
+            erhe::graphics::Render_pipeline_create_info{
                 .debug_label    = erhe::utility::Debug_label{"Example Render_pass"},
                 .shader_stages  = &m_programs.standard,
                 .vertex_input   = &m_mesh_memory.vertex_input,
@@ -494,20 +534,22 @@ private:
         return light;
     }
 
+    Graphics_config                                m_graphics_config;
     erhe::window::Context_window                   m_window;
     erhe::graphics::Device                         m_graphics_device;
     bool                                           m_shader_error_callback_set{false};
     bool                                           m_y_flip;
     erhe::gltf::Image_transfer                     m_image_transfer;
-    Mesh_memory                                    m_mesh_memory;
+    erhe::dataformat::Vertex_format                m_vertex_format;
+    erhe::scene_renderer::Mesh_memory              m_mesh_memory;
     erhe::scene_renderer::Program_interface_config m_program_interface_config;
     erhe::scene_renderer::Program_interface        m_program_interface;
     Programs                                       m_programs;
     erhe::scene_renderer::Forward_renderer         m_forward_renderer;
     std::unique_ptr<erhe::graphics::Render_pass>   m_render_pass;
 
-    std::vector<erhe::graphics::Render_pipeline_state*>    m_render_pipeline_states;
-    std::unique_ptr<erhe::graphics::Render_pipeline_state> m_standard_render_pipeline_state;
+    std::vector<erhe::graphics::Lazy_render_pipeline*>    m_render_pipeline_states;
+    std::unique_ptr<erhe::graphics::Lazy_render_pipeline> m_standard_render_pipeline_state;
 
     erhe::scene_renderer::Light_projections m_light_projections;
 
@@ -519,6 +561,8 @@ private:
     erhe::scene::Scene                      m_scene;
 
     bool                                    m_close_requested{false};
+    bool                                    m_first_frame_rendered{false};
+    std::atomic<bool>                       m_in_tick{false};
     std::shared_ptr<erhe::scene::Camera>    m_camera;
     std::shared_ptr<erhe::scene::Light>     m_light;
     std::shared_ptr<Frame_controller>       m_camera_controller;
@@ -533,9 +577,15 @@ void run_example()
 {
     // Workaround for
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
-    erhe::file::ensure_working_directory_contains("example", "example_mesh_memory.json");
+    erhe::file::ensure_working_directory_contains("example", "config/erhe_graphics.json");
 
     erhe::log::initialize_log_sinks();
+    {
+        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        if (contents.has_value()) {
+            erhe::log::load_log_configuration(contents.value());
+        }
+    }
 
     example::initialize_logging();
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
@@ -553,8 +603,6 @@ void run_example()
     erhe::scene_renderer::initialize_logging();
     erhe::window::initialize_logging();
     erhe::ui::initialize_logging();
-
-    //erhe::window::initialize_frame_capture();
 
     Example example{};
     example.run();

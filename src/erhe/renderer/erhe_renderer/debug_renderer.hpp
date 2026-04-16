@@ -3,6 +3,7 @@
 #include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_renderer/debug_renderer_bucket.hpp"
 #include "erhe_renderer/view.hpp"
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/compute_pipeline_state.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
@@ -23,6 +24,7 @@ namespace erhe::graphics {
     class Buffer;
     class Compute_pipeline_state;
     class Render_command_encoder;
+    class Render_pass;
     class Shader_stages;
 }
 namespace erhe::scene {
@@ -59,6 +61,7 @@ public:
     std::unique_ptr<erhe::graphics::Shader_stages>   line_shader_stages;
 
     std::unique_ptr<erhe::graphics::Shader_resource> view_block;
+    std::unique_ptr<erhe::graphics::Bind_group_layout> bind_group_layout;
     std::size_t                                      clip_from_world_offset{0};
     std::size_t                                      viewport_offset       {0};
     std::size_t                                      fov_offset            {0};
@@ -86,7 +89,7 @@ public:
         const erhe::math::Coordinate_conventions& conventions = erhe::math::Coordinate_conventions{}
     );
     void compute    (erhe::graphics::Compute_command_encoder& command_encoder);
-    void render     (erhe::graphics::Render_command_encoder& encoder, erhe::math::Viewport camera_viewport);
+    void render     (erhe::graphics::Render_command_encoder& encoder, const erhe::graphics::Render_pass& render_pass, erhe::math::Viewport camera_viewport);
     void end_frame  ();
 
     inline void push_view(const View& view) {
@@ -119,7 +122,7 @@ private:
     Debug_renderer_program_interface                      m_program_interface;
     erhe::graphics::Vertex_input_state                    m_vertex_input;      // triangle path
     erhe::graphics::Vertex_input_state                    m_line_vertex_input; // simple line path
-    std::optional<erhe::graphics::Compute_pipeline_state> m_lines_to_triangles_compute_pipeline;
+    std::optional<erhe::graphics::Compute_pipeline> m_lines_to_triangles_compute_pipeline;
     std::stack<View>                                      m_view_stack{};
     View                                                  m_view      {};
 

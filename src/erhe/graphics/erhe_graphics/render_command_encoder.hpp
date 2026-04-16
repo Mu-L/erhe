@@ -10,11 +10,15 @@
 
 namespace erhe::graphics {
 
+class Bind_group_layout;
 class Buffer;
 class Device;
 class Render_pass;
+class Render_pipeline;
 class Render_pipeline_state;
+class Sampler;
 class Shader_stages;
+class Texture;
 class Render_command_encoder_impl;
 
 class Render_command_encoder final : public Command_encoder
@@ -27,8 +31,18 @@ public:
     Render_command_encoder& operator=(Render_command_encoder&&) = delete;
     ~Render_command_encoder() noexcept override;
 
+    void set_bind_group_layout    (const Bind_group_layout* bind_group_layout);
     void set_buffer               (Buffer_target buffer_target, const Buffer* buffer, std::uintptr_t offset, std::uintptr_t length, std::uintptr_t index) override;
     void set_buffer               (Buffer_target buffer_target, const Buffer* buffer) override;
+
+    // Bind a single sampled image (combined image sampler) to a binding
+    // declared in the active bind_group_layout. The aspect to sample is
+    // looked up from the bind_group_layout's
+    // Bind_group_layout_binding::sampler_aspect annotation, so the caller
+    // doesn't need to inspect the texture format. The user-facing
+    // binding_point matches the value passed to Bind_group_layout_create_info::bindings.
+    void set_sampled_image        (uint32_t binding_point, const Texture& texture, const Sampler& sampler);
+    void set_render_pipeline      (const Render_pipeline& pipeline);
     void set_render_pipeline_state(const Render_pipeline_state& pipeline);
     void set_render_pipeline_state(const Render_pipeline_state& pipeline, const Shader_stages* override_shader_stages);
     void set_viewport_rect        (int x, int y, int width, int height);

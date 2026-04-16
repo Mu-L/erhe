@@ -7,10 +7,11 @@
 #include "unit_type.hpp"
 
 #include "erhe_dataformat/vertex_format.hpp"
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
 #include "erhe_graphics/device.hpp"
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/shader_stages.hpp"
@@ -26,6 +27,7 @@
 
 namespace erhe::graphics{
     class Buffer;
+    class Render_pass;
     class Sampler;
     class Shader_resource;
     class Shader_stages;
@@ -84,7 +86,7 @@ public:
     void begin    (std::size_t tile_count);
     void end      ();
 
-    void render   (erhe::graphics::Render_command_encoder& render_encoder, erhe::math::Viewport viewport);
+    void render   (erhe::graphics::Render_command_encoder& render_encoder, const erhe::graphics::Render_pass& render_pass, erhe::math::Viewport viewport);
 
 private:
     auto make_prototype(erhe::graphics::Device& graphics_device) const -> erhe::graphics::Shader_stages_prototype;
@@ -117,8 +119,6 @@ private:
         int                                     y0
     );
 
-    erhe::graphics::Shader_resource           m_default_uniform_block; // containing sampler uniforms for non-bindless textures
-    erhe::graphics::Shader_resource*          m_texture_sampler;       // non-bindless
     erhe::graphics::Fragment_outputs          m_fragment_outputs;
     erhe::dataformat::Vertex_format           m_vertex_format;
     erhe::graphics::Buffer                    m_index_buffer;
@@ -126,6 +126,7 @@ private:
     erhe::graphics::Shader_resource           m_projection_block;
     erhe::graphics::Shader_resource*          m_clip_from_window;
     erhe::graphics::Shader_resource*          m_texture_handle;
+    erhe::graphics::Bind_group_layout         m_bind_group_layout;
 
     size_t                                    m_u_clip_from_window_size  {0};
     size_t                                    m_u_clip_from_window_offset{0};
@@ -139,7 +140,7 @@ private:
     erhe::graphics::Ring_buffer_client        m_vertex_buffer;
     erhe::graphics::Ring_buffer_client        m_projection_buffer;
     erhe::graphics::Vertex_input_state        m_vertex_input;
-    erhe::graphics::Render_pipeline_state     m_pipeline;
+    erhe::graphics::Lazy_render_pipeline       m_pipeline;
 
     std::optional<erhe::graphics::Ring_buffer_range> m_vertex_buffer_range;
     size_t                                           m_index_count        {0};

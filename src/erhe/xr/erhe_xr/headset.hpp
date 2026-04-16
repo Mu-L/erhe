@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_xr/xr.hpp"
+#include "erhe_xr/xr_instance.hpp"
 
 #include <glm/glm.hpp>
 
@@ -9,17 +10,13 @@
 
 struct XrCompositionLayerProjectionView;
 
-namespace erhe::window {
-    class Context_window;
-}
+namespace erhe::graphics { class Device; }
+namespace erhe::window { class Context_window; }
 
 namespace erhe::xr {
 
 class Render_view;
-class Xr_actions;
-class Xr_instance;
 class Xr_session;
-class Xr_configuration;
 
 class Frame_timing
 {
@@ -35,6 +32,12 @@ class Headset final
 public:
     Headset(erhe::window::Context_window& context_window, const Xr_configuration& configuration);
     ~Headset() noexcept;
+
+    // Second-phase construction. Must be called after the graphics Device has been
+    // created (on Vulkan the session's XrGraphicsBindingVulkan2KHR needs the device
+    // handles; on OpenGL the session still needs the main-thread GL context). Returns
+    // true if the Xr_session was successfully created.
+    [[nodiscard]] auto create_session(erhe::graphics::Device& graphics_device) -> bool;
 
     auto is_valid      () const -> bool;
     auto is_active     () const -> bool;
@@ -54,8 +57,10 @@ public:
     [[nodiscard]] auto get_xr_session          () -> Xr_session*;
 
 private:
-    std::unique_ptr<Xr_instance> m_xr_instance;
-    std::unique_ptr<Xr_session > m_xr_session;
+    erhe::window::Context_window& m_context_window;
+    Xr_configuration              m_configuration;
+    std::unique_ptr<Xr_instance>  m_xr_instance;
+    std::unique_ptr<Xr_session >  m_xr_session;
 };
 
 } // namespace erhe::xr

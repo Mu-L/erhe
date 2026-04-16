@@ -1,7 +1,9 @@
 layout(location = 0) out vec2 v_texcoord;
 layout(location = 1) out vec4 v_color;
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
 layout(location = 2) flat out uvec2 v_texture;
+#elif defined(ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING)
+layout(location = 2) flat out uint v_texture_index;
 #endif
 
 void main()
@@ -32,8 +34,10 @@ void main()
     v_texcoord  = unpackUnorm2x16(packed_data[3]);
     gl_Position = projection.clip_from_window * vec4(a_position);
 
-#if defined(ERHE_HAS_ARB_BINDLESS_TEXTURE)
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
     v_texture  = projection.texture;
+#elif defined(ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING)
+    v_texture_index = projection.texture.x;
 #endif
 }
 

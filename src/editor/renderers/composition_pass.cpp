@@ -5,7 +5,7 @@
 #include "content_library/content_library.hpp"
 #include "editor_log.hpp"
 #include "erhe_scene_renderer/content_wide_line_renderer.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/programs.hpp"
 #include "renderers/render_context.hpp"
 #include "renderers/render_style.hpp"
@@ -13,6 +13,8 @@
 #include "scene/scene_view.hpp"
 #include "time.hpp"
 
+#include "erhe_graphics/render_pipeline.hpp"
+#include "erhe_verify/verify.hpp"
 #include "erhe_imgui/windows/pipelines.hpp"
 #include "erhe_item/item.hpp"
 #include "erhe_primitive/material.hpp"
@@ -171,9 +173,10 @@ void Composition_pass::render(const Render_context& context)
         // Meshes were already added and compute dispatched in viewport_scene_view.cpp before the render pass.
         erhe::scene_renderer::Content_wide_line_renderer* content_wide_line_renderer = context.app_context.content_wide_line_renderer;
         if (use_content_wide_line_renderer && (content_wide_line_renderer != nullptr) && content_wide_line_renderer->is_enabled()) {
+            ERHE_VERIFY(context.render_pass != nullptr);
             // Render the compute-expanded triangles with the outline pipeline state
             for (auto* render_pipeline_state : render_pipeline_states) {
-                content_wide_line_renderer->render(*context.encoder, *render_pipeline_state, content_wide_line_group);
+                content_wide_line_renderer->render(*context.encoder, *render_pipeline_state, *context.render_pass, content_wide_line_group);
             }
         } else {
             context.app_context.forward_renderer->render(
@@ -192,6 +195,7 @@ void Composition_pass::render(const Render_context& context)
                     .materials              = materials,
                     .mesh_spans             = m_mesh_spans,
                     .render_pipeline_states = this->render_pipeline_states,
+                    .render_pass            = context.render_pass,
                     .primitive_mode         = this->primitive_mode,
                     .primitive_settings     =
                         primitive_settings.has_value()
@@ -220,7 +224,7 @@ void Composition_pass::imgui()
     ImGui::Checkbox("Enabled", &enabled);
     if (ImGui::TreeNodeEx("Pipeline passes", ImGuiTreeNodeFlags_Framed)) {
         int pipeline_pass_index = 0;
-        for (erhe::graphics::Render_pipeline_state* render_pipeline_state : render_pipeline_states) {
+        for (erhe::graphics::Lazy_render_pipeline* render_pipeline_state : render_pipeline_states) {
             ImGui::PushID(pipeline_pass_index++);
             erhe::imgui::pipeline_imgui(*render_pipeline_state);
             ImGui::PopID();

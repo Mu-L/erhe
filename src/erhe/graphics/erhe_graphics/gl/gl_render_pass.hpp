@@ -43,8 +43,10 @@ public:
 
 private:
     friend class Render_pass;
-    void start_render_pass();
-    void end_render_pass  ();
+    // The before/after arguments are ignored by the OpenGL backend; the
+    // driver handles all cross-pass synchronization implicitly.
+    void start_render_pass(Render_pass* render_pass_before, Render_pass* render_pass_after);
+    void end_render_pass  (Render_pass* render_pass_after);
 
 private:
     Device&                                          m_device;
@@ -67,9 +69,9 @@ private:
     erhe::utility::Debug_label                   m_begin_debug_group_name;
     std::unique_ptr<Scoped_debug_group>          m_outer_debug_group;
 
+    friend class Device_impl;
     static ERHE_PROFILE_MUTEX_DECLARATION(std::mutex, s_mutex);
     static std::vector<Render_pass_impl*>             s_all_framebuffers;
-    static Render_pass_impl*                          s_active_render_pass;
 };
 
 } // namespace erhe::graphics

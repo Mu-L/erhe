@@ -92,7 +92,7 @@ private:
     std::string                        m_windows_ini_path;
 
     mutable std::unique_ptr<Windows_visibility_config> m_windows_config;
-    std::shared_ptr<Window_imgui_host>                m_window_imgui_host;
+    std::shared_ptr<Window_imgui_host>                 m_window_imgui_host;
 };
 
 } // namespace erhe::imgui

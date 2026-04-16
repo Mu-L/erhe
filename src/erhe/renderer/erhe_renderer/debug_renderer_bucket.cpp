@@ -4,6 +4,7 @@
 #include "erhe_graphics/compute_command_encoder.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/span.hpp"
@@ -27,7 +28,7 @@ bool operator==(const Debug_renderer_config& lhs, const Debug_renderer_config& r
         (lhs.thin_lines        == rhs.thin_lines       );
 }
 
-auto Debug_renderer_bucket::Debug_renderer_bucket::make_pipeline(const bool visible) -> erhe::graphics::Render_pipeline_state
+auto Debug_renderer_bucket::Debug_renderer_bucket::make_pipeline(const bool visible) -> erhe::graphics::Lazy_render_pipeline
 {
     const bool reverse_depth = (m_graphics_device.get_info().coordinate_conventions.native_depth_range == erhe::math::Depth_range::zero_to_one);
     using namespace erhe::graphics;
@@ -55,8 +56,9 @@ auto Debug_renderer_bucket::Debug_renderer_bucket::make_pipeline(const bool visi
 
     const Compare_operation depth_compare_op0 = visible ? Compare_operation::less : Compare_operation::greater_or_equal;
     const Compare_operation depth_compare_op  = reverse_depth ? reverse(depth_compare_op0) : depth_compare_op0;
-    return Render_pipeline_state{
-        Render_pipeline_data{
+    return Lazy_render_pipeline{
+        m_graphics_device,
+        Render_pipeline_create_info{
             .debug_label    = erhe::utility::Debug_label{"Line Renderer"},
             .shader_stages  = shader_stages,
             .vertex_input   = vertex_input,
@@ -317,12 +319,17 @@ void Debug_renderer_bucket::release_buffers()
     clear();
 }
 
-void Debug_renderer_bucket::render(erhe::graphics::Render_command_encoder& render_encoder, bool draw_hidden, bool draw_visible)
+void Debug_renderer_bucket::render(erhe::graphics::Render_command_encoder& render_encoder, const erhe::graphics::Render_pass& render_pass, bool draw_hidden, bool draw_visible)
 {
     if (m_use_compute) {
         // Compute path: render triangles from compute-generated triangle vertex buffer
-        auto render_compute_draws = [&](erhe::graphics::Render_pipeline_state& pipeline) {
-            render_encoder.set_render_pipeline_state(pipeline);
+        auto render_compute_draws = [&](erhe::graphics::Lazy_render_pipeline& pipeline) {
+            erhe::graphics::Render_pipeline* p = pipeline.get_pipeline_for(render_pass.get_descriptor());
+            if (p == nullptr) {
+                return;
+            }
+            render_encoder.set_bind_group_layout(m_debug_renderer.get_program_interface().bind_group_layout.get());
+            render_encoder.set_render_pipeline(*p);
             for (const Debug_draw_entry& draw : m_draws) {
                 if (!draw.compute_dispatched) {
                     continue;
@@ -353,8 +360,13 @@ void Debug_renderer_bucket::render(erhe::graphics::Render_command_encoder& rende
             }
         }
 
-        auto render_line_draws = [&](erhe::graphics::Render_pipeline_state& pipeline) {
-            render_encoder.set_render_pipeline_state(pipeline);
+        auto render_line_draws = [&](erhe::graphics::Lazy_render_pipeline& pipeline) {
+            erhe::graphics::Render_pipeline* p = pipeline.get_pipeline_for(render_pass.get_descriptor());
+            if (p == nullptr) {
+                return;
+            }
+            render_encoder.set_bind_group_layout(m_debug_renderer.get_program_interface().bind_group_layout.get());
+            render_encoder.set_render_pipeline(*p);
             for (Debug_draw_view_span& view_span : m_view_spans) {
                 erhe::graphics::Ring_buffer_range view_buffer_range = update_view_buffer(view_span.view);
                 m_view_buffer.bind(render_encoder, view_buffer_range);

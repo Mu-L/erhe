@@ -32,6 +32,7 @@ namespace erhe::scene {
 }
 namespace erhe::scene_renderer {
     class Forward_renderer;
+    class Mesh_memory;
     class Shadow_renderer;
 }
 namespace erhe::window {
@@ -48,7 +49,6 @@ class App_rendering;
 class App_settings;
 class Fly_camera_tool;
 class Hud;
-class Mesh_memory;
 class Scene_builder;
 class Scene_root;
 class Time;
@@ -110,7 +110,7 @@ public:
         App_settings&                   app_settings
     );
 
-    void attach_to_scene(std::shared_ptr<Scene_root> scene_root, Mesh_memory& mesh_memory);
+    void attach_to_scene(std::shared_ptr<Scene_root> scene_root, erhe::scene_renderer::Mesh_memory& mesh_memory);
 
     // Public API
     auto begin_frame   () -> bool;

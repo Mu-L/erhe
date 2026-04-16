@@ -9,7 +9,7 @@
 
 #include <functional>
 
-namespace erhe::graphics { class Render_pipeline_state; }
+namespace erhe::graphics { class Lazy_render_pipeline; }
 namespace erhe::scene    { using Layer_id = uint64_t; }
 
 struct Render_style_data;
@@ -40,7 +40,7 @@ public:
     uint32_t                                            content_wide_line_group{0};
     std::vector<erhe::scene::Layer_id>                  mesh_layers;
     std::size_t                                         non_mesh_vertex_count{0};
-    std::vector<erhe::graphics::Render_pipeline_state*> render_pipeline_states;
+    std::vector<erhe::graphics::Lazy_render_pipeline*> render_pipeline_states;
     erhe::primitive::Primitive_mode                     primitive_mode{erhe::primitive::Primitive_mode::polygon_fill};
     erhe::Item_filter                                   filter{};
     std::shared_ptr<Scene_root>                         override_scene_root{};

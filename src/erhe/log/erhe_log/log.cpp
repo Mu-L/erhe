@@ -2,6 +2,8 @@
 #include "erhe_log/timestamp.hpp"
 #include "erhe_verify/verify.hpp"
 
+#include <simdjson.h>
+
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -58,6 +60,40 @@ void configure_log_levels(
             logger->set_level(from_str(pair.second));
         }
     }
+}
+
+void load_log_configuration(const std::string& json_contents)
+{
+    simdjson::ondemand::parser parser;
+    simdjson::padded_string padded{json_contents};
+    simdjson::ondemand::document doc;
+    simdjson::error_code error = parser.iterate(padded).get(doc);
+    if (error) {
+        return;
+    }
+    simdjson::ondemand::object obj;
+    error = doc.get_object().get(obj);
+    if (error) {
+        return;
+    }
+    simdjson::ondemand::array loggers;
+    error = obj["loggers"].get_array().get(loggers);
+    if (error) {
+        return;
+    }
+    std::vector<std::pair<std::string, std::string>> levels;
+    for (simdjson::ondemand::value logger_val : loggers) {
+        simdjson::ondemand::object logger_obj;
+        if (logger_val.get_object().get(logger_obj) == simdjson::SUCCESS) {
+            std::string_view name;
+            std::string_view level;
+            if (logger_obj["name"].get_string().get(name) == simdjson::SUCCESS &&
+                logger_obj["level"].get_string().get(level) == simdjson::SUCCESS) {
+                levels.emplace_back(std::string{name}, std::string{level});
+            }
+        }
+    }
+    configure_log_levels(levels);
 }
 
 void console_init()
@@ -140,6 +176,7 @@ public:
 #endif
     auto get_console_sink    () -> spdlog::sinks::stdout_color_sink_mt& { return *m_sink_console.get(); }
     auto get_file_sink       () -> spdlog::sinks::basic_file_sink_mt& { return *m_sink_log_file.get(); }
+    auto get_file_sink_shared() -> std::shared_ptr<spdlog::sinks::basic_file_sink_mt> { return m_sink_log_file; }
     auto get_tail_store_sink () -> Store_log_sink& { return *m_tail_store_log.get(); }
     auto get_frame_store_sink() -> Store_log_sink& { return *m_frame_store_log.get(); }
     auto get_log_to_console  () const -> bool { return m_log_to_console; }
@@ -198,14 +235,14 @@ public:
 
     void create_sinks()
     {
-        m_sink_log_file = std::make_shared<spdlog::sinks::basic_file_sink_mt>("log.txt", true);
+        m_sink_log_file = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/log.txt", true);
 
         // If you get a crash here:
         // - Install / repair latest VC redistributable from
         //   https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
         // - See also: https://github.com/gabime/spdlog/issues/3145
         //m_sink_log_file->set_pattern("[%H:%M:%S %z] [%n] [%L] [%t] %v");
-        m_sink_log_file->set_pattern("[%n] [%L] %v");
+        m_sink_log_file->set_pattern("[%H:%M:%S.%e] [%L] [%n] %v");
 
 #if defined _WIN32
         m_sink_msvc = std::make_shared<spdlog::sinks::msvc_sink_mt>();
@@ -286,6 +323,64 @@ auto make_frame_logger(const std::string& name) -> std::shared_ptr<spdlog::logge
 auto make_logger(const std::string& name, const bool tail) -> std::shared_ptr<spdlog::logger>
 {
     return Log_sinks::get_instance().make_logger(name, tail);
+}
+
+auto make_file_logger(const std::string& name, const std::string& file_path) -> std::shared_ptr<spdlog::logger>
+{
+    ERHE_VERIFY(!name.empty());
+    ERHE_VERIFY(!file_path.empty());
+
+    // Share a single file sink per path so multiple loggers can target the
+    // same output file without each opening the file in truncate mode and
+    // clobbering the others.
+    static std::mutex s_file_sink_mutex;
+    static std::unordered_map<std::string, std::shared_ptr<spdlog::sinks::basic_file_sink_mt>> s_file_sinks;
+    std::shared_ptr<spdlog::sinks::basic_file_sink_mt> file_sink;
+    {
+        std::lock_guard<std::mutex> lock{s_file_sink_mutex};
+        auto it = s_file_sinks.find(file_path);
+        if (it == s_file_sinks.end()) {
+            file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(file_path, true);
+            file_sink->set_pattern("[%H:%M:%S.%e] [%L] [%n] %v");
+            s_file_sinks.emplace(file_path, file_sink);
+        } else {
+            file_sink = it->second;
+        }
+    }
+
+    // Also route file-loggers into the main log.txt sink so their output
+    // appears inline with the rest of the application logs. If
+    // create_sinks() hasn't run yet (make_file_logger called before
+    // initialize_log_sinks()), get_file_sink_shared() returns null and
+    // we fall back to the dedicated per-file sink only.
+    std::shared_ptr<spdlog::sinks::basic_file_sink_mt> main_log_sink =
+        Log_sinks::get_instance().get_file_sink_shared();
+
+    std::shared_ptr<spdlog::logger> logger = main_log_sink
+        ? std::make_shared<spdlog::logger>(name, spdlog::sinks_init_list{file_sink, main_log_sink})
+        : std::make_shared<spdlog::logger>(name, file_sink);
+
+    std::string levelname;
+    {
+        const std::unordered_map<std::string, std::string>& levels = get_log_level_map();
+        const auto it = levels.find(name);
+        if (it != levels.end()) {
+            levelname = it->second;
+        }
+    }
+    auto from_str = [](const std::string& level_name) -> spdlog::level::level_enum {
+        auto it = std::find(std::begin(spdlog::level::level_string_views), std::end(spdlog::level::level_string_views), level_name);
+        if (it != std::end(spdlog::level::level_string_views)) {
+            return static_cast<spdlog::level::level_enum>(std::distance(std::begin(spdlog::level::level_string_views), it));
+        }
+        if (level_name == "warn") return spdlog::level::warn;
+        if (level_name == "err")  return spdlog::level::err;
+        return spdlog::level::trace;
+    };
+    logger->set_level(from_str(levelname));
+    logger->flush_on(spdlog::level::trace);
+    spdlog::register_logger(logger);
+    return logger;
 }
 
 } // namespace erhe::log

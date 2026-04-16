@@ -16,9 +16,10 @@
 #include <optional>
 #include <vector>
 
-namespace erhe::geometry { class Geometry; }
-namespace erhe::imgui    { class Imgui_windows; }
-namespace erhe::scene    { class Mesh; }
+namespace erhe::geometry       { class Geometry; }
+namespace erhe::imgui          { class Imgui_windows; }
+namespace erhe::scene          { class Mesh; }
+namespace erhe::scene_renderer { class Mesh_memory; }
 
 namespace editor {
 
@@ -50,7 +51,6 @@ static constexpr const char* c_paint_mode_strings[] = {
 class App_message_bus;
 class App_scenes;
 class Icon_set;
-class Mesh_memory;
 class Selection_tool;
 class Headset_view;
 

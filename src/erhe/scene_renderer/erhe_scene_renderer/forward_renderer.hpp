@@ -19,6 +19,7 @@ namespace erhe {
 }
 namespace erhe::graphics {
     class Device;
+    class Lazy_render_pipeline;
     class Render_command_encoder;
     class Render_pipeline_state;
     class Texture;
@@ -41,8 +42,7 @@ public:
 
     Forward_renderer(
         erhe::graphics::Device&                graphics_device,
-        Program_interface&                     program_interface,
-        const erhe::graphics::Shader_resource* default_uniform_block = nullptr
+        Program_interface&                     program_interface
     );
     ~Forward_renderer() noexcept;
 
@@ -67,7 +67,8 @@ public:
             std::span<const std::shared_ptr<erhe::scene::Mesh>>
         >&                                                                 mesh_spans;
         std::size_t                                                        non_mesh_vertex_count{0};
-        const std::span<erhe::graphics::Render_pipeline_state*>            render_pipeline_states;
+        const std::span<erhe::graphics::Lazy_render_pipeline*>             render_pipeline_states;
+        const erhe::graphics::Render_pass*                                 render_pass{nullptr};
         erhe::primitive::Primitive_mode                                    primitive_mode{erhe::primitive::Primitive_mode::polygon_fill};
         Primitive_interface_settings                                       primitive_settings{};
         const erhe::math::Viewport&                                        viewport;

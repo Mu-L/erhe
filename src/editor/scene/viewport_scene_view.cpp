@@ -87,9 +87,9 @@ Viewport_scene_view::Viewport_scene_view(
     : Scene_view              {context, make_viewport_config(viewport_config_data)}
     , Texture_rendergraph_node{
         erhe::rendergraph::Texture_rendergraph_node_create_info{
-            .rendergraph          = rendergraph,
-            .debug_label          = erhe::utility::Debug_label{fmt::format("Texture_rendergraph_node for Viewport_scene_view {}", name)},
-            .output_key           = erhe::rendergraph::Rendergraph_node_key::viewport_texture,
+            .rendergraph             = rendergraph,
+            .debug_label             = erhe::utility::Debug_label{fmt::format("Texture_rendergraph_node for Viewport_scene_view {}", name)},
+            .output_key              = erhe::rendergraph::Rendergraph_node_key::viewport_texture,
             .color_format         = erhe::dataformat::Format::format_16_vec4_float,
             .depth_stencil_format = erhe::dataformat::Format::format_d32_sfloat_s8_uint,
             .sample_count         = msaa_sample_count
@@ -159,8 +159,19 @@ void Viewport_scene_view::execute_rendergraph_node()
         m_context.app_rendering->render_viewport_renderables(context);
 
         if (m_context.debug_renderer->use_compute()) {
-            erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder();
-            m_context.debug_renderer->compute(compute_encoder);
+            {
+                erhe::graphics::Scoped_debug_group debug_group{"debug_renderer->compute()"};
+                erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder();
+                m_context.debug_renderer->compute(compute_encoder);
+            }
+            // Compute -> vertex-attribute barrier paired with the
+            // dispatches inside debug_renderer->compute(). Must be
+            // emitted after the compute encoder scope ends; on Metal
+            // the cb cannot be split while the compute encoder is
+            // open.
+            graphics_device.memory_barrier(
+                erhe::graphics::Memory_barrier_mask::vertex_attrib_array_barrier_bit
+            );
         }
 
         // Content wide line compute path, all edge line passes
@@ -169,6 +180,8 @@ void Viewport_scene_view::execute_rendergraph_node()
             if (content_scene_root) {
                 erhe::scene::Scene* scene = content_scene_root->get_hosted_scene();
                 if (scene != nullptr) {
+                    erhe::graphics::Scoped_debug_group content_wide_line_renderer_debug_group{"content_wide_line_renderer"};
+
                     // Helper to feed meshes from a composition pass to the content wide line renderer
                     auto feed_pass = [&](const Composition_pass* pass) {
                         if ((pass == nullptr) || !pass->use_content_wide_line_renderer || !pass->enabled) {
@@ -215,22 +228,39 @@ void Viewport_scene_view::execute_rendergraph_node()
                             .size_source     = erhe::scene_renderer::Primitive_size_source::constant_size,
                             .constant_size   = outline_width
                         };
+                        erhe::graphics::Scoped_debug_group feed_debug_group{"selection_outline"};
                         feed_pass(m_context.app_rendering->selection_outline.get());
                     }
 
                     // Feed regular edge line passes
-                    feed_pass(m_context.app_rendering->opaque_edge_lines_not_selected.get());
-                    feed_pass(m_context.app_rendering->opaque_edge_lines_selected.get());
-                    feed_pass(m_context.app_rendering->translucent_outline.get());
+                    {
+                        erhe::graphics::Scoped_debug_group feed_debug_group{"opaque_edge_lines_not_selected"};
+                        feed_pass(m_context.app_rendering->opaque_edge_lines_not_selected.get());
+                    }
+                    {
+                        erhe::graphics::Scoped_debug_group feed_debug_group{"opaque_edge_lines_selected"};
+                        feed_pass(m_context.app_rendering->opaque_edge_lines_selected.get());
+                    }
+                    {
+                        erhe::graphics::Scoped_debug_group feed_debug_group{"translucent_outline"};
+                        feed_pass(m_context.app_rendering->translucent_outline.get());
+                    }
                 }
             }
 
-            erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder();
-            m_context.content_wide_line_renderer->compute(
-                compute_encoder, context.viewport, *context.camera,
-                get_reverse_depth(),
-                get_depth_range(),
-                get_conventions()
+            {
+                erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder();
+                m_context.content_wide_line_renderer->compute(
+                    compute_encoder, context.viewport, *context.camera,
+                    get_reverse_depth(),
+                    get_depth_range(),
+                    get_conventions()
+                );
+            }
+            // Compute -> vertex-attribute barrier; must be emitted
+            // after the compute encoder scope ends.
+            graphics_device.memory_barrier(
+                erhe::graphics::Memory_barrier_mask::vertex_attrib_array_barrier_bit
             );
         }
     }
@@ -241,7 +271,8 @@ void Viewport_scene_view::execute_rendergraph_node()
 
     erhe::graphics::Render_command_encoder encoder = graphics_device.make_render_command_encoder();
     erhe::graphics::Scoped_render_pass scoped_render_pass{*m_render_target.get_render_pass()};
-    context.encoder = &encoder;
+    context.encoder     = &encoder;
+    context.render_pass = m_render_target.get_render_pass();
 
     // Starting render encoder clears render target texture(s)
     if (!do_render) {
@@ -261,12 +292,12 @@ void Viewport_scene_view::execute_rendergraph_node()
 
     m_context.app_rendering ->render_viewport_main(context);
     m_context.app_rendering ->render_viewport_renderables(context); // This time with render encoder set
-    m_context.debug_renderer->render(encoder, context.viewport);
+    m_context.debug_renderer->render(encoder, *m_render_target.get_render_pass(), context.viewport);
     m_context.debug_renderer->end_frame();
     if (m_context.content_wide_line_renderer != nullptr && m_context.content_wide_line_renderer->is_enabled()) {
         m_context.content_wide_line_renderer->end_frame();
     }
-    m_context.text_renderer ->render(encoder, context.viewport);
+    m_context.text_renderer ->render(encoder, *m_render_target.get_render_pass(), context.viewport);
 }
 
 void Viewport_scene_view::set_window_viewport(erhe::math::Viewport viewport)

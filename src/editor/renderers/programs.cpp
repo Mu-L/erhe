@@ -27,41 +27,8 @@ Programs::Shader_stages_builder::Shader_stages_builder(Shader_stages_builder&& o
 {
 }
 
-Programs::Programs(erhe::graphics::Device& graphics_device)
+Programs::Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer::Program_interface& /*program_interface*/)
     : shader_path{std::filesystem::path("res") / std::filesystem::path("shaders")}
-    , default_uniform_block{graphics_device}
-    , shadow_sampler_compare{
-        graphics_device.get_info().use_bindless_texture
-            ? nullptr
-            : default_uniform_block.add_sampler(
-                "s_shadow_compare",
-                erhe::graphics::Glsl_type::sampler_2d_array_shadow,
-                erhe::scene_renderer::c_texture_heap_slot_shadow_compare
-            )
-    }
-    , shadow_sampler_no_compare{
-        graphics_device.get_info().use_bindless_texture
-            ? nullptr
-            : default_uniform_block.add_sampler(
-                "s_shadow_no_compare",
-                erhe::graphics::Glsl_type::sampler_2d_array,
-                erhe::scene_renderer::c_texture_heap_slot_shadow_no_compare
-            )
-    }
-    , texture_sampler{
-        graphics_device.get_info().use_bindless_texture
-            ? nullptr
-            : default_uniform_block.add_sampler(
-                "s_texture",
-                erhe::graphics::Glsl_type::sampler_2d,
-                erhe::scene_renderer::c_texture_heap_slot_count_reserved,
-                // TODO
-                std::min(
-                    graphics_device.get_info().max_per_stage_descriptor_samplers - erhe::scene_renderer::c_texture_heap_slot_count_reserved,
-                    uint32_t{64}
-                )
-            )
-    }
     , error                   {graphics_device, "error-not_loaded"}
     , brdf_slice              {graphics_device, "brdf_slice-not_loaded"}
     , brush                   {graphics_device, "brush-not_loaded"}
@@ -132,16 +99,16 @@ void Programs::load_programs(
         prototypes.emplace_back(reloadable_shader_stages, program_interface, shader_path);
     };
 
-    add_shader(error                   , CI{ .name = "error"                   , .default_uniform_block = &default_uniform_block, .dump_interface = true } );
-    add_shader(standard                , CI{ .name = "standard"                , .default_uniform_block = &default_uniform_block } );
-    add_shader(anisotropic_slope       , CI{ .name = "anisotropic_slope"       , .default_uniform_block = &default_uniform_block } );
-    add_shader(anisotropic_engine_ready, CI{ .name = "anisotropic_engine_ready", .default_uniform_block = &default_uniform_block } );
-    add_shader(circular_brushed_metal  , CI{ .name = "circular_brushed_metal"  , .default_uniform_block = &default_uniform_block } );
-    add_shader(brdf_slice              , CI{ .name = "brdf_slice"              , .default_uniform_block = &default_uniform_block } );
-    add_shader(brush                   , CI{ .name = "brush"                   , .default_uniform_block = &default_uniform_block } );
-    add_shader(textured                , CI{ .name = "textured"                , .default_uniform_block = &default_uniform_block } );
-    add_shader(sky                     , CI{ .name = "sky"                     , .default_uniform_block = &default_uniform_block } );
-    add_shader(grid                    , CI{ .name = "grid"                    , .default_uniform_block = &default_uniform_block } );
+    add_shader(error                   , CI{ .name = "error"                   , .dump_interface = true } );
+    add_shader(standard                , CI{ .name = "standard"                 } );
+    add_shader(anisotropic_slope       , CI{ .name = "anisotropic_slope"        } );
+    add_shader(anisotropic_engine_ready, CI{ .name = "anisotropic_engine_ready" } );
+    add_shader(circular_brushed_metal  , CI{ .name = "circular_brushed_metal"   } );
+    add_shader(brdf_slice              , CI{ .name = "brdf_slice"               } );
+    add_shader(brush                   , CI{ .name = "brush"                    } );
+    add_shader(textured                , CI{ .name = "textured"                 } );
+    add_shader(sky                     , CI{ .name = "sky"                      } );
+    add_shader(grid                    , CI{ .name = "grid"                     } );
     // wide_lines shaders use geometry shaders which are not supported on Metal
     if (!graphics_device.get_info().use_compute_shader) {
         add_shader(wide_lines_draw_color   , CI{ .name = "wide_lines"              , .defines = {{"ERHE_USE_DRAW_COLOR",   "1"}}});
@@ -150,36 +117,36 @@ void Programs::load_programs(
     add_shader(points                  , CI{ .name = "points" } );
     add_shader(id                      , CI{ .name = "id"     } );
     add_shader(tool                    , CI{ .name = "tool"   } );
-    add_shader(debug_depth             , CI{ .name = "visualize_depth", .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_vertex_normal     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_NORMAL",      "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_fragment_normal   , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_FRAGMENT_NORMAL",    "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_normal_texture    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_NORMAL_TEXTURE",     "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_tangent           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TANGENT",            "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_vertex_tangent_w  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TANGENT_W",          "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_bitangent         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_BITANGENT",          "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_texcoord          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TEXCOORD",           "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_base_color_texture, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_BASE_COLOR_TEXTURE", "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_vertex_color_rgb  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_COLOR_RGB",   "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_vertex_color_alpha, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_COLOR_ALPHA", "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_aniso_strength    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ANISO_STRENGTH",     "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_aniso_texcoord    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ANISO_TEXCOORD",     "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_vdotn             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VDOTN",              "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_ldotn             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_LDOTN",              "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_hdotv             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_HDOTV",              "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_joint_indices     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_JOINT_INDICES",      "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_joint_weights     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_JOINT_WEIGHTS",      "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_omega_o           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_O",            "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_omega_i           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_I",            "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_omega_g           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_G",            "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_vertex_valency    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_VALENCY",     "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_polygon_edge_count, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_POLYGON_EDGE_COUNT", "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_metallic          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_METALLIC",           "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_roughness         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ROUGHNESS",          "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_occlusion         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OCCLUSION",          "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_emissive          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_EMISSIVE",           "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_shadowmap_texels  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_SHADOWMAP_TEXELS",   "1"}}, .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_shadow            , CI{ .name = "shadow_debug",   .default_uniform_block = &default_uniform_block } );
-    add_shader(debug_misc              , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_MISC",               "1"}}, .default_uniform_block = &default_uniform_block } );
+    add_shader(debug_depth             , CI{ .name = "visualize_depth", .no_vertex_input = true } );
+    add_shader(debug_vertex_normal     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_NORMAL",      "1"}} } );
+    add_shader(debug_fragment_normal   , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_FRAGMENT_NORMAL",    "1"}} } );
+    add_shader(debug_normal_texture    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_NORMAL_TEXTURE",     "1"}} } );
+    add_shader(debug_tangent           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TANGENT",            "1"}} } );
+    add_shader(debug_vertex_tangent_w  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TANGENT_W",          "1"}} } );
+    add_shader(debug_bitangent         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_BITANGENT",          "1"}} } );
+    add_shader(debug_texcoord          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TEXCOORD",           "1"}} } );
+    add_shader(debug_base_color_texture, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_BASE_COLOR_TEXTURE", "1"}} } );
+    add_shader(debug_vertex_color_rgb  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_COLOR_RGB",   "1"}} } );
+    add_shader(debug_vertex_color_alpha, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_COLOR_ALPHA", "1"}} } );
+    add_shader(debug_aniso_strength    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ANISO_STRENGTH",     "1"}} } );
+    add_shader(debug_aniso_texcoord    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ANISO_TEXCOORD",     "1"}} } );
+    add_shader(debug_vdotn             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VDOTN",              "1"}} } );
+    add_shader(debug_ldotn             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_LDOTN",              "1"}} } );
+    add_shader(debug_hdotv             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_HDOTV",              "1"}} } );
+    add_shader(debug_joint_indices     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_JOINT_INDICES",      "1"}} } );
+    add_shader(debug_joint_weights     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_JOINT_WEIGHTS",      "1"}} } );
+    add_shader(debug_omega_o           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_O",            "1"}} } );
+    add_shader(debug_omega_i           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_I",            "1"}} } );
+    add_shader(debug_omega_g           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_G",            "1"}} } );
+    add_shader(debug_vertex_valency    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_VALENCY",     "1"}} } );
+    add_shader(debug_polygon_edge_count, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_POLYGON_EDGE_COUNT", "1"}} } );
+    add_shader(debug_metallic          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_METALLIC",           "1"}} } );
+    add_shader(debug_roughness         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ROUGHNESS",          "1"}} } );
+    add_shader(debug_occlusion         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OCCLUSION",          "1"}} } );
+    add_shader(debug_emissive          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_EMISSIVE",           "1"}} } );
+    add_shader(debug_shadowmap_texels  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_SHADOWMAP_TEXELS",   "1"}} } );
+    add_shader(debug_shadow            , CI{ .name = "shadow_debug" } );
+    add_shader(debug_misc              , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_MISC",               "1"}} } );
 
     // Compile shaders
 

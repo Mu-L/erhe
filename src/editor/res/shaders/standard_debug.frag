@@ -331,7 +331,7 @@ void main()
         vec4  position_in_light_texture_homogeneous = light.texture_from_world * position;
         vec3  position_in_light_texture             = position_in_light_texture_homogeneous.xyz / position_in_light_texture_homogeneous.w;
 
-        vec2  shadowmap_resolution = get_texture_size(light_block.shadow_texture_compare);
+        vec2  shadowmap_resolution = vec2(textureSize(s_shadow_compare, 0).xy);
 
         vec2  uv = fract(shadowmap_resolution * position_in_light_texture.xy);
         vec2  v1 = step(vec2(0.5), uv);

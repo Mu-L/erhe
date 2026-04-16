@@ -4,7 +4,7 @@
 #include "content_library/content_library.hpp"
 #include "editor_log.hpp"
 #include "graphics/icon_set.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "scene/node_raytrace.hpp"
 #include "scene/scene_root.hpp"
 #include "scene/scene_view.hpp"
@@ -62,7 +62,11 @@ auto Handle_visualizations::c_str(const Mode mode) -> const char*
     }
 }
 
-Handle_visualizations::Handle_visualizations(App_context& app_context, Mesh_memory& mesh_memory, Tools& tools)
+Handle_visualizations::Handle_visualizations(
+    App_context&                       app_context,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Tools&                             tools
+)
     : m_context{app_context}
 {
     ERHE_PROFILE_FUNCTION();
@@ -418,7 +422,7 @@ auto Handle_visualizations::make_mesh(
 }
 
 Handle_visualizations::Part::Part(
-    Mesh_memory&                                     mesh_memory,
+    erhe::scene_renderer::Mesh_memory&               mesh_memory,
     const std::shared_ptr<erhe::geometry::Geometry>& render_geometry,
     const std::shared_ptr<erhe::geometry::Geometry>& collision_geometry
 )
@@ -441,7 +445,7 @@ Handle_visualizations::Part::Part(
     ERHE_VERIFY(raytrace_ok);
 }
 
-auto Handle_visualizations::make_arrow_cylinder(Mesh_memory& mesh_memory) -> Part
+auto Handle_visualizations::make_arrow_cylinder(erhe::scene_renderer::Mesh_memory& mesh_memory) -> Part
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -470,7 +474,7 @@ auto Handle_visualizations::make_arrow_cylinder(Mesh_memory& mesh_memory) -> Par
     return Part{mesh_memory, render_geometry, raytrace_geometry};
 }
 
-auto Handle_visualizations::make_arrow_cone(Mesh_memory& mesh_memory) -> Part
+auto Handle_visualizations::make_arrow_cone(erhe::scene_renderer::Mesh_memory& mesh_memory) -> Part
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -497,7 +501,7 @@ auto Handle_visualizations::make_arrow_cone(Mesh_memory& mesh_memory) -> Part
     return Part{mesh_memory, render_geometry, raytrace_geometry};
 }
 
-auto Handle_visualizations::make_box(Mesh_memory& mesh_memory, const bool uniform) -> Part
+auto Handle_visualizations::make_box(erhe::scene_renderer::Mesh_memory& mesh_memory, const bool uniform) -> Part
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -524,7 +528,7 @@ auto Handle_visualizations::make_box(Mesh_memory& mesh_memory, const bool unifor
     return Part{mesh_memory, render_geometry, raytrace_geometry};
 }
 
-auto Handle_visualizations::make_rotate_ring(Mesh_memory& mesh_memory) -> Part
+auto Handle_visualizations::make_rotate_ring(erhe::scene_renderer::Mesh_memory& mesh_memory) -> Part
 {
     ERHE_PROFILE_FUNCTION();
     auto render_geometry = std::make_shared<erhe::geometry::Geometry>();

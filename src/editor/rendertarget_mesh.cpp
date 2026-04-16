@@ -1,15 +1,15 @@
 ﻿#include "rendertarget_mesh.hpp"
 
 #include "app_context.hpp"
-#include "erhe_graphics/device.hpp"
 #include "editor_log.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "scene/scene_view.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_geometry/shapes/regular_polygon.hpp"
 #include "erhe_graphics/blit_command_encoder.hpp"
 #include "erhe_graphics/buffer_transfer_queue.hpp"
+#include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/texture.hpp"
@@ -23,11 +23,11 @@
 namespace editor {
 
 Rendertarget_mesh::Rendertarget_mesh(
-    erhe::graphics::Device& graphics_device,
-    Mesh_memory&            mesh_memory,
-    const int               width,
-    const int               height,
-    const float             pixels_per_meter
+    erhe::graphics::Device&            graphics_device,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    const int                          width,
+    const int                          height,
+    const float                        pixels_per_meter
 )
     : erhe::scene::Mesh {"Rendertarget Node"}
     , m_pixels_per_meter{pixels_per_meter}
@@ -47,7 +47,12 @@ auto Rendertarget_mesh::get_type_name() const -> std::string_view
     return static_type_name;
 }
 
-void Rendertarget_mesh::resize_rendertarget(erhe::graphics::Device& graphics_device, Mesh_memory& mesh_memory, const int width, const int height)
+void Rendertarget_mesh::resize_rendertarget(
+    erhe::graphics::Device&            graphics_device,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    const int                          width,
+    const int                          height
+)
 {
     if (m_texture && m_texture->get_width() == width && m_texture->get_height() == height) {
         return;
@@ -74,7 +79,7 @@ void Rendertarget_mesh::resize_rendertarget(erhe::graphics::Device& graphics_dev
             .debug_label  = "Rendertarget_mesh::m_texture"
         }
     );
-    graphics_device.clear_texture(*m_texture.get(), { 0.0, 0.0, 0.0, 0.85 });
+    graphics_device.clear_texture(*m_texture.get(), { 0.0, 0.0, 0.0, 0.0 });
 
     m_sampler = std::make_shared<erhe::graphics::Sampler>(
         graphics_device,
@@ -96,6 +101,10 @@ void Rendertarget_mesh::resize_rendertarget(erhe::graphics::Device& graphics_dev
     render_pass_descriptor.color_attachments[0].clear_value[2] = 0.0f;
     render_pass_descriptor.color_attachments[0].clear_value[3] = 0.66f;
     render_pass_descriptor.color_attachments[0].store_action   = erhe::graphics::Store_action::Store;
+    render_pass_descriptor.color_attachments[0].usage_before   = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_before  = erhe::graphics::Image_layout::shader_read_only_optimal;
+    render_pass_descriptor.color_attachments[0].usage_after    = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_after   = erhe::graphics::Image_layout::shader_read_only_optimal;
     render_pass_descriptor.render_target_width                 = width;
     render_pass_descriptor.render_target_height                = height;
     render_pass_descriptor.debug_label                         = "Rendertarget Node";

@@ -4,13 +4,18 @@ set(_target "editor")
 add_executable(${_target})
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    graphics_presets.json
-    logging.json
-    openxr_windows.json
-    settings.json
-    windows.json
+    config/developer.json
+    config/erhe_graphics.json
+    config/mesh_memory.json
+    config/renderer.json
+    config/text_renderer.json
+    config/logging.json
+    config/graphics_presets.json
+    config/openxr_windows.json
+    config/editor_settings.json
+    config/windows.json
 
-    # config/editor_config.hpp and .cpp removed -- replaced by codegen'd Erhe_config and Editor_settings_config
+    # config/editor_config.hpp and .cpp removed -- replaced by codegen'd per-library configs and Editor_settings_config
 
     animation/animation_curve.cpp
     animation/animation_curve.hpp
@@ -193,8 +198,6 @@ erhe_target_sources_grouped(
     renderers/id_renderer.hpp
     renderers/light_mesh.cpp
     renderers/light_mesh.hpp
-    renderers/mesh_memory.cpp
-    renderers/mesh_memory.hpp
     renderers/programs.cpp
     renderers/programs.hpp
     renderers/render_context.cpp
@@ -249,6 +252,7 @@ erhe_target_sources_grouped(
     res/shaders/debug_line.vert
     res/shaders/line_after_compute.frag
     res/shaders/line_after_compute.vert
+    res/shaders/content_line_after_compute.frag
     res/shaders/points.frag
     res/shaders/points.vert
     res/shaders/post_processing.vert
@@ -483,7 +487,6 @@ erhe_codegen_generate(
     DEFINITIONS
         "${_config_defs}/camera_controls_config.py"
         "${_config_defs}/developer_config.py"
-        "${_config_defs}/erhe_config.py"
         "${_config_defs}/editor_settings_config.py"
         "${_config_defs}/grid_config.py"
         "${_config_defs}/headset_config.py"
@@ -491,12 +494,10 @@ erhe_codegen_generate(
         "${_config_defs}/inventory_config.py"
         "${_config_defs}/hud_config.py"
         "${_config_defs}/id_renderer_config.py"
-        "${_config_defs}/mesh_memory_config.py"
         "${_config_defs}/network_config.py"
         "${_config_defs}/physics_config.py"
         "${_config_defs}/renderer_config.py"
         "${_config_defs}/scene_config.py"
-        "${_config_defs}/shader_monitor_config.py"
         "${_config_defs}/text_renderer_config.py"
         "${_config_defs}/threading_config.py"
         "${_config_defs}/thumbnails_config.py"
@@ -542,9 +543,6 @@ set(_config_sources
     ${_config_out}/id_renderer_config.hpp
     ${_config_out}/id_renderer_config_serialization.hpp
     ${_config_out}/id_renderer_config.cpp
-    ${_config_out}/mesh_memory_config.hpp
-    ${_config_out}/mesh_memory_config_serialization.hpp
-    ${_config_out}/mesh_memory_config.cpp
     ${_config_out}/network_config.hpp
     ${_config_out}/network_config_serialization.hpp
     ${_config_out}/network_config.cpp
@@ -557,9 +555,6 @@ set(_config_sources
     ${_config_out}/scene_config.hpp
     ${_config_out}/scene_config_serialization.hpp
     ${_config_out}/scene_config.cpp
-    ${_config_out}/shader_monitor_config.hpp
-    ${_config_out}/shader_monitor_config_serialization.hpp
-    ${_config_out}/shader_monitor_config.cpp
     ${_config_out}/text_renderer_config.hpp
     ${_config_out}/text_renderer_config_serialization.hpp
     ${_config_out}/text_renderer_config.cpp
@@ -596,9 +591,6 @@ set(_config_sources
     ${_config_out}/fly_camera_config.hpp
     ${_config_out}/fly_camera_config_serialization.hpp
     ${_config_out}/fly_camera_config.cpp
-    ${_config_out}/erhe_config.hpp
-    ${_config_out}/erhe_config_serialization.hpp
-    ${_config_out}/erhe_config.cpp
     ${_config_out}/editor_settings_config.hpp
     ${_config_out}/editor_settings_config_serialization.hpp
     ${_config_out}/editor_settings_config.cpp
@@ -640,6 +632,8 @@ set(_scene_renderer_gen "${CMAKE_BINARY_DIR}/src/erhe/scene_renderer/erhe_scene_
 set(_scene_renderer_ser_sources
     ${_scene_renderer_gen}/primitive_color_source.hpp
     ${_scene_renderer_gen}/primitive_color_source.cpp
+    ${_scene_renderer_gen}/mesh_memory_config_serialization.hpp
+    ${_scene_renderer_gen}/mesh_memory_config.cpp
 )
 set_source_files_properties(${_scene_renderer_ser_sources} PROPERTIES GENERATED TRUE)
 target_sources(${_target} PRIVATE ${_scene_renderer_ser_sources})

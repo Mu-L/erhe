@@ -6,7 +6,7 @@
 #include "app_message_bus.hpp"
 #include "app_settings.hpp"
 #include "graphics/icon_set.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/render_context.hpp"
 #include "scene/scene_view.hpp"
 #include "tools/selection_tool.hpp"

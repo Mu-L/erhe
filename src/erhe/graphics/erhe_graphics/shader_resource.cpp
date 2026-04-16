@@ -90,10 +90,10 @@ auto get_type_details(const Glsl_type type) -> Type_details
         case Glsl_type::sampler_1d_shadow:                           return Type_details(type, Glsl_type::float_, Texture_type::texture_1d,        1, sampler_flags_shadow);
         case Glsl_type::sampler_2d_shadow:                           return Type_details(type, Glsl_type::float_, Texture_type::texture_2d,        2, sampler_flags_shadow);
         case Glsl_type::sampler_1d_array:                            return Type_details(type, Glsl_type::float_, Texture_type::texture_1d,        1, sampler_flags_array);
-        case Glsl_type::sampler_2d_array:                            return Type_details(type, Glsl_type::float_, Texture_type::texture_2d,        2, sampler_flags_array);
+        case Glsl_type::sampler_2d_array:                            return Type_details(type, Glsl_type::float_, Texture_type::texture_2d_array,  2, sampler_flags_array);
         case Glsl_type::sampler_buffer:                              return Type_details(type, Glsl_type::float_, Texture_type::texture_buffer,    1, 0);
         case Glsl_type::sampler_1d_array_shadow:                     return Type_details(type, Glsl_type::float_, Texture_type::texture_1d,        1, sampler_flags_array | sampler_flags_shadow);
-        case Glsl_type::sampler_2d_array_shadow:                     return Type_details(type, Glsl_type::float_, Texture_type::texture_2d,        2, sampler_flags_array | sampler_flags_shadow);
+        case Glsl_type::sampler_2d_array_shadow:                     return Type_details(type, Glsl_type::float_, Texture_type::texture_2d_array,  2, sampler_flags_array | sampler_flags_shadow);
         case Glsl_type::sampler_cube_shadow:                         return Type_details(type, Glsl_type::float_, Texture_type::texture_cube_map,  2, sampler_flags_cube | sampler_flags_shadow);
 
         case Glsl_type::int_sampler_1d:                              return Type_details(type, Glsl_type::int_,   Texture_type::texture_1d,        1, 0);
@@ -101,7 +101,7 @@ auto get_type_details(const Glsl_type type) -> Type_details
         case Glsl_type::int_sampler_3d:                              return Type_details(type, Glsl_type::int_,   Texture_type::texture_3d,        3, 0);
         case Glsl_type::int_sampler_cube:                            return Type_details(type, Glsl_type::int_,   Texture_type::texture_cube_map,  2, sampler_flags_cube);
         case Glsl_type::int_sampler_1d_array:                        return Type_details(type, Glsl_type::int_,   Texture_type::texture_1d,        1, sampler_flags_array);
-        case Glsl_type::int_sampler_2d_array:                        return Type_details(type, Glsl_type::int_,   Texture_type::texture_2d,        2, sampler_flags_array);
+        case Glsl_type::int_sampler_2d_array:                        return Type_details(type, Glsl_type::int_,   Texture_type::texture_2d_array,  2, sampler_flags_array);
         case Glsl_type::int_sampler_buffer:                          return Type_details(type, Glsl_type::int_,   Texture_type::texture_buffer,    1, 0);
 
         case Glsl_type::unsigned_int_sampler_1d:                     return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_1d,       1, 0);
@@ -109,14 +109,14 @@ auto get_type_details(const Glsl_type type) -> Type_details
         case Glsl_type::unsigned_int_sampler_3d:                     return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_3d,       3, 0);
         case Glsl_type::unsigned_int_sampler_cube:                   return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_cube_map, 2, sampler_flags_cube);
         case Glsl_type::unsigned_int_sampler_1d_array:               return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_1d,       1, sampler_flags_array);
-        case Glsl_type::unsigned_int_sampler_2d_array:               return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_2d,       2, sampler_flags_array);
+        case Glsl_type::unsigned_int_sampler_2d_array:               return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_2d_array, 2, sampler_flags_array);
         case Glsl_type::unsigned_int_sampler_buffer:                 return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_buffer,   1, 0);
 
-        case Glsl_type::sampler_cube_map_array:                      return Type_details(type, Glsl_type::float_,       Texture_type::texture_cube_map, 2, sampler_flags_cube | sampler_flags_array);
-        case Glsl_type::sampler_cube_map_array_shadow:               return Type_details(type, Glsl_type::float_,       Texture_type::texture_cube_map, 2, sampler_flags_cube | sampler_flags_array | sampler_flags_shadow);
+        case Glsl_type::sampler_cube_map_array:                      return Type_details(type, Glsl_type::float_,       Texture_type::texture_cube_map_array, 2, sampler_flags_cube | sampler_flags_array);
+        case Glsl_type::sampler_cube_map_array_shadow:               return Type_details(type, Glsl_type::float_,       Texture_type::texture_cube_map_array, 2, sampler_flags_cube | sampler_flags_array | sampler_flags_shadow);
 
-        case Glsl_type::int_sampler_cube_map_array:                  return Type_details(type, Glsl_type::int_,         Texture_type::texture_cube_map, 2, sampler_flags_cube | sampler_flags_array);
-        case Glsl_type::unsigned_int_sampler_cube_map_array:         return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_cube_map, 2, sampler_flags_cube | sampler_flags_array);
+        case Glsl_type::int_sampler_cube_map_array:                  return Type_details(type, Glsl_type::int_,         Texture_type::texture_cube_map_array, 2, sampler_flags_cube | sampler_flags_array);
+        case Glsl_type::unsigned_int_sampler_cube_map_array:         return Type_details(type, Glsl_type::unsigned_int, Texture_type::texture_cube_map_array, 2, sampler_flags_cube | sampler_flags_array);
 
         case Glsl_type::sampler_2d_multisample:                      return Type_details(type, Glsl_type::float_,       Texture_type::texture_2d, 2, sampler_flags_multisample);
         case Glsl_type::int_sampler_2d_multisample:                  return Type_details(type, Glsl_type::int_,         Texture_type::texture_2d, 2, sampler_flags_multisample);
@@ -309,7 +309,27 @@ Shader_resource::Shader_resource(
 {
 }
 
-// Block (uniform block or shader storage block)
+// Block (uniform block or shader storage block) -- designated initializer version
+Shader_resource::Shader_resource(Device& device, const Block_create_info& create_info)
+    : m_device       {device}
+    , m_type         {create_info.type}
+    , m_name         {create_info.name}
+    , m_array_size   {create_info.array_size}
+    , m_binding_point{create_info.binding_point}
+    , m_readonly     {create_info.readonly}
+    , m_writeonly    {create_info.writeonly}
+{
+    const auto& info = device.get_info();
+    if (create_info.type == Type::uniform_block) {
+        ERHE_VERIFY(create_info.binding_point < info.max_uniform_buffer_bindings);
+    }
+    if (create_info.type == Type::shader_storage_block) {
+        ERHE_VERIFY(info.use_shader_storage_buffers);
+        ERHE_VERIFY(create_info.binding_point < info.max_shader_storage_buffer_bindings);
+    }
+}
+
+// Block (uniform block or shader storage block) -- legacy positional arguments
 Shader_resource::Shader_resource(
     Device&                          device,
     const std::string_view           name,
@@ -359,21 +379,25 @@ Shader_resource::Shader_resource(
     Shader_resource*                 parent,
     const int                        location,
     const Glsl_type                  sampler_type,
+    const Sampler_aspect             sampler_aspect,
+    const bool                       is_texture_heap,
     const std::optional<std::size_t> array_size /* = {} */,
     const std::optional<int>         dedicated_texture_unit /* = {} */
 )
-    : m_device       {device}
-    , m_type         {Type::sampler}
-    , m_name         {sampler_name}
-    , m_array_size   {array_size}
-    , m_parent       {parent}
-    , m_basic_type   {sampler_type}
-    , m_location     {location}
-    , m_binding_point{
+    : m_device         {device}
+    , m_type           {Type::sampler}
+    , m_name           {sampler_name}
+    , m_array_size     {array_size}
+    , m_parent         {parent}
+    , m_basic_type     {sampler_type}
+    , m_location       {location}
+    , m_binding_point  {
         dedicated_texture_unit.has_value()
             ? dedicated_texture_unit.value()
             : -1
     }
+    , m_sampler_aspect {sampler_aspect}
+    , m_is_texture_heap{is_texture_heap}
 {
     if (dedicated_texture_unit.has_value()) {
         ERHE_VERIFY(dedicated_texture_unit.value() < device.get_info().max_combined_texture_image_units);
@@ -484,6 +508,18 @@ auto Shader_resource::get_texture_unit() const -> int
     ERHE_VERIFY(m_type == Type::sampler);
     ERHE_VERIFY(m_binding_point >= 0);
     return m_binding_point;
+}
+
+auto Shader_resource::get_sampler_aspect() const -> Sampler_aspect
+{
+    ERHE_VERIFY(m_type == Type::sampler);
+    return m_sampler_aspect;
+}
+
+auto Shader_resource::get_is_texture_heap() const -> bool
+{
+    ERHE_VERIFY(m_type == Type::sampler);
+    return m_is_texture_heap;
 }
 
 auto Shader_resource::get_binding_target() const-> Buffer_target
@@ -610,7 +646,7 @@ auto Shader_resource::get_type_string() const -> std::string
     }
 }
 
-auto Shader_resource::get_layout_string() const -> std::string
+auto Shader_resource::get_layout_string(const uint32_t sampler_binding_offset) const -> std::string
 {
     if ((m_location == -1) && (m_binding_point == -1)) {
         return {};
@@ -655,7 +691,11 @@ auto Shader_resource::get_layout_string() const -> std::string
             {
                 ss << ", ";
             }
-            ss << "binding = " << m_binding_point;
+            if ((m_type == Type::sampler) && (sampler_binding_offset > 0)) {
+                ss << "binding = ERHE_SAMPLER_BINDING_OFFSET + " << m_binding_point;
+            } else {
+                ss << "binding = " << m_binding_point;
+            }
             //first = false;
         }
     }
@@ -671,14 +711,14 @@ auto Shader_resource::get_layout_string() const -> std::string
     return ss.str();
 }
 
-auto Shader_resource::get_source(const int indent_level /* = 0 */) const -> std::string
+auto Shader_resource::get_source(const int indent_level /* = 0 */, const uint32_t sampler_binding_offset /* = 0 */) const -> std::string
 {
     std::stringstream ss;
 
     indent(ss, indent_level);
 
     if (should_emit_layout(m_type)) {
-        ss << get_layout_string();
+        ss << get_layout_string(sampler_binding_offset);
     }
 
     ss << get_type_string();
@@ -693,7 +733,7 @@ auto Shader_resource::get_source(const int indent_level /* = 0 */) const -> std:
         }
         for (const auto& member : m_members) {
             const int extra_indent = (m_type == Type::samplers) ? 0 : 1;
-            ss << member->get_source(indent_level + extra_indent);
+            ss << member->get_source(indent_level + extra_indent, sampler_binding_offset);
         }
         if (m_type != Type::samplers) {
             indent(ss, indent_level);
@@ -752,28 +792,59 @@ auto Shader_resource::add_struct(
 auto Shader_resource::add_sampler(
     const std::string_view           name,
     const Glsl_type                  sampler_type,
+    const Sampler_aspect             sampler_aspect,
+    const bool                       is_texture_heap,
     const std::optional<uint32_t>    dedicated_texture_unit, /* = {} */
     const std::optional<std::size_t> array_size /* = {} */
 ) -> Shader_resource*
 {
     ERHE_VERIFY(m_type == Type::samplers);
     ERHE_VERIFY(!array_size.has_value() || (array_size.value() < 10000));
+    // Texture-heap samplers are bound dynamically by the Texture_heap; their
+    // binding numbers are auto-allocated from m_location, not user-supplied
+    // via dedicated_texture_unit. Conversely, dedicated_texture_unit is the
+    // explicit "this sampler lives at a fixed unit" knob that is used by
+    // dedicated samplers bound via Render_command_encoder::set_sampled_image().
+    // The two paths are mutually exclusive.
+    // TODO: If this assert holds for every callsite indefinitely, drop the
+    // is_texture_heap parameter and derive it from
+    // !dedicated_texture_unit.has_value().
+    ERHE_VERIFY(!(is_texture_heap && dedicated_texture_unit.has_value()));
     sanitize(array_size);
+
+    const int count = array_size.has_value() ? static_cast<int>(array_size.value()) : 1;
+
+    // Determine the texture unit. Auto-allocate from m_location for
+    // texture-heap samplers; honour the explicit unit when given. Either way
+    // the value goes into the new sampler's m_binding_point so the GLSL
+    // layout emits "binding = ..." (never "location = ..." -- "location"
+    // is reserved for default uniform block float/int uniforms, not for
+    // sampler bindings).
+    const int effective_unit = dedicated_texture_unit.has_value()
+        ? static_cast<int>(dedicated_texture_unit.value())
+        : m_location;
 
     auto* const new_member = m_members.emplace_back(
         std::make_unique<Shader_resource>(
             m_device,
             name,
             this,
-            dedicated_texture_unit.has_value() ? -1 : m_location,
+            -1, // m_location is unused for samplers; binding goes to m_binding_point
             sampler_type,
+            sampler_aspect,
+            is_texture_heap,
             array_size,
-            dedicated_texture_unit
+            std::optional<int>{effective_unit}
         )
     ).get();
-    const int count = array_size.has_value() ? static_cast<int>(array_size.value()) : 1;
-    if (!dedicated_texture_unit.has_value()) {
-        m_location += count;
+
+    // Advance m_location past whichever range this sampler now occupies, so
+    // subsequent auto-allocated samplers don't collide with it (this matters
+    // for the OpenGL sampler-array path where dedicated samplers and
+    // texture-heap samplers share a single sampler-unit namespace).
+    const int end_unit = effective_unit + count;
+    if (end_unit > m_location) {
+        m_location = end_unit;
     }
     return new_member;
 }

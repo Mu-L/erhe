@@ -1,7 +1,7 @@
 #include "items.hpp"
 #include "operations/mesh_operation.hpp"
 #include "scene/scene_root.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 
 #include "erhe_scene/node.hpp"
 #include "erhe_verify/verify.hpp"

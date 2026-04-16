@@ -7,6 +7,9 @@
 #include <functional>
 #include <vector>
 
+namespace erhe::graphics {
+    class Device;
+}
 namespace erhe::window {
     class Context_window;
 }
@@ -18,7 +21,12 @@ class Xr_instance;
 class Xr_session
 {
 public:
-    Xr_session    (Xr_instance& instance, erhe::window::Context_window& context_window, bool mirror_mode);
+    Xr_session(
+        Xr_instance&                  instance,
+        erhe::window::Context_window& context_window,
+        erhe::graphics::Device&       graphics_device,
+        bool                          mirror_mode
+    );
     ~Xr_session   () noexcept;
     Xr_session    (const Xr_session&) = delete;
     void operator=(const Xr_session&) = delete;
@@ -83,6 +91,7 @@ private:
 
     Xr_instance&                                  m_instance;
     erhe::window::Context_window&                 m_context_window;
+    erhe::graphics::Device&                       m_graphics_device;
     XrSession                                     m_xr_session{XR_NULL_HANDLE};
     bool                                          m_mirror_mode{false};
     erhe::dataformat::Format                      m_swapchain_color_format;

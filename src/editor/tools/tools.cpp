@@ -5,7 +5,7 @@
 #include "app_rendering.hpp"
 #include "content_library/content_library.hpp"
 #include "editor_log.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/programs.hpp"
 #include "renderers/render_context.hpp"
 #include "scene/scene_root.hpp"
@@ -28,11 +28,16 @@ using Rasterization_state        = erhe::graphics::Rasterization_state;
 using Depth_stencil_state        = erhe::graphics::Depth_stencil_state;
 using Color_blend_state          = erhe::graphics::Color_blend_state;
 
-Tools_pipeline_renderpasses::Tools_pipeline_renderpasses(erhe::graphics::Device& graphics_device, Mesh_memory& mesh_memory, Programs& programs, const bool reverse_depth)
+Tools_pipeline_renderpasses::Tools_pipeline_renderpasses(
+    erhe::graphics::Device&            graphics_device,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Programs&                          programs,
+    const bool                         reverse_depth
+)
     : m_y_flip{graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
     // Tool pass one: For hidden tool parts, set stencil to s_stencil_tool_mesh_hidden.
     // Only reads depth buffer, only writes stencil buffer.
-    , tool1_hidden_stencil{erhe::graphics::Render_pipeline_state{{
+    , tool1_hidden_stencil{graphics_device, erhe::graphics::Render_pipeline_create_info{
         .debug_label             = erhe::utility::Debug_label{"Tool pass 1: Tag depth hidden `s_stencil_tool_mesh_hidden`"},
         .shader_stages           = &programs.tool.shader_stages,
         .vertex_input            = &mesh_memory.vertex_input,
@@ -63,11 +68,11 @@ Tools_pipeline_renderpasses::Tools_pipeline_renderpasses(erhe::graphics::Device&
             },
         },
         .color_blend             = Color_blend_state::color_writes_disabled
-    }}}
+    }}
 
     // Tool pass two: For visible tool parts, set stencil to s_stencil_tool_mesh_visible.
     // Only reads depth buffer, only writes stencil buffer.
-    , tool2_visible_stencil{erhe::graphics::Render_pipeline_state{{
+    , tool2_visible_stencil{graphics_device, erhe::graphics::Render_pipeline_create_info{
         .debug_label             = erhe::utility::Debug_label{"Tool pass 2: Tag visible tool parts `s_stencil_tool_mesh_visible`"},
         .shader_stages           = &programs.tool.shader_stages,
         .vertex_input            = &mesh_memory.vertex_input,
@@ -98,31 +103,27 @@ Tools_pipeline_renderpasses::Tools_pipeline_renderpasses(erhe::graphics::Device&
             },
         },
         .color_blend             = Color_blend_state::color_writes_disabled
-    }}}
+    }}
 
     // Tool pass three: Set depth to fixed value (with depth range)
     // Only writes depth buffer, depth test always.
-    , tool3_depth_clear{
-        erhe::graphics::Render_pipeline_state{
-            {
-                .debug_label          = erhe::utility::Debug_label{"Tool pass 3: Set depth to fixed value"},
-                .shader_stages        = &programs.tool.shader_stages,
-                .vertex_input         = &mesh_memory.vertex_input,
-                .input_assembly       = Input_assembly_state::triangle,
-                .viewport_depth_range = Viewport_depth_range_state{
-                    .min_depth = 0.0f,
-                    .max_depth = 0.0f
-                },
-                .rasterization        = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
-                .depth_stencil        = Depth_stencil_state::depth_test_always_stencil_test_disabled,
-                .color_blend          = Color_blend_state::color_writes_disabled
-            }
-        }
-    }
+    , tool3_depth_clear{graphics_device, erhe::graphics::Render_pipeline_create_info{
+        .debug_label          = erhe::utility::Debug_label{"Tool pass 3: Set depth to fixed value"},
+        .shader_stages        = &programs.tool.shader_stages,
+        .vertex_input         = &mesh_memory.vertex_input,
+        .input_assembly       = Input_assembly_state::triangle,
+        .viewport_depth_range = Viewport_depth_range_state{
+            .min_depth = 0.0f,
+            .max_depth = 0.0f
+        },
+        .rasterization        = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+        .depth_stencil        = Depth_stencil_state::depth_test_always_stencil_test_disabled,
+        .color_blend          = Color_blend_state::color_writes_disabled
+    }}
 
     // Tool pass four: Set depth to proper tool depth
     // Normal depth buffer update with depth test.
-    , tool4_depth{erhe::graphics::Render_pipeline_state{{
+    , tool4_depth{graphics_device, erhe::graphics::Render_pipeline_create_info{
         .debug_label    = erhe::utility::Debug_label{"Tool pass 4: Set depth to proper tool depth"},
         .shader_stages  = &programs.tool.shader_stages,
         .vertex_input   = &mesh_memory.vertex_input,
@@ -130,11 +131,11 @@ Tools_pipeline_renderpasses::Tools_pipeline_renderpasses(erhe::graphics::Device&
         .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
         .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth),
         .color_blend    = Color_blend_state::color_writes_disabled
-    }}}
+    }}
 
     // Tool pass five: Render visible tool parts
     // Normal depth test, stencil test require s_stencil_tool_mesh_visible, color writes enabled, no blending
-    , tool5_visible_color{erhe::graphics::Render_pipeline_state{{
+    , tool5_visible_color{graphics_device, erhe::graphics::Render_pipeline_create_info{
         .debug_label             = erhe::utility::Debug_label{"Tool pass 5: Render visible tool parts, require `s_stencil_tool_mesh_visible`"},
         .shader_stages           = &programs.tool.shader_stages,
         .vertex_input            = &mesh_memory.vertex_input,
@@ -165,11 +166,11 @@ Tools_pipeline_renderpasses::Tools_pipeline_renderpasses(erhe::graphics::Device&
             }
         },
         .color_blend             = Color_blend_state::color_blend_disabled
-    }}}
+    }}
 
     // Tool pass six: Render hidden tool parts
     // Normal depth test, stencil test requires s_stencil_tool_mesh_hidden, color writes enabled, blending
-    , tool6_hidden_color{erhe::graphics::Render_pipeline_state{{
+    , tool6_hidden_color{graphics_device, erhe::graphics::Render_pipeline_create_info{
         .debug_label                = erhe::utility::Debug_label{"Tool pass 6: Render hidden tool parts, require `s_stencil_tool_mesh_hidden`"},
         .shader_stages              = &programs.tool.shader_stages,
         .vertex_input               = &mesh_memory.vertex_input,
@@ -213,7 +214,7 @@ Tools_pipeline_renderpasses::Tools_pipeline_renderpasses(erhe::graphics::Device&
             },
             .constant               = { 0.0f, 0.0f, 0.0f, 0.6f }
         }
-    }}}
+    }}
 {
 }
 
@@ -234,14 +235,14 @@ void Tools_pipeline_renderpasses::rebuild_depth_state(const bool reverse_depth)
 }
 
 Tools::Tools(
-    erhe::graphics::Device&      graphics_device,
-    erhe::imgui::Imgui_renderer& imgui_renderer,
-    erhe::imgui::Imgui_windows&  imgui_windows,
-    App_context&                 app_context,
-    App_rendering&               app_rendering,
-    App_settings&                app_settings,
-    Mesh_memory&                 mesh_memory,
-    Programs&                    programs
+    erhe::graphics::Device&            graphics_device,
+    erhe::imgui::Imgui_renderer&       imgui_renderer,
+    erhe::imgui::Imgui_windows&        imgui_windows,
+    App_context&                       app_context,
+    App_rendering&                     app_rendering,
+    App_settings&                      app_settings,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Programs&                          programs
 )
     : m_context              {app_context}
     , m_pipeline_renderpasses{graphics_device, mesh_memory, programs}
@@ -338,6 +339,7 @@ void Tools::update_transforms()
 void Tools::render_viewport_tools(const Render_context& context)
 {
     ERHE_PROFILE_FUNCTION();
+    erhe::graphics::Scoped_debug_group debug_group{"Tools::render_viewport_tools"};
 
     for (const auto& tool : m_background_tools) {
         tool->tool_render(context);

@@ -1,6 +1,7 @@
 #include "erhe_graphics/gl/gl_compute_command_encoder.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
+#include "erhe_graphics/compute_pipeline_state.hpp"
 
 #include "erhe_gl/wrapper_functions.hpp"
 
@@ -15,9 +16,22 @@ Compute_command_encoder_impl::~Compute_command_encoder_impl() noexcept
 {
 }
 
+void Compute_command_encoder_impl::set_bind_group_layout(const Bind_group_layout* bind_group_layout)
+{
+    static_cast<void>(bind_group_layout);
+}
+
 void Compute_command_encoder_impl::set_compute_pipeline_state(const Compute_pipeline_state& pipeline)
 {
     m_device.get_impl().m_gl_state_tracker.execute_(pipeline);
+}
+
+void Compute_command_encoder_impl::set_compute_pipeline(const Compute_pipeline& pipeline)
+{
+    // GL uses the pipeline data to set shader program via state tracker
+    const Compute_pipeline_data& data = pipeline.get_data();
+    Compute_pipeline_state state{Compute_pipeline_data{data}};
+    m_device.get_impl().m_gl_state_tracker.execute_(state);
 }
 
 void Compute_command_encoder_impl::dispatch_compute(

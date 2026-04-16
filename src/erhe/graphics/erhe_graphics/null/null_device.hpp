@@ -15,6 +15,7 @@ namespace erhe::graphics {
 
 class Frame_state;
 class Frame_end_info;
+class Render_pass_impl;
 class Ring_buffer_client;
 class Surface;
 class Swapchain;
@@ -31,14 +32,56 @@ public:
     ~Device_impl() noexcept;
 
     [[nodiscard]] auto wait_frame (Frame_state& out_frame_state) -> bool;
+    [[nodiscard]] auto begin_frame() -> bool;
+    [[nodiscard]] auto end_frame  () -> bool;
     [[nodiscard]] auto begin_frame(const Frame_begin_info& frame_begin_info) -> bool;
     [[nodiscard]] auto end_frame  (const Frame_end_info& frame_end_info) -> bool;
 
+    [[nodiscard]] auto begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool;
+    void               end_swapchain_frame  (const Frame_end_info& frame_end_info);
+    void               wait_idle            ();
+    [[nodiscard]] auto is_in_device_frame   () const -> bool;
+    [[nodiscard]] auto is_in_swapchain_frame() const -> bool;
+
     void resize_swapchain_to_window();
+    void start_frame_capture       ();
+    void end_frame_capture         ();
+
+    // Active render pass tracking
+    static Render_pass_impl* s_active_render_pass;
+    void set_queue_annotation      (const char* key, bool value);
+    void set_queue_annotation      (const char* key, int32_t value);
+    void set_queue_annotation      (const char* key, uint32_t value);
+    void set_queue_annotation      (const char* key, int64_t value);
+    void set_queue_annotation      (const char* key, uint64_t value);
+    void set_queue_annotation      (const char* key, float value);
+    void set_queue_annotation      (const char* key, double value);
+    void set_queue_annotation      (const char* key, const char* value);
+    void clear_queue_annotation    (const char* key);
+    void set_command_annotation    (const char* key, bool value);
+    void set_command_annotation    (const char* key, int32_t value);
+    void set_command_annotation    (const char* key, uint32_t value);
+    void set_command_annotation    (const char* key, int64_t value);
+    void set_command_annotation    (const char* key, uint64_t value);
+    void set_command_annotation    (const char* key, float value);
+    void set_command_annotation    (const char* key, double value);
+    void set_command_annotation    (const char* key, const char* value);
+    void clear_command_annotation  (const char* key);
+    void set_object_annotation     (uint64_t object_handle, const char* key, bool value);
+    void set_object_annotation     (uint64_t object_handle, const char* key, int32_t value);
+    void set_object_annotation     (uint64_t object_handle, const char* key, uint32_t value);
+    void set_object_annotation     (uint64_t object_handle, const char* key, int64_t value);
+    void set_object_annotation     (uint64_t object_handle, const char* key, uint64_t value);
+    void set_object_annotation     (uint64_t object_handle, const char* key, float value);
+    void set_object_annotation     (uint64_t object_handle, const char* key, double value);
+    void set_object_annotation     (uint64_t object_handle, const char* key, const char* value);
+    void clear_object_annotation   (uint64_t object_handle, const char* key);
     void memory_barrier            (Memory_barrier_mask barriers);
     void clear_texture             (const Texture& texture, std::array<double, 4> clear_value);
+    void transition_texture_layout (const Texture& texture, Image_layout new_layout);
+    void cmd_texture_barrier       (uint64_t usage_before, uint64_t usage_after);
     void upload_to_buffer          (const Buffer& buffer, size_t offset, const void* data, size_t length);
-    void add_completion_handler    (std::function<void()> callback);
+    void add_completion_handler    (std::function<void(Device_impl&)> callback);
     void on_thread_enter           ();
 
     [[nodiscard]] auto get_surface                        () -> Surface*;
@@ -51,6 +94,7 @@ public:
     [[nodiscard]] auto make_compute_command_encoder       () -> Compute_command_encoder;
     [[nodiscard]] auto make_render_command_encoder        () -> Render_command_encoder;
     [[nodiscard]] auto get_format_properties              (erhe::dataformat::Format format) const -> Format_properties;
+    [[nodiscard]] auto probe_image_format_support         (erhe::dataformat::Format format, uint64_t usage_mask) const -> bool;
     [[nodiscard]] auto get_supported_depth_stencil_formats() const -> std::vector<erhe::dataformat::Format>;
                   void sort_depth_stencil_formats         (std::vector<erhe::dataformat::Format>& formats, unsigned int sort_flags, int requested_sample_count) const;
     [[nodiscard]] auto choose_depth_stencil_format        (const std::vector<erhe::dataformat::Format>& formats) const -> erhe::dataformat::Format;

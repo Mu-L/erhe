@@ -8,7 +8,7 @@
 #include "graphics/icon_set.hpp"
 #include "operations/insert_operation.hpp"
 #include "operations/operation_stack.hpp"
-#include "renderers/mesh_memory.hpp" // need to be able to pass to visualization
+#include "erhe_scene_renderer/mesh_memory.hpp" // need to be able to pass to visualization
 #include "renderers/render_context.hpp"
 #include "scene/node_physics.hpp"
 #include "scene/node_raytrace.hpp"

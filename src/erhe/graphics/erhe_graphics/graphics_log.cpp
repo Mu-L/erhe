@@ -22,6 +22,9 @@ std::shared_ptr<spdlog::logger> log_vertex_attribute_mappings;
 std::shared_ptr<spdlog::logger> log_vertex_stream            ;
 std::shared_ptr<spdlog::logger> log_render_pass              ;
 std::shared_ptr<spdlog::logger> log_startup                  ;
+std::shared_ptr<spdlog::logger> log_vulkan_sync              ;
+std::shared_ptr<spdlog::logger> log_vulkan_desc              ;
+std::shared_ptr<spdlog::logger> log_vulkan                   ;
 
 void initialize_logging()
 {
@@ -45,6 +48,9 @@ void initialize_logging()
     log_vertex_stream             = make_logger      ("erhe.graphics.vertex_stream"   );
     log_render_pass               = make_frame_logger("erhe.graphics.render_pass"     );
     log_startup                   = make_logger      ("erhe.graphics.startup"         );
+    log_vulkan_sync               = make_file_logger ("erhe.graphics.vulkan_sync", "logs/vulkan.txt");
+    log_vulkan_desc               = make_file_logger ("erhe.graphics.vulkan_desc", "logs/vulkan.txt");
+    log_vulkan                    = make_file_logger ("erhe.graphics.vulkan",      "logs/vulkan.txt");
 }
 
 } // namespace erhe::graphics

@@ -1,7 +1,7 @@
 #include "renderers/id_renderer.hpp"
 
 #include "editor_log.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/programs.hpp"
 
 #include "config/generated/id_renderer_config.hpp"
@@ -18,6 +18,7 @@
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_math/math_util.hpp"
+#include "erhe_verify/verify.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_scene/camera.hpp"
 #include "erhe_scene/mesh.hpp"
@@ -47,7 +48,7 @@ Id_renderer::Id_renderer(
     const Id_renderer_config&                id_renderer_config,
     erhe::graphics::Device&                  graphics_device,
     erhe::scene_renderer::Program_interface& program_interface,
-    Mesh_memory&                             mesh_memory,
+    erhe::scene_renderer::Mesh_memory&       mesh_memory,
     Programs&                                programs
 )
     : m_graphics_device      {graphics_device}
@@ -56,7 +57,7 @@ Id_renderer::Id_renderer(
     , m_camera_buffers       {graphics_device, program_interface.camera_interface}
     , m_draw_indirect_buffers{graphics_device, program_interface.config.max_draw_count}
     , m_primitive_buffers    {graphics_device, program_interface.primitive_interface}
-    , m_pipeline{erhe::graphics::Render_pipeline_data{
+    , m_pipeline{graphics_device, erhe::graphics::Render_pipeline_create_info{
         .debug_label    = erhe::utility::Debug_label{"ID Renderer"},
         .shader_stages  = &programs.id.shader_stages,
         .vertex_input   = &mesh_memory.vertex_input,
@@ -66,7 +67,7 @@ Id_renderer::Id_renderer(
         .color_blend    = Color_blend_state::color_blend_disabled
     }}
 
-    , m_selective_depth_clear_pipeline{erhe::graphics::Render_pipeline_data{
+    , m_selective_depth_clear_pipeline{graphics_device, erhe::graphics::Render_pipeline_create_info{
         .debug_label    = erhe::utility::Debug_label{"ID Renderer selective depth clear"},
         .shader_stages  = &programs.id.shader_stages,
         .vertex_input   = &mesh_memory.vertex_input,
@@ -158,9 +159,17 @@ void Id_renderer::update_framebuffer(const erhe::math::Viewport viewport)
         render_pass_descriptor.color_attachments[0].texture      = m_color_texture.get();
         render_pass_descriptor.color_attachments[0].load_action  = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.color_attachments[0].store_action = erhe::graphics::Store_action::Store;
+        render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+        render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::transfer_src_optimal;
+        render_pass_descriptor.color_attachments[0].usage_after  = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+        render_pass_descriptor.color_attachments[0].layout_after = erhe::graphics::Image_layout::transfer_src_optimal;
         render_pass_descriptor.depth_attachment.texture          = m_depth_texture.get();
         render_pass_descriptor.depth_attachment.load_action      = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.depth_attachment.store_action     = erhe::graphics::Store_action::Store;
+        render_pass_descriptor.depth_attachment.usage_before     = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+        render_pass_descriptor.depth_attachment.layout_before    = erhe::graphics::Image_layout::transfer_src_optimal;
+        render_pass_descriptor.depth_attachment.usage_after      = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+        render_pass_descriptor.depth_attachment.layout_after     = erhe::graphics::Image_layout::transfer_src_optimal;
         render_pass_descriptor.render_target_width               = viewport.width;
         render_pass_descriptor.render_target_height              = viewport.height;
         render_pass_descriptor.debug_label                       = "ID";
@@ -283,29 +292,39 @@ void Id_renderer::render(const Render_parameters& parameters)
         //// TODO Abstraction for partial clear
         m_primitive_buffers.reset_id_ranges();
 
-        encoder.set_render_pipeline_state(m_pipeline);
+        const Render_pass_descriptor& render_pass_desc = m_render_pass->get_descriptor();
 
-        for (auto meshes : content_mesh_spans) {
-            render(encoder, meshes);
+        erhe::graphics::Render_pipeline* id_pipeline = m_pipeline.get_pipeline_for(render_pass_desc);
+        if (id_pipeline != nullptr) {
+            encoder.set_render_pipeline(*id_pipeline);
+
+            for (auto meshes : content_mesh_spans) {
+                render(encoder, meshes);
+            }
         }
 
         // Clear depth for tool pixels
         {
-            encoder.set_render_pipeline_state(m_selective_depth_clear_pipeline);
-            encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
-            const float far_depth = parameters.reverse_depth ? 0.0f : 1.0f;
-            encoder.set_viewport_depth_range(far_depth, far_depth);
-            for (auto mesh_spans : tool_mesh_spans) {
-                render(encoder, mesh_spans);
+            erhe::graphics::Render_pipeline* depth_clear_pipeline = m_selective_depth_clear_pipeline.get_pipeline_for(render_pass_desc);
+            if (depth_clear_pipeline != nullptr) {
+                encoder.set_render_pipeline(*depth_clear_pipeline);
+                encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
+                const float far_depth = parameters.reverse_depth ? 0.0f : 1.0f;
+                encoder.set_viewport_depth_range(far_depth, far_depth);
+                for (auto mesh_spans : tool_mesh_spans) {
+                    render(encoder, mesh_spans);
+                }
             }
         }
 
         // Resume normal depth usage
         {
-            encoder.set_render_pipeline_state(m_pipeline);
-            encoder.set_viewport_depth_range(0.0f, 1.0f);
-            for (auto meshes : tool_mesh_spans) {
-                render(encoder, meshes);
+            if (id_pipeline != nullptr) {
+                encoder.set_render_pipeline(*id_pipeline);
+                encoder.set_viewport_depth_range(0.0f, 1.0f);
+                for (auto meshes : tool_mesh_spans) {
+                    render(encoder, meshes);
+                }
             }
         }
     }

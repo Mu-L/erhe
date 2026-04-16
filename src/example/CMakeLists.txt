@@ -3,6 +3,10 @@ set(_target "example")
 add_executable(${_target})
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+    config/erhe_graphics.json
+    config/mesh_memory.json
+    config/window.json
+
     example.cpp
     example.hpp
     example_log.cpp
@@ -10,8 +14,6 @@ erhe_target_sources_grouped(
     frame_controller.cpp
     frame_controller.hpp
     main.cpp
-    mesh_memory.cpp
-    mesh_memory.hpp
     programs.cpp
     programs.hpp
     res/models/Box.gltf
@@ -26,8 +28,7 @@ erhe_target_sources_grouped(
     res/shaders/depth.frag
     res/shaders/standard.vert
     res/shaders/standard.frag
-    example_mesh_memory.json
-    logging.json
+    
 )
 
 # Required for log init
@@ -43,6 +44,7 @@ target_link_libraries(
     ${_target}
     PRIVATE
         Taskflow
+        simdjson
         erhe::codegen
         erhe::utility
         erhe::dataformat
@@ -67,26 +69,23 @@ if (DEFINED ERHE_PROFILE_TARGET)
     target_link_libraries(${_target} PRIVATE ${ERHE_PROFILE_TARGET})
 endif ()
 
-# Codegen for example config
-set(_example_defs "${CMAKE_CURRENT_SOURCE_DIR}/definitions")
-set(_example_gen  "${CMAKE_CURRENT_BINARY_DIR}/generated")
-
-erhe_codegen_generate(
-    TARGET          ${_target}
-    DEFINITIONS_DIR "${_example_defs}"
-    OUTPUT_DIR      "${_example_gen}"
-    DEFINITIONS
-        "${_example_defs}/example_mesh_memory.py"
-)
-
+set(_gfx_gen "${CMAKE_BINARY_DIR}/src/erhe/graphics/erhe_graphics/generated")
 set(_example_codegen_sources
-    ${_example_gen}/example_mesh_memory.hpp
-    ${_example_gen}/example_mesh_memory_serialization.hpp
-    ${_example_gen}/example_mesh_memory.cpp
+    ${_gfx_gen}/graphics_config_serialization.hpp
+    ${_gfx_gen}/graphics_config.cpp
 )
 set_source_files_properties(${_example_codegen_sources} PROPERTIES GENERATED TRUE)
 target_sources(${_target} PRIVATE ${_example_codegen_sources})
 source_group("codegen generated" FILES ${_example_codegen_sources})
+
+set(_scene_renderer_gen "${CMAKE_BINARY_DIR}/src/erhe/scene_renderer/erhe_scene_renderer/generated")
+set(_scene_renderer_ser_sources
+    ${_scene_renderer_gen}/mesh_memory_config_serialization.hpp
+    ${_scene_renderer_gen}/mesh_memory_config.cpp
+)
+set_source_files_properties(${_scene_renderer_ser_sources} PROPERTIES GENERATED TRUE)
+target_sources(${_target} PRIVATE ${_scene_renderer_ser_sources})
+source_group("codegen generated/scene_renderer" FILES ${_scene_renderer_ser_sources})
 
 target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 

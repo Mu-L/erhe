@@ -112,6 +112,10 @@ void Framebuffer_window::update_render_pass()
     render_pass_descriptor.color_attachments[0].texture      = m_texture.get();
     render_pass_descriptor.color_attachments[0].load_action  = erhe::graphics::Load_action::Clear;
     render_pass_descriptor.color_attachments[0].store_action = erhe::graphics::Store_action::Store;
+    render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::shader_read_only_optimal;
+    render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::shader_read_only_optimal;
     render_pass_descriptor.render_target_width               = m_viewport.width;
     render_pass_descriptor.render_target_height              = m_viewport.height;
     render_pass_descriptor.debug_label                       = m_debug_label;

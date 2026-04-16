@@ -38,7 +38,8 @@ Brdf_slice_rendergraph_node::Brdf_slice_rendergraph_node(
     , m_brdf_slice        {brdf_slice}
     , m_empty_vertex_input{rendergraph.get_graphics_device(), erhe::graphics::Vertex_input_state_data{}}
     , m_render_pipeline_state{
-        erhe::graphics::Render_pipeline_data{
+        rendergraph.get_graphics_device(),
+        erhe::graphics::Render_pipeline_create_info{
             .debug_label    = erhe::utility::Debug_label{"Brdf_slice"},
             .shader_stages  = &programs.brdf_slice.shader_stages,
             .vertex_input   = &m_empty_vertex_input,

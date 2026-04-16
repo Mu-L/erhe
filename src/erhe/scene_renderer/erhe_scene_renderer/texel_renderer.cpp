@@ -2,7 +2,8 @@
 
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
-#include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_graphics/texture_heap.hpp"
 #include "erhe_scene/camera.hpp"
@@ -35,7 +36,7 @@ Texel_renderer::Texel_renderer(erhe::graphics::Device& graphics_device, Program_
             m_graphics_device,
             *m_dummy_texture.get(),
             m_fallback_sampler,
-            erhe::scene_renderer::c_texture_heap_slot_count_reserved
+            program_interface.bind_group_layout.get()
         )
     }
 {
@@ -71,18 +72,23 @@ void Texel_renderer::render(const Render_parameters& parameters)
 
     m_texture_heap->reset_heap();
 
-    Ring_buffer_range light_range = m_light_buffer.update(lights, parameters.light_projections, glm::vec3{0.0f}, *m_texture_heap.get());
+    Ring_buffer_range light_range = m_light_buffer.update(lights, parameters.light_projections, glm::vec3{0.0f});
     m_light_buffer.bind_light_buffer(parameters.render_encoder, light_range);
+    m_light_buffer.bind_shadow_samplers(parameters.render_encoder, parameters.light_projections);
 
     m_texture_heap->bind();
 
-    const erhe::graphics::Render_pipeline_state& pipeline = parameters.pipeline;
+    erhe::graphics::Lazy_render_pipeline& pipeline = parameters.pipeline;
 
     erhe::graphics::Texture* shadowmap_texture = parameters.light_projections->shadow_map_texture.get();
     uint32_t texel_count_x = shadowmap_texture->get_width();
     uint32_t texel_count_y = shadowmap_texture->get_height();
 
-    parameters.render_encoder.set_render_pipeline_state(pipeline);
+    erhe::graphics::Render_pipeline* render_pipeline = pipeline.get_pipeline_for(parameters.render_pass.get_descriptor());
+    if (render_pipeline == nullptr) {
+        return;
+    }
+    parameters.render_encoder.set_render_pipeline(*render_pipeline);
 
     const std::size_t texel_count  = texel_count_x * texel_count_y;
     const std::size_t vertex_count = texel_count * 6;

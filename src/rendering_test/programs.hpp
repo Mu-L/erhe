@@ -6,13 +6,8 @@
 
 #include <filesystem>
 
-namespace erhe::graphics {
-    class Device;
-}
-
-namespace erhe::scene_renderer {
-    class Program_interface;
-}
+namespace erhe::graphics { class Device; }
+namespace erhe::scene_renderer { class Program_interface; }
 
 namespace rendering_test {
 
@@ -26,15 +21,10 @@ public:
 
     // Public members
     std::filesystem::path            shader_path;
-    erhe::graphics::Shader_resource  default_uniform_block;
-    erhe::graphics::Shader_resource* shadow_sampler_compare;
-    erhe::graphics::Shader_resource* shadow_sampler_no_compare;
-    erhe::graphics::Shader_resource* texture_sampler;
     erhe::graphics::Sampler          nearest_sampler;
     erhe::graphics::Sampler          linear_sampler;
     erhe::graphics::Sampler          linear_mipmap_linear_sampler;
     erhe::graphics::Shader_stages    standard;
-    erhe::graphics::Shader_stages    wide_lines;
 };
 
 } // namespace rendering_test

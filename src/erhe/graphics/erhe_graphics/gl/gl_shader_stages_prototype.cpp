@@ -2,6 +2,7 @@
 
 #include "erhe_graphics/gl/gl_shader_stages.hpp"
 #include "erhe_graphics/glsl_format_source.hpp"
+#include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_debug.hpp"
@@ -428,7 +429,7 @@ Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, Shade
     , m_create_info          {create_info}
     , m_default_uniform_block{device}
 #if defined(ERHE_SPIRV)
-    , m_glslang_shader_stages{*this}
+    , m_glslang_shader_stages{*this, &device.get_spirv_cache()}
 #endif
 {
     ERHE_PROFILE_FUNCTION();
@@ -444,7 +445,7 @@ Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, const
     , m_create_info          {create_info}
     , m_default_uniform_block{device}
 #if defined(ERHE_SPIRV)
-    , m_glslang_shader_stages{*this}
+    , m_glslang_shader_stages{*this, &device.get_spirv_cache()}
 #endif
 {
     ERHE_PROFILE_FUNCTION();
@@ -614,9 +615,10 @@ void Shader_stages_prototype_impl::post_link()
         // Sampler layout(binding = N) requires GLSL 4.30 (see shader_resource.cpp).
         // Set sampler texture unit bindings programmatically when not in shader.
         if (m_device.get_info().glsl_version < 430) {
-            if (m_create_info.default_uniform_block != nullptr) {
+            if (m_create_info.bind_group_layout != nullptr) {
+                const Shader_resource& default_uniform_block = m_create_info.bind_group_layout->get_default_uniform_block();
                 gl::use_program(gl_name);
-                for (const auto& member : m_create_info.default_uniform_block->get_members()) {
+                for (const auto& member : default_uniform_block.get_members()) {
                     if (member->get_type() == Shader_resource::Type::sampler) {
                         const GLint location = gl::get_uniform_location(gl_name, member->get_name().c_str());
                         if (location >= 0) {

@@ -5,6 +5,8 @@
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/draw_indirect.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
@@ -23,9 +25,8 @@ namespace erhe::scene_renderer {
 const std::vector<std::span<const std::shared_ptr<erhe::scene::Mesh>>> Forward_renderer::empty_mesh_spans{};
 
 Forward_renderer::Forward_renderer(
-    erhe::graphics::Device&                graphics_device,
-    Program_interface&                     program_interface,
-    const erhe::graphics::Shader_resource* default_uniform_block
+    erhe::graphics::Device& graphics_device,
+    Program_interface&      program_interface
 )
     : m_graphics_device     {graphics_device}
     , m_program_interface   {program_interface}
@@ -53,8 +54,7 @@ Forward_renderer::Forward_renderer(
             m_graphics_device,
             *m_dummy_texture.get(),
             m_fallback_sampler,
-            erhe::scene_renderer::c_texture_heap_slot_count_reserved,
-            default_uniform_block
+            m_program_interface.bind_group_layout.get()
         )
     }
 {
@@ -69,6 +69,21 @@ namespace {
 const char* safe_str(const char* str)
 {
     return str != nullptr ? str : "";
+}
+
+auto make_temp_pipeline_state(const erhe::graphics::Render_pipeline_create_info& ci) -> erhe::graphics::Render_pipeline_state
+{
+    return erhe::graphics::Render_pipeline_state{erhe::graphics::Render_pipeline_data{
+        .debug_label          = ci.debug_label,
+        .shader_stages        = ci.shader_stages,
+        .vertex_input         = ci.vertex_input,
+        .input_assembly       = ci.input_assembly,
+        .multisample          = ci.multisample,
+        .viewport_depth_range = ci.viewport_depth_range,
+        .rasterization        = ci.rasterization,
+        .depth_stencil        = ci.depth_stencil,
+        .color_blend          = ci.color_blend
+    }};
 }
 
 }
@@ -88,6 +103,8 @@ void Forward_renderer::render(const Render_parameters& parameters)
     const auto& render_pipeline_states = parameters.render_pipeline_states;
     const auto& filter                 = parameters.filter;
     const auto  primitive_mode         = parameters.primitive_mode;
+
+    parameters.render_encoder.set_bind_group_layout(m_program_interface.bind_group_layout.get());
 
     using Ring_buffer_range = erhe::graphics::Ring_buffer_range;
     std::optional<Ring_buffer_range> camera_buffer_range{};
@@ -117,20 +134,21 @@ void Forward_renderer::render(const Render_parameters& parameters)
 
     // This must be done even if lights is empty.
     // For example, the number of lights is read from the light buffer.
-    Ring_buffer_range light_range = m_light_buffer.update(lights, parameters.light_projections, parameters.ambient_light, *m_texture_heap.get());
+    Ring_buffer_range light_range = m_light_buffer.update(lights, parameters.light_projections, parameters.ambient_light);
     m_light_buffer.bind_light_buffer(parameters.render_encoder, light_range);
+    m_light_buffer.bind_shadow_samplers(parameters.render_encoder, parameters.light_projections);
 
     m_texture_heap->bind();
 
     for (auto* render_pipeline_state : render_pipeline_states) {
-        const erhe::graphics::Render_pipeline_data& pipeline = render_pipeline_state->data;
+        const erhe::graphics::Render_pipeline_create_info& pipeline = render_pipeline_state->data;
         bool use_override_shader_stages = (parameters.override_shader_stages != nullptr);
         if ((pipeline.shader_stages == nullptr) && !use_override_shader_stages) {
             continue;
         }
 
-        auto* used_shader_stages = use_override_shader_stages 
-            ? parameters.override_shader_stages 
+        auto* used_shader_stages = use_override_shader_stages
+            ? parameters.override_shader_stages
             : pipeline.shader_stages;
         if (!used_shader_stages->is_valid()) {
             use_override_shader_stages = true;
@@ -141,10 +159,18 @@ void Forward_renderer::render(const Render_parameters& parameters)
         erhe::graphics::Scoped_debug_group pipeline_scope{pipeline.debug_label};
 
         if (use_override_shader_stages) {
-            parameters.render_encoder.set_render_pipeline_state(*render_pipeline_state, used_shader_stages);
+            erhe::graphics::Render_pipeline_state temp_state = make_temp_pipeline_state(pipeline);
+            parameters.render_encoder.set_render_pipeline_state(temp_state, used_shader_stages);
+        } else if (parameters.render_pass != nullptr) {
+            erhe::graphics::Render_pipeline* p = render_pipeline_state->get_pipeline_for(parameters.render_pass->get_descriptor());
+            if (p == nullptr) { continue; }
+            parameters.render_encoder.set_render_pipeline(*p);
         } else {
-            parameters.render_encoder.set_render_pipeline_state(*render_pipeline_state);
+            erhe::graphics::Render_pipeline_state temp_state = make_temp_pipeline_state(pipeline);
+            parameters.render_encoder.set_render_pipeline_state(temp_state);
         }
+        parameters.render_encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
+        parameters.render_encoder.set_scissor_rect(viewport.x, viewport.y, viewport.width, viewport.height);
         parameters.render_encoder.set_index_buffer(parameters.index_buffer);
         parameters.render_encoder.set_vertex_buffer(parameters.vertex_buffer0, 0, 0);
         parameters.render_encoder.set_vertex_buffer(parameters.vertex_buffer1, 0, 1);
@@ -206,6 +232,8 @@ void Forward_renderer::draw_primitives(const Render_parameters& parameters, cons
     const auto& lights                 = parameters.lights;
     const auto& render_pipeline_states = parameters.render_pipeline_states;
 
+    parameters.render_encoder.set_bind_group_layout(m_program_interface.bind_group_layout.get());
+
     m_texture_heap->reset_heap();
 
     using Ring_buffer_range = erhe::graphics::Ring_buffer_range;
@@ -242,19 +270,29 @@ void Forward_renderer::draw_primitives(const Render_parameters& parameters, cons
         }
     }
 
-    Ring_buffer_range light_range = m_light_buffer.update(lights, parameters.light_projections, parameters.ambient_light, *m_texture_heap.get());
+    Ring_buffer_range light_range = m_light_buffer.update(lights, parameters.light_projections, parameters.ambient_light);
     m_light_buffer.bind_light_buffer(parameters.render_encoder, light_range);
+    m_light_buffer.bind_shadow_samplers(parameters.render_encoder, parameters.light_projections);
 
     m_texture_heap->bind();
 
     for (auto* render_pipeline_state : render_pipeline_states) {
-        const erhe::graphics::Render_pipeline_data& pipeline = render_pipeline_state->data;
+        const erhe::graphics::Render_pipeline_create_info& pipeline = render_pipeline_state->data;
         if (!pipeline.shader_stages) {
             continue;
         }
         erhe::graphics::Scoped_debug_group pass_scope{pipeline.debug_label};
 
-        parameters.render_encoder.set_render_pipeline_state(*render_pipeline_state);
+        if (parameters.render_pass != nullptr) {
+            erhe::graphics::Render_pipeline* p = render_pipeline_state->get_pipeline_for(parameters.render_pass->get_descriptor());
+            if (p == nullptr) { continue; }
+            parameters.render_encoder.set_render_pipeline(*p);
+        } else {
+            erhe::graphics::Render_pipeline_state temp_state = make_temp_pipeline_state(pipeline);
+            parameters.render_encoder.set_render_pipeline_state(temp_state);
+        }
+        parameters.render_encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
+        parameters.render_encoder.set_scissor_rect(viewport.x, viewport.y, viewport.width, viewport.height);
         parameters.render_encoder.draw_primitives(pipeline.input_assembly.primitive_topology, 0, parameters.non_mesh_vertex_count);
     }
 

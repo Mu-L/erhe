@@ -13,7 +13,7 @@
 #include "operations/mesh_operation.hpp"
 #include "operations/node_transform_operation.hpp"
 #include "operations/operation_stack.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "scene/node_physics.hpp"
 #include "scene/scene_builder.hpp"
 #include "scene/scene_root.hpp"

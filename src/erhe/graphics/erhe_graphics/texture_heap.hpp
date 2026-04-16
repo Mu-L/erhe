@@ -6,6 +6,7 @@
 
 namespace erhe::graphics {
 
+class Bind_group_layout;
 class Device;
 class Sampler;
 class Shader_resource;
@@ -19,15 +20,13 @@ class Texture_heap final
 {
 public:
     Texture_heap(
-        Device&                device,
-        const Texture&         fallback_texture,
-        const Sampler&         fallback_sampler,
-        std::size_t            reserved_slot_count,
-        const Shader_resource* default_uniform_block = nullptr
+        Device&                  device,
+        const Texture&           fallback_texture,
+        const Sampler&           fallback_sampler,
+        const Bind_group_layout* bind_group_layout = nullptr
     );
     ~Texture_heap() noexcept;
 
-    auto assign           (std::size_t slot, const Texture* texture, const Sampler* sample) -> uint64_t;
     void reset_heap       ();
     auto allocate         (const Texture* texture, const Sampler* sample) -> uint64_t;
     auto get_shader_handle(const Texture* texture, const Sampler* sample) -> uint64_t; // bindless ? handle : slot

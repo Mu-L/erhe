@@ -57,4 +57,14 @@ auto Swapchain_impl::has_stencil() const -> bool
     return false;
 }
 
+auto Swapchain_impl::get_color_format() const -> erhe::dataformat::Format
+{
+    return erhe::dataformat::Format::format_8_vec4_srgb; // GL default framebuffer is sRGB
+}
+
+auto Swapchain_impl::get_depth_format() const -> erhe::dataformat::Format
+{
+    return erhe::dataformat::Format::format_undefined; // GL default framebuffer depth is implicit
+}
+
 } // namespace erhe::graphics

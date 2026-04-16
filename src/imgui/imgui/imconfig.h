@@ -187,6 +187,7 @@ public:
     unsigned int                       filter           {0u};
     unsigned int                       mipmap_mode      {0u};
     int                                array_layer      {-1}; // -1 = sampler2D, >= 0 = sampler2DArray layer
+    int                                lod              {-1}; // -1 = no clamp, >= 0 = force exact mip via sampler min_lod == max_lod
     std::string_view                   debug_label      {};
 
     auto operator==(const Erhe_ImTextureID& other) const -> bool {
@@ -194,7 +195,8 @@ public:
             (texture_reference == other.texture_reference) &&
             (filter == other.filter) &&
             (mipmap_mode == other.mipmap_mode) &&
-            (array_layer == other.array_layer);
+            (array_layer == other.array_layer) &&
+            (lod == other.lod);
     }
     auto operator!=(const Erhe_ImTextureID& other) const -> bool {
         return !(*this == other);
@@ -203,7 +205,7 @@ public:
 
 #define ImTextureID Erhe_ImTextureID
 
-inline const ImTextureID c_ImTextureID_Invalid = Erhe_ImTextureID{nullptr, 0u, 0u, -1};
+inline const ImTextureID c_ImTextureID_Invalid = Erhe_ImTextureID{nullptr, 0u, 0u, -1, -1};
 
 #define ImTextureID_Invalid c_ImTextureID_Invalid
 

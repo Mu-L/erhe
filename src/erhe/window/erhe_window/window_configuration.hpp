@@ -35,6 +35,7 @@ public:
     glm::ivec2      size                    {1920, 1080};
     std::string     title                   {};
     int             initial_clear           {3};
+    bool            initialize_frame_capture{false};
 };
 
 } // namespace erhe::window

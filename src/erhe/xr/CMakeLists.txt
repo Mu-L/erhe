@@ -68,9 +68,14 @@ endif ()
 
 target_compile_definitions(${_target} PRIVATE XR_API_LAYER_PATH="${OPENXR_BINARY_DIR}/src/api_layers")
 
+# erhe::graphics is a PUBLIC dependency because Xr_session::m_graphics_device
+# is an erhe::graphics::Device& member declared in the public header, and
+# xr_session.cpp uses Device::probe_image_format_support / Image_usage_flag_bit_mask
+# in both the GL and Vulkan branches.
 target_link_libraries(${_target}
     PUBLIC
         erhe::dataformat
+        erhe::graphics
         erhe::window
         glm::glm-header-only
     PRIVATE

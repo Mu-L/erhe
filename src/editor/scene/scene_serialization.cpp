@@ -4,7 +4,7 @@
 #include "content_library/content_library.hpp"
 #include "editor_log.hpp"
 #include "parsers/gltf.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "scene/node_physics.hpp"
 #include "scene/scene_root.hpp"
 

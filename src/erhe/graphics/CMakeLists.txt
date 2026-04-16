@@ -3,6 +3,8 @@ add_library(${_target})
 add_library(erhe::graphics ALIAS ${_target})
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+    erhe_graphics/bind_group_layout.cpp
+    erhe_graphics/bind_group_layout.hpp
     erhe_graphics/blit_command_encoder.cpp
     erhe_graphics/blit_command_encoder.hpp
     erhe_graphics/buffer.cpp
@@ -34,10 +36,13 @@ erhe_target_sources_grouped(
     erhe_graphics/image_loader.hpp
     erhe_graphics/image_loader_wuffs.cpp
     erhe_graphics/image_loader_wuffs.hpp
+    erhe_graphics/renderdoc_app.h
     erhe_graphics/render_command_encoder.cpp
     erhe_graphics/render_command_encoder.hpp
     erhe_graphics/render_pass.cpp
     erhe_graphics/render_pass.hpp
+    erhe_graphics/render_pipeline.cpp
+    erhe_graphics/render_pipeline.hpp
     erhe_graphics/render_pipeline_state.cpp
     erhe_graphics/render_pipeline_state.hpp
     erhe_graphics/ring_buffer.cpp
@@ -55,6 +60,8 @@ erhe_target_sources_grouped(
     erhe_graphics/shader_stages.cpp
     erhe_graphics/shader_stages.hpp
     erhe_graphics/shader_stages_create_info.cpp
+    erhe_graphics/spirv_cache.cpp
+    erhe_graphics/spirv_cache.hpp
     erhe_graphics/span.hpp
     erhe_graphics/state/color_blend_state.cpp
     erhe_graphics/state/color_blend_state.hpp
@@ -85,6 +92,10 @@ erhe_target_sources_grouped(
 if (ERHE_GRAPHICS_API_OPENGL)
     erhe_target_sources_grouped(
         ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        erhe_graphics/gl/gl_bind_group_layout.cpp
+        erhe_graphics/gl/gl_bind_group_layout.hpp
+        erhe_graphics/gl/gl_render_pipeline.cpp
+        erhe_graphics/gl/gl_render_pipeline.hpp
         erhe_graphics/gl/gl_blit_command_encoder.cpp
         erhe_graphics/gl/gl_blit_command_encoder.hpp
         erhe_graphics/gl/gl_buffer.cpp
@@ -93,6 +104,8 @@ if (ERHE_GRAPHICS_API_OPENGL)
         erhe_graphics/gl/gl_command_encoder.hpp
         erhe_graphics/gl/gl_compute_command_encoder.cpp
         erhe_graphics/gl/gl_compute_command_encoder.hpp
+        erhe_graphics/gl/gl_compute_pipeline.cpp
+        erhe_graphics/gl/gl_compute_pipeline.hpp
         erhe_graphics/gl/gl_context_provider.cpp
         erhe_graphics/gl/gl_context_provider.hpp
         erhe_graphics/gl/gl_debug.cpp
@@ -137,6 +150,10 @@ endif ()
 if (ERHE_GRAPHICS_API_VULKAN)
     erhe_target_sources_grouped(
         ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        erhe_graphics/vulkan/vulkan_bind_group_layout.cpp
+        erhe_graphics/vulkan/vulkan_bind_group_layout.hpp
+        erhe_graphics/vulkan/vulkan_render_pipeline.cpp
+        erhe_graphics/vulkan/vulkan_render_pipeline.hpp
         erhe_graphics/vulkan/vulkan_blit_command_encoder.cpp
         erhe_graphics/vulkan/vulkan_blit_command_encoder.hpp
         erhe_graphics/vulkan/vulkan_buffer.cpp
@@ -145,9 +162,13 @@ if (ERHE_GRAPHICS_API_VULKAN)
         erhe_graphics/vulkan/vulkan_command_encoder.hpp
         erhe_graphics/vulkan/vulkan_compute_command_encoder.cpp
         erhe_graphics/vulkan/vulkan_compute_command_encoder.hpp
+        erhe_graphics/vulkan/vulkan_compute_pipeline.cpp
+        erhe_graphics/vulkan/vulkan_compute_pipeline.hpp
         erhe_graphics/vulkan/vulkan_debug.cpp
         erhe_graphics/vulkan/vulkan_debug.hpp
         erhe_graphics/vulkan/vulkan_device.cpp
+        erhe_graphics/vulkan/vulkan_device_debug.cpp
+        erhe_graphics/vulkan/vulkan_device_init.cpp
         erhe_graphics/vulkan/vulkan_device.hpp
         erhe_graphics/vulkan/vulkan_helpers.cpp
         erhe_graphics/vulkan/vulkan_helpers.hpp
@@ -200,6 +221,10 @@ endif ()
 if (ERHE_GRAPHICS_API_METAL)
     erhe_target_sources_grouped(
         ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        erhe_graphics/metal/metal_bind_group_layout.cpp
+        erhe_graphics/metal/metal_bind_group_layout.hpp
+        erhe_graphics/metal/metal_render_pipeline.cpp
+        erhe_graphics/metal/metal_render_pipeline.hpp
         erhe_graphics/metal/metal_blit_command_encoder.cpp
         erhe_graphics/metal/metal_blit_command_encoder.hpp
         erhe_graphics/metal/metal_buffer.cpp
@@ -208,6 +233,8 @@ if (ERHE_GRAPHICS_API_METAL)
         erhe_graphics/metal/metal_command_encoder.hpp
         erhe_graphics/metal/metal_compute_command_encoder.cpp
         erhe_graphics/metal/metal_compute_command_encoder.hpp
+        erhe_graphics/metal/metal_compute_pipeline.cpp
+        erhe_graphics/metal/metal_compute_pipeline.hpp
         erhe_graphics/metal/metal_debug.cpp
         erhe_graphics/metal/metal_device.cpp
         erhe_graphics/metal/metal_device.hpp
@@ -251,6 +278,10 @@ endif ()
 if (ERHE_GRAPHICS_API_NONE)
     erhe_target_sources_grouped(
         ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        erhe_graphics/null/null_bind_group_layout.cpp
+        erhe_graphics/null/null_bind_group_layout.hpp
+        erhe_graphics/null/null_render_pipeline.cpp
+        erhe_graphics/null/null_render_pipeline.hpp
         erhe_graphics/null/null_blit_command_encoder.cpp
         erhe_graphics/null/null_blit_command_encoder.hpp
         erhe_graphics/null/null_buffer.cpp
@@ -259,6 +290,8 @@ if (ERHE_GRAPHICS_API_NONE)
         erhe_graphics/null/null_command_encoder.hpp
         erhe_graphics/null/null_compute_command_encoder.cpp
         erhe_graphics/null/null_compute_command_encoder.hpp
+        erhe_graphics/null/null_compute_pipeline.cpp
+        erhe_graphics/null/null_compute_pipeline.hpp
         erhe_graphics/null/null_debug.cpp
         erhe_graphics/null/null_device.cpp
         erhe_graphics/null/null_device.hpp
@@ -330,6 +363,7 @@ target_link_libraries(${_target}
         glm::glm-header-only
         mango
     PRIVATE
+        etl::etl
         erhe::defer
         erhe::file
         erhe::log

@@ -2,7 +2,6 @@
 
 #include "content_library/content_library.hpp"
 #include "scene/scene_root.hpp"
-#include "renderers/mesh_memory.hpp"
 
 #include "erhe_graphics/buffer_transfer_queue.hpp"
 #include "erhe_geometry/shapes/torus.hpp"
@@ -13,6 +12,7 @@
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_xr/xr_action.hpp"
 
 using erhe::geometry::transform_mesh;
@@ -20,7 +20,11 @@ using erhe::geometry::to_geo_mat4f;
 
 namespace editor {
 
-Controller_visualization::Controller_visualization(erhe::scene::Node* view_root, Mesh_memory& mesh_memory, Scene_root& scene_root)
+Controller_visualization::Controller_visualization(
+    erhe::scene::Node*                 view_root,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Scene_root&                        scene_root
+)
 {
     ERHE_PROFILE_FUNCTION();
 

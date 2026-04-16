@@ -8,6 +8,7 @@
 #include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/scoped_buffer_mapping.hpp"
@@ -43,21 +44,20 @@ auto Tile_renderer::make_prototype(erhe::graphics::Device& graphics_device) cons
         .interface_blocks      = { &m_projection_block },
         .fragment_outputs      = &m_fragment_outputs,
         .vertex_format         = &m_vertex_format,
-        .default_uniform_block = m_graphics_device.get_info().use_bindless_texture
-            ? nullptr
-            : &m_default_uniform_block,
         .shaders = {
             { erhe::graphics::Shader_type::vertex_shader,   m_shader_path / std::filesystem::path{"tile.vert"} },
             { erhe::graphics::Shader_type::fragment_shader, m_shader_path / std::filesystem::path{"tile.frag"} }
         },
+        .bind_group_layout = &m_bind_group_layout,
         .dump_interface    = true,
         .dump_final_source = true
     };
 
-    if (m_graphics_device.get_info().use_bindless_texture) {
+    if (m_graphics_device.get_info().uses_bindless_texture()) {
         create_info.defines.emplace_back("ERHE_BINDLESS_TEXTURE", "1");
         create_info.extensions.push_back({erhe::graphics::Shader_type::fragment_shader, "GL_ARB_bindless_texture"});
     }
+    // Vulkan descriptor indexing uses erhe_texture_heap[] from the preamble -- no defines needed
 
     return erhe::graphics::Shader_stages_prototype{graphics_device, create_info};
 }
@@ -81,12 +81,6 @@ Tile_renderer::Tile_renderer(
     : m_graphics_device      {graphics_device}
     , m_imgui_renderer       {imgui_renderer}
     , m_tiles                {tiles}
-    , m_default_uniform_block{graphics_device}
-    , m_texture_sampler{
-        graphics_device.get_info().use_bindless_texture
-            ? nullptr
-            : m_default_uniform_block.add_sampler("s_texture", erhe::graphics::Glsl_type::sampler_2d, 0)
-    }
     , m_fragment_outputs{
         erhe::graphics::Fragment_output{
             .name     = "out_color",
@@ -133,6 +127,13 @@ Tile_renderer::Tile_renderer(
     }
     , m_clip_from_window         {m_projection_block.add_mat4 ("clip_from_window")}
     , m_texture_handle           {m_projection_block.add_uvec2("texture")}
+    , m_bind_group_layout{
+        graphics_device,
+        erhe::graphics::Bind_group_layout_create_info{
+            .bindings    = {{0, erhe::graphics::Binding_type::uniform_buffer}},
+            .debug_label = "Tile renderer"
+        }
+    }
     , m_u_clip_from_window_size  {m_clip_from_window->get_size_bytes()}
     , m_u_clip_from_window_offset{m_clip_from_window->get_offset_in_parent()}
     , m_u_texture_size           {m_texture_handle  ->get_size_bytes()}
@@ -152,7 +153,8 @@ Tile_renderer::Tile_renderer(
     }
     , m_vertex_input{m_graphics_device, erhe::graphics::Vertex_input_state_data::make(m_vertex_format)}
     , m_pipeline{
-        erhe::graphics::Render_pipeline_data{
+        graphics_device,
+        erhe::graphics::Render_pipeline_create_info{
             .debug_label    = erhe::utility::Debug_label{"Map renderer"},
             .shader_stages  = &m_shader_stages,
             .vertex_input   = &m_vertex_input,
@@ -722,7 +724,7 @@ void Tile_renderer::end()
     m_can_blit = false;
 }
 
-void Tile_renderer::render(erhe::graphics::Render_command_encoder& render_encoder, erhe::math::Viewport viewport)
+void Tile_renderer::render(erhe::graphics::Render_command_encoder& render_encoder, const erhe::graphics::Render_pass& render_pass, erhe::math::Viewport viewport)
 {
     if (m_index_count == 0) {
         return;
@@ -732,6 +734,11 @@ void Tile_renderer::render(erhe::graphics::Render_command_encoder& render_encode
     }
 
     erhe::graphics::Scoped_debug_group pass_scope{"Tile_renderer::render()"};
+
+    erhe::graphics::Render_pipeline* pipeline_ptr = m_pipeline.get_pipeline_for(render_pass.get_descriptor());
+    if (pipeline_ptr == nullptr) {
+        return;
+    }
 
     const auto handle = m_graphics_device.get_handle(*m_tileset_texture.get(), m_nearest_sampler);
 
@@ -774,14 +781,22 @@ void Tile_renderer::render(erhe::graphics::Render_command_encoder& render_encode
     //gl::invalidate_tex_image()
     erhe::graphics::Buffer* vertex_buffer = vertex_buffer_range.get_buffer()->get_buffer();
 
-    render_encoder.set_render_pipeline_state(m_pipeline);
+    render_encoder.set_bind_group_layout(&m_bind_group_layout);
+    render_encoder.set_render_pipeline(*pipeline_ptr);
+    render_encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
+    render_encoder.set_scissor_rect(viewport.x, viewport.y, viewport.width, viewport.height);
     render_encoder.set_index_buffer(&m_index_buffer);
     render_encoder.set_vertex_buffer(vertex_buffer, vertex_buffer_range.get_byte_start_offset_in_buffer(), 0);
 
     m_projection_buffer.bind(render_encoder, projection_buffer_range);
 
-    erhe::graphics::Texture_heap texture_heap{m_graphics_device, *m_tileset_texture.get(), m_nearest_sampler, 1, &m_default_uniform_block};
-    texture_heap.assign(0, m_tileset_texture.get(), &m_nearest_sampler);
+    erhe::graphics::Texture_heap texture_heap{
+        m_graphics_device,
+        *m_tileset_texture.get(),
+        m_nearest_sampler,
+        &m_bind_group_layout
+    };
+    texture_heap.allocate(m_tileset_texture.get(), &m_nearest_sampler);
     texture_heap.bind();
 
     render_encoder.draw_indexed_primitives(

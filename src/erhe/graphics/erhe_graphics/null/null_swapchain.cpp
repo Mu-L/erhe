@@ -43,4 +43,14 @@ auto Swapchain_impl::has_stencil() const -> bool
     return false;
 }
 
+auto Swapchain_impl::get_color_format() const -> erhe::dataformat::Format
+{
+    return erhe::dataformat::Format::format_undefined;
+}
+
+auto Swapchain_impl::get_depth_format() const -> erhe::dataformat::Format
+{
+    return erhe::dataformat::Format::format_undefined;
+}
+
 } // namespace erhe::graphics

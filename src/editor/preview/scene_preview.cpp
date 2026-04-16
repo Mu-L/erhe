@@ -1,7 +1,7 @@
 #include "preview/scene_preview.hpp"
 
 #include "app_context.hpp"
-#include "renderers/mesh_memory.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/programs.hpp"
 #include "renderers/viewport_config.hpp"
 #include "scene/scene_root.hpp"
@@ -24,17 +24,18 @@ using Depth_stencil_state  = erhe::graphics::Depth_stencil_state;
 using Color_blend_state    = erhe::graphics::Color_blend_state;
 
 Scene_preview::Scene_preview(
-    erhe::graphics::Device& graphics_device,
-    App_context&            context,
-    Mesh_memory&            mesh_memory,
-    Programs&               programs,
-    const bool              reverse_depth
+    erhe::graphics::Device&            graphics_device,
+    App_context&                       context,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Programs&                          programs,
+    const bool                         reverse_depth
 )
     : Scene_view       {context, Viewport_config{}}
     , m_graphics_device{graphics_device}
     , m_y_flip{graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
     , m_render_pipeline_state{
-        {
+        graphics_device,
+        erhe::graphics::Render_pipeline_create_info{
             .debug_label    = erhe::utility::Debug_label{"Polygon Fill Opaque"},
             .shader_stages  = &programs.standard.shader_stages,
             .vertex_input   = &mesh_memory.vertex_input,
@@ -75,8 +76,9 @@ Scene_preview::Scene_preview(
             .device            = graphics_device,
             .usage_mask        =
                 erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
-                erhe::graphics::Image_usage_flag_bit_mask::sampled,
-            .type              = erhe::graphics::Texture_type::texture_2d,
+                erhe::graphics::Image_usage_flag_bit_mask::sampled |
+                erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
+            .type              = erhe::graphics::Texture_type::texture_2d_array,
             .pixelformat       = graphics_device.choose_depth_stencil_format(erhe::graphics::format_flag_require_depth, 0),
             .width             = 1,
             .height            = 1,
@@ -143,7 +145,8 @@ void Scene_preview::update_rendertarget(erhe::graphics::Device& graphics_device,
                 .device      = graphics_device,
                 .usage_mask   =
                     erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
-                    erhe::graphics::Image_usage_flag_bit_mask::sampled,
+                    erhe::graphics::Image_usage_flag_bit_mask::sampled |
+                    erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
                 .type        = erhe::graphics::Texture_type::texture_2d,
                 .pixelformat = m_color_format,
                 .width       = m_width,
@@ -189,12 +192,20 @@ void Scene_preview::update_rendertarget(erhe::graphics::Device& graphics_device,
     render_pass_descriptor.color_attachments[0].texture       = m_color_texture.get();
     render_pass_descriptor.color_attachments[0].texture_layer = m_color_texture_layer;
     render_pass_descriptor.color_attachments[0].load_action   = erhe::graphics::Load_action::Clear;
-    render_pass_descriptor.color_attachments[0].store_action = erhe::graphics::Store_action::Store;
-    render_pass_descriptor.color_attachments[0].clear_value  = { m_clear_color.x, m_clear_color.y, m_clear_color.z, m_clear_color.w };
+    render_pass_descriptor.color_attachments[0].store_action  = erhe::graphics::Store_action::Store;
+    render_pass_descriptor.color_attachments[0].clear_value   = { m_clear_color.x, m_clear_color.y, m_clear_color.z, m_clear_color.w };
+    render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::shader_read_only_optimal;
+    render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::shader_read_only_optimal;
     render_pass_descriptor.depth_attachment.texture          = m_depth_texture.get();
     render_pass_descriptor.depth_attachment.load_action      = erhe::graphics::Load_action::Clear;
     render_pass_descriptor.depth_attachment.clear_value[0]   = reverse_depth ? 0.0 : 1.0;
     render_pass_descriptor.depth_attachment.store_action     = erhe::graphics::Store_action::Dont_care;
+    render_pass_descriptor.depth_attachment.usage_before     = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+    render_pass_descriptor.depth_attachment.layout_before    = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+    render_pass_descriptor.depth_attachment.usage_after      = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+    render_pass_descriptor.depth_attachment.layout_after     = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
     render_pass_descriptor.render_target_width               = m_width;
     render_pass_descriptor.render_target_height              = m_height;
     render_pass_descriptor.debug_label                       = "Preview Render_pass";

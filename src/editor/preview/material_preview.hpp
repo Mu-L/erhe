@@ -8,11 +8,11 @@ class Material_preview : public Scene_preview
 {
 public:
     Material_preview(
-        erhe::graphics::Device&         graphics_device,
-        App_context&                    app_context,
-        Mesh_memory&                    mesh_memory,
-        Programs&                       programs,
-        bool                            reverse_depth
+        erhe::graphics::Device&            graphics_device,
+        App_context&                       app_context,
+        erhe::scene_renderer::Mesh_memory& mesh_memory,
+        Programs&                          programs,
+        bool                               reverse_depth
     );
     ~Material_preview() noexcept;
 
@@ -24,7 +24,7 @@ public:
     void show_preview  ();
 
 private:
-    void make_preview_scene(Mesh_memory& mesh_memory);
+    void make_preview_scene(erhe::scene_renderer::Mesh_memory& mesh_memory);
     //// void generate_torus_geometry();
 
     std::shared_ptr<erhe::primitive::Material> m_last_material;

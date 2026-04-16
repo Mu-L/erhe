@@ -39,10 +39,6 @@ public:
     int                              shadow_texture_unit_compare{0};
     int                              shadow_texture_unit_no_compare{1};
     std::filesystem::path            shader_path;
-    erhe::graphics::Shader_resource  default_uniform_block;   // for non-bindless textures
-    erhe::graphics::Shader_resource* shadow_sampler_compare;
-    erhe::graphics::Shader_resource* shadow_sampler_no_compare;
-    erhe::graphics::Shader_resource* texture_sampler;
     erhe::graphics::Sampler          nearest_sampler;
     erhe::graphics::Sampler          linear_sampler;
     erhe::graphics::Sampler          linear_mipmap_linear_sampler;

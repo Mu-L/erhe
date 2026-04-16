@@ -17,16 +17,6 @@ struct("Graphics_config",
             developer=False
         ),
         field(
-            "post_processing",
-            Bool,
-            added_in=1,
-            default="true",
-            short_desc="Post Processing",
-            long_desc="Enable Post Processing",
-            visible=True,
-            developer=False
-        ),
-        field(
             "force_bindless_textures_off",
             Bool,
             added_in=1,
@@ -117,12 +107,32 @@ struct("Graphics_config",
             developer=False
         ),
         field(
+            "vulkan_validation_layers",
+            Bool,
+            added_in=1,
+            default="true",
+            short_desc="Enable Vulkan Validation Layers",
+            long_desc="Enables Vulkan validation layers (VK_LAYER_KHRONOS_validation). Only meaningful for Vulkan backend.",
+            visible=True,
+            developer=False
+        ),
+        field(
             "shader_monitor_enabled",
             Bool,
             added_in=1,
             default="true",
             short_desc="Enable Shader Monitor",
             long_desc="Enables Shader Monitor, allowing Shader Hot-reloading. Only meaningful for debugging.",
+            visible=True,
+            developer=False
+        ),
+        field(
+            "force_present_mode_immediate",
+            Bool,
+            added_in=1,
+            default="false",
+            short_desc="Force Immediate Present Mode",
+            long_desc="Forces VK_PRESENT_MODE_IMMEDIATE_KHR when available. Disables vsync for accurate performance measurements. Only meaningful for Vulkan backend.",
             visible=True,
             developer=False
         ),
