@@ -3,7 +3,7 @@
 
 # erhe
 
-erhe is a C++ library and editor for 3D graphics with a graphics API abstraction loosely modeled after Vulkan and Metal, with backends for OpenGL and Metal. It runs on Windows, Linux, and macOS. The OpenGL backend requires a minimum of OpenGL 4.1; OpenGL 4.6 is recommended.
+erhe is a C++ library and editor for 3D graphics with a graphics API abstraction loosely modeled after Vulkan and Metal, with backends for OpenGL, Metal and Vulkan. It runs on Windows, Linux, and macOS. The OpenGL backend requires a minimum of OpenGL 4.1; OpenGL 4.6 is recommended.
 
 ![screenshot](https://github.com/tksuoran/erhe/wiki/images/13.png)
 
