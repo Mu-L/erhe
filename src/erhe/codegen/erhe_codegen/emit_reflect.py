@@ -5,7 +5,7 @@ from __future__ import annotations
 from erhe_codegen.schema import StructSchema, FieldSchema, get_enum_registry
 from erhe_codegen.types import (
     TypeBase, ScalarType, GlmType, VectorType, ArrayType, OptionalType,
-    StructRefType, EnumRefType,
+    MapType, StructRefType, EnumRefType,
 )
 from erhe_codegen.emit_hpp import _to_snake_case
 
@@ -60,6 +60,8 @@ def _field_type_enum(t: TypeBase) -> str:
         return "erhe::codegen::Field_type::array"
     if isinstance(t, OptionalType):
         return "erhe::codegen::Field_type::optional"
+    if isinstance(t, MapType):
+        return "erhe::codegen::Field_type::map"
     if isinstance(t, StructRefType):
         return "erhe::codegen::Field_type::struct_ref"
     if isinstance(t, EnumRefType):
@@ -185,3 +187,6 @@ def _collect_enum_refs(t: TypeBase, refs: set[str]) -> None:
         refs.add(t.name)
     elif isinstance(t, (VectorType, ArrayType, OptionalType)):
         _collect_enum_refs(t.element_type, refs)
+    elif isinstance(t, MapType):
+        _collect_enum_refs(t.key_type, refs)
+        _collect_enum_refs(t.value_type, refs)

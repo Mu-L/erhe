@@ -31,6 +31,7 @@ enum class Field_type : uint8_t
     vector,
     array,
     optional,
+    map,
     struct_ref,
     enum_ref,
 };

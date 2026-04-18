@@ -6,6 +6,6 @@ struct("Logging_config",
     long_desc="",
     developer=False,
     fields=[
-        field("loggers", Vector(StructRef("Logger_entry")), added_in=1),
+        field("loggers", Map(String, String), added_in=1),
     ],
 )

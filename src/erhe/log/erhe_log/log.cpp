@@ -76,22 +76,22 @@ void load_log_configuration(const std::string& json_contents)
     if (error) {
         return;
     }
-    simdjson::ondemand::array loggers;
-    error = obj["loggers"].get_array().get(loggers);
+    simdjson::ondemand::object loggers;
+    error = obj["loggers"].get_object().get(loggers);
     if (error) {
         return;
     }
     std::vector<std::pair<std::string, std::string>> levels;
-    for (simdjson::ondemand::value logger_val : loggers) {
-        simdjson::ondemand::object logger_obj;
-        if (logger_val.get_object().get(logger_obj) == simdjson::SUCCESS) {
-            std::string_view name;
-            std::string_view level;
-            if (logger_obj["name"].get_string().get(name) == simdjson::SUCCESS &&
-                logger_obj["level"].get_string().get(level) == simdjson::SUCCESS) {
-                levels.emplace_back(std::string{name}, std::string{level});
-            }
+    for (auto logger_field : loggers) {
+        std::string_view name;
+        if (logger_field.unescaped_key().get(name) != simdjson::SUCCESS) {
+            continue;
         }
+        std::string_view level;
+        if (logger_field.value().get_string().get(level) != simdjson::SUCCESS) {
+            continue;
+        }
+        levels.emplace_back(std::string{name}, std::string{level});
     }
     configure_log_levels(levels);
 }

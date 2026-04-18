@@ -6,8 +6,6 @@
 #include "erhe_commands/commands.hpp"
 
 #include "erhe_codegen/config_io.hpp"
-#include "erhe_imgui/generated/logger_entry.hpp"
-#include "erhe_imgui/generated/logger_entry_serialization.hpp"
 #include "erhe_imgui/generated/logging_config.hpp"
 #include "erhe_imgui/generated/logging_config_serialization.hpp"
 #include "erhe_profile/profile.hpp"
@@ -148,10 +146,7 @@ void Logs::save_settings()
             if (name.empty()) {
                 return;
             }
-            Logger_entry entry;
-            entry.name  = name;
-            entry.level = erhe::log::get_levelname(logger->level());
-            config.loggers.push_back(entry);
+            config.loggers.emplace(name, erhe::log::get_levelname(logger->level()));
         }
     );
     erhe::codegen::save_config(config, erhe::log::c_logging_configuration_file_path);

@@ -83,6 +83,28 @@ class OptionalType(TypeBase):
         return f"Optional({self.element_type!r})"
 
 
+class MapType(TypeBase):
+    """std::map<K, V> -- serialized as a JSON object, iterated in sorted key order."""
+
+    def __init__(self, key_type: TypeBase, value_type: TypeBase):
+        if not (isinstance(key_type, ScalarType) and key_type.cpp_type == "std::string"):
+            raise TypeError("MapType key_type must currently be String")
+        if not isinstance(value_type, ScalarType):
+            raise TypeError("MapType value_type must currently be a ScalarType")
+        self.key_type = key_type
+        self.value_type = value_type
+        self.element_type = value_type
+        self.is_numeric = False
+        self.is_integer = False
+
+    @property
+    def cpp_type(self) -> str:
+        return f"std::map<{_cpp_type_of(self.key_type)}, {_cpp_type_of(self.value_type)}>"
+
+    def __repr__(self) -> str:
+        return f"Map({self.key_type!r}, {self.value_type!r})"
+
+
 class StructRefType(TypeBase):
     """Reference to another generated struct by name."""
 
@@ -149,6 +171,7 @@ Mat4  = GlmType("Mat4",  "glm::mat4",  16)
 Vector    = VectorType
 Array     = ArrayType
 Optional  = OptionalType
+Map       = MapType
 StructRef = StructRefType
 EnumRef   = EnumRefType
 

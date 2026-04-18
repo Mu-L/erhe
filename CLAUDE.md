@@ -188,3 +188,11 @@ Follow these naming conventions consistently:
 ## C++ Standard
 
 This project uses **C++20**. Prefer modern C++20 features over older alternatives (e.g. concepts over SFINAE, `std::span` over pointer+size, `std::format`/`fmt` over `sprintf`, `constexpr` where possible, designated initializers, `requires` clauses).
+
+## Config JSON Formatting
+
+Applies to JSON files consumed by `erhe_codegen`-generated loaders (the hand-authored files under `src/editor/config/` that pair with codegen-produced structs) and to `src/editor/config/logging.json`.
+
+- Write each `"key": value` pair on a single line. Do not split a pair across lines.
+- Omit the `"_version"` key entirely when its value would be `1`. A missing `_version` is treated as version `1`. Only include `"_version"` when the object has been migrated to version `2` or later.
+- Use 4-space indentation, consistent with existing files.

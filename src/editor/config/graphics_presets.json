@@ -1,8 +1,6 @@
 {
-    "_version": 1,
     "presets": [
         {
-            "_version": 1,
             "name": "Low",
             "msaa_sample_count": 2,
             "shadow_enable": true,
@@ -11,7 +9,6 @@
             "shadow_depth_bits": 16
         },
         {
-            "_version": 1,
             "name": "Medium",
             "msaa_sample_count": 4,
             "shadow_enable": true,
@@ -20,7 +17,6 @@
             "shadow_depth_bits": 16
         },
         {
-            "_version": 1,
             "name": "High",
             "msaa_sample_count": 8,
             "shadow_enable": true,

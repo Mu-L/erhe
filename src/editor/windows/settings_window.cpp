@@ -116,6 +116,7 @@ void imgui_field(void* base, const erhe::codegen::Field_info& field)
         case Field_type::vector:
         case Field_type::array:
         case Field_type::optional:
+        case Field_type::map:
         case Field_type::struct_ref:
         case Field_type::enum_ref:
             ImGui::TextUnformatted(field.type_name);

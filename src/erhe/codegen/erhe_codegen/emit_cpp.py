@@ -5,7 +5,7 @@ from __future__ import annotations
 from erhe_codegen.schema import StructSchema, FieldSchema, get_struct_registry
 from erhe_codegen.types import (
     TypeBase, ScalarType, GlmType, VectorType, ArrayType, OptionalType,
-    StructRefType, EnumRefType,
+    MapType, StructRefType, EnumRefType,
 )
 from erhe_codegen.emit_hpp import _to_snake_case, _collect_struct_refs
 
@@ -120,6 +120,24 @@ def _serialize_value_code(t: TypeBase, expr: str, indent: str) -> list[str]:
     elif isinstance(t, EnumRefType):
         # Enum: serialize as string via to_string
         lines.append(f"{indent}erhe::codegen::serialize_string(out, to_string({expr}));")
+    elif isinstance(t, MapType):
+        # Map: serialize as JSON object. std::map iterates in sorted key order,
+        # giving stable output suitable for diffs.
+        lines.append(f"{indent}{{")
+        lines.append(f'{indent}    out += "{{\\n";')
+        lines.append(f"{indent}    bool map_first = true;")
+        lines.append(f"{indent}    for (const auto& [map_k, map_v] : {expr}) {{")
+        lines.append(f'{indent}        if (!map_first) out += ",\\n";')
+        lines.append(f"{indent}        out.append((indent + 2) * 4, ' ');")
+        lines.append(f"{indent}        erhe::codegen::serialize_string(out, map_k);")
+        lines.append(f'{indent}        out += ": ";')
+        lines.extend(_serialize_value_code(t.value_type, "map_v", indent + "        "))
+        lines.append(f"{indent}        map_first = false;")
+        lines.append(f"{indent}    }}")
+        lines.append(f"{indent}    if (!{expr}.empty()) out += '\\n';")
+        lines.append(f"{indent}    out.append((indent + 1) * 4, ' ');")
+        lines.append(f"{indent}    out += '}}';")
+        lines.append(f"{indent}}}")
     elif isinstance(t, OptionalType):
         # Optional: serialize value or null
         lines.append(f"{indent}if ({expr}.has_value()) {{")
@@ -216,6 +234,27 @@ def _deserialize_value_code(t: TypeBase, target: str, indent: str) -> list[str]:
         lines.append(f"{indent}if (!val.get_object().get(nested_obj)) {{")
         lines.append(f"{indent}    deserialize(nested_obj, {target});")
         lines.append(f"{indent}}}")
+    elif isinstance(t, MapType):
+        value_cpp = t.value_type.cpp_type
+        lines.append(f"{indent}{{")
+        lines.append(f"{indent}    simdjson::ondemand::object map_obj;")
+        lines.append(f"{indent}    if (!val.get_object().get(map_obj)) {{")
+        lines.append(f"{indent}        {target}.clear();")
+        lines.append(f"{indent}        for (auto map_field : map_obj) {{")
+        lines.append(f"{indent}            std::string_view map_key_view;")
+        lines.append(f"{indent}            if (map_field.unescaped_key().get(map_key_view) != simdjson::SUCCESS) {{")
+        lines.append(f"{indent}                continue;")
+        lines.append(f"{indent}            }}")
+        lines.append(f"{indent}            simdjson::ondemand::value map_val;")
+        lines.append(f"{indent}            if (map_field.value().get(map_val) != simdjson::SUCCESS) {{")
+        lines.append(f"{indent}                continue;")
+        lines.append(f"{indent}            }}")
+        lines.append(f"{indent}            {value_cpp} map_value_tmp{{}};")
+        lines.append(f"{indent}            erhe::codegen::deserialize_field(map_val, map_value_tmp);")
+        lines.append(f"{indent}            {target}.emplace(std::string{{map_key_view}}, std::move(map_value_tmp));")
+        lines.append(f"{indent}        }}")
+        lines.append(f"{indent}    }}")
+        lines.append(f"{indent}}}")
     elif isinstance(t, EnumRefType):
         # Enum: read as string, call from_string
         lines.append(f"{indent}std::string_view str;")
@@ -275,8 +314,9 @@ def emit_struct_cpp(s: StructSchema) -> str:
     lines.append("{")
     lines.append("    std::string out;")
     lines.append('    out += "{\\n";')
-    lines.append("    out.append((indent + 1) * 4, ' ');")
-    lines.append(f'    out += "\\"_version\\": {s.version},\\n";')
+    if s.version > 1:
+        lines.append("    out.append((indent + 1) * 4, ' ');")
+        lines.append(f'    out += "\\"_version\\": {s.version},\\n";')
 
     active_fields = s.active_fields()
     for f in active_fields:

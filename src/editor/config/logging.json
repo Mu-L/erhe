@@ -1,710 +1,146 @@
 {
-    "_version": 1,
-    "loggers": [
-        {
-            "_version": 1,
-            "name": "editor.mcp",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.graph_editor",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.tree",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.xr",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.transform_tool",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.svg",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.render",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.raytrace_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.raytrace",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "editor.post_processing",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.physics_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.physics",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.parsers",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.node_properties",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.id_render",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.hud",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.fly_camera",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.debug_visualization",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.controller_ray",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.composer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.brush",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.asset_browser",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.ui.font",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.ui.text_buffer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.raytrace.scene",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene_renderer.material_buffer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.context",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.rendergraph.tail",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.renderer.log_gpu_ring_buffer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene_renderer.shadow_renderer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene_renderer.forward_renderer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.buffer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.merge",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene_renderer.render",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.headset",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene.mesh_raytrace",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.file",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.rendergraph.frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.renderer.startup",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene.log",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.item.log_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.raytrace.embree",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.window.window",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.raytrace.instance",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.raytrace.geometry",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.imgui.frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.raytrace.device",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.physics.physics",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.gl.trace",
-            "level": "error"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.raytrace.frame",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene_renderer.draw",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.net.server",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.net.socket",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.tree_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.net.net",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.textures",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.scene",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.pointer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.math.input_axis_frame",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.net.client",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.startup",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.imgui.imgui",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.window.renderdoc",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.vulkan",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.startup",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.torus",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.item.log",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.sync",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.tools",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.renderer.buffer_writer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.render_pass",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene.log_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.commands.input",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.threads",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.texture",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.imgui.performance",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.programs",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.draw",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.desc",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.selection",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.catmull_clark",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.gl.debug",
-            "level": "error"
-        },
-        {
-            "_version": 1,
-            "name": "editor.transform_tool_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.save_png",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.program",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.input",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.net",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.fragment_outputs",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.texture_heap",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.imgui.input_events",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.build_edges",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.framebuffer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.primitive.primitive",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.debug",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene_renderer.primitive_buffer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.renderer.render",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.shader_monitor",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.geometry",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.raytrace.buffer",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graph",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "editor.input_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.geogram",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.window.space_mouse",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene_renderer.startup",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.triangulate",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.weld",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.texture_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.operations",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.subdivide",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.scene_renderer.log_program_interface",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.physics.physics_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.vertex_attribute",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.cone",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.operation",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.math.input_axis",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "editor.framebuffer",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.sphere",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.interpolate",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.attribute_maps",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.tangent_gen",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.commands.input_frame",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.gltf.log",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.commands.input_event_filtered",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.primitive.primitive_builder",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.commands.input_events",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.load_png",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.vertex_stream",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.window.window_event",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.swapchain",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.commands.command_state_transition",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.commands.input_event_consumed",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.scene_view",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.imgui.windows",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.renderer.draw",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.geometry.polygon_texcoords",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.rendertarget_imgui_windows",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.commands.input_event",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "editor.materials",
-            "level": "info"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.dataformat",
-            "level": "warning"
-        },
-        {
-            "_version": 1,
-            "name": "erhe.graphics.glsl",
-            "level": "info"
-        }
-    ]
+    "loggers": {
+        "editor.asset_browser": "info",
+        "editor.brush": "info",
+        "editor.composer": "info",
+        "editor.controller_ray": "info",
+        "editor.debug_visualization": "info",
+        "editor.draw": "info",
+        "editor.fly_camera": "info",
+        "editor.frame": "info",
+        "editor.framebuffer": "info",
+        "editor.graph_editor": "info",
+        "editor.headset": "info",
+        "editor.hud": "info",
+        "editor.id_render": "info",
+        "editor.input": "info",
+        "editor.input_frame": "info",
+        "editor.materials": "info",
+        "editor.mcp": "info",
+        "editor.net": "info",
+        "editor.node_properties": "info",
+        "editor.operations": "info",
+        "editor.parsers": "info",
+        "editor.physics": "info",
+        "editor.physics_frame": "info",
+        "editor.pointer": "info",
+        "editor.post_processing": "info",
+        "editor.programs": "info",
+        "editor.raytrace": "info",
+        "editor.raytrace_frame": "info",
+        "editor.render": "info",
+        "editor.rendertarget_imgui_windows": "info",
+        "editor.scene": "info",
+        "editor.scene_view": "info",
+        "editor.selection": "info",
+        "editor.startup": "info",
+        "editor.svg": "info",
+        "editor.textures": "info",
+        "editor.tools": "info",
+        "editor.transform_tool": "info",
+        "editor.transform_tool_frame": "info",
+        "editor.tree": "info",
+        "editor.tree_frame": "info",
+        "editor.xr": "info",
+        "erhe.commands.command_state_transition": "info",
+        "erhe.commands.input": "info",
+        "erhe.commands.input_event": "info",
+        "erhe.commands.input_event_consumed": "info",
+        "erhe.commands.input_event_filtered": "info",
+        "erhe.commands.input_events": "info",
+        "erhe.commands.input_frame": "info",
+        "erhe.dataformat": "info",
+        "erhe.file": "info",
+        "erhe.geometry.attribute_maps": "info",
+        "erhe.geometry.build_edges": "info",
+        "erhe.geometry.catmull_clark": "info",
+        "erhe.geometry.cone": "info",
+        "erhe.geometry.geogram": "info",
+        "erhe.geometry.geometry": "info",
+        "erhe.geometry.interpolate": "info",
+        "erhe.geometry.merge": "info",
+        "erhe.geometry.operation": "info",
+        "erhe.geometry.polygon_texcoords": "info",
+        "erhe.geometry.sphere": "info",
+        "erhe.geometry.subdivide": "info",
+        "erhe.geometry.tangent_gen": "info",
+        "erhe.geometry.torus": "info",
+        "erhe.geometry.triangulate": "info",
+        "erhe.geometry.weld": "info",
+        "erhe.gl.debug": "info",
+        "erhe.gl.trace": "info",
+        "erhe.gltf.log": "info",
+        "erhe.graph": "info",
+        "erhe.graphics.buffer": "info",
+        "erhe.graphics.context": "info",
+        "erhe.graphics.debug": "info",
+        "erhe.graphics.fragment_outputs": "info",
+        "erhe.graphics.framebuffer": "info",
+        "erhe.graphics.glsl": "info",
+        "erhe.graphics.load_png": "info",
+        "erhe.graphics.program": "info",
+        "erhe.graphics.render_pass": "info",
+        "erhe.graphics.save_png": "info",
+        "erhe.graphics.shader_monitor": "info",
+        "erhe.graphics.startup": "info",
+        "erhe.graphics.swapchain": "info",
+        "erhe.graphics.texture": "info",
+        "erhe.graphics.texture_frame": "info",
+        "erhe.graphics.texture_heap": "info",
+        "erhe.graphics.threads": "info",
+        "erhe.graphics.vertex_attribute": "info",
+        "erhe.graphics.vertex_stream": "info",
+        "erhe.graphics.vulkan": "info",
+        "erhe.graphics.vulkan_desc": "info",
+        "erhe.graphics.vulkan_sync": "info",
+        "erhe.imgui.frame": "info",
+        "erhe.imgui.imgui": "info",
+        "erhe.imgui.input_events": "info",
+        "erhe.imgui.performance": "info",
+        "erhe.imgui.windows": "info",
+        "erhe.item.log": "info",
+        "erhe.item.log_frame": "info",
+        "erhe.math.input_axis": "info",
+        "erhe.math.input_axis_frame": "info",
+        "erhe.net.client": "info",
+        "erhe.net.net": "info",
+        "erhe.net.server": "info",
+        "erhe.net.socket": "info",
+        "erhe.physics.physics": "info",
+        "erhe.physics.physics_frame": "info",
+        "erhe.primitive.primitive": "info",
+        "erhe.primitive.primitive_builder": "info",
+        "erhe.raytrace.buffer": "info",
+        "erhe.raytrace.device": "info",
+        "erhe.raytrace.embree": "info",
+        "erhe.raytrace.frame": "info",
+        "erhe.raytrace.geometry": "info",
+        "erhe.raytrace.instance": "info",
+        "erhe.raytrace.scene": "info",
+        "erhe.renderer.buffer_writer": "info",
+        "erhe.renderer.draw": "info",
+        "erhe.renderer.log_gpu_ring_buffer": "info",
+        "erhe.renderer.render": "info",
+        "erhe.renderer.startup": "info",
+        "erhe.rendergraph.frame": "info",
+        "erhe.rendergraph.tail": "info",
+        "erhe.scene.log": "info",
+        "erhe.scene.log_frame": "info",
+        "erhe.scene.mesh_raytrace": "info",
+        "erhe.scene_renderer.draw": "info",
+        "erhe.scene_renderer.forward_renderer": "info",
+        "erhe.scene_renderer.log_program_interface": "info",
+        "erhe.scene_renderer.material_buffer": "info",
+        "erhe.scene_renderer.primitive_buffer": "info",
+        "erhe.scene_renderer.render": "info",
+        "erhe.scene_renderer.shadow_renderer": "info",
+        "erhe.scene_renderer.startup": "info",
+        "erhe.ui.font": "info",
+        "erhe.ui.text_buffer": "info",
+        "erhe.window.renderdoc": "info",
+        "erhe.window.space_mouse": "info",
+        "erhe.window.window": "info",
+        "erhe.window.window_event": "info",
+        "erhe.xr.log": "info"
+    }
 }

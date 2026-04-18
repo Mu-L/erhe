@@ -6,7 +6,7 @@ from typing import Optional
 from erhe_codegen.schema import StructSchema, FieldSchema, get_struct_registry, get_enum_registry
 from erhe_codegen.types import (
     TypeBase, ScalarType, GlmType, VectorType, ArrayType, OptionalType,
-    StructRefType, EnumRefType, String,
+    MapType, StructRefType, EnumRefType, String,
 )
 
 
@@ -94,6 +94,8 @@ def _type_needs_string(t: TypeBase) -> bool:
         return True
     if isinstance(t, (VectorType, ArrayType, OptionalType)):
         return _type_needs_string(t.element_type)
+    if isinstance(t, MapType):
+        return _type_needs_string(t.key_type) or _type_needs_string(t.value_type)
     return False
 
 
@@ -109,12 +111,18 @@ def _needs_optional_include(s: StructSchema) -> bool:
     return any(_type_contains(f.type, OptionalType) for f in s.fields)
 
 
+def _needs_map_include(s: StructSchema) -> bool:
+    return any(_type_contains(f.type, MapType) for f in s.fields)
+
+
 def _type_contains(t: TypeBase, cls: type) -> bool:
     """Check if a type is or contains the given type class."""
     if isinstance(t, cls):
         return True
     if isinstance(t, (VectorType, ArrayType, OptionalType)):
         return _type_contains(t.element_type, cls)
+    if isinstance(t, MapType):
+        return _type_contains(t.key_type, cls) or _type_contains(t.value_type, cls)
     return False
 
 
@@ -130,6 +138,8 @@ def _type_needs_glm(t: TypeBase) -> bool:
         return True
     if isinstance(t, (VectorType, ArrayType, OptionalType)):
         return _type_needs_glm(t.element_type)
+    if isinstance(t, MapType):
+        return _type_needs_glm(t.key_type) or _type_needs_glm(t.value_type)
     return False
 
 
@@ -165,6 +175,9 @@ def _collect_refs_from_type(t: TypeBase, refs: list[str]) -> None:
         refs.append(t.name)
     elif isinstance(t, (VectorType, ArrayType, OptionalType)):
         _collect_refs_from_type(t.element_type, refs)
+    elif isinstance(t, MapType):
+        _collect_refs_from_type(t.key_type, refs)
+        _collect_refs_from_type(t.value_type, refs)
 
 
 def _collect_enum_refs_from_type(t: TypeBase, refs: list[str]) -> None:
@@ -172,6 +185,9 @@ def _collect_enum_refs_from_type(t: TypeBase, refs: list[str]) -> None:
         refs.append(t.name)
     elif isinstance(t, (VectorType, ArrayType, OptionalType)):
         _collect_enum_refs_from_type(t.element_type, refs)
+    elif isinstance(t, MapType):
+        _collect_enum_refs_from_type(t.key_type, refs)
+        _collect_enum_refs_from_type(t.value_type, refs)
 
 
 def _to_snake_case(name: str) -> str:
@@ -196,6 +212,8 @@ def emit_struct_hpp(s: StructSchema) -> str:
     if _needs_array_include(s):
         includes.append("<array>")
     includes.append("<cstdint>")  # always for current_version
+    if _needs_map_include(s):
+        includes.append("<map>")
     if _needs_optional_include(s):
         includes.append("<optional>")
     if _needs_string_include(s):

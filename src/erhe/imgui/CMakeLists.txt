@@ -88,16 +88,12 @@ erhe_codegen_generate(
     DEFINITIONS_DIR "${_imgui_defs}"
     OUTPUT_DIR      "${_imgui_gen}"
     DEFINITIONS
-        "${_imgui_defs}/logger_entry.py"
         "${_imgui_defs}/logging_config.py"
         "${_imgui_defs}/window_visibility_entry.py"
         "${_imgui_defs}/windows_visibility_config.py"
 )
 
 set(_imgui_codegen_sources
-    ${_imgui_gen}/logger_entry.hpp
-    ${_imgui_gen}/logger_entry_serialization.hpp
-    ${_imgui_gen}/logger_entry.cpp
     ${_imgui_gen}/logging_config.hpp
     ${_imgui_gen}/logging_config_serialization.hpp
     ${_imgui_gen}/logging_config.cpp

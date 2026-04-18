@@ -10,7 +10,7 @@ from erhe_codegen.types import (
     Float, Double,
     String,
     Vec2, Vec3, Vec4, IVec2, Mat4,
-    Vector, Array, Optional,
+    Vector, Array, Optional, Map,
     StructRef, EnumRef,
 )
 
@@ -32,7 +32,7 @@ __all__ = [
     "Float", "Double",
     "String",
     "Vec2", "Vec3", "Vec4", "IVec2", "Mat4",
-    "Vector", "Array", "Optional",
+    "Vector", "Array", "Optional", "Map",
     "StructRef", "EnumRef",
     # Schema
     "struct", "field",
