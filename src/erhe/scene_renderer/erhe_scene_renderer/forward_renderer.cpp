@@ -93,6 +93,18 @@ void Forward_renderer::render(const Render_parameters& parameters)
 {
     ERHE_PROFILE_FUNCTION();
 
+    // Check for early out
+    bool all_empty = true;
+    for (const auto& meshes : parameters.mesh_spans) {
+        if (!meshes.empty()) {
+            all_empty = false;
+            break;
+        }
+    }
+    if (all_empty) {
+        log_render->debug("Forward_renderer::render({}) - empty", parameters.debug_label);
+    }
+
     log_render->debug("Forward_renderer::render({})", parameters.debug_label);
 
     const auto& viewport               = parameters.viewport;
