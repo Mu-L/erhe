@@ -128,6 +128,23 @@ void Rendertarget_mesh::resize_rendertarget(
     std::shared_ptr<erhe::geometry::Geometry> geometry = std::make_shared<erhe::geometry::Geometry>();
     erhe::geometry::shapes::make_rectangle(geometry->get_mesh(), m_local_width, m_local_height, true, false);
 
+    // make_rectangle bakes UVs for a bottom-left texture origin (OpenGL).
+    // On backends whose texture origin is top-left (Vulkan, Metal), content
+    // rendered into the rendertarget is stored top-down, so sampling with
+    // the default UVs produces an upside-down image. Flip V on the quad
+    // UVs to match. Mirrors Imgui_renderer::get_rtt_uv0/uv1.
+    if (graphics_device.get_info().coordinate_conventions.texture_origin == erhe::math::Texture_origin::top_left) {
+        GEO::Mesh& geo_mesh = geometry->get_mesh();
+        erhe::geometry::Mesh_attributes attributes{geo_mesh};
+        const GEO::index_t vertex_count = geo_mesh.vertices.nb();
+        for (GEO::index_t v = 0; v < vertex_count; ++v) {
+            if (attributes.vertex_texcoord_0.has(v)) {
+                const GEO::vec2f uv = attributes.vertex_texcoord_0.get(v);
+                attributes.vertex_texcoord_0.set(v, GEO::vec2f{uv.x, 1.0f - uv.y});
+            }
+        }
+    }
+
     std::shared_ptr<erhe::primitive::Primitive> primitive = std::make_shared<erhe::primitive::Primitive>(
         geometry,
         erhe::primitive::Build_info{
