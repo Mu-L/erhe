@@ -4,7 +4,6 @@ set(_target "editor")
 add_executable(${_target})
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    config/developer.json
     config/erhe_graphics.json
     config/mesh_memory.json
     config/renderer.json

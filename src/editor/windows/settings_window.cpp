@@ -441,9 +441,6 @@ void Settings_window::imgui()
     };
 
     push_group("Startup Configuration", ImGuiTreeNodeFlags_Framed);
-    if (m_context.developer_config != nullptr) {
-        add_config_section(*m_context.developer_config);
-    }
     if (m_context.graphics_config != nullptr) {
         add_config_section(*m_context.graphics_config);
         add_config_section(m_context.graphics_config->opengl);
@@ -463,9 +460,6 @@ void Settings_window::imgui()
     }
     add_entry("", [this, button_size](){
         if (ImGui::Button("Save Config", button_size)) {
-            if (m_context.developer_config != nullptr) {
-                erhe::codegen::save_config(*m_context.developer_config, "config/developer.json");
-            }
             if (m_context.graphics_config != nullptr) {
                 erhe::codegen::save_config(*m_context.graphics_config, "config/erhe_graphics.json");
             }
@@ -490,6 +484,7 @@ void Settings_window::imgui()
 
         push_group("Editor Settings", ImGuiTreeNodeFlags_Framed);
         add_config_section(settings.camera_controls);
+        add_config_section(settings.developer);
         add_config_section(settings.grid);
         add_config_section(settings.headset);
         add_config_section(settings.hotbar);

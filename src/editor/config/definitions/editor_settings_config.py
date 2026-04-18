@@ -7,6 +7,7 @@ struct("Editor_settings_config",
     developer=False,
     fields=[
         field("camera_controls",      StructRef("Camera_controls_config"), added_in=1),
+        field("developer",            StructRef("Developer_config"),       added_in=1),
         field("grid",                 StructRef("Grid_config"),            added_in=1),
         field("headset",              StructRef("Headset_config"),         added_in=1),
         field("hotbar",               StructRef("Hotbar_config"),          added_in=1),

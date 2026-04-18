@@ -8,8 +8,6 @@
 #include "editor.hpp"
 
 #include "app_context.hpp"
-#include "config/generated/developer_config.hpp"
-#include "config/generated/developer_config_serialization.hpp"
 #include "config/generated/editor_settings_config.hpp"
 #include "config/generated/editor_settings_config_serialization.hpp"
 #include "erhe_scene_renderer/generated/mesh_memory_config.hpp"
@@ -473,7 +471,6 @@ public:
     }
 
     [[nodiscard]] auto create_window(
-        const Developer_config&       developer_config,
         const Graphics_config&        graphics_config,
         const Window_config&          window_config,
         const Editor_settings_config& editor_settings
@@ -482,7 +479,7 @@ public:
         m_app_context.OpenXR        = editor_settings.headset.openxr;
         m_app_context.OpenXR_mirror = editor_settings.headset.openxr_mirror;
 
-        m_app_context.developer_mode = developer_config.enable;
+        m_app_context.developer_mode = editor_settings.developer.enable;
 
         m_app_context.renderdoc = graphics_config.renderdoc_capture_support;
         if (m_app_context.renderdoc) {
@@ -545,8 +542,7 @@ public:
     }
 
     Editor()
-        : m_developer_config    {erhe::codegen::load_config<Developer_config>      ("config/developer.json")}
-        , m_graphics_config     {erhe::codegen::load_config<Graphics_config>       ("config/erhe_graphics.json")}
+        : m_graphics_config     {erhe::codegen::load_config<Graphics_config>       ("config/erhe_graphics.json")}
         , m_mesh_memory_config  {erhe::codegen::load_config<Mesh_memory_config>    ("config/mesh_memory.json")}
         , m_renderer_config     {erhe::codegen::load_config<Renderer_config>       ("config/renderer.json")}
         , m_text_renderer_config{erhe::codegen::load_config<Text_renderer_config>  ("config/text_renderer.json")}
@@ -598,7 +594,7 @@ public:
 #endif
 
             // Window and graphics context creation - in main thread
-            m_window = create_window(m_developer_config, m_graphics_config, m_window_config, m_editor_settings);
+            m_window = create_window(m_graphics_config, m_window_config, m_editor_settings);
 
 #if defined(ERHE_XR_LIBRARY_OPENXR)
             // First-phase OpenXR initialization: build Xr_instance before the
@@ -1666,7 +1662,7 @@ public:
         m_app_context.app_rendering            = m_app_rendering         .get();
         m_app_context.app_scenes               = m_app_scenes            .get();
         m_app_context.app_settings             = m_app_settings          .get();
-        m_app_context.developer_config         = &m_developer_config;
+        m_app_context.developer_config         = &m_editor_settings.developer;
         m_app_context.graphics_config          = &m_graphics_config;
         m_app_context.mesh_memory_config       = &m_mesh_memory_config;
         m_app_context.renderer_config          = &m_renderer_config;
@@ -1796,7 +1792,6 @@ public:
     bool m_run_stopped    {false};
 
 
-    Developer_config                    m_developer_config;
     Graphics_config                     m_graphics_config;
     Mesh_memory_config                  m_mesh_memory_config;
     Renderer_config                     m_renderer_config;

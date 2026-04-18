@@ -1,7 +1,5 @@
 {
-    "_version": 1,
     "camera_controls": {
-        "_version": 1,
         "invert_x": false,
         "invert_y": false,
         "sensitivity": 1,
@@ -11,8 +9,10 @@
         "move_speed": 2,
         "turn_speed": 1
     },
+    "developer": {
+        "enable": true
+    },
     "grid": {
-        "_version": 1,
         "snap_enabled": true,
         "visible": true,
         "major_color": [0,0,0,1],
@@ -24,7 +24,6 @@
         "cell_count": 100
     },
     "headset": {
-        "_version": 1,
         "openxr":            false,
         "openxr_mirror":     false,
         "quad_view":         false,
@@ -38,7 +37,6 @@
         "composition_alpha": false
     },
     "hotbar": {
-        "_version": 1,
         "enabled": true,
         "show": true,
         "use_radial": false,
@@ -47,7 +45,6 @@
         "z": -0.5
     },
     "hud": {
-        "_version": 1,
         "enabled": false,
         "show": false,
         "locked": false,
@@ -59,29 +56,24 @@
         "z": -0.03
     },
     "id_renderer": {
-        "_version": 1,
         "enabled": false
     },
     "inventory": {
-        "_version": 1,
         "column_count": 9,
         "row_count": 3,
         "hotbar_slot_count": 9
     },
     "network": {
-        "_version": 1,
         "upstream_address": "127.0.0.1",
         "upstream_port": 34567,
         "downstream_address": "0.0.0.0",
         "downstream_port": 34567
     },
     "physics": {
-        "_version": 1,
         "static_enable": true,
         "dynamic_enable": true
     },
     "scene": {
-        "_version": 1,
         "imgui_window_scene_view": true,
         "camera_exposure": 1,
         "shadow_range": 30,
@@ -108,17 +100,14 @@
         "make_curved_brushes": true
     },
     "thumbnails": {
-        "_version": 1,
         "capacity": 200,
         "size_pixels": 256
     },
     "transform_tool": {
-        "_version": 1,
         "show_translate": true,
         "show_rotate": false
     },
     "viewport": {
-        "_version": 1,
         "gizmo_scale": 6.5,
         "polygon_fill": true,
         "edge_lines": true,
@@ -134,7 +123,6 @@
     },
     "graphics_preset_name": "Low",
     "imgui": {
-        "_version": 1,
         "primary_font": "res/fonts/SourceSansPro-Regular.otf",
         "mono_font": "res/fonts/SourceCodePro-Semibold.otf",
         "font_size": 16.0,
@@ -143,13 +131,11 @@
         "icon_font_size": 16.0
     },
     "icons": {
-        "_version": 1,
         "small_icon_size": 16,
         "large_icon_size": 32,
         "hotbar_icon_size": 80
     },
     "threading": {
-        "_version": 1,
         "thread_count": 8
     },
     "post_processing": true,
