@@ -176,7 +176,6 @@ public:
 #endif
     auto get_console_sink    () -> spdlog::sinks::stdout_color_sink_mt& { return *m_sink_console.get(); }
     auto get_file_sink       () -> spdlog::sinks::basic_file_sink_mt& { return *m_sink_log_file.get(); }
-    auto get_file_sink_shared() -> std::shared_ptr<spdlog::sinks::basic_file_sink_mt> { return m_sink_log_file; }
     auto get_tail_store_sink () -> Store_log_sink& { return *m_tail_store_log.get(); }
     auto get_frame_store_sink() -> Store_log_sink& { return *m_frame_store_log.get(); }
     auto get_log_to_console  () const -> bool { return m_log_to_console; }
@@ -348,38 +347,12 @@ auto make_file_logger(const std::string& name, const std::string& file_path) -> 
         }
     }
 
-    // Also route file-loggers into the main log.txt sink so their output
-    // appears inline with the rest of the application logs. If
-    // create_sinks() hasn't run yet (make_file_logger called before
-    // initialize_log_sinks()), get_file_sink_shared() returns null and
-    // we fall back to the dedicated per-file sink only.
-    std::shared_ptr<spdlog::sinks::basic_file_sink_mt> main_log_sink =
-        Log_sinks::get_instance().get_file_sink_shared();
-
-    std::shared_ptr<spdlog::logger> logger = main_log_sink
-        ? std::make_shared<spdlog::logger>(name, spdlog::sinks_init_list{file_sink, main_log_sink})
-        : std::make_shared<spdlog::logger>(name, file_sink);
-
-    std::string levelname;
-    {
-        const std::unordered_map<std::string, std::string>& levels = get_log_level_map();
-        const auto it = levels.find(name);
-        if (it != levels.end()) {
-            levelname = it->second;
-        }
-    }
-    auto from_str = [](const std::string& level_name) -> spdlog::level::level_enum {
-        auto it = std::find(std::begin(spdlog::level::level_string_views), std::end(spdlog::level::level_string_views), level_name);
-        if (it != std::end(spdlog::level::level_string_views)) {
-            return static_cast<spdlog::level::level_enum>(std::distance(std::begin(spdlog::level::level_string_views), it));
-        }
-        if (level_name == "warn") return spdlog::level::warn;
-        if (level_name == "err")  return spdlog::level::err;
-        return spdlog::level::trace;
-    };
-    logger->set_level(from_str(levelname));
-    logger->flush_on(spdlog::level::trace);
-    spdlog::register_logger(logger);
+    // Build on top of the standard make_logger so the result has the full
+    // set of shared sinks (console / MSVC / main log.txt / store). The
+    // dedicated per-file sink is appended so the output lands in its own
+    // file AND in all the usual places.
+    std::shared_ptr<spdlog::logger> logger = Log_sinks::get_instance().make_logger(name, /*tail=*/true);
+    logger->sinks().push_back(file_sink);
     return logger;
 }
 

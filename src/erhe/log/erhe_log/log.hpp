@@ -28,8 +28,10 @@ void load_log_configuration(const std::string& json_contents);
 auto make_logger(const std::string& name, bool tail = true) -> std::shared_ptr<spdlog::logger>;
 auto make_frame_logger(const std::string& name) -> std::shared_ptr<spdlog::logger>;
 
-// Creates a logger that writes only to the given file (no console / store sinks).
-// Useful for high-volume diagnostic streams (e.g. Vulkan barrier traces).
+// Creates a logger that writes to the given file IN ADDITION to the shared
+// sinks used by make_logger (console / MSVC debug / main log.txt / store).
+// Useful when a high-volume diagnostic stream (e.g. Vulkan barrier traces)
+// should get its own file but still show up alongside the rest of the logs.
 auto make_file_logger(const std::string& name, const std::string& file_path) -> std::shared_ptr<spdlog::logger>;
 
 class Entry
