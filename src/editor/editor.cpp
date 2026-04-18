@@ -364,6 +364,7 @@ public:
         m_fly_camera_tool->on_frame_end();
 
         // Rendering
+        m_app_rendering->process_start_capture();
         m_graphics_device->get_shader_monitor().update_once_per_frame();
 
         // Open the device frame before any GPU-producing work. Init-time
@@ -389,8 +390,6 @@ public:
         ERHE_VERIFY(begin_swapchain_ok);
         const clock::time_point t_begin_swap_end = clock::now();
 
-        m_app_rendering->begin_frame(); // tests renderdoc capture start
-
         m_thumbnails->update();
 
         // Update scene transforms
@@ -406,7 +405,11 @@ public:
         const clock::time_point t_rg_end = clock::now();
 
         m_imgui_renderer->next_frame();
-        m_app_rendering->end_frame();
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+        m_headset_view->end_frame();
+#endif
+
+        m_id_renderer->next_frame();
 
         const clock::time_point t_end_begin = clock::now();
         const erhe::graphics::Frame_end_info frame_end_info{
@@ -471,6 +474,8 @@ public:
             );
             m_phase_timing = Phase_timing{};
         }
+
+        m_app_rendering->process_end_capture();
 
         m_in_tick.store(false);
     }

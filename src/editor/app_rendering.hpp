@@ -102,8 +102,8 @@ public:
     void render_viewport_renderables(const Render_context& context);
     void render_composer            (const Render_context& context);
     void render_id                  (const Render_context& context);
-    void begin_frame                ();
-    void end_frame                  ();
+    void process_start_capture      ();
+    void process_end_capture        ();
     void set_grid_visibility        (bool visible);
 
     void add   (Renderable* renderable);

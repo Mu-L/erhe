@@ -867,7 +867,7 @@ auto App_rendering::is_capturing() const -> bool
     return m_trigger_capture;
 }
 
-void App_rendering::begin_frame()
+void App_rendering::process_start_capture()
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -893,17 +893,11 @@ void App_rendering::set_grid_visibility(bool visible)
     }
 }
 
-void App_rendering::end_frame()
+void App_rendering::process_end_capture()
 {
     ERHE_PROFILE_FUNCTION();
 
     // log_frame->trace("App_rendering::end_frame() (check for renderdoc frame capture)");
-
-#if defined(ERHE_XR_LIBRARY_OPENXR)
-    m_context.headset_view->end_frame();
-#endif
-
-    m_context.id_renderer->next_frame();
 
     if (m_trigger_capture) {
         m_context.graphics_device->end_frame_capture();
