@@ -8,7 +8,7 @@
 // When this define is not present, the ERHE_VULKAN_* macros below expand to
 // no-ops so that no CPU work (argument evaluation, formatting, spdlog filter
 // dispatch) happens for those logging sites.
-// #define ERHE_LOG_VULKAN
+#define ERHE_LOG_VULKAN 1
 
 namespace erhe::graphics {
 
@@ -42,11 +42,15 @@ void initialize_logging();
 #if defined(ERHE_LOG_VULKAN)
 #   define ERHE_VULKAN_SYNC_TRACE(...)      ::erhe::graphics::log_vulkan_sync->trace(__VA_ARGS__)
 #   define ERHE_VULKAN_DESC_TRACE(...)      ::erhe::graphics::log_vulkan_desc->trace(__VA_ARGS__)
+#   define ERHE_VULKAN_TRACE(...)           ::erhe::graphics::log_vulkan->trace(__VA_ARGS__)
 #   define ERHE_VULKAN_SYNC_LOG(level, ...) ::erhe::graphics::log_vulkan_sync->log(level, __VA_ARGS__)
 #   define ERHE_VULKAN_DESC_LOG(level, ...) ::erhe::graphics::log_vulkan_desc->log(level, __VA_ARGS__)
+#   define ERHE_VULKAN_LOG(level, ...)      ::erhe::graphics::log_vulkan->log(level, __VA_ARGS__)
 #else
 #   define ERHE_VULKAN_SYNC_TRACE(...)      ((void)0)
 #   define ERHE_VULKAN_DESC_TRACE(...)      ((void)0)
+#   define ERHE_VULKAN_TRACE(...)           ((void)0)
 #   define ERHE_VULKAN_SYNC_LOG(level, ...) ((void)0)
 #   define ERHE_VULKAN_DESC_LOG(level, ...) ((void)0)
+#   define ERHE_VULKAN_LOG(level, ...)      ((void)0)
 #endif

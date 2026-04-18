@@ -230,7 +230,7 @@ void Compute_command_encoder_impl::dispatch_compute(
         static_cast<uint32_t>(y_size),
         static_cast<uint32_t>(z_size)
     );
-    ERHE_VULKAN_SYNC_TRACE("[DISPATCH] x={} y={} z={}", x_size, y_size, z_size);
+    ERHE_VULKAN_TRACE("[DISPATCH] x={} y={} z={}", x_size, y_size, z_size);
 }
 
 } // namespace erhe::graphics

@@ -720,8 +720,7 @@ void Render_command_encoder_impl::draw_primitives(
         0 // firstInstance
     );
     ++Device_impl::get_device_impl()->m_desc_draw_count;
-    ERHE_VULKAN_DESC_TRACE("[DRAW] type=direct vertices={} instances={}", vertex_count, instance_count);
-    ERHE_VULKAN_SYNC_TRACE("[DRAW] type=direct vertices={} instances={}", vertex_count, instance_count);
+    ERHE_VULKAN_TRACE("[DRAW] type=direct vertices={} instances={}", vertex_count, instance_count);
 }
 
 void Render_command_encoder_impl::draw_primitives(
@@ -761,8 +760,7 @@ void Render_command_encoder_impl::draw_indexed_primitives(
         0  // firstInstance
     );
     ++Device_impl::get_device_impl()->m_desc_draw_count;
-    ERHE_VULKAN_DESC_TRACE("[DRAW] type=indexed indices={} instances={}", index_count, instance_count);
-    ERHE_VULKAN_SYNC_TRACE("[DRAW] type=indexed indices={} instances={}", index_count, instance_count);
+    ERHE_VULKAN_TRACE("[DRAW] type=indexed indices={} instances={}", index_count, instance_count);
 }
 
 void Render_command_encoder_impl::draw_indexed_primitives(
@@ -812,8 +810,7 @@ void Render_command_encoder_impl::multi_draw_indexed_primitives_indirect(
             actual_stride
         );
         ++Device_impl::get_device_impl()->m_desc_draw_count;
-        ERHE_VULKAN_DESC_TRACE("[DRAW] type=mdi drawcount={}", drawcount);
-        ERHE_VULKAN_SYNC_TRACE("[DRAW] type=mdi drawcount={}", drawcount);
+        ERHE_VULKAN_TRACE("[DRAW] type=mdi drawcount={}", drawcount);
     } else {
         // Emulated multi-draw: loop with per-draw push constant
         VkPipelineLayout layout = m_pipeline_layout;
@@ -832,8 +829,7 @@ void Render_command_encoder_impl::multi_draw_indexed_primitives_indirect(
             vkCmdDrawIndexedIndirect(command_buffer, m_indirect_buffer, offset, 1, actual_stride);
         }
         Device_impl::get_device_impl()->m_desc_draw_count += static_cast<uint32_t>(drawcount);
-        ERHE_VULKAN_DESC_TRACE("[DRAW] type=emulated_mdi drawcount={}", drawcount);
-        ERHE_VULKAN_SYNC_TRACE("[DRAW] type=emulated_mdi drawcount={}", drawcount);
+        ERHE_VULKAN_TRACE("[DRAW] type=emulated_mdi drawcount={}", drawcount);
     }
 }
 
