@@ -26,6 +26,27 @@ set(ERHE_PYTHON3_EXECUTABLE "${Python3_EXECUTABLE}" CACHE INTERNAL "Python3 inte
 function(erhe_codegen_generate)
     cmake_parse_arguments(ARG "" "TARGET;DEFINITIONS_DIR;OUTPUT_DIR" "DEFINITIONS;EXTRA_DEFINITIONS_DIRS" ${ARGN})
 
+    # Guard: detect stale generated files left in (or accidentally copied into)
+    # the source tree at the mirror of OUTPUT_DIR. Consumers typically include
+    # via "<lib>/generated/<name>.hpp" and both the source and build dirs are
+    # on the include path; the source dir is usually listed first, so stale
+    # in-tree files silently shadow freshly generated output.
+    string(FIND "${ARG_OUTPUT_DIR}" "${CMAKE_CURRENT_BINARY_DIR}" _bin_prefix_idx)
+    if (_bin_prefix_idx EQUAL 0)
+        string(REPLACE
+            "${CMAKE_CURRENT_BINARY_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            _stale_mirror
+            "${ARG_OUTPUT_DIR}")
+        if (EXISTS "${_stale_mirror}")
+            message(FATAL_ERROR
+                "erhe_codegen: stale generated directory exists in source tree:\n"
+                "    ${_stale_mirror}\n"
+                "These files shadow freshly generated output in "
+                "${ARG_OUTPUT_DIR}. Delete the stale directory and reconfigure.")
+        endif()
+    endif()
+
     set(_codegen_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}")
     set(GENERATOR_SCRIPT "${_codegen_dir}/generate.py")
 
