@@ -7,6 +7,7 @@
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/span.hpp"
 #include "erhe_math/viewport.hpp"
@@ -257,6 +258,8 @@ void Content_wide_line_renderer::compute(
     if (!m_enabled || m_dispatches.empty()) {
         return;
     }
+
+    erhe::graphics::Scoped_debug_group debug_scope{"Content_wide_line_renderer::compute"};
 
     ERHE_VERIFY(m_compute_pipeline.has_value());
     command_encoder.set_bind_group_layout(m_bind_group_layout.get());

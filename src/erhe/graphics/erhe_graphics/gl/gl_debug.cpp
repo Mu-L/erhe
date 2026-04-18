@@ -20,7 +20,6 @@ namespace gl {
 
 namespace erhe::graphics {
 
-bool Scoped_debug_group::s_enabled{false};
 
 thread_local std::string t_current_shader_source{};
 
@@ -91,24 +90,6 @@ void erhe_opengl_callback(
             break;
     }
 #endif
-}
-
-void Scoped_debug_group::begin()
-{
-    ERHE_VERIFY(!m_debug_label.empty());
-    log_debug->trace("---- begin: {}", m_debug_label.string_view());
-    gl::push_debug_group(
-        gl::Debug_source::debug_source_application,
-        0,
-        static_cast<GLsizei>(m_debug_label.size() + 1),
-        m_debug_label.data()
-    );
-}
-
-void Scoped_debug_group::end()
-{
-    log_debug->trace("---- end: {}", m_debug_label.string_view());
-    gl::pop_debug_group();
 }
 
 } // namespace erhe::graphics

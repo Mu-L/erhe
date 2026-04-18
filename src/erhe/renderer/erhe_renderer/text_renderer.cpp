@@ -7,6 +7,7 @@
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/ring_buffer_range.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/shader_resource.hpp"
 #include "erhe_graphics/span.hpp"

@@ -11,6 +11,7 @@
 #include "erhe_rendergraph/texture_rendergraph_node.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
 #include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_scene_renderer/forward_renderer.hpp"
 #include "erhe_profile/profile.hpp"

@@ -1,6 +1,7 @@
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
 #include "erhe_graphics/vulkan/vulkan_immediate_commands.hpp"
+#include "erhe_graphics/vulkan/vulkan_scoped_debug_group.hpp"
 #include "erhe_graphics/vulkan/vulkan_surface.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
@@ -484,7 +485,7 @@ Device_impl::Device_impl(
         );
         if (result == VK_SUCCESS) {
             debug_callback_registered = true;
-            Scoped_debug_group::s_enabled = true;
+            Scoped_debug_group_impl::s_enabled = true;
         } else {
             log_context->warn("vkCreateDebugUtilsMessengerEXT() failed with {} {}", static_cast<int32_t>(result), c_str(result));
         }

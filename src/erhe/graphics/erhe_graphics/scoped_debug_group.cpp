@@ -1,0 +1,25 @@
+#include "erhe_graphics/scoped_debug_group.hpp"
+
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
+# include "erhe_graphics/gl/gl_scoped_debug_group.hpp"
+#endif
+#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+# include "erhe_graphics/vulkan/vulkan_scoped_debug_group.hpp"
+#endif
+#if defined(ERHE_GRAPHICS_LIBRARY_METAL)
+# include "erhe_graphics/metal/metal_scoped_debug_group.hpp"
+#endif
+#if defined(ERHE_GRAPHICS_LIBRARY_NONE)
+# include "erhe_graphics/null/null_scoped_debug_group.hpp"
+#endif
+
+namespace erhe::graphics {
+
+Scoped_debug_group::Scoped_debug_group(erhe::utility::Debug_label debug_label)
+    : m_impl{debug_label}
+{
+}
+
+Scoped_debug_group::~Scoped_debug_group() noexcept = default;
+
+} // namespace erhe::graphics

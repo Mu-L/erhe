@@ -22,6 +22,7 @@
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/ring_buffer_range.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_graphics/texture_heap.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"

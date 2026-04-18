@@ -7,6 +7,7 @@
 
 #include "config/generated/thumbnails_config.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/texture.hpp"
 
 #include <fmt/format.h>

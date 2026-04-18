@@ -53,6 +53,8 @@ erhe_target_sources_grouped(
     erhe_graphics/ring_buffer_client.hpp
     erhe_graphics/sampler.cpp
     erhe_graphics/sampler.hpp
+    erhe_graphics/scoped_debug_group.cpp
+    erhe_graphics/scoped_debug_group.hpp
     erhe_graphics/shader_monitor.cpp
     erhe_graphics/shader_monitor.hpp
     erhe_graphics/shader_resource.cpp
@@ -130,6 +132,8 @@ if (ERHE_GRAPHICS_API_OPENGL)
         #erhe_graphics/gl/gl_renderbuffer.hpp
         erhe_graphics/gl/gl_sampler.cpp
         erhe_graphics/gl/gl_sampler.hpp
+        erhe_graphics/gl/gl_scoped_debug_group.cpp
+        erhe_graphics/gl/gl_scoped_debug_group.hpp
         erhe_graphics/gl/gl_shader_stages.cpp
         erhe_graphics/gl/gl_shader_stages.hpp
         erhe_graphics/gl/gl_shader_stages_prototype.cpp
@@ -180,6 +184,8 @@ if (ERHE_GRAPHICS_API_VULKAN)
         erhe_graphics/vulkan/vulkan_render_pass.hpp
         erhe_graphics/vulkan/vulkan_sampler.cpp
         erhe_graphics/vulkan/vulkan_sampler.hpp
+        erhe_graphics/vulkan/vulkan_scoped_debug_group.cpp
+        erhe_graphics/vulkan/vulkan_scoped_debug_group.hpp
         erhe_graphics/vulkan/vulkan_shader_stages.cpp
         erhe_graphics/vulkan/vulkan_shader_stages.hpp
         erhe_graphics/vulkan/vulkan_shader_stages_prototype.cpp

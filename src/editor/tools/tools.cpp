@@ -14,6 +14,7 @@
 
 #include "erhe_commands/commands.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_math/math_util.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_scene/scene.hpp"

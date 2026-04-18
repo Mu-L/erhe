@@ -8,6 +8,7 @@
 #include "erhe_graph/pin.hpp"
 #include "erhe_graph/link.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
 

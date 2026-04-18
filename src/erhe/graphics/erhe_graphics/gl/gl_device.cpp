@@ -7,28 +7,29 @@
 #include "erhe_graphics/gl/gl_swapchain.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
 
-#include "erhe_utility/bit_helpers.hpp"
+#include "erhe_dataformat/dataformat.hpp"
 #include "erhe_gl/command_info.hpp"
 #include "erhe_gl/enum_bit_mask_operators.hpp"
 #include "erhe_gl/enum_string_functions.hpp"
 #include "erhe_gl/gl_helpers.hpp"
-#include "erhe_dataformat/dataformat.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_graphics/blit_command_encoder.hpp"
 #include "erhe_graphics/buffer.hpp"
+#include "erhe_graphics/draw_indirect.hpp"
 #include "erhe_graphics/gl/gl_compute_command_encoder.hpp"
 #include "erhe_graphics/gl/gl_debug.hpp"
 #include "erhe_graphics/gl/gl_render_command_encoder.hpp"
-#include "erhe_graphics/draw_indirect.hpp"
+#include "erhe_graphics/gl/gl_scoped_debug_group.hpp"
 #include "erhe_graphics/graphics_log.hpp"
-#include "erhe_graphics/renderdoc_app.h"
 #include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/renderdoc_app.h"
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/ring_buffer_range.hpp"
 #include "erhe_graphics/surface.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_utility/align.hpp"
+#include "erhe_utility/bit_helpers.hpp"
 #include "erhe_window/renderdoc_capture.hpp"
 #include "erhe_window/window.hpp"
 
@@ -284,7 +285,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     // TODO: Add ARB_debug_output support for macOS GL 4.1
     m_info.use_debug_output = (m_info.gl_version >= 430);
     m_info.use_debug_groups = (m_info.gl_version >= 430);
-    Scoped_debug_group::s_enabled = m_info.use_debug_groups;
+    Scoped_debug_group_impl::s_enabled = m_info.use_debug_groups;
     log_startup->info("Debug output supported: {} (groups: {})", m_info.use_debug_output, m_info.use_debug_groups);
 
     if (m_info.use_debug_output) {

@@ -28,6 +28,7 @@
 #include "erhe_graphics/compute_command_encoder.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
 #include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_hash/xxhash.hpp"
 #include "erhe_imgui/imgui_renderer.hpp"

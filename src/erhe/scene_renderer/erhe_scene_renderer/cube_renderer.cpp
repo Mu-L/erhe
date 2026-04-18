@@ -5,6 +5,7 @@
 #include "erhe_graphics/render_command_encoder.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/span.hpp"
 #include "erhe_scene/camera.hpp"
 #include "erhe_scene_renderer/program_interface.hpp"

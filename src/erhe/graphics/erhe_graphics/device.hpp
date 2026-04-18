@@ -327,41 +327,5 @@ private:
 [[nodiscard]] auto get_depth_clear_value_pointer(bool reverse_depth = true) -> const float *; // reverse_depth ? 0.0f : 1.0f;
 [[nodiscard]] auto get_depth_function(Compare_operation depth_function, bool reverse_depth = true) -> Compare_operation;
 
-class Scoped_debug_group final
-{
-public:
-    static bool s_enabled; // set by Device_impl during init
-
-    template<std::size_t N>
-    explicit Scoped_debug_group(const char (&debug_label)[N])
-        : m_debug_label{std::string_view{debug_label, N - 1}}
-    {
-        if (s_enabled) {
-            begin();
-        }
-    }
-
-    explicit Scoped_debug_group(erhe::utility::Debug_label debug_label)
-        : m_debug_label{debug_label}
-    {
-        if (s_enabled) {
-            begin();
-        }
-    }
-
-    ~Scoped_debug_group() noexcept
-    {
-        if (s_enabled) {
-            end();
-        }
-    }
-
-    void begin();
-    void end();
-
-private:
-    erhe::utility::Debug_label m_debug_label;
-    bool                       m_used_queue{false};
-};
 
 } // namespace erhe::graphics

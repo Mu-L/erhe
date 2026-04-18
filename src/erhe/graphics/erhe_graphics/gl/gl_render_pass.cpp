@@ -6,6 +6,7 @@
 #include "erhe_gl/enum_string_functions.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/state/color_blend_state.hpp"
 #include "erhe_graphics/swapchain.hpp"
 #include "erhe_profile/profile.hpp"

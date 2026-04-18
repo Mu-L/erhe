@@ -8,6 +8,7 @@
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
 #include "erhe_graphics/texture_heap.hpp"
@@ -155,7 +156,7 @@ void Forward_renderer::render(const Render_parameters& parameters)
             used_shader_stages = parameters.error_shader_stages;
         }
 
-        erhe::graphics::Scoped_debug_group pass_scope{"Forward_renderer::render() pass"};
+        //erhe::graphics::Scoped_debug_group pass_scope{"Forward_renderer::render() pass"};
         erhe::graphics::Scoped_debug_group pipeline_scope{pipeline.debug_label};
 
         if (use_override_shader_stages) {
