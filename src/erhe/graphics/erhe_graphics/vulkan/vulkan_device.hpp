@@ -366,6 +366,12 @@ private:
     static Device_impl*  s_device_impl;
     Render_pass_impl*    m_active_render_pass{nullptr};
 
+    // The command buffer currently open for recording between begin_frame()
+    // and end_frame(). Mirrors m_device_submit_history[slot].command_buffer
+    // for the active slot while a device frame is in progress; cleared when
+    // the device frame ends.
+    VkCommandBuffer      m_active_device_frame_command_buffer{VK_NULL_HANDLE};
+
     // Optional hooks used when erhe::xr wraps Vulkan creation via
     // XR_KHR_vulkan_enable2. Stored as a raw pointer; lifetime is managed by
     // the caller (typically erhe::xr::Headset) and must outlive Device_impl

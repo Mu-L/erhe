@@ -1230,6 +1230,7 @@ auto Device_impl::begin_frame() -> bool
         }
     }
 
+    m_active_device_frame_command_buffer = df.command_buffer;
     m_state = Device_frame_state::recording;
     return true;
 }
@@ -1284,6 +1285,7 @@ auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
             abort();
         }
     }
+    m_active_device_frame_command_buffer = VK_NULL_HANDLE;
 
     bool result = true;
     if (m_had_swapchain_frame && m_surface) {
@@ -2033,10 +2035,11 @@ auto Device_impl::get_device_impl() -> Device_impl*
 
 auto Device_impl::get_active_command_buffer() const -> VkCommandBuffer
 {
-    if (m_active_render_pass != nullptr) {
-        return m_active_render_pass->m_command_buffer;
-    }
-    return VK_NULL_HANDLE;
+    // The device-frame cb is the one thing every render pass, transfer, and
+    // encoder records into under the unified command-buffer model. Return it
+    // directly -- an active render pass shares the same cb, so there's no
+    // need to route through m_active_render_pass.
+    return m_active_device_frame_command_buffer;
 }
 
 auto Device_impl::get_device_frame_command_buffer() const -> VkCommandBuffer
