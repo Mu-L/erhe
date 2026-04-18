@@ -30,11 +30,11 @@
         "polygon_centroids_color_source": "mesh_wireframe_color",
         "corner_points_color_source": "mesh_wireframe_color"
     },
-    "selection_highlight_low": [2,1,0,0.8],
-    "selection_highlight_high": [2,1,0,0.8],
-    "selection_highlight_width_low": -16.74,
-    "selection_highlight_width_high": -3,
-    "selection_highlight_frequency": 1,
+    "selection_highlight_low": [0,0,0,0],
+    "selection_highlight_high": [0,0,0,0],
+    "selection_highlight_width_low": 0,
+    "selection_highlight_width_high": 0,
+    "selection_highlight_frequency": 0,
     "clear_color": [0.05,0.05,0.05,1],
     "gizmo_scale": 6.5,
     "debug_visualizations": {

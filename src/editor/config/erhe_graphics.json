@@ -12,5 +12,5 @@
     "renderdoc_capture_support": false,
     "vulkan_validation_layers": false,
     "shader_monitor_enabled": false,
-    "force_present_mode_immediate": true
+    "force_present_mode_immediate": false
 }
