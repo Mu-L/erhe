@@ -55,6 +55,7 @@ public:
 
     [[nodiscard]] auto get_vma_allocation() const -> VmaAllocation;
     [[nodiscard]] auto get_vk_buffer     () const -> VkBuffer;
+    [[nodiscard]] auto get_usage         () const noexcept -> Buffer_usage;
     [[nodiscard]] auto is_host_visible   () const -> bool;
 
 private:

@@ -390,6 +390,11 @@ auto Buffer_impl::get_vk_buffer() const -> VkBuffer
     return m_vk_buffer;
 }
 
+auto Buffer_impl::get_usage() const noexcept -> Buffer_usage
+{
+    return m_usage;
+}
+
 auto Buffer_impl::is_host_visible() const -> bool
 {
     return (m_vk_memory_type.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;

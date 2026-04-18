@@ -69,6 +69,22 @@ public:
 [[nodiscard]] auto usage_to_vk_stage_access(uint64_t usage, bool is_depth_stencil) -> Vk_stage_access;
 [[nodiscard]] auto to_vk_image_layout      (Image_layout layout) -> VkImageLayout;
 
+// Sync2 stage/access pair. Separate from Vk_stage_access (sync1) because the
+// sync2 bit values diverge for buffer-relevant stages like VERTEX_ATTRIBUTE_INPUT
+// that have no sync1 equivalent.
+class Vk_stage_access_2
+{
+public:
+    VkPipelineStageFlags2 stage;
+    VkAccessFlags2        access;
+};
+
+// Maps a Buffer_usage mask to the precise set of consumer pipeline stages
+// and access flags that can touch the buffer. Used to derive post-copy
+// barriers so upload_to_buffer chains to exactly the stages the buffer was
+// created for, not a conservative ALL_COMMANDS.
+[[nodiscard]] auto buffer_usage_to_vk_stage_access(Buffer_usage usage) -> Vk_stage_access_2;
+
 // Returns the canonical pair of subpass dependencies (EXTERNAL->0, 0->EXTERNAL)
 // used by every render pass we create. The dependencies depend only on whether
 // color and/or depth attachments are present, so the pipeline's compatibility

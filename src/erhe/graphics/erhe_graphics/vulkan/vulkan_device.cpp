@@ -966,6 +966,44 @@ void Device_impl::upload_to_buffer(const Buffer& buffer, const size_t offset, co
         .size      = length
     };
 
+    // Chain the transfer write to the precise set of consumer stages the
+    // buffer was created for (derived from its Buffer_usage mask). This
+    // prevents RAW hazards against downstream readers that don't emit their
+    // own pre-barrier. transfer_dst in the usage mask also covers the
+    // cross-frame WAW against the next vkCmdCopyBuffer on this buffer.
+    // Range-scoped so unrelated work isn't over-synchronized.
+    const Vk_stage_access_2 dst_scope = buffer_usage_to_vk_stage_access(impl.get_usage());
+    const VkPipelineStageFlags2 dst_stage_mask =
+        (dst_scope.stage != 0) ? dst_scope.stage : VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    const VkAccessFlags2 dst_access_mask =
+        (dst_scope.access != 0)
+            ? dst_scope.access
+            : (VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    const VkBufferMemoryBarrier2 buffer_barrier{
+        .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+        .pNext               = nullptr,
+        .srcStageMask        = VK_PIPELINE_STAGE_2_COPY_BIT,
+        .srcAccessMask       = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dstStageMask        = dst_stage_mask,
+        .dstAccessMask       = dst_access_mask,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer              = impl.get_vk_buffer(),
+        .offset              = static_cast<VkDeviceSize>(offset),
+        .size                = static_cast<VkDeviceSize>(length)
+    };
+    const VkDependencyInfo post_copy_dep_info{
+        .sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .pNext                    = nullptr,
+        .dependencyFlags          = 0,
+        .memoryBarrierCount       = 0,
+        .pMemoryBarriers          = nullptr,
+        .bufferMemoryBarrierCount = 1,
+        .pBufferMemoryBarriers    = &buffer_barrier,
+        .imageMemoryBarrierCount  = 0,
+        .pImageMemoryBarriers     = nullptr,
+    };
+
     VkCommandBuffer device_cb = get_device_frame_command_buffer();
     if (device_cb != VK_NULL_HANDLE) {
         // In-frame path: record into the active device cb and defer
@@ -973,6 +1011,7 @@ void Device_impl::upload_to_buffer(const Buffer& buffer, const size_t offset, co
         // against concurrent init-time callers.
         std::lock_guard<std::mutex> lock{m_recording_mutex};
         vkCmdCopyBuffer(device_cb, staging_buffer, impl.get_vk_buffer(), 1, &copy_region);
+        vkCmdPipelineBarrier2(device_cb, &post_copy_dep_info);
         VmaAllocator allocator = m_vma_allocator;
         add_completion_handler(
             [allocator, staging_buffer, staging_allocation](Device_impl&) {
@@ -988,6 +1027,7 @@ void Device_impl::upload_to_buffer(const Buffer& buffer, const size_t offset, co
         );
         const Vulkan_immediate_commands::Command_buffer_wrapper& cmd = m_immediate_commands->acquire();
         vkCmdCopyBuffer(cmd.m_cmd_buf, staging_buffer, impl.get_vk_buffer(), 1, &copy_region);
+        vkCmdPipelineBarrier2(cmd.m_cmd_buf, &post_copy_dep_info);
         Submit_handle submit = m_immediate_commands->submit(cmd);
         m_immediate_commands->wait(submit);
 

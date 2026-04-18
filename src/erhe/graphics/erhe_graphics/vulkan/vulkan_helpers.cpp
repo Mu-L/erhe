@@ -1001,6 +1001,65 @@ auto usage_to_vk_stage_access(const uint64_t usage, const bool is_depth_stencil)
     return {stage, access};
 }
 
+auto buffer_usage_to_vk_stage_access(const Buffer_usage usage) -> Vk_stage_access_2
+{
+    using namespace erhe::utility;
+
+    // Sync2 stage/access table kept consistent with Device_impl::memory_barrier
+    // so that upload-path barriers and GL-style glMemoryBarrier-translated
+    // barriers produce the same dst scope for matching consumer kinds.
+    constexpr VkPipelineStageFlags2 any_shader_stage =
+        VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    constexpr VkAccessFlags2 shader_storage_rw =
+        VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+
+    VkPipelineStageFlags2 stage  = 0;
+    VkAccessFlags2        access = 0;
+
+    if (test_bit_set(usage, Buffer_usage::vertex)) {
+        stage  |= VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT;
+        access |= VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+    }
+    if (test_bit_set(usage, Buffer_usage::index)) {
+        stage  |= VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
+        access |= VK_ACCESS_2_INDEX_READ_BIT;
+    }
+    if (test_bit_set(usage, Buffer_usage::uniform)) {
+        stage  |= any_shader_stage;
+        access |= VK_ACCESS_2_UNIFORM_READ_BIT;
+    }
+    if (test_bit_set(usage, Buffer_usage::storage)) {
+        stage  |= any_shader_stage;
+        access |= shader_storage_rw;
+    }
+    if (test_bit_set(usage, Buffer_usage::indirect)) {
+        stage  |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+        access |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+    }
+    if (test_bit_set(usage, Buffer_usage::uniform_texel)) {
+        // Texel buffer sampled via samplerBuffer; sync2 access is
+        // SHADER_SAMPLED_READ, not UNIFORM_READ.
+        stage  |= any_shader_stage;
+        access |= VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+    }
+    if (test_bit_set(usage, Buffer_usage::storage_texel)) {
+        stage  |= any_shader_stage;
+        access |= shader_storage_rw;
+    }
+    if (test_bit_set(usage, Buffer_usage::transfer_src)) {
+        stage  |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+        access |= VK_ACCESS_2_TRANSFER_READ_BIT;
+    }
+    if (test_bit_set(usage, Buffer_usage::transfer_dst)) {
+        // transfer_dst in the dst scope covers cross-frame WAW against the
+        // next vkCmdCopyBuffer on this buffer. Any buffer reaching
+        // upload_to_buffer has this bit set.
+        stage  |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+        access |= VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    }
+    return {stage, access};
+}
+
 auto to_vk_image_layout(const Image_layout layout) -> VkImageLayout
 {
     switch (layout) {
