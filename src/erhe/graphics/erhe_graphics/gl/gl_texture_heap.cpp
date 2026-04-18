@@ -5,6 +5,7 @@
 #include "erhe_graphics/gl/gl_texture.hpp"
 #include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 
 // Uncomment the next two lines to enable extra logging and checking.
@@ -58,6 +59,8 @@ Texture_heap_impl::~Texture_heap_impl() noexcept
 
 void Texture_heap_impl::reset_heap()
 {
+    Scoped_debug_group debug_group{"Texture_heap_impl::reset_heap()"};
+
 #if ERHE_TEXTURE_HEAP_LOG
     log_texture_heap->trace("Texture_heap_impl::reset_heap()");
 #endif
@@ -221,6 +224,8 @@ auto Texture_heap_impl::allocate(const Texture* texture, const Sampler* sampler)
 // TODO Maybe this should use Render_command_encoder?
 void Texture_heap_impl::unbind()
 {
+    Scoped_debug_group debug_group{"Texture_heap_impl::unbind()"};
+
 #if ERHE_TEXTURE_HEAP_LOG
     log_texture_heap->trace("Texture_heap_impl::unbind()");
 #endif
@@ -279,6 +284,8 @@ auto get_binding_p_name(const gl::Texture_target gl_target) -> gl::Get_p_name
 // TODO Maybe this should use Render_command_encoder?
 auto Texture_heap_impl::bind() -> std::size_t
 {
+    Scoped_debug_group debug_group{"Texture_heap_impl::bind()"};
+
 #if ERHE_TEXTURE_HEAP_LOG
     log_texture_heap->trace(
         "Texture_heap_impl::bind() {}",
