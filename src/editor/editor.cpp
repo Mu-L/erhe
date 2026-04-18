@@ -404,8 +404,10 @@ public:
         // Vulkan Swapchain_impl::end_frame assert would fire because no
         // render pass ever ran against the acquired image).
         if (!m_app_context.OpenXR) {
-            const bool begin_swapchain_ok = m_graphics_device->begin_swapchain_frame(frame_begin_info, swapchain_frame_state);
-            ERHE_VERIFY(begin_swapchain_ok);
+            const bool should_render = m_graphics_device->begin_swapchain_frame(frame_begin_info, swapchain_frame_state);
+            if (!should_render) {
+                return;
+            }
         }
         const clock::time_point t_begin_swap_end = clock::now();
 

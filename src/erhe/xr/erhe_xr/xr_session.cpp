@@ -618,10 +618,10 @@ auto Xr_session::create_swapchains() -> bool
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
     const auto& views = m_instance.get_xr_view_configuration_views();
     for (const auto& view : views) {
-        const VkFormat vk_color_format         = erhe::graphics::to_vulkan(m_swapchain_color_format);
-        const VkFormat vk_depth_stencil_format = erhe::graphics::to_vulkan(m_swapchain_depth_stencil_format);
-        ERHE_VERIFY(vk_color_format         != VK_FORMAT_UNDEFINED);
-        ERHE_VERIFY(vk_depth_stencil_format != VK_FORMAT_UNDEFINED);
+        const VkFormat vk_color_format = erhe::graphics::to_vulkan(m_swapchain_color_format);
+        //const VkFormat vk_depth_stencil_format = erhe::graphics::to_vulkan(m_swapchain_depth_stencil_format);
+        ERHE_VERIFY(vk_color_format != VK_FORMAT_UNDEFINED);
+        //ERHE_VERIFY(vk_depth_stencil_format != VK_FORMAT_UNDEFINED);
         const XrSwapchainCreateInfo color_swapchain_create_info{
             .type        = XR_TYPE_SWAPCHAIN_CREATE_INFO,
             .next        = nullptr,
@@ -643,6 +643,8 @@ auto Xr_session::create_swapchains() -> bool
             return false;
         }
 
+        XrSwapchain depth_stencil_swapchain{XR_NULL_HANDLE};
+#if 0
         const XrSwapchainCreateInfo depth_stencil_swapchain_create_info{
             .type        = XR_TYPE_SWAPCHAIN_CREATE_INFO,
             .next        = nullptr,
@@ -657,12 +659,12 @@ auto Xr_session::create_swapchains() -> bool
             .mipCount    = 1
         };
 
-        XrSwapchain depth_stencil_swapchain{XR_NULL_HANDLE};
         XrResult depth_stencil_result = xrCreateSwapchain(m_xr_session, &depth_stencil_swapchain_create_info, &depth_stencil_swapchain);
         if (depth_stencil_result != XR_SUCCESS) {
             log_xr->error("xrCreateSwapchain() failed with error {}", c_str(depth_stencil_result));
             return false;
         }
+#endif
 
         m_view_swapchains.emplace_back(color_swapchain, depth_stencil_swapchain);
     }
@@ -1177,15 +1179,15 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
         ERHE_PROFILE_SCOPE("view render");
         //ERHE_PROFILE_GPU_SCOPE(c_id_view);
 
-        auto& swapchain = m_view_swapchains[i];
-        auto acquired_color_swapchain_image_opt = swapchain.color_swapchain.acquire();
-        if (!acquired_color_swapchain_image_opt.has_value() || !swapchain.color_swapchain.wait()) {
+        auto& swapchains = m_view_swapchains[i];
+        auto acquired_color_swapchain_image_opt = swapchains.color_swapchain.acquire();
+        if (!acquired_color_swapchain_image_opt.has_value() || !swapchains.color_swapchain.wait()) {
             log_xr->warn("no swapchain color image for view {}", i);
             return false;
         }
 
-        auto acquired_depth_stencil_swapchain_image_opt = swapchain.depth_stencil_swapchain.acquire();
-        if (!acquired_depth_stencil_swapchain_image_opt.has_value() || !swapchain.depth_stencil_swapchain.wait()) {
+        auto acquired_depth_stencil_swapchain_image_opt = swapchains.depth_stencil_swapchain.acquire();
+        if (!acquired_depth_stencil_swapchain_image_opt.has_value() || !swapchains.depth_stencil_swapchain.wait()) {
             log_xr->warn("no swapchain depth stencilimage for view {}", i);
             return false;
         }
@@ -1201,16 +1203,21 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
         }
 #endif
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-        const auto& acquired_color_swapchain_image         = acquired_color_swapchain_image_opt.value();
-        const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
-        void* color_vk_image_ptr         = acquired_color_swapchain_image.get_vk_image();
-        void* depth_stencil_vk_image_ptr = acquired_depth_stencil_swapchain_image.get_vk_image();
-        if ((color_vk_image_ptr == nullptr) || (depth_stencil_vk_image_ptr == nullptr)) {
-            log_xr->warn("invalid color / depth VkImage for view {}", i);
+        const auto& acquired_color_swapchain_image = acquired_color_swapchain_image_opt.value();
+        void* color_vk_image_ptr = acquired_color_swapchain_image.get_vk_image();
+        if (color_vk_image_ptr == nullptr) {
+            log_xr->warn("invalid color VkImage for view {}", i);
             return false;
         }
-        const uint64_t vk_color_image         = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(color_vk_image_ptr));
+        const uint64_t vk_color_image = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(color_vk_image_ptr));
+
+        const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
+        void* depth_stencil_vk_image_ptr = acquired_depth_stencil_swapchain_image.get_vk_image();
+        if (depth_stencil_vk_image_ptr == nullptr) {
+            log_xr->warn("invalid color / depth VkImage for view {}", i);
+        }
         const uint64_t vk_depth_stencil_image = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(depth_stencil_vk_image_ptr));
+
 #endif
 
         Render_view render_view{
@@ -1251,7 +1258,7 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
             .type     = XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR,
             .next     = nullptr,
             .subImage = {
-                .swapchain = swapchain.depth_stencil_swapchain.get_xr_swapchain(),
+                .swapchain = swapchains.depth_stencil_swapchain.get_xr_swapchain(),
                 .imageRect = {
                     .offset = { 0, 0 },
                     .extent = {
@@ -1269,11 +1276,11 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
 
         m_xr_composition_layer_projection_views[i] = {
             .type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW,
-            .next = &m_xr_composition_layer_depth_infos[i],
+            .next = (depth_stencil_vk_image_ptr != nullptr) ? &m_xr_composition_layer_depth_infos[i] : nullptr,
             .pose = m_xr_views[i].pose,
             .fov  = m_xr_views[i].fov,
             .subImage = {
-                .swapchain = swapchain.color_swapchain.get_xr_swapchain(),
+                .swapchain = swapchains.color_swapchain.get_xr_swapchain(),
                 .imageRect = {
                     .offset = { 0, 0 },
                     .extent = {

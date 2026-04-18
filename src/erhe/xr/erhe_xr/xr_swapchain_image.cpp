@@ -71,9 +71,10 @@ Swapchain::Swapchain(XrSwapchain xr_swapchain)
 {
     ERHE_PROFILE_FUNCTION();
 
-    ERHE_VERIFY(xr_swapchain != XR_NULL_HANDLE);
-    if (!enumerate_images()) {
-        log_xr->warn("Swapchain::enumerate_images() failed");
+    if (xr_swapchain != XR_NULL_HANDLE) {
+        if (!enumerate_images()) {
+            log_xr->warn("Swapchain::enumerate_images() failed");
+        }
     }
 }
 
@@ -103,7 +104,9 @@ void Swapchain::operator=(Swapchain&& other) noexcept
 {
     ERHE_VERIFY(other.m_xr_swapchain != XR_NULL_HANDLE);
     if (m_xr_swapchain != XR_NULL_HANDLE) {
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         check_gl_context_in_current_in_this_thread();
+#endif
         check(xrDestroySwapchain(m_xr_swapchain));
     }
     m_xr_swapchain = other.m_xr_swapchain;
@@ -131,7 +134,9 @@ auto Swapchain::acquire() -> std::optional<Swapchain_image>
 
     uint32_t image_index = 0;
 
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     check_gl_context_in_current_in_this_thread();
+#endif
     if (!check(xrAcquireSwapchainImage(m_xr_swapchain, &swapchain_image_acquire_info, &image_index))) {
         return {};
     }
@@ -153,7 +158,9 @@ auto Swapchain::release() -> bool
         .next = nullptr,
     };
 
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     check_gl_context_in_current_in_this_thread();
+#endif
     return check(
         xrReleaseSwapchainImage(m_xr_swapchain, &swapchain_image_release_info)
     );
@@ -173,7 +180,9 @@ auto Swapchain::wait() -> bool
         .timeout = XR_INFINITE_DURATION
     };
 
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     check_gl_context_in_current_in_this_thread();
+#endif
     return check(
         xrWaitSwapchainImage(m_xr_swapchain, &swapchain_image_wait_info)
     );
@@ -211,7 +220,9 @@ auto Swapchain::enumerate_images() -> bool
 
     uint32_t image_count{0};
 
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     check_gl_context_in_current_in_this_thread();
+#endif
     ERHE_XR_CHECK(xrEnumerateSwapchainImages(m_xr_swapchain, 0, &image_count, nullptr));
 
 
