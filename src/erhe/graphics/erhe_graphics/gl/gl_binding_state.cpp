@@ -447,4 +447,104 @@ auto Gl_binding_state::get_current_program() const -> GLuint
     return m_current_program;
 }
 
+// -- Object deletion hooks ---------------------------------------------------
+//
+// A helper that scrubs a single-slot value.
+namespace {
+
+void scrub(GLuint& slot, GLuint deleted)
+{
+    if (slot == deleted) {
+        slot = 0;
+    }
+}
+
+void scrub(std::vector<GLuint>& stack, GLuint deleted)
+{
+    for (GLuint& slot : stack) {
+        if (slot == deleted) {
+            slot = 0;
+        }
+    }
+}
+
+} // anonymous namespace
+
+void Gl_binding_state::on_texture_deleted(const GLuint texture)
+{
+    if (texture == 0) {
+        return;
+    }
+    for (auto& unit_textures : m_bound_textures) {
+        for (GLuint& slot : unit_textures) {
+            scrub(slot, texture);
+        }
+    }
+    for (auto& unit_stacks : m_texture_stack) {
+        for (std::vector<GLuint>& stack : unit_stacks) {
+            scrub(stack, texture);
+        }
+    }
+}
+
+void Gl_binding_state::on_buffer_deleted(const GLuint buffer)
+{
+    if (buffer == 0) {
+        return;
+    }
+    for (GLuint& slot : m_bound_buffers) {
+        scrub(slot, buffer);
+    }
+    for (std::vector<GLuint>& stack : m_buffer_stack) {
+        scrub(stack, buffer);
+    }
+}
+
+void Gl_binding_state::on_sampler_deleted(const GLuint sampler)
+{
+    if (sampler == 0) {
+        return;
+    }
+    for (GLuint& slot : m_bound_samplers) {
+        scrub(slot, sampler);
+    }
+}
+
+void Gl_binding_state::on_framebuffer_deleted(const GLuint framebuffer)
+{
+    if (framebuffer == 0) {
+        return;
+    }
+    scrub(m_draw_framebuffer, framebuffer);
+    scrub(m_read_framebuffer, framebuffer);
+    scrub(m_draw_framebuffer_stack, framebuffer);
+    scrub(m_read_framebuffer_stack, framebuffer);
+}
+
+void Gl_binding_state::on_renderbuffer_deleted(const GLuint renderbuffer)
+{
+    if (renderbuffer == 0) {
+        return;
+    }
+    scrub(m_bound_renderbuffer, renderbuffer);
+    scrub(m_renderbuffer_stack, renderbuffer);
+}
+
+void Gl_binding_state::on_vertex_array_deleted(const GLuint vertex_array)
+{
+    if (vertex_array == 0) {
+        return;
+    }
+    scrub(m_bound_vertex_array, vertex_array);
+    scrub(m_vertex_array_stack, vertex_array);
+}
+
+void Gl_binding_state::on_program_deleted(const GLuint program)
+{
+    if (program == 0) {
+        return;
+    }
+    scrub(m_current_program, program);
+}
+
 } // namespace erhe::graphics

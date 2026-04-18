@@ -307,11 +307,13 @@ void Render_pass_impl::create()
 
     const bool use_dsa = m_device.get_info().use_direct_state_access;
 
-    // For non-DSA, push the framebuffer so framebuffer_texture / framebuffer_texture_layer work
+    // For non-DSA, push the framebuffer on both draw and read targets so that
+    // framebuffer_texture/framebuffer_texture_layer (which use draw_framebuffer)
+    // and read_buffer (which uses read_framebuffer) both operate on this FBO.
     std::optional<Framebuffer_binding_guard> fb_guard;
     if (!use_dsa) {
         fb_guard.emplace(
-            m_device.get_impl().get_binding_state().push_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_name())
+            m_device.get_impl().get_binding_state().push_framebuffer(gl::Framebuffer_target::framebuffer, gl_name())
         );
     }
 
@@ -436,8 +438,7 @@ void Render_pass_impl::create()
             gl::named_framebuffer_read_buffer(gl_name(), m_draw_buffers.front());
         } else {
             gl::draw_buffers(static_cast<GLsizei>(m_draw_buffers.size()), reinterpret_cast<const gl::Draw_buffer_mode*>(m_draw_buffers.data()));
-            // read_buffer operates on GL_READ_FRAMEBUFFER, so temporarily bind there too
-            auto read_fb_guard = m_device.get_impl().get_binding_state().push_framebuffer(gl::Framebuffer_target::read_framebuffer, gl_name());
+            // fb_guard above pushes framebuffer on both draw and read targets.
             gl::read_buffer(static_cast<gl::Read_buffer_mode>(m_draw_buffers.front()));
         }
     } else {
@@ -449,7 +450,7 @@ void Render_pass_impl::create()
         } else {
             gl::Draw_buffer_mode none_buf = gl::Draw_buffer_mode::none;
             gl::draw_buffers(1, &none_buf);
-            auto read_fb_guard = m_device.get_impl().get_binding_state().push_framebuffer(gl::Framebuffer_target::read_framebuffer, gl_name());
+            // fb_guard above pushes framebuffer on both draw and read targets.
             gl::read_buffer(gl::Read_buffer_mode::none);
         }
     }
@@ -612,7 +613,7 @@ void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, 
         m_device.get_impl().reset_shader_stages_state_tracker();
     }
 
-    gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_name());
+    m_device.get_impl().get_binding_state().bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_name());
 
     if ((m_render_target_width > 0) && (m_render_target_height > 0)) {
         m_device.get_impl().m_gl_state_tracker.viewport_rect.execute(
@@ -846,7 +847,7 @@ void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
     const bool use_dsa = m_device.get_info().use_direct_state_access;
 
     if (m_uses_multisample_resolve) {
-        gl::bind_framebuffer(gl::Framebuffer_target::read_framebuffer, gl_name());
+        m_device.get_impl().get_binding_state().bind_framebuffer(gl::Framebuffer_target::read_framebuffer, gl_name());
 #if !defined(NDEBUG)
         {
             gl::Framebuffer_status status;
@@ -866,7 +867,7 @@ void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
         }
 #endif
 
-        gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_multisample_resolve_name());
+        m_device.get_impl().get_binding_state().bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_multisample_resolve_name());
 #if !defined(NDEBUG)
         {
             gl::Framebuffer_status status;
@@ -926,17 +927,18 @@ void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
             gl::named_framebuffer_draw_buffers(gl_multisample_resolve_name(), static_cast<GLsizei>(m_draw_buffers.size()), m_draw_buffers.data());
             gl::named_framebuffer_read_buffer (gl_multisample_resolve_name(), gl::Color_buffer::color_attachment0);
         } else {
+            Gl_binding_state& binding_state = m_device.get_impl().get_binding_state();
             // Bind the main FBO to draw, restore its draw buffers
-            gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_name());
+            binding_state.bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_name());
             gl::draw_buffers(static_cast<GLsizei>(m_draw_buffers.size()), reinterpret_cast<const gl::Draw_buffer_mode*>(m_draw_buffers.data()));
             gl::read_buffer(static_cast<gl::Read_buffer_mode>(gl::Color_buffer::color_attachment0));
             // Bind the resolve FBO to draw, restore its draw buffers
-            gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_multisample_resolve_name());
+            binding_state.bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_multisample_resolve_name());
             gl::draw_buffers(static_cast<GLsizei>(m_draw_buffers.size()), reinterpret_cast<const gl::Draw_buffer_mode*>(m_draw_buffers.data()));
             gl::read_buffer(static_cast<gl::Read_buffer_mode>(gl::Color_buffer::color_attachment0));
             // Re-bind for depth/stencil blit: read=main, draw=resolve
-            gl::bind_framebuffer(gl::Framebuffer_target::read_framebuffer, gl_name());
-            gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_multisample_resolve_name());
+            binding_state.bind_framebuffer(gl::Framebuffer_target::read_framebuffer, gl_name());
+            binding_state.bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_multisample_resolve_name());
         }
 
         // NOTE: Depth/stencil blit does not involve draw buffers.
@@ -1003,12 +1005,12 @@ void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
     check_invalidate_attachment(m_stencil_attachment, gl::Framebuffer_attachment::stencil_attachment);
 
     if (invalidate_attachments_count > 0) {
-        gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_name());
+        m_device.get_impl().get_binding_state().bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_name());
         //gl::invalidate_framebuffer(gl::Framebuffer_target::draw_framebuffer, invalidate_attachments_count, invalidate_attachments.data());
     }
 
     // TODO Strictly speaking this is redundant, but might be useful for debugging
-    gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, 0);
+    m_device.get_impl().get_binding_state().bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, 0);
 
     end_debug_group.reset();
     m_outer_debug_group.reset();

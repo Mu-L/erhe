@@ -1912,7 +1912,7 @@ auto Device_impl::create_texture(gl::Texture_target target) -> Gl_texture
         auto guard = m_gl_binding_state.push_texture(scratch_unit, target, name);
     }
     ERHE_VERIFY(name != 0);
-    return Gl_texture{name};
+    return Gl_texture{name, /*owned=*/true, &m_gl_binding_state};
 }
 
 auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
@@ -1923,7 +1923,7 @@ auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
     GLuint name{0};
     gl::gen_textures(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_texture{name};
+    return Gl_texture{name, /*owned=*/true, &m_gl_binding_state};
 }
 
 auto Device_impl::create_buffer() -> Gl_buffer
@@ -1937,7 +1937,7 @@ auto Device_impl::create_buffer() -> Gl_buffer
         auto guard = m_gl_binding_state.push_buffer(gl::Buffer_target::copy_write_buffer, name);
     }
     ERHE_VERIFY(name != 0);
-    return Gl_buffer{name};
+    return Gl_buffer{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_framebuffer() -> Gl_framebuffer
@@ -1951,7 +1951,7 @@ auto Device_impl::create_framebuffer() -> Gl_framebuffer
         auto guard = m_gl_binding_state.push_framebuffer(gl::Framebuffer_target::draw_framebuffer, name);
     }
     ERHE_VERIFY(name != 0);
-    return Gl_framebuffer{name};
+    return Gl_framebuffer{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
@@ -1965,7 +1965,7 @@ auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
         auto guard = m_gl_binding_state.push_renderbuffer(name);
     }
     ERHE_VERIFY(name != 0);
-    return Gl_renderbuffer{name};
+    return Gl_renderbuffer{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_sampler() -> Gl_sampler
@@ -1979,7 +1979,7 @@ auto Device_impl::create_sampler() -> Gl_sampler
         gl::gen_samplers(1, &name);
     }
     ERHE_VERIFY(name != 0);
-    return Gl_sampler{name};
+    return Gl_sampler{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_vertex_array() -> Gl_vertex_array
@@ -1993,7 +1993,7 @@ auto Device_impl::create_vertex_array() -> Gl_vertex_array
         auto guard = m_gl_binding_state.push_vertex_array(name);
     }
     ERHE_VERIFY(name != 0);
-    return Gl_vertex_array{name};
+    return Gl_vertex_array{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_query(gl::Query_target target) -> Gl_query
@@ -2016,7 +2016,7 @@ auto Device_impl::create_program() -> Gl_program
     // glCreateProgram is not DSA — available since GL 2.0.
     GLuint name = gl::create_program();
     ERHE_VERIFY(name != 0);
-    return Gl_program{name};
+    return Gl_program{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_shader(gl::Shader_type type) -> Gl_shader

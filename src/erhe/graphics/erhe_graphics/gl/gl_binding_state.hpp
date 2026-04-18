@@ -141,6 +141,20 @@ public:
     void use_program        (GLuint program);
     auto get_current_program() const -> GLuint;
 
+    // -- Object deletion hooks -------------------------------------------
+    //
+    // Called from Gl_* destructors right before the underlying glDelete*
+    // call. GL auto-unbinds deleted objects from every binding point; this
+    // hook mirrors that behavior in the cached state so the cache cannot
+    // hold a stale gl_name (which GL may later recycle for a new object).
+    void on_texture_deleted     (GLuint texture);
+    void on_buffer_deleted      (GLuint buffer);
+    void on_sampler_deleted     (GLuint sampler);
+    void on_framebuffer_deleted (GLuint framebuffer);
+    void on_renderbuffer_deleted(GLuint renderbuffer);
+    void on_vertex_array_deleted(GLuint vertex_array);
+    void on_program_deleted     (GLuint program);
+
     static constexpr std::size_t s_max_texture_units = 32;
 
 private:

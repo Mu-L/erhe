@@ -1,5 +1,6 @@
 #include "erhe_graphics/gl/gl_objects.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
+#include "erhe_graphics/gl/gl_binding_state.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <new>
@@ -9,15 +10,17 @@ namespace erhe::graphics {
 
 // Gl_texture
 
-Gl_texture::Gl_texture(GLuint gl_name, bool owned)
-    : m_gl_name{gl_name}
-    , m_owned  {owned}
+Gl_texture::Gl_texture(GLuint gl_name, bool owned, Gl_binding_state* binding_state)
+    : m_binding_state{binding_state}
+    , m_gl_name      {gl_name}
+    , m_owned        {owned}
 {
 }
 
 Gl_texture::Gl_texture(Gl_texture&& old) noexcept
-    : m_gl_name{std::exchange(old.m_gl_name, 0)}
-    , m_owned  {std::exchange(old.m_owned, false)}
+    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
+    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
+    , m_owned        {std::exchange(old.m_owned, false)}
 {
 }
 
@@ -33,6 +36,9 @@ auto Gl_texture::operator=(Gl_texture&& old) noexcept -> Gl_texture&
 Gl_texture::~Gl_texture() noexcept
 {
     if (m_owned && (m_gl_name != 0)) {
+        if (m_binding_state != nullptr) {
+            m_binding_state->on_texture_deleted(m_gl_name);
+        }
         gl::delete_textures(1, &m_gl_name);
     }
 }
@@ -44,13 +50,15 @@ auto Gl_texture::gl_name() const -> GLuint
 
 // Gl_program
 
-Gl_program::Gl_program(GLuint gl_name)
-    : m_gl_name{gl_name}
+Gl_program::Gl_program(GLuint gl_name, Gl_binding_state* binding_state)
+    : m_binding_state{binding_state}
+    , m_gl_name      {gl_name}
 {
 }
 
 Gl_program::Gl_program(Gl_program&& old) noexcept
-    : m_gl_name{std::exchange(old.m_gl_name, 0)}
+    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
+    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
 {
 }
 
@@ -66,6 +74,9 @@ auto Gl_program::operator=(Gl_program&& old) noexcept -> Gl_program&
 Gl_program::~Gl_program() noexcept
 {
     if (m_gl_name != 0) {
+        if (m_binding_state != nullptr) {
+            m_binding_state->on_program_deleted(m_gl_name);
+        }
         gl::delete_program(m_gl_name);
     }
 }
@@ -110,20 +121,25 @@ auto Gl_shader::gl_name() const -> unsigned int
 
 // Gl_sampler
 
-Gl_sampler::Gl_sampler(GLuint gl_name)
-    : m_gl_name{gl_name}
+Gl_sampler::Gl_sampler(GLuint gl_name, Gl_binding_state* binding_state)
+    : m_binding_state{binding_state}
+    , m_gl_name      {gl_name}
 {
 }
 
 Gl_sampler::~Gl_sampler() noexcept
 {
     if (m_gl_name != 0) {
+        if (m_binding_state != nullptr) {
+            m_binding_state->on_sampler_deleted(m_gl_name);
+        }
         gl::delete_samplers(1, &m_gl_name);
     }
 }
 
 Gl_sampler::Gl_sampler(Gl_sampler&& old) noexcept
-    : m_gl_name{std::exchange(old.m_gl_name, 0)}
+    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
+    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
 {
 }
 
@@ -143,20 +159,25 @@ auto Gl_sampler::gl_name() const -> unsigned int
 
 // Gl_framebuffer
 
-Gl_framebuffer::Gl_framebuffer(GLuint gl_name)
-    : m_gl_name{gl_name}
+Gl_framebuffer::Gl_framebuffer(GLuint gl_name, Gl_binding_state* binding_state)
+    : m_binding_state{binding_state}
+    , m_gl_name      {gl_name}
 {
 }
 
 Gl_framebuffer::~Gl_framebuffer() noexcept
 {
     if (m_gl_name != 0) {
+        if (m_binding_state != nullptr) {
+            m_binding_state->on_framebuffer_deleted(m_gl_name);
+        }
         gl::delete_framebuffers(1, &m_gl_name);
     }
 }
 
 Gl_framebuffer::Gl_framebuffer(Gl_framebuffer&& old) noexcept
-    : m_gl_name{std::exchange(old.m_gl_name, 0)}
+    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
+    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
 {
 }
 
@@ -176,20 +197,25 @@ auto Gl_framebuffer::gl_name() const -> GLuint
 
 // Gl_renderbuffer
 
-Gl_renderbuffer::Gl_renderbuffer(GLuint gl_name)
-    : m_gl_name{gl_name}
+Gl_renderbuffer::Gl_renderbuffer(GLuint gl_name, Gl_binding_state* binding_state)
+    : m_binding_state{binding_state}
+    , m_gl_name      {gl_name}
 {
 }
 
 Gl_renderbuffer::~Gl_renderbuffer() noexcept
 {
     if (m_gl_name != 0) {
+        if (m_binding_state != nullptr) {
+            m_binding_state->on_renderbuffer_deleted(m_gl_name);
+        }
         gl::delete_renderbuffers(1, &m_gl_name);
     }
 }
 
 Gl_renderbuffer::Gl_renderbuffer(Gl_renderbuffer&& old) noexcept
-    : m_gl_name{std::exchange(old.m_gl_name, 0)}
+    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
+    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
 {
 }
 
@@ -209,20 +235,25 @@ auto Gl_renderbuffer::gl_name() const -> GLuint
 
 // Gl_buffer
 
-Gl_buffer::Gl_buffer(GLuint gl_name)
-    : m_gl_name{gl_name}
+Gl_buffer::Gl_buffer(GLuint gl_name, Gl_binding_state* binding_state)
+    : m_binding_state{binding_state}
+    , m_gl_name      {gl_name}
 {
 }
 
 Gl_buffer::~Gl_buffer() noexcept
 {
     if (m_gl_name != 0) {
+        if (m_binding_state != nullptr) {
+            m_binding_state->on_buffer_deleted(m_gl_name);
+        }
         gl::delete_buffers(1, &m_gl_name);
     }
 }
 
 Gl_buffer::Gl_buffer(Gl_buffer&& old) noexcept
-    : m_gl_name{std::exchange(old.m_gl_name, 0)}
+    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
+    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
 {
 }
 
@@ -275,20 +306,25 @@ auto Gl_query::gl_name() const -> GLuint
 
 // Gl_vertex_array
 
-Gl_vertex_array::Gl_vertex_array(GLuint gl_name)
-    : m_gl_name{gl_name}
+Gl_vertex_array::Gl_vertex_array(GLuint gl_name, Gl_binding_state* binding_state)
+    : m_binding_state{binding_state}
+    , m_gl_name      {gl_name}
 {
 }
 
 Gl_vertex_array::~Gl_vertex_array() noexcept
 {
     if (m_gl_name != 0) {
+        if (m_binding_state != nullptr) {
+            m_binding_state->on_vertex_array_deleted(m_gl_name);
+        }
         gl::delete_vertex_arrays(1, &m_gl_name);
     }
 }
 
 Gl_vertex_array::Gl_vertex_array(Gl_vertex_array&& old) noexcept
-    : m_gl_name{std::exchange(old.m_gl_name, 0)}
+    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
+    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
 {
 }
 
