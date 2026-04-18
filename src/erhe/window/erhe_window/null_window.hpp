@@ -65,6 +65,7 @@ public:
     void clear_current                    () const;
     auto delay_before_swap                (float seconds) const -> bool;
     void swap_buffers                     () const;
+    void set_swap_interval                (int interval);
 #endif
     void poll_events                      (float wait_time = 0.0f);
     void get_cursor_position              (float& xpos, float& ypos);

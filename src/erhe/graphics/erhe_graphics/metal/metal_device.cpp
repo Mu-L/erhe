@@ -1,5 +1,6 @@
 #include "erhe_graphics/metal/metal_device.hpp"
 #include "erhe_graphics/metal/metal_buffer.hpp"
+#include "erhe_graphics/metal/metal_scoped_debug_group.hpp"
 #include "erhe_graphics/metal/metal_surface.hpp"
 #include "erhe_graphics/metal/metal_texture.hpp"
 #include "erhe_graphics/blit_command_encoder.hpp"
@@ -27,10 +28,10 @@
 namespace erhe::graphics {
 
 Device_impl::Device_impl(Device& device, const Surface_create_info& surface_create_info, const Graphics_config& graphics_config)
-    : m_device        {device}
-    , m_shader_monitor{device}
+    : m_device         {device}
+    , m_shader_monitor {device}
+    , m_graphics_config{graphics_config}
 {
-    static_cast<void>(graphics_config);
 
     install_metal_error_handler(device);
 
@@ -198,7 +199,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     m_info.coordinate_conventions.clip_space_y_flip  = erhe::math::Clip_space_y_flip::disabled;
 
     // Enable debug groups for Metal GPU capture
-    Scoped_debug_group::s_enabled = true;
+    Scoped_debug_group_impl::s_enabled = true;
 
     if (surface_create_info.context_window != nullptr) {
         m_surface = std::make_unique<Surface>(
@@ -1136,6 +1137,11 @@ auto Device_impl::get_shader_monitor() -> Shader_monitor&
 auto Device_impl::get_info() const -> const Device_info&
 {
     return m_info;
+}
+
+auto Device_impl::get_graphics_config() const -> const Graphics_config&
+{
+    return m_graphics_config;
 }
 
 void Device_impl::reset_shader_stages_state_tracker()

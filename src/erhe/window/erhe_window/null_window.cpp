@@ -66,6 +66,11 @@ auto Context_window::delay_before_swap(float seconds) const -> bool
 void Context_window::swap_buffers() const
 {
 }
+
+void Context_window::set_swap_interval(int interval)
+{
+    static_cast<void>(interval);
+}
 #endif
 
 void Context_window::poll_events(float wait_time)

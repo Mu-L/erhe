@@ -1,11 +1,14 @@
 #include "erhe_graphics/metal/metal_surface.hpp"
 #include "erhe_graphics/metal/metal_device.hpp"
 #include "erhe_graphics/metal/metal_swapchain.hpp"
+#include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/swapchain.hpp"
 #include "erhe_window/window.hpp"
 
 #include <Metal/Metal.hpp>
 #include <QuartzCore/QuartzCore.hpp>
+
+#import <QuartzCore/CAMetalLayer.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
@@ -25,6 +28,10 @@ Surface_impl::Surface_impl(Device_impl& device_impl, const Surface_create_info& 
                 if (m_metal_layer != nullptr) {
                     m_metal_layer->setDevice(device_impl.get_mtl_device());
                     m_metal_layer->setPixelFormat(MTL::PixelFormatBGRA8Unorm_sRGB);
+                    if (device_impl.get_graphics_config().force_disable_vsync) {
+                        ((CAMetalLayer*)m_metal_layer).displaySyncEnabled = NO;
+                        log_startup->info("Disabled vsync (force_disable_vsync)");
+                    }
                 }
             }
         }

@@ -1091,6 +1091,12 @@ void Context_window::swap_buffers() const
     }
 }
 
+void Context_window::set_swap_interval(int interval)
+{
+    log_window->info("Setting swap interval to {}", interval);
+    glfwSwapInterval(interval);
+}
+
 auto Context_window::get_device_pointer() const -> void*
 {
 #if defined(_WIN32)

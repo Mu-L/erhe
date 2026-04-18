@@ -244,6 +244,8 @@ if (ERHE_GRAPHICS_API_METAL)
         erhe_graphics/metal/metal_compute_pipeline.cpp
         erhe_graphics/metal/metal_compute_pipeline.hpp
         erhe_graphics/metal/metal_debug.cpp
+        erhe_graphics/metal/metal_scoped_debug_group.cpp
+        erhe_graphics/metal/metal_scoped_debug_group.hpp
         erhe_graphics/metal/metal_device.cpp
         erhe_graphics/metal/metal_device.hpp
         erhe_graphics/metal/metal_gpu_timer.cpp
@@ -301,6 +303,8 @@ if (ERHE_GRAPHICS_API_NONE)
         erhe_graphics/null/null_compute_pipeline.cpp
         erhe_graphics/null/null_compute_pipeline.hpp
         erhe_graphics/null/null_debug.cpp
+        erhe_graphics/null/null_scoped_debug_group.cpp
+        erhe_graphics/null/null_scoped_debug_group.hpp
         erhe_graphics/null/null_device.cpp
         erhe_graphics/null/null_device.hpp
         erhe_graphics/null/null_gpu_timer.cpp

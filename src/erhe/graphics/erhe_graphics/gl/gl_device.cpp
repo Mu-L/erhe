@@ -28,6 +28,7 @@
 #include "erhe_graphics/ring_buffer_range.hpp"
 #include "erhe_graphics/surface.hpp"
 #include "erhe_profile/profile.hpp"
+#include "erhe_window/window.hpp"
 #include "erhe_utility/align.hpp"
 #include "erhe_utility/bit_helpers.hpp"
 #include "erhe_window/renderdoc_capture.hpp"
@@ -1015,6 +1016,11 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         (surface_create_info.context_window->get_window_configuration().color_bit_depth <= 8)
     ) {
         gl::enable(gl::Enable_cap::framebuffer_srgb);
+    }
+
+    if (graphics_config.force_disable_vsync && (m_context_window != nullptr)) {
+        m_context_window->set_swap_interval(0);
+        log_startup->info("Disabled vsync (force_disable_vsync)");
     }
 
     std::fill(

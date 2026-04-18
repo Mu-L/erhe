@@ -1151,6 +1151,12 @@ void Context_window::swap_buffers() const
         SDL_GL_SwapWindow(window);
     }
 }
+
+void Context_window::set_swap_interval(int interval)
+{
+    log_window->info("Setting swap interval to {}", interval);
+    SDL_GL_SetSwapInterval(interval);
+}
 #endif
 
 auto Context_window::get_device_pointer() const -> void*
