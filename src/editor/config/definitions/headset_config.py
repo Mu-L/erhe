@@ -1,7 +1,7 @@
 from erhe_codegen import *
 
 struct("Headset_config",
-    version=1,
+    version=2,
     short_desc="Virtual Reality Headset",
     long_desc="",
     developer=False,
@@ -70,6 +70,16 @@ struct("Headset_config",
             "depth",
             Bool,
             added_in=1,
+            default="false",
+            short_desc="",
+            long_desc="",
+            visible=True,
+            developer=True
+        ),
+        field(
+            "swapchain_depth",
+            Bool,
+            added_in=2,
             default="false",
             short_desc="",
             long_desc="",
