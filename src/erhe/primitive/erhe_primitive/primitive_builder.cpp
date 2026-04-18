@@ -214,7 +214,7 @@ auto Primitive_builder::build() -> bool
 {
     ERHE_PROFILE_FUNCTION();
 
-    SPDLOG_LOGGER_INFO(log_primitive_builder, "Primitive_builder::build(normal_style = {})", c_str(m_normal_style));
+    log_primitive_builder->trace("Primitive_builder::build(normal_style = {})", c_str(m_normal_style));
 
     Build_context build_context{
         m_buffer_mesh,

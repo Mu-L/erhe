@@ -147,7 +147,6 @@ void Mesh::detach_rt_from_scene() // erhe::raytrace::IScene* rt_scene)
 
 void Mesh::handle_item_host_update(erhe::Item_host* const old_item_host, erhe::Item_host* const new_item_host)
 {
-    log->info("Mesh '{}' host update", get_name());
     const auto shared_this = std::static_pointer_cast<Mesh>(shared_from_this()); // keep alive
 
     Scene_host* old_scene_host = static_cast<Scene_host*>(old_item_host);
@@ -163,7 +162,6 @@ void Mesh::handle_item_host_update(erhe::Item_host* const old_item_host, erhe::I
 
 void Mesh::handle_flag_bits_update(uint64_t old_flag_bits, uint64_t new_flag_bits)
 {
-    log->info("Mesh '{}' handle_flag_bits_update()", get_name());
     const bool visibility_changed = erhe::utility::test_bit_set(old_flag_bits ^ new_flag_bits, erhe::Item_flags::visible);
     if (!visibility_changed) {
         return;

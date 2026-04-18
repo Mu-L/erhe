@@ -562,7 +562,7 @@ auto Scene_root::get_node_rt_mask(erhe::scene::Node* node) -> uint32_t
         for (const auto& node_attachment : node->get_attachments()) {
             mask = mask | raytrace_node_mask(*node_attachment.get());
         }
-        log_raytrace->info("RT node attach to {}, mask = {}", node->get_name(), m_scene->get_name(), mask);
+        log_raytrace->debug("RT node attach to {}, mask = {}", node->get_name(), m_scene->get_name(), mask);
     }
 
     return mask;
@@ -615,7 +615,7 @@ void Scene_root::unregister_mesh(const std::shared_ptr<erhe::scene::Mesh>& mesh)
 {
     ERHE_VERIFY(mesh);
 
-    log_scene->info("Unregistering Mesh '{}' from scene", mesh->get_name());
+    log_scene->debug("Unregistering Mesh '{}' from scene", mesh->get_name());
 
     mesh->detach_rt_from_scene();
 
