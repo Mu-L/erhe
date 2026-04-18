@@ -4,9 +4,12 @@
 #include "editor_log.hpp"
 
 #include "erhe_rendergraph/rendergraph.hpp"
+#include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/ring_buffer.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/span.hpp"
 #include "erhe_graphics/texture.hpp"
@@ -73,21 +76,6 @@ Post_processing_node::Post_processing_node(
     erhe::utility::Debug_label      debug_label
 )
     : erhe::rendergraph::Rendergraph_node{rendergraph, debug_label}
-    , parameter_buffer{
-        graphics_device,
-        erhe::graphics::Buffer_create_info{
-            .capacity_byte_count =
-                erhe::utility::align_offset_power_of_two(
-                    post_processing.get_parameter_block().get_size_bytes(),
-                    graphics_device.get_buffer_alignment(post_processing.get_parameter_block().get_binding_target())
-                ) * Post_processing::s_max_mipmap_levels,
-            .memory_allocation_create_flag_bit_mask = 0,
-            .usage                                  = get_buffer_usage(post_processing.get_parameter_block().get_binding_target()),
-            .required_memory_property_bit_mask      = 0, // GPU only
-            .preferred_memory_property_bit_mask     = erhe::graphics::Memory_property_flag_bit_mask::device_local,
-            .debug_label                            = erhe::utility::Debug_label{"post processing"}
-        }
-    }
     , m_graphics_device{graphics_device}
     , m_post_processing{post_processing}
 {
@@ -328,21 +316,22 @@ void Post_processing_node::update_parameters()
     const std::span<const uint32_t> downsample_texture_handle_cpu_data{&downsample_texture_handle[0], 2};
     const std::span<const uint32_t> upsample_texture_handle_cpu_data  {&upsample_texture_handle  [0], 2};
 
-    // NOTE: parameter_buffer is only rarely updated.
-    //       It can happen when texture size changed.
-    // TODO Should we consider what GPU might be currently doing?
-    //      Should we use GPU ring buffer instead, to handle that?
-    size_t                    level_count  = level_widths.size();
-    std::size_t               write_offset = 0;
-    const std::size_t         byte_count   = level_offset_size * Post_processing::s_max_mipmap_levels;
-    if (parameter_data.size() < byte_count) {
-        parameter_data.resize(byte_count);
-    }
-    std::byte* const          start        = parameter_data.data();
-    const std::size_t         word_count   = byte_count / sizeof(float);
-    const std::span<float>    float_data{reinterpret_cast<float*   >(start), word_count};
-    const std::span<uint32_t> uint_data {reinterpret_cast<uint32_t*>(start), word_count};
+    const size_t      level_count = level_widths.size();
+    const std::size_t byte_count  = level_offset_size * level_count;
 
+    // Any prior range is left in closed+released state by the previous
+    // call, so the rvalue temporary that receives those fields via
+    // move-assign exchange destructs safely.
+    parameter_buffer_range = m_post_processing.get_parameter_buffer_client().acquire(
+        erhe::graphics::Ring_buffer_usage::CPU_write,
+        byte_count
+    );
+    const std::span<std::byte> gpu_data   = parameter_buffer_range.get_span();
+    const std::size_t          word_count = byte_count / sizeof(float);
+    const std::span<float>     float_data{reinterpret_cast<float*   >(gpu_data.data()), word_count};
+    const std::span<uint32_t>  uint_data {reinterpret_cast<uint32_t*>(gpu_data.data()), word_count};
+
+    std::size_t write_offset = 0;
     for (size_t source_level = 0, end = level_count; source_level < end; ++source_level) {
         using erhe::graphics::write;
         float texel_scale[2] = {
@@ -361,7 +350,9 @@ void Post_processing_node::update_parameters()
         write<float   >(float_data, write_offset + offsets.tonemap_alpha,         tonemap_alpha);
         write_offset += level_offset_size;
     }
-    m_graphics_device.upload_to_buffer(parameter_buffer, 0, start, byte_count);
+    parameter_buffer_range.bytes_written(byte_count);
+    parameter_buffer_range.close();
+    parameter_buffer_range.release();
 }
 
 void Post_processing_node::viewport_toolbar()
@@ -518,6 +509,12 @@ Post_processing::Post_processing(erhe::graphics::Device& d, App_context& app_con
             .debug_label = "Post processing"
         }
     }
+    , m_parameter_buffer_client{
+        d,
+        m_parameter_block.get_binding_target(),
+        "post_processing_parameters",
+        m_parameter_block.get_binding_point()
+    }
     , m_offsets           {m_parameter_block}
     , m_empty_vertex_input{d}
     , m_shader_path{std::filesystem::path("res") / std::filesystem::path("shaders")}
@@ -655,6 +652,12 @@ void Post_processing::post_process(Post_processing_node& node)
         m_context.graphics_device->get_buffer_alignment(m_parameter_block.get_binding_target())
     );
 
+    erhe::graphics::Ring_buffer* const parameter_ring_buffer = node.parameter_buffer_range.get_buffer();
+    ERHE_VERIFY(parameter_ring_buffer != nullptr);
+    erhe::graphics::Buffer* const parameter_buffer = parameter_ring_buffer->get_buffer();
+    ERHE_VERIFY(parameter_buffer != nullptr);
+    const std::size_t parameter_range_base_offset = node.parameter_buffer_range.get_byte_start_offset_in_buffer();
+
     m_texture_heap->reset_heap();
 
 
@@ -679,8 +682,8 @@ void Post_processing::post_process(Post_processing_node& node)
         encoder.set_bind_group_layout(&m_bind_group_layout);
         encoder.set_buffer(
             m_parameter_block.get_binding_target(),
-            &node.parameter_buffer,
-            source_level * level_offset_size,
+            parameter_buffer,
+            parameter_range_base_offset + source_level * level_offset_size,
             m_parameter_block.get_size_bytes(),
             binding_point
         );
@@ -788,8 +791,8 @@ void Post_processing::post_process(Post_processing_node& node)
         ERHE_VERIFY(render_pass_height == node.level_heights.at(destination_level));
         encoder.set_buffer(
             m_parameter_block.get_binding_target(),
-            &node.parameter_buffer,
-            source_level * level_offset_size,
+            parameter_buffer,
+            parameter_range_base_offset + source_level * level_offset_size,
             m_parameter_block.get_size_bytes(),
             binding_point
         );

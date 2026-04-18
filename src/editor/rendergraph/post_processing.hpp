@@ -1,13 +1,14 @@
 #pragma once
 
 #include "erhe_graphics/bind_group_layout.hpp"
-#include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/enums.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
 #include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
+#include "erhe_graphics/ring_buffer_client.hpp"
+#include "erhe_graphics/ring_buffer_range.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/shader_resource.hpp"
 #include "erhe_graphics/shader_stages.hpp"
@@ -85,10 +86,9 @@ public:
     std::vector<size_t>                                       upsample_source_levels;
     std::vector<float>                                        weights;
     std::vector<std::shared_ptr<Post_processing_node_texture_reference>> texture_references;
-    std::vector<std::byte>                                    parameter_data;
     int                                                       level0_width  {0};
     int                                                       level0_height {0};
-    erhe::graphics::Buffer                                    parameter_buffer;
+    erhe::graphics::Ring_buffer_range                         parameter_buffer_range;
     float                                                     tonemap_luminance_max{1.5f};
     float                                                     tonemap_alpha{1.0f / 1.5f};
     int                                                       lowpass_count{2};
@@ -137,6 +137,7 @@ public:
     auto get_parameter_block              () const -> const erhe::graphics::Shader_resource& { return m_parameter_block; }
     auto get_sampler_linear               () const -> const erhe::graphics::Sampler&         { return m_sampler_linear; }
     auto get_sampler_linear_mipmap_nearest() const -> const erhe::graphics::Sampler&         { return m_sampler_linear_mipmap_nearest; }
+    auto get_parameter_buffer_client      () -> erhe::graphics::Ring_buffer_client&          { return m_parameter_buffer_client; }
 
     static constexpr unsigned int s_max_mipmap_levels = 20u;
 
@@ -186,6 +187,7 @@ private:
     erhe::graphics::Sampler                            m_sampler_linear_mipmap_nearest;
     erhe::graphics::Shader_resource                    m_parameter_block;
     erhe::graphics::Bind_group_layout                  m_bind_group_layout;
+    erhe::graphics::Ring_buffer_client                 m_parameter_buffer_client;
     Offsets                                            m_offsets;
     erhe::graphics::Vertex_input_state                 m_empty_vertex_input;
     std::filesystem::path                              m_shader_path;
