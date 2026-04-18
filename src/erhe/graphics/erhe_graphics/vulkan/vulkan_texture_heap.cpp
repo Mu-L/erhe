@@ -161,7 +161,7 @@ Texture_heap_impl::Texture_heap_impl(
         vkUpdateDescriptorSets(vulkan_device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 
-    log_texture_heap->info("Texture heap created: {} max textures", m_max_textures);
+    log_texture_heap->debug("Texture heap created: {} max textures", m_max_textures);
 }
 
 Texture_heap_impl::~Texture_heap_impl() noexcept

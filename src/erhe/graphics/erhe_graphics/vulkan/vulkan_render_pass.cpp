@@ -1005,7 +1005,7 @@ Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor&
             }
         }
 
-        log_render_pass->info(
+        log_render_pass->debug(
             "Off-screen render pass created: {}x{}, {} color attachments, depth={}",
             m_render_target_width, m_render_target_height,
             color_attachment_references.size(),

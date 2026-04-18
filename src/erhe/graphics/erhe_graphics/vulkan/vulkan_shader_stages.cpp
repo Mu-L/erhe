@@ -36,7 +36,7 @@ auto create_shader_module(
         .pCode    = spirv.data()
     };
 
-    log_program->info("Creating shader module: {} {}", shader_name, stage_name);
+    log_program->debug("Creating shader module: {} {}", shader_name, stage_name);
 
     VkShaderModule shader_module = VK_NULL_HANDLE;
     VkResult result = vkCreateShaderModule(vulkan_device, &create_info, nullptr, &shader_module);
@@ -54,7 +54,7 @@ auto create_shader_module(
         fmt::format("{} {}", shader_name, stage_name)
     );
 
-    log_program->info(
+    log_program->debug(
         "VkShaderModule created for {} stage of '{}' ({} bytes SPIR-V)",
         stage_name, shader_name, spirv.size() * sizeof(unsigned int)
     );

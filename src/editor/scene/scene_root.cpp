@@ -583,7 +583,7 @@ void Scene_root::register_mesh(const std::shared_ptr<erhe::scene::Mesh>& mesh)
 {
     ERHE_VERIFY(mesh);
 
-    log_scene->info("Registering Mesh '{}' into scene", mesh->get_name());
+    log_scene->debug("Registering Mesh '{}' into scene", mesh->get_name());
 
     mesh->attach_rt_to_scene(m_raytrace_scene.get());
     mesh->set_rt_mask(get_node_rt_mask(mesh->get_node())); // TODO If scene changes, the mesh/node masks need to be updated somehow

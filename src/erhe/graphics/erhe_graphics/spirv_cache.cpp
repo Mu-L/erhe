@@ -95,7 +95,7 @@ auto Spirv_cache::get(const std::string& source, Shader_type stage) const -> std
         return {};
     }
 
-    log_program->info("SPIR-V cache hit: {} {}", shader_type_string(stage), hash);
+    log_program->debug("SPIR-V cache hit: {} {}", shader_type_string(stage), hash);
     return spirv;
 }
 
