@@ -142,7 +142,7 @@
         },
         {
             "label": "tail_log",
-            "visible": true
+            "visible": false
         },
         {
             "label": "timeline",
