@@ -254,11 +254,7 @@ public:
         ERHE_PROFILE_FUNCTION();
         m_frame_log_window->on_frame_begin();
 
-        using clock = std::chrono::steady_clock;
-        const clock::time_point t_tick_begin = clock::now();
-
         // log_frame->trace("tick() begin");
-        const clock::time_point t_wait_begin = clock::now();
         erhe::graphics::Frame_state frame_state{};
         const bool wait_ok = m_graphics_device->wait_frame();
         ERHE_VERIFY(wait_ok);
@@ -275,7 +271,6 @@ public:
             const bool wait_swap_ok = m_graphics_device->wait_swapchain_frame(frame_state);
             ERHE_VERIFY(wait_swap_ok);
         }
-        const clock::time_point t_wait_end = clock::now();
 
         // log_input_frame->trace("----------------------- Editor::tick() -----------------------");
 
@@ -345,14 +340,9 @@ public:
         m_hover_tool->reset_item_tree_hover();
         m_hotbar->rebuild_if_needed();
 
-        const clock::time_point t_imgui_begin = clock::now();
-        // log_frame->trace("Imgui_windows::begin_frame()");
         m_imgui_windows->begin_frame();
-        // log_frame->trace("Imgui_windows::draw_imgui_windows()");
         m_imgui_windows->draw_imgui_windows();
-        // log_frame->trace("Imgui_windows::end_frame()");
         m_imgui_windows->end_frame();
-        const clock::time_point t_imgui_end = clock::now();
 
         // - Apply all command bindings (OpenXR bindings were already executed above)
 
@@ -383,10 +373,8 @@ public:
         // Open the device frame before any GPU-producing work. Init-time
         // uploads will eventually record into this frame's command buffer;
         // today they still go through the immediate-commands path.
-        const clock::time_point t_begin_device_begin = clock::now();
         const bool begin_device_frame_ok = m_graphics_device->begin_frame();
         ERHE_VERIFY(begin_device_frame_ok);
-        const clock::time_point t_begin_device_end = clock::now();
 
         m_mesh_memory->buffer_transfer_queue.flush();
 
@@ -398,20 +386,18 @@ public:
         m_request_resize_pending.store(false);
 
         erhe::graphics::Frame_state swapchain_frame_state{};
-        const clock::time_point t_begin_swap_begin = clock::now();
         // Under OpenXR the headset owns display: the desktop window swapchain
         // is not rendered into, so do not acquire/present it (otherwise the
         // Vulkan Swapchain_impl::end_frame assert would fire because no
         // render pass ever ran against the acquired image).
+        bool should_render = true;
         if (!m_app_context.OpenXR) {
-            const bool should_render = m_graphics_device->begin_swapchain_frame(frame_begin_info, swapchain_frame_state);
-            if (!should_render) {
-                return;
-            }
+            should_render = m_graphics_device->begin_swapchain_frame(frame_begin_info, swapchain_frame_state);
         }
-        const clock::time_point t_begin_swap_end = clock::now();
 
-        m_thumbnails->update();
+        if (should_render) {
+            m_thumbnails->update();
+        }
 
         // Update scene transforms
         m_tools->update_transforms();
@@ -421,27 +407,29 @@ public:
         }
 
         // Execute rendergraph
-        const clock::time_point t_rg_begin = clock::now();
-        m_rendergraph->execute();
-        const clock::time_point t_rg_end = clock::now();
+        if (should_render) {
+            m_rendergraph->execute();
+        }
 
-        m_imgui_renderer->next_frame();
+        if (should_render) {
+            m_imgui_renderer->next_frame();
 #if defined(ERHE_XR_LIBRARY_OPENXR)
-        m_headset_view->end_frame();
+            m_headset_view->end_frame();
 #endif
 
-        m_id_renderer->next_frame();
+            m_id_renderer->next_frame();
+        }
 
-        const clock::time_point t_end_begin = clock::now();
         const erhe::graphics::Frame_end_info frame_end_info{
             .requested_display_time = 0
         };
-        if (!m_app_context.OpenXR) {
-            m_graphics_device->end_swapchain_frame(frame_end_info);
+        if (should_render) {
+            if (!m_app_context.OpenXR) {
+                m_graphics_device->end_swapchain_frame(frame_end_info);
+            }
         }
         const bool end_frame_ok = m_graphics_device->end_frame();
         ERHE_VERIFY(end_frame_ok);
-        const clock::time_point t_end_end = clock::now();
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         //if (!m_app_context.OpenXR) {
@@ -468,35 +456,6 @@ public:
 #endif // TODO
         // log_frame->trace("tick() end");
         m_frame_log_window->on_frame_end();
-
-        const clock::time_point t_tick_end = clock::now();
-
-        const auto to_us = [](clock::time_point a, clock::time_point b) {
-            return std::chrono::duration<double, std::micro>(b - a).count();
-        };
-        m_phase_timing.wait_frame_us   += to_us(t_wait_begin,         t_wait_end);
-        m_phase_timing.imgui_us        += to_us(t_imgui_begin,        t_imgui_end);
-        m_phase_timing.begin_device_us += to_us(t_begin_device_begin, t_begin_device_end);
-        m_phase_timing.begin_swap_us   += to_us(t_begin_swap_begin,   t_begin_swap_end);
-        m_phase_timing.rendergraph_us  += to_us(t_rg_begin,           t_rg_end);
-        m_phase_timing.end_frame_us    += to_us(t_end_begin,          t_end_end);
-        m_phase_timing.full_tick_us    += to_us(t_tick_begin,         t_tick_end);
-        ++m_phase_timing.frame_count;
-        if (m_phase_timing.frame_count >= 60) {
-            const double n = static_cast<double>(m_phase_timing.frame_count);
-            log_draw->info(
-                "frame phase (avg over {} frames, us): tick={:.0f} wait_frame={:.0f} imgui={:.0f} begin_device={:.0f} begin_swap={:.0f} rendergraph={:.0f} end_frame={:.0f}",
-                m_phase_timing.frame_count,
-                m_phase_timing.full_tick_us    / n,
-                m_phase_timing.wait_frame_us   / n,
-                m_phase_timing.imgui_us        / n,
-                m_phase_timing.begin_device_us / n,
-                m_phase_timing.begin_swap_us   / n,
-                m_phase_timing.rendergraph_us  / n,
-                m_phase_timing.end_frame_us    / n
-            );
-            m_phase_timing = Phase_timing{};
-        }
 
         m_app_rendering->process_end_capture();
 
@@ -653,6 +612,7 @@ public:
             if (m_app_context.OpenXR) {
                 ERHE_PROFILE_SCOPE("make xr::Headset (instance)");
                 xr_configuration = erhe::xr::Xr_configuration{
+                    .swapchain_depth   = m_editor_settings.headset.swapchain_depth,
                     .debug             = m_editor_settings.headset.debug,
                     .api_dump          = m_editor_settings.headset.api_dump,
                     .validation        = m_editor_settings.headset.validation,
@@ -1650,7 +1610,9 @@ public:
                     m_last_window_height = m_window->get_height();
                 }
                 // TODO throttle redraws - if last redraw was less than live resize redraw threshold limit ago, don't redraw
-                tick();
+                if ((m_last_window_width != 0) && (m_last_window_height != 0)) {
+                    tick();
+                }
             }
         );
     }
