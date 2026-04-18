@@ -578,14 +578,18 @@ public:
     }
 
     Editor()
-        : m_developer_config     {erhe::codegen::load_config<Developer_config>      ("config/developer.json")}
-        , m_graphics_config      {erhe::codegen::load_config<Graphics_config>       ("config/erhe_graphics.json")}
-        , m_mesh_memory_config   {erhe::codegen::load_config<Mesh_memory_config>    ("config/mesh_memory.json")}
-        , m_renderer_config      {erhe::codegen::load_config<Renderer_config>       ("config/renderer.json")}
-        , m_text_renderer_config {erhe::codegen::load_config<Text_renderer_config>  ("config/text_renderer.json")}
-        , m_window_config        {erhe::codegen::load_config<Window_config>         ("config/window.json")}
-        , m_editor_settings      {erhe::codegen::load_config<Editor_settings_config>("config/editor_settings.json")}
+        : m_developer_config    {erhe::codegen::load_config<Developer_config>      ("config/developer.json")}
+        , m_graphics_config     {erhe::codegen::load_config<Graphics_config>       ("config/erhe_graphics.json")}
+        , m_mesh_memory_config  {erhe::codegen::load_config<Mesh_memory_config>    ("config/mesh_memory.json")}
+        , m_renderer_config     {erhe::codegen::load_config<Renderer_config>       ("config/renderer.json")}
+        , m_text_renderer_config{erhe::codegen::load_config<Text_renderer_config>  ("config/text_renderer.json")}
+        , m_window_config       {erhe::codegen::load_config<Window_config>         ("config/window.json")}
+        , m_editor_settings     {erhe::codegen::load_config<Editor_settings_config>("config/editor_settings.json")}
     {
+        if (m_editor_settings.headset.openxr) {
+            m_editor_settings.hud.enabled = true;
+        }
+
         if (m_graphics_config.renderdoc_capture_support) {
             m_app_context.renderdoc = true;
         }
