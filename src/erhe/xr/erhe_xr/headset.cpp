@@ -3,6 +3,9 @@
 #include "erhe_xr/xr_instance.hpp"
 #include "erhe_xr/xr_session.hpp"
 #include "erhe_profile/profile.hpp"
+#include "erhe_verify/verify.hpp"
+
+#include <SDL3/SDL.h>
 
 namespace erhe::xr {
 
@@ -10,7 +13,20 @@ Headset::Headset(erhe::window::Context_window& context_window, const Xr_configur
     : m_context_window{context_window}
     , m_configuration {configuration}
 {
-    m_xr_instance = std::make_unique<Xr_instance>(configuration);
+    auto message_callback = [this](Message_severity severity, const std::string& message, const std::string& callstack) {
+        if (
+            (severity == Message_severity::warning) ||
+            (severity == Message_severity::error)
+        ) {
+            std::string clipboard_text = "=== OpenXR ===\n" + message + "\n=== Callstack ===\n" + callstack;
+            SDL_SetClipboardText(clipboard_text.c_str());
+            //if (severity == Message_severity::error)
+            {
+                ERHE_FATAL("OpenXR Error (error and callstack copied to clipboard)");
+            }
+        }
+    };
+    m_xr_instance = std::make_unique<Xr_instance>(configuration, std::move(message_callback));
     if (!m_xr_instance->is_available()) {
         log_xr->info("OpenXR instance is not available");
         m_xr_instance.reset();

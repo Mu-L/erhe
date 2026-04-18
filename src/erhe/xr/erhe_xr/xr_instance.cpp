@@ -3,6 +3,7 @@
 #include "erhe_xr/xr.hpp"
 #include "erhe_xr/xr_log.hpp"
 #include "erhe_profile/profile.hpp"
+#include "erhe_utility/bit_helpers.hpp"
 #include "erhe_verify/verify.hpp"
 
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
@@ -23,8 +24,12 @@
 
 namespace erhe::xr {
 
-Xr_instance::Xr_instance(const Xr_configuration& configuration)
-    : m_configuration(configuration)
+Xr_instance::Xr_instance(
+    const Xr_configuration& configuration,
+    Message_callback        message_callback
+)
+    : m_configuration   {configuration}
+    , m_message_callback{message_callback}
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -86,40 +91,61 @@ auto xr_debug_utils_messenger_callback(
     return instance->debug_utils_messenger_callback(messageSeverity, messageTypes, callbackData);
 }
 
+void Xr_instance::message(Message_severity severity, const std::string& message) const
+{
+    m_message_callback(severity,message,erhe_get_callstack());
+}
 
 auto Xr_instance::debug_utils_messenger_callback(
-    XrDebugUtilsMessageSeverityFlagsEXT         messageSeverity,
-    XrDebugUtilsMessageTypeFlagsEXT             messageTypes,
-    const XrDebugUtilsMessengerCallbackDataEXT* callbackData
+    XrDebugUtilsMessageSeverityFlagsEXT         message_severity,
+    XrDebugUtilsMessageTypeFlagsEXT             message_types,
+    const XrDebugUtilsMessengerCallbackDataEXT* callback_data
 ) const -> XrBool32
 {
-    log_xr->info(
+    Message_severity severity = Message_severity::info;
+    using erhe::utility::test_bit_set;
+    if (test_bit_set(message_severity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT)) {
+        severity = Message_severity::verbose;
+    }
+    if (test_bit_set(message_severity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)) {
+        severity = Message_severity::info;
+    }
+    if (test_bit_set(message_severity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)) {
+        severity = Message_severity::warning;
+    }
+    if (test_bit_set(message_severity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)) {
+        severity = Message_severity::error;
+    }
+
+    std::stringstream ss;
+    ss << fmt::format(
         "XR: S:{} T:{} I:{} M:{}",
-        to_string_message_severity(messageSeverity),
-        to_string_message_type(messageTypes),
-        callbackData->messageId,
-        callbackData->message
+        to_string_message_severity(message_severity),
+        to_string_message_type(message_types),
+        callback_data->messageId,
+        callback_data->message
     );
 
-    if (callbackData->objectCount > 0) {
-        log_xr->info("Objects:");
-        //const erhe::log::Indenter scope_indent;
-        for (uint32_t i = 0; i < callbackData->objectCount; ++i) {
-            log_xr->info(
-                "{} {} {}",
-                c_str(callbackData->objects[i].objectType),
-                callbackData->objects[i].objectHandle,
-                callbackData->objects[i].objectName
+    if (callback_data->objectCount > 0) {
+        ss << "\nObjects:\n";
+        for (uint32_t i = 0; i < callback_data->objectCount; ++i) {
+            ss << fmt::format(
+                "    {} {} {}\n",
+                c_str(callback_data->objects[i].objectType),
+                callback_data->objects[i].objectHandle,
+                callback_data->objects[i].objectName
             );
         }
     }
 
-    if (callbackData->sessionLabelCount > 0) {
-        log_xr->info("Session labels:");
-        for (uint32_t i = 0; i < callbackData->sessionLabelCount; ++i) {
-            log_xr->info("    {}", callbackData->sessionLabels[i].labelName);
+    if (callback_data->sessionLabelCount > 0) {
+        ss << "\nSession labels:\n";
+        for (uint32_t i = 0; i < callback_data->sessionLabelCount; ++i) {
+            ss << fmt::format("    {}", callback_data->sessionLabels[i].labelName);
         }
     }
+
+    m_message_callback(severity, ss.str(), erhe_get_callstack());
 
     return XR_FALSE;
 }
@@ -142,16 +168,38 @@ XrBool32 erhe_xrDebugUtilsMessengerCallbackEXT(
 ) -> XrBool32
 {
     spdlog::level::level_enum level = spdlog::level::level_enum::info;
-    if (message_severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) { level = spdlog::level::level_enum::trace; }
-    if (message_severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT   ) { level = spdlog::level::level_enum::info; }
-    if (message_severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) { level = spdlog::level::level_enum::warn; }
-    if (message_severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT  ) { level = spdlog::level::level_enum::err; }
+    Message_severity severity = Message_severity::info;
+    using erhe::utility::test_bit_set;
+    if (test_bit_set(message_severity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT)) {
+        level = spdlog::level::level_enum::trace;
+        severity = Message_severity::verbose;
+    }
+    if (test_bit_set(message_severity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)) {
+        level = spdlog::level::level_enum::info;
+        severity = Message_severity::info;
+    }
+    if (test_bit_set(message_severity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)) {
+        level = spdlog::level::level_enum::warn;
+        severity = Message_severity::warning;
+    }
+    if (test_bit_set(message_severity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)) {
+        level = spdlog::level::level_enum::err;
+        severity = Message_severity::error;
+    }
 
     std::stringstream type_ss;
-    if (message_types & XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT    ) { type_ss << " general"; }
-    if (message_types & XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT ) { type_ss << " validation"; }
-    if (message_types & XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) { type_ss << " performance"; }
-    if (message_types & XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT) { type_ss << " validation"; }
+    if (test_bit_set(message_types, XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT)) {
+        type_ss << " general";
+    }
+    if (test_bit_set(message_types, XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)) {
+        type_ss << " validation";
+    }
+    if (test_bit_set(message_types, XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)) {
+        type_ss << " performance";
+    }
+    if (test_bit_set(message_types, XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT)) {
+        type_ss << " validation";
+    }
 
     std::stringstream objects_ss;
     if (callback_data->objectCount > 0) {
@@ -170,18 +218,19 @@ XrBool32 erhe_xrDebugUtilsMessengerCallbackEXT(
         }
     }
 
-    log_xr->log(
-        level,
-        fmt::format(
-            "OpenXR debug message: type ={}, id = {}, function = {}, message = {}{}{}",
-            type_ss.str(),
-            callback_data->messageId,
-            (callback_data->functionName != nullptr) ? callback_data->functionName : "",
-            callback_data->message,
-            objects_ss.str(),
-            labels_ss.str()
-        )
+    std::string message = fmt::format(
+        "OpenXR debug message: type = {}, id = {}, function = {}, message = {}{}{}",
+        type_ss.str(),
+        callback_data->messageId,
+        (callback_data->functionName != nullptr) ? callback_data->functionName : "",
+        callback_data->message,
+        objects_ss.str(),
+        labels_ss.str()
     );
+    log_xr->log(level, message);
+
+    m_message_callback(severity, message, erhe_get_callstack());
+
     return XR_TRUE;
 }
 

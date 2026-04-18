@@ -45,10 +45,24 @@ public:
     bool passthrough_fb   {false};
 };
 
+enum class Message_severity : unsigned int {
+    verbose = 0,
+    info    = 1,
+    warning = 2,
+    error   = 3
+};
+
+[[nodiscard]] auto c_str(Message_severity message_severity) -> const char*;
+
+using Message_callback = std::function<void(Message_severity severity, const std::string& message, const std::string& callstack)>;
+
 class Xr_instance
 {
 public:
-    explicit Xr_instance(const Xr_configuration& configuration);
+    explicit Xr_instance(
+        const Xr_configuration& configuration,
+        Message_callback        message_callback
+    );
     ~Xr_instance  () noexcept;
     Xr_instance   (const Xr_instance&) = delete;
     void operator=(const Xr_instance&) = delete;
@@ -79,6 +93,8 @@ public:
 
     auto initialize_actions             () -> bool;
     void update_action_bindings         ();
+
+    void message(Message_severity severity, const std::string& message) const;
 
     auto debug_utils_messenger_callback(
         XrDebugUtilsMessageSeverityFlagsEXT         messageSeverity,
@@ -217,6 +233,7 @@ private:
     std::vector<XrActionSuggestedBinding>             m_valve_index_bindings;
     std::vector<XrActionSuggestedBinding>             m_htc_vive_bindings;
 
+    Message_callback m_message_callback{};
     //PFN_xrSetEnvironmentDepthEstimationVARJO m_xrSetEnvironmentDepthEstimationVARJO{nullptr};
 };
 
