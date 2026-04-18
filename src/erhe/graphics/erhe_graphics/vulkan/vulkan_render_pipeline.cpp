@@ -150,7 +150,7 @@ Render_pipeline_impl::Render_pipeline_impl(Device& device, const Render_pipeline
         .minSampleShading      = create_info.multisample.min_sample_shading,
         .pSampleMask           = nullptr,
         .alphaToCoverageEnable = create_info.multisample.alpha_to_coverage_enable ? VK_TRUE : VK_FALSE,
-        .alphaToOneEnable      = VK_FALSE
+        .alphaToOneEnable      = create_info.multisample.alpha_to_one_enable ? VK_TRUE : VK_FALSE
     };
 
     const VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
@@ -193,7 +193,12 @@ Render_pipeline_impl::Render_pipeline_impl(Device& device, const Render_pipeline
         .logicOp         = VK_LOGIC_OP_COPY,
         .attachmentCount = (create_info.color_attachment_count > 0) ? create_info.color_attachment_count : 0u,
         .pAttachments    = (create_info.color_attachment_count > 0) ? &color_blend_attachment : nullptr,
-        .blendConstants  = {0.0f, 0.0f, 0.0f, 0.0f}
+        .blendConstants  = {
+            create_info.color_blend.constant[0],
+            create_info.color_blend.constant[1],
+            create_info.color_blend.constant[2],
+            create_info.color_blend.constant[3]
+        }
     };
 
     const VkDynamicState dynamic_states[] = {

@@ -172,13 +172,21 @@ void Render_command_encoder_impl::set_render_pipeline_state(
     hash_stencil_op_state(hash, data.depth_stencil.stencil_front);
     hash_stencil_op_state(hash, data.depth_stencil.stencil_back);
     hash_combine(hash, static_cast<std::size_t>(data.color_blend.enabled));
+    hash_combine(hash, static_cast<std::size_t>(data.color_blend.rgb.equation_mode));
     hash_combine(hash, static_cast<std::size_t>(data.color_blend.rgb.source_factor));
     hash_combine(hash, static_cast<std::size_t>(data.color_blend.rgb.destination_factor));
+    hash_combine(hash, static_cast<std::size_t>(data.color_blend.alpha.equation_mode));
     hash_combine(hash, static_cast<std::size_t>(data.color_blend.alpha.source_factor));
     hash_combine(hash, static_cast<std::size_t>(data.color_blend.alpha.destination_factor));
+    hash_combine(hash, std::hash<float>{}(data.color_blend.constant[0]));
+    hash_combine(hash, std::hash<float>{}(data.color_blend.constant[1]));
+    hash_combine(hash, std::hash<float>{}(data.color_blend.constant[2]));
+    hash_combine(hash, std::hash<float>{}(data.color_blend.constant[3]));
     hash_combine(hash, static_cast<std::size_t>(color_write_mask));
     hash_combine(hash, static_cast<std::size_t>(data.multisample.sample_shading_enable));
     hash_combine(hash, static_cast<std::size_t>(data.multisample.alpha_to_coverage_enable));
+    hash_combine(hash, static_cast<std::size_t>(data.multisample.alpha_to_one_enable));
+    hash_combine(hash, std::hash<float>{}(data.multisample.min_sample_shading));
     hash_combine(hash, static_cast<std::size_t>(sample_count_flags));
     hash_combine(hash, reinterpret_cast<std::size_t>(Device_impl::get_device_impl()->get_active_render_pass()));
     if (data.vertex_input != nullptr) {
@@ -319,7 +327,7 @@ void Render_command_encoder_impl::set_render_pipeline_state(
             .minSampleShading      = data.multisample.min_sample_shading,
             .pSampleMask           = nullptr,
             .alphaToCoverageEnable = data.multisample.alpha_to_coverage_enable ? VK_TRUE : VK_FALSE,
-            .alphaToOneEnable      = VK_FALSE
+            .alphaToOneEnable      = data.multisample.alpha_to_one_enable ? VK_TRUE : VK_FALSE
         };
 
         const VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
@@ -356,7 +364,12 @@ void Render_command_encoder_impl::set_render_pipeline_state(
             .logicOp         = VK_LOGIC_OP_COPY,
             .attachmentCount = color_attachment_count,
             .pAttachments    = (color_attachment_count > 0) ? &color_blend_attachment : nullptr,
-            .blendConstants  = {0.0f, 0.0f, 0.0f, 0.0f}
+            .blendConstants  = {
+                data.color_blend.constant[0],
+                data.color_blend.constant[1],
+                data.color_blend.constant[2],
+                data.color_blend.constant[3]
+            }
         };
 
         const VkDynamicState dynamic_states[] = {
