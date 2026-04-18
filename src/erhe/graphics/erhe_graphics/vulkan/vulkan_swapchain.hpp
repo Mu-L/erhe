@@ -162,11 +162,6 @@ private:
      // frame, this array can go grow indefinitely.
     std::vector<Swapchain_cleanup_data>      m_old_swapchains;
 
-    /// Resource pools.
-    std::vector<VkSemaphore>                 m_semaphore_pool;
-    std::vector<VkFence>                     m_fence_pool;
-    size_t                                   m_semaphore_serial{0};
-    size_t                                   m_fence_serial    {0};
     size_t                                   m_swapchain_serial{0};
 };
 

@@ -69,6 +69,7 @@ public:
 
 class Frame_begin_info;
 class Frame_end_info;
+class Device_sync_pool;
 class Render_pass_impl;
 class Ring_buffer;
 class Surface_impl;
@@ -186,6 +187,8 @@ public:
     void set_debug_label(VkObjectType object_type, uint64_t object_handle, const char* label);
     void set_debug_label(VkObjectType object_type, uint64_t object_handle, const std::string& label);
 
+    [[nodiscard]] auto get_sync_pool() -> Device_sync_pool&;
+
     [[nodiscard]] auto get_device                     () -> Device&;
     [[nodiscard]] auto get_surface                    () -> Surface*;
     [[nodiscard]] auto get_vulkan_instance            () -> VkInstance;
@@ -296,6 +299,7 @@ private:
     std::vector<Completion_handler> m_completion_handlers;
 
     std::unique_ptr<Vulkan_immediate_commands> m_immediate_commands;
+    std::unique_ptr<Device_sync_pool>          m_sync_pool;
 
     VkInstance               m_vulkan_instance            {VK_NULL_HANDLE};
     VkPhysicalDevice         m_vulkan_physical_device     {VK_NULL_HANDLE};

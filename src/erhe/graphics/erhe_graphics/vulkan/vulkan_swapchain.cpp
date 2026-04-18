@@ -1,4 +1,5 @@
 #include "erhe_graphics/vulkan/vulkan_swapchain.hpp"
+#include "erhe_graphics/vulkan/vulkan_device_sync_pool.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
 #include "erhe_graphics/vulkan/vulkan_immediate_commands.hpp"
 #include "erhe_graphics/device.hpp"
@@ -21,6 +22,11 @@ Swapchain_impl::Swapchain_impl(
     : m_device_impl {device_impl}
     , m_surface_impl{surface_impl}
 {
+    // Note: Device_sync_pool is NOT captured here -- Surface_impl (and thus
+    // Swapchain_impl) is constructed early in Device_impl init to query
+    // physical-device presentation support, before the Device_impl body
+    // creates m_sync_pool. The delegating methods below fetch the pool
+    // on demand from m_device_impl.
 }
 
 Swapchain_impl::~Swapchain_impl() noexcept
@@ -74,17 +80,6 @@ Swapchain_impl::~Swapchain_impl() noexcept
 
     for (Swapchain_cleanup_data& old_swapchain : m_old_swapchains) {
         cleanup_old_swapchain(old_swapchain);
-    }
-
-    log_swapchain->debug("Semaphore pool size at destruction: {}", m_semaphore_pool.size());
-    log_swapchain->debug("Fence pool size at destruction: {}", m_fence_pool.size());
-
-    for (VkSemaphore semaphore : m_semaphore_pool) {
-        vkDestroySemaphore(vulkan_device, semaphore, nullptr);
-    }
-
-    for (VkFence fence : m_fence_pool) {
-        vkDestroyFence(vulkan_device, fence, nullptr);
     }
 
     cleanup_swapchain_objects(m_swapchain_objects);
@@ -334,82 +329,22 @@ auto Swapchain_impl::is_valid() const -> bool
 
 auto Swapchain_impl::get_semaphore() -> VkSemaphore
 {
-    // If there is a free semaphore, return it
-    if (!m_semaphore_pool.empty()) {
-        const VkSemaphore semaphore = m_semaphore_pool.back();
-        m_semaphore_pool.pop_back();
-        return semaphore;
-    }
-
-    const VkSemaphoreCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0
-    };
-    VkSemaphore vulkan_semaphore{VK_NULL_HANDLE};
-    const VkDevice vulkan_device = m_device_impl.get_vulkan_device();
-    const VkResult result = vkCreateSemaphore(vulkan_device, &create_info, nullptr, &vulkan_semaphore);
-    if (result != VK_SUCCESS) {
-        log_swapchain->critical("vkCreateSemaphore() failed with {} {}", static_cast<int32_t>(result), c_str(result));
-        abort();
-    }
-    m_device_impl.set_debug_label(
-        VK_OBJECT_TYPE_SEMAPHORE,
-        reinterpret_cast<uint64_t>(vulkan_semaphore),
-        fmt::format("Swapchain semaphore {}", m_semaphore_serial++).c_str()
-    );
-
-    return vulkan_semaphore;
+    return m_device_impl.get_sync_pool().get_semaphore();
 }
 
 auto Swapchain_impl::get_fence() -> VkFence
 {
-    // If there is a free fence, return it
-    if (!m_fence_pool.empty()) {
-        const VkFence fence = m_fence_pool.back();
-        m_fence_pool.pop_back();
-        return fence;
-    }
-
-    VkFence vulkan_fence{VK_NULL_HANDLE};
-    const VkFenceCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0
-    };
-
-    const VkDevice vulkan_device = m_device_impl.get_vulkan_device();
-    const VkResult result = vkCreateFence(vulkan_device, &create_info, nullptr, &vulkan_fence);
-    if (result != VK_SUCCESS) {
-        log_swapchain->critical("vkCreateFence() failed with {} {}", static_cast<int32_t>(result), c_str(result));
-        abort();
-    }
-    m_device_impl.set_debug_label(
-        VK_OBJECT_TYPE_FENCE,
-        reinterpret_cast<uint64_t>(vulkan_fence),
-        fmt::format("Swapchain fence {}", m_fence_serial++).c_str()
-    );
-
-    return vulkan_fence;
+    return m_device_impl.get_sync_pool().get_fence();
 }
 
 void Swapchain_impl::recycle_semaphore(const VkSemaphore semaphore)
 {
-    ERHE_VERIFY(semaphore != VK_NULL_HANDLE);
-    m_semaphore_pool.push_back(semaphore);
+    m_device_impl.get_sync_pool().recycle_semaphore(semaphore);
 }
 
 void Swapchain_impl::recycle_fence(const VkFence fence)
 {
-	m_fence_pool.push_back(fence);
-    ERHE_VERIFY(fence != VK_NULL_HANDLE);
-
-    const VkDevice vulkan_device = m_device_impl.get_vulkan_device();
-    const VkResult result = vkResetFences(vulkan_device, 1, &fence);
-    if (result != VK_SUCCESS) {
-        log_swapchain->critical("vkResetFences() failed with {} {}", static_cast<int32_t>(result), c_str(result));
-        abort();
-    }
+    m_device_impl.get_sync_pool().recycle_fence(fence);
 }
 
 void Swapchain_impl::cleanup_swapchain_objects(Swapchain_objects& garbage)

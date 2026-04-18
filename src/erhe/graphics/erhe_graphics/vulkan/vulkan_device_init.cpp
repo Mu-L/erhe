@@ -1,4 +1,5 @@
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
+#include "erhe_graphics/vulkan/vulkan_device_sync_pool.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
 #include "erhe_graphics/vulkan/vulkan_immediate_commands.hpp"
 #include "erhe_graphics/vulkan/vulkan_scoped_debug_group.hpp"
@@ -780,6 +781,8 @@ Device_impl::Device_impl(
     m_immediate_commands = std::make_unique<Vulkan_immediate_commands>(
         *this, m_graphics_queue_family_index, false, "Device_impl::m_immediate_commands"
     );
+
+    m_sync_pool = std::make_unique<Device_sync_pool>(*this);
 
     m_info.vendor                  = get_vendor(properties.vendorID);
     m_info.glsl_version            = 460;

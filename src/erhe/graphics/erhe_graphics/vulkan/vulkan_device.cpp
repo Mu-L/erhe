@@ -1,6 +1,7 @@
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
 #include "erhe_graphics/vulkan_external_creators.hpp"
 #include "erhe_graphics/vulkan/vulkan_buffer.hpp"
+#include "erhe_graphics/vulkan/vulkan_device_sync_pool.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
 #include "erhe_graphics/vulkan/vulkan_immediate_commands.hpp"
 #include "erhe_graphics/vulkan/vulkan_render_pass.hpp"
@@ -153,6 +154,11 @@ Device_impl::~Device_impl() noexcept
 
     // NOTE: This adds completion handlers for destroying related vulkan objects
     m_surface.reset();
+
+    // Sync pool outlives Swapchain_impl: Swapchain's dtor pushes its final
+    // acquire/present semaphores back into the pool, so the pool must be
+    // destroyed after Swapchain. Still runs before vkDestroyDevice below.
+    m_sync_pool.reset();
 
     // Destroy ring buffers before running completion handlers -- their destructors
     // add completion handlers for VMA deallocation
@@ -2041,6 +2047,11 @@ Device_impl* Device_impl::s_device_impl{nullptr};
 auto Device_impl::get_device_impl() -> Device_impl*
 {
     return s_device_impl;
+}
+
+auto Device_impl::get_sync_pool() -> Device_sync_pool&
+{
+    return *m_sync_pool;
 }
 
 auto Device_impl::get_active_command_buffer() const -> VkCommandBuffer
