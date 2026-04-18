@@ -555,17 +555,17 @@ void Surface_impl::choose_present_mode()
         log_context->info("Surface present modes available: [{}]", modes);
     }
 
-    // When force_present_mode_immediate is set, use IMMEDIATE if available.
+    // When force_disable_vsync is set, use IMMEDIATE if available.
     // This disables vsync for accurate performance measurements.
-    if (config.force_present_mode_immediate) {
+    if (config.force_disable_vsync) {
         for (const VkPresentModeKHR present_mode : m_present_modes) {
             if (present_mode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
                 m_present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-                log_context->info("Forcing present mode VK_PRESENT_MODE_IMMEDIATE_KHR (force_present_mode_immediate)");
+                log_context->info("Forcing present mode VK_PRESENT_MODE_IMMEDIATE_KHR (force_disable_vsync)");
                 return;
             }
         }
-        log_context->warn("force_present_mode_immediate is set but VK_PRESENT_MODE_IMMEDIATE_KHR is not available");
+        log_context->warn("force_disable_vsync is set but VK_PRESENT_MODE_IMMEDIATE_KHR is not available");
     }
 
     float best_score = std::numeric_limits<float>::lowest();

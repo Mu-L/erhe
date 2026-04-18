@@ -12,6 +12,8 @@
 #include "config/generated/threading_config.hpp"
 #include "config/generated/window_config.hpp"
 #include "erhe_graphics/generated/graphics_config.hpp"
+#include "erhe_graphics/generated/opengl_config.hpp"
+#include "erhe_graphics/generated/vulkan_config.hpp"
 #include "config/generated/editor_settings_config_serialization.hpp"
 #include "erhe_codegen/config_io.hpp"
 #include "config/generated/camera_controls_config_serialization.hpp"
@@ -35,6 +37,8 @@
 #include "config/generated/viewport_config_data_serialization.hpp"
 #include "config/generated/window_config_serialization.hpp"
 #include "erhe_graphics/generated/graphics_config_serialization.hpp"
+#include "erhe_graphics/generated/opengl_config_serialization.hpp"
+#include "erhe_graphics/generated/vulkan_config_serialization.hpp"
 
 #include "erhe_codegen/field_info.hpp"
 #include "erhe_imgui/imgui_renderer.hpp"
@@ -416,6 +420,12 @@ void Settings_window::imgui()
             if (field.developer && !show_developer) {
                 continue;
             }
+            // Nested StructRef fields are rendered as their own sections via
+            // explicit add_config_section calls on the sub-struct; skip them
+            // here so we don't emit a useless "Type_name" text row.
+            if (field.field_type == erhe::codegen::Field_type::struct_ref) {
+                continue;
+            }
             const char* entry_label = (field.short_desc != nullptr && field.short_desc[0] != '\0')
                 ? field.short_desc
                 : field.name;
@@ -435,6 +445,8 @@ void Settings_window::imgui()
     }
     if (m_context.graphics_config != nullptr) {
         add_config_section(*m_context.graphics_config);
+        add_config_section(m_context.graphics_config->opengl);
+        add_config_section(m_context.graphics_config->vulkan);
     }
     if (m_context.mesh_memory_config != nullptr) {
         add_config_section(*m_context.mesh_memory_config);

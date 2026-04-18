@@ -128,7 +128,7 @@ Device_impl::Device_impl(
         }
     };
 
-    if (graphics_config.vulkan_validation_layers && !graphics_config.renderdoc_capture_support) {
+    if (graphics_config.vulkan.vulkan_validation_layers && !graphics_config.renderdoc_capture_support) {
         check_layer("VK_LAYER_KHRONOS_validation", m_instance_layers.m_VK_LAYER_KHRONOS_validation);
     }
 

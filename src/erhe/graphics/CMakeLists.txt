@@ -348,13 +348,20 @@ erhe_codegen_generate(
     OUTPUT_DIR      "${_gfx_config_out}"
     DEFINITIONS
         "${_gfx_config_defs}/graphics_config.py"
+        "${_gfx_config_defs}/opengl_config.py"
+        "${_gfx_config_defs}/vulkan_config.py"
 )
 
-# Only the struct header — serialize/deserialize .cpp compiles in the editor
+# Only the struct headers -- serialize/deserialize .cpp compiles in the editor
 # to avoid simdjson ABI mismatch across targets with different arch flags.
-set_source_files_properties(${_gfx_config_out}/graphics_config.hpp PROPERTIES GENERATED TRUE)
-target_sources(${_target} PRIVATE ${_gfx_config_out}/graphics_config.hpp)
-source_group("codegen generated" FILES ${_gfx_config_out}/graphics_config.hpp)
+set(_gfx_config_hpps
+    ${_gfx_config_out}/graphics_config.hpp
+    ${_gfx_config_out}/opengl_config.hpp
+    ${_gfx_config_out}/vulkan_config.hpp
+)
+set_source_files_properties(${_gfx_config_hpps} PROPERTIES GENERATED TRUE)
+target_sources(${_target} PRIVATE ${_gfx_config_hpps})
+source_group("codegen generated" FILES ${_gfx_config_hpps})
 
 target_include_directories(${_target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 

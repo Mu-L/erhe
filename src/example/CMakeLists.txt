@@ -73,6 +73,10 @@ set(_gfx_gen "${CMAKE_BINARY_DIR}/src/erhe/graphics/erhe_graphics/generated")
 set(_example_codegen_sources
     ${_gfx_gen}/graphics_config_serialization.hpp
     ${_gfx_gen}/graphics_config.cpp
+    ${_gfx_gen}/opengl_config_serialization.hpp
+    ${_gfx_gen}/opengl_config.cpp
+    ${_gfx_gen}/vulkan_config_serialization.hpp
+    ${_gfx_gen}/vulkan_config.cpp
 )
 set_source_files_properties(${_example_codegen_sources} PROPERTIES GENERATED TRUE)
 target_sources(${_target} PRIVATE ${_example_codegen_sources})

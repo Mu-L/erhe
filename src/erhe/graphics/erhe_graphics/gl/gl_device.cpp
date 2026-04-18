@@ -190,14 +190,14 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     log_startup->info("glVersion:   {}", m_info.gl_version);
     log_startup->info("glslVersion: {}", m_info.glsl_version);
 
-    const bool force_bindless_textures_off       = graphics_config.force_bindless_textures_off;
-    const bool force_no_persistent_buffers       = graphics_config.force_no_persistent_buffers;
-    const bool force_no_direct_state_access      = graphics_config.force_no_direct_state_access;
-    const bool force_no_clip_control             = graphics_config.force_no_clip_control;
-    const bool force_no_compute_shader           = graphics_config.force_no_compute_shader;
-    const bool force_emulate_multi_draw_indirect = graphics_config.force_emulate_multi_draw_indirect;
-    const int  force_gl_version                  = graphics_config.force_gl_version;
-    const int  force_glsl_version                = graphics_config.force_glsl_version;
+    const bool force_bindless_textures_off       = graphics_config.opengl.force_bindless_textures_off;
+    const bool force_no_persistent_buffers       = graphics_config.opengl.force_no_persistent_buffers;
+    const bool force_no_direct_state_access      = graphics_config.opengl.force_no_direct_state_access;
+    const bool force_no_clip_control             = graphics_config.opengl.force_no_clip_control;
+    const bool force_no_compute_shader           = graphics_config.opengl.force_no_compute_shader;
+    const bool force_emulate_multi_draw_indirect = graphics_config.opengl.force_emulate_multi_draw_indirect;
+    const int  force_gl_version                  = graphics_config.opengl.force_gl_version;
+    const int  force_glsl_version                = graphics_config.opengl.force_glsl_version;
     const bool initial_clear                     = graphics_config.initial_clear;
 
     m_context_window = surface_create_info.context_window;

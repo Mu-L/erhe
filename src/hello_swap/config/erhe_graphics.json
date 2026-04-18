@@ -1,4 +1,7 @@
 {
-    "_version": 1,
-    "vulkan_validation_layers": true
+    "_version": 2,
+    "vulkan": {
+        "_version": 1,
+        "vulkan_validation_layers": true
+    }
 }
