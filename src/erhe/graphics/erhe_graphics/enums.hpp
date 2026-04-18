@@ -480,6 +480,6 @@ enum class Message_severity : unsigned int {
     error   = 3
 };
 
-[[nodiscard]] auto c_str          (Message_severity     message_severity) -> const char*;
+[[nodiscard]] auto c_str(Message_severity message_severity) -> const char*;
 
 } // namespace erhe::graphics

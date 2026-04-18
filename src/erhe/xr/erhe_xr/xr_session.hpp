@@ -7,12 +7,8 @@
 #include <functional>
 #include <vector>
 
-namespace erhe::graphics {
-    class Device;
-}
-namespace erhe::window {
-    class Context_window;
-}
+namespace erhe::graphics { class Device; }
+namespace erhe::window   { class Context_window; }
 
 namespace erhe::xr {
 

@@ -228,7 +228,7 @@ public:
     // completion handlers, allocate fresh fence. Does NOT touch the window
     // swapchain. Callers that will engage the swapchain this frame must also
     // call wait_swapchain_frame below.
-    [[nodiscard]] auto wait_frame           () -> bool;
+    [[nodiscard]] auto wait_frame () -> bool;
 
     // No-args begin_frame / end_frame are the bottom-level primitives: open
     // and close a device frame with no swapchain involvement. Use these
