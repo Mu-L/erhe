@@ -72,6 +72,21 @@ if (!use_dsa) {
 // Pre-DSA: gl::tex_foo(target, ...)
 ```
 
+### Object Deletion Scrubbing
+
+Per GL spec, deleting an object (`glDeleteTextures`, `glDeleteBuffers`, `glDeleteSamplers`, `glDeleteFramebuffers`, `glDeleteRenderbuffers`, `glDeleteVertexArrays`) automatically unbinds it from every binding point, and GL may recycle the name on a subsequent `glGen*` / `glCreate*`. If the shadow tracker still holds the deleted name and a HIT-compare against it lets a subsequent bind be skipped, GL state silently diverges from the tracker.
+
+To keep the shadow consistent with GL, each `Gl_*` RAII wrapper in `gl_objects.cpp` carries a `Gl_binding_state*` pointer. The destructor calls `Gl_binding_state::on_<object_type>_deleted(gl_name)` **before** `gl::delete_*`; that hook walks the relevant current-binding slots and push/pop stacks and replaces any entry equal to `gl_name` with `0`. `Device_impl::create_*` injects the pointer on construction. Non-owned `Gl_texture` wrappers (`wrap_texture_name`) do not set the pointer because they do not delete the underlying object.
+
+Hooks are present for: textures, buffers, samplers, framebuffers, renderbuffers, vertex arrays, and (the currently-unused) `Gl_binding_state::m_current_program`.
+
+**Known gaps** — the following caches live outside `Gl_binding_state` and are not yet scrubbed on deletion. Both hold gl_names and are vulnerable to the same stale-cache-on-name-recycle failure mode:
+
+- `Shader_stages_tracker::m_last` (`gl_shader_stages.hpp`) — program gl_name used as the real `glUseProgram` cache (`Gl_binding_state::m_current_program` is dead code).
+- `Vertex_input_state_tracker::m_last` (`gl_state_tracker.hpp`) — VAO gl_name.
+
+Both would benefit from either (a) the same pointer-and-hook pattern used for `Gl_*`, or (b) consolidation into `Gl_binding_state` as a single source of truth.
+
 ### Texture Operations
 
 Scratch texture unit 31 (`s_max_texture_units - 1`) is used for temporary binds. All DSA texture calls (`texture_storage_*`, `texture_sub_image_*`, `texture_parameter_i`, `texture_buffer`, `generate_texture_mipmap`) are emulated by pushing on the scratch unit and calling the non-DSA equivalent (`tex_storage_*`, `tex_sub_image_*`, etc.).
