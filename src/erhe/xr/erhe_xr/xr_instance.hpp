@@ -32,6 +32,7 @@ public:
 class Xr_configuration
 {
 public:
+    bool swapchain_depth  {false};
     bool debug            {false};
     bool api_dump         {false};
     bool validation       {false};

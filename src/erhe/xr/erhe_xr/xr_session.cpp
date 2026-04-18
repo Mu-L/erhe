@@ -1174,10 +1174,8 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
     static constexpr std::string_view c_id_views{"HS views"};
     static constexpr std::string_view c_id_view{"HS view"};
 
-    //ERHE_PROFILE_GPU_SCOPE(c_id_views);
     for (uint32_t i = 0; i < view_count_output; ++i) {
         ERHE_PROFILE_SCOPE("view render");
-        //ERHE_PROFILE_GPU_SCOPE(c_id_view);
 
         auto& swapchains = m_view_swapchains[i];
         auto acquired_color_swapchain_image_opt = swapchains.color_swapchain.acquire();
@@ -1187,19 +1185,27 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
         }
 
         auto acquired_depth_stencil_swapchain_image_opt = swapchains.depth_stencil_swapchain.acquire();
-        if (!acquired_depth_stencil_swapchain_image_opt.has_value() || !swapchains.depth_stencil_swapchain.wait()) {
-            log_xr->warn("no swapchain depth stencilimage for view {}", i);
-            return false;
+        bool use_depth_image = acquired_depth_stencil_swapchain_image_opt.has_value() && swapchains.depth_stencil_swapchain.wait();
+        if (!use_depth_image) {
+            log_xr->warn("no swapchain depth stencil image for view {}", i);
         }
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-        const auto& acquired_color_swapchain_image         = acquired_color_swapchain_image_opt.value();
-        const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
-        const uint32_t color_texture         = acquired_color_swapchain_image.get_gl_texture();
-        const uint32_t depth_stencil_texture = acquired_depth_stencil_swapchain_image.get_gl_texture();
-        if ((color_texture == 0) || (depth_stencil_texture == 0)) {
-            log_xr->warn("invalid color / depth image for view {}", i);
+        const auto& acquired_color_swapchain_image = acquired_color_swapchain_image_opt.value();
+        const uint32_t color_texture = acquired_color_swapchain_image.get_gl_texture();
+        if (color_texture == 0) {
+            log_xr->warn("invalid color image for view {}", i);
             return false;
+        }
+
+        uint32_t depth_stencil_texture = 0;
+        if (use_depth_image) {
+            const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
+            depth_stencil_texture = acquired_depth_stencil_swapchain_image.get_gl_texture();
+            if (depth_stencil_texture == 0) {
+                log_xr->warn("invalid depth image for view {}", i);
+                use_depth_image = false;
+            }
         }
 #endif
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
@@ -1211,12 +1217,16 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
         }
         const uint64_t vk_color_image = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(color_vk_image_ptr));
 
-        const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
-        void* depth_stencil_vk_image_ptr = acquired_depth_stencil_swapchain_image.get_vk_image();
-        if (depth_stencil_vk_image_ptr == nullptr) {
-            log_xr->warn("invalid color / depth VkImage for view {}", i);
+        uint64_t vk_depth_stencil_image = 0;
+        if (use_depth_image) {
+            const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
+            void* depth_stencil_vk_image_ptr = acquired_depth_stencil_swapchain_image.get_vk_image();
+            if (depth_stencil_vk_image_ptr == nullptr) {
+                log_xr->warn("invalid color / depth VkImage for view {}", i);
+                use_depth_image = false;
+            }
+            vk_depth_stencil_image = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(depth_stencil_vk_image_ptr));
         }
-        const uint64_t vk_depth_stencil_image = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(depth_stencil_vk_image_ptr));
 
 #endif
 
@@ -1276,7 +1286,7 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
 
         m_xr_composition_layer_projection_views[i] = {
             .type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW,
-            .next = (depth_stencil_vk_image_ptr != nullptr) ? &m_xr_composition_layer_depth_infos[i] : nullptr,
+            .next = use_depth_image ? &m_xr_composition_layer_depth_infos[i] : nullptr,
             .pose = m_xr_views[i].pose,
             .fov  = m_xr_views[i].fov,
             .subImage = {
