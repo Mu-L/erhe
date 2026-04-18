@@ -107,6 +107,11 @@ namespace erhe::graphics {
             log_buffer->critical("coherent buffers required but not supported");
             abort();
         }
+        // Without persistent mapping, Ring_buffer uploads CPU-shadow data via glNamedBufferSubData,
+        // which requires GL_DYNAMIC_STORAGE_BIT on the immutable storage.
+        if (test_bit_set(memory_properties, Memory_property_flag_bit_mask::host_write)) {
+            gl_storage = gl_storage | gl::Buffer_storage_mask::dynamic_storage_bit;
+        }
     }
     return gl_storage;
 }
