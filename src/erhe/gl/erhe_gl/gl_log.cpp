@@ -9,7 +9,7 @@ void initialize_logging()
 {
     // To enable logging:
     //  - Edit wrapper_functions.cpp, enable #define ERHE_LOG_GL_FUNCTIONS
-    //  - edit erhe.json, set gl.trace from off to trace
+    //  - Edit config/logging.json, set gl.trace from off to trace
     log_gl = erhe::log::make_logger("erhe.gl.trace");
 }
 
