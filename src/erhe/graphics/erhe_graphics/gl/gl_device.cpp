@@ -1404,9 +1404,16 @@ void Device_impl::frame_completed(const uint64_t completed_frame)
     }
 }
 
-auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
+auto Device_impl::wait_frame() -> bool
 {
     ERHE_VERIFY(m_state == Device_frame_state::idle);
+    m_state = Device_frame_state::waited;
+    return true;
+}
+
+auto Device_impl::wait_swapchain_frame(Frame_state& out_frame_state) -> bool
+{
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
 
     bool result = false;
     if (m_surface) {
@@ -1421,8 +1428,6 @@ auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
         out_frame_state.should_render            = false;
         return false;
     }
-
-    m_state = Device_frame_state::waited;
     return true;
 }
 

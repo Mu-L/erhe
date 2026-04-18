@@ -156,8 +156,10 @@ void Rendering_test::run()
 {
     while (!m_close_requested) {
         erhe::graphics::Frame_state frame_state{};
-        const bool wait_ok = m_graphics_device.wait_frame(frame_state);
+        const bool wait_ok = m_graphics_device.wait_frame();
         ERHE_VERIFY(wait_ok);
+        const bool wait_swap_ok = m_graphics_device.wait_swapchain_frame(frame_state);
+        ERHE_VERIFY(wait_swap_ok);
 
         m_window.poll_events();
 

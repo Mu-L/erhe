@@ -247,13 +247,19 @@ Device_impl::~Device_impl() noexcept
     }
 }
 
-auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
+auto Device_impl::wait_frame() -> bool
 {
     ERHE_VERIFY(m_state == Device_frame_state::idle);
+    m_state = Device_frame_state::waited;
+    return true;
+}
+
+auto Device_impl::wait_swapchain_frame(Frame_state& out_frame_state) -> bool
+{
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
     out_frame_state.predicted_display_time   = 0;
     out_frame_state.predicted_display_period = 0;
     out_frame_state.should_render            = true;
-    m_state = Device_frame_state::waited;
     return true;
 }
 

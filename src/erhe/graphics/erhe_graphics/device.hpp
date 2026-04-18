@@ -224,7 +224,11 @@ public:
     // The Frame_begin_info / Frame_end_info arguments on begin_frame /
     // end_frame are temporary: they will migrate to begin_swapchain_frame /
     // end_swapchain_frame once the editor tick is rewritten (plan step 4).
-    [[nodiscard]] auto wait_frame (Frame_state& out_frame_state) -> bool;
+    // Device-level wait: pace the ring, recycle prior slot resources, fire
+    // completion handlers, allocate fresh fence. Does NOT touch the window
+    // swapchain. Callers that will engage the swapchain this frame must also
+    // call wait_swapchain_frame below.
+    [[nodiscard]] auto wait_frame           () -> bool;
 
     // No-args begin_frame / end_frame are the bottom-level primitives: open
     // and close a device frame with no swapchain involvement. Use these
@@ -241,6 +245,12 @@ public:
 
     // Optional swapchain-frame layer; nests inside a recording device frame.
     // Owns only acquire/present semaphores and the acquired image index.
+    // wait_swapchain_frame acquires the next image slot on the Vulkan
+    // swapchain (and fills Frame_state with predicted display timing).
+    // Must be paired with begin_swapchain_frame / end_swapchain_frame each
+    // frame that engages the swapchain; skip all three when the desktop
+    // window is not being rendered into (e.g. OpenXR).
+    [[nodiscard]] auto wait_swapchain_frame (Frame_state& out_frame_state) -> bool;
     [[nodiscard]] auto begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool;
     void               end_swapchain_frame  (const Frame_end_info& frame_end_info);
 

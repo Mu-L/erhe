@@ -77,7 +77,12 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
 
 Device_impl::~Device_impl() noexcept = default;
 
-auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
+auto Device_impl::wait_frame() -> bool
+{
+    return true;
+}
+
+auto Device_impl::wait_swapchain_frame(Frame_state& out_frame_state) -> bool
 {
     out_frame_state.predicted_display_time   = 0;
     out_frame_state.predicted_display_period = 0;

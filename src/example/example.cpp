@@ -272,8 +272,10 @@ public:
         m_current_time = std::chrono::steady_clock::now();
         while (!m_close_requested) {
             erhe::graphics::Frame_state frame_state{};
-            const bool wait_ok = m_graphics_device.wait_frame(frame_state);
+            const bool wait_ok = m_graphics_device.wait_frame();
             ERHE_VERIFY(wait_ok);
+            const bool wait_swap_ok = m_graphics_device.wait_swapchain_frame(frame_state);
+            ERHE_VERIFY(wait_swap_ok);
 
             // m_graphics_device.wait_for_idle()
             // m_window.delay_before_swap(1.0f / 120.0f); // sleep half the frame

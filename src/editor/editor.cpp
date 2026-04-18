@@ -260,8 +260,15 @@ public:
         // log_frame->trace("tick() begin");
         const clock::time_point t_wait_begin = clock::now();
         erhe::graphics::Frame_state frame_state{};
-        const bool wait_ok = m_graphics_device->wait_frame(frame_state);
+        const bool wait_ok = m_graphics_device->wait_frame();
         ERHE_VERIFY(wait_ok);
+        // Skip the desktop swapchain wait under OpenXR for the same reason
+        // begin_swapchain_frame / end_swapchain_frame are skipped below:
+        // the headset owns display and the window swapchain is not engaged.
+        if (!m_app_context.OpenXR) {
+            const bool wait_swap_ok = m_graphics_device->wait_swapchain_frame(frame_state);
+            ERHE_VERIFY(wait_swap_ok);
+        }
         const clock::time_point t_wait_end = clock::now();
 
         // log_input_frame->trace("----------------------- Editor::tick() -----------------------");
@@ -386,8 +393,14 @@ public:
 
         erhe::graphics::Frame_state swapchain_frame_state{};
         const clock::time_point t_begin_swap_begin = clock::now();
-        const bool begin_swapchain_ok = m_graphics_device->begin_swapchain_frame(frame_begin_info, swapchain_frame_state);
-        ERHE_VERIFY(begin_swapchain_ok);
+        // Under OpenXR the headset owns display: the desktop window swapchain
+        // is not rendered into, so do not acquire/present it (otherwise the
+        // Vulkan Swapchain_impl::end_frame assert would fire because no
+        // render pass ever ran against the acquired image).
+        if (!m_app_context.OpenXR) {
+            const bool begin_swapchain_ok = m_graphics_device->begin_swapchain_frame(frame_begin_info, swapchain_frame_state);
+            ERHE_VERIFY(begin_swapchain_ok);
+        }
         const clock::time_point t_begin_swap_end = clock::now();
 
         m_thumbnails->update();
@@ -415,7 +428,9 @@ public:
         const erhe::graphics::Frame_end_info frame_end_info{
             .requested_display_time = 0
         };
-        m_graphics_device->end_swapchain_frame(frame_end_info);
+        if (!m_app_context.OpenXR) {
+            m_graphics_device->end_swapchain_frame(frame_end_info);
+        }
         const bool end_frame_ok = m_graphics_device->end_frame();
         ERHE_VERIFY(end_frame_ok);
         const clock::time_point t_end_end = clock::now();
@@ -1386,8 +1401,9 @@ public:
             // destruction is deferred to the frame-completion handler.
             // wait_idle at the end flushes the init-frame completion
             // handlers before rendering starts.
-            erhe::graphics::Frame_state init_frame_state{};
-            const bool init_wait_ok = m_graphics_device->wait_frame(init_frame_state);
+            // Init frame does not engage the desktop swapchain -- just the
+            // device-level wait so begin_frame / end_frame are valid.
+            const bool init_wait_ok = m_graphics_device->wait_frame();
             if (init_wait_ok) {
                 const bool init_begin_ok = m_graphics_device->begin_frame();
                 ERHE_VERIFY(init_begin_ok);

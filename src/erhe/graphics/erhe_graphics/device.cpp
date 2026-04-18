@@ -88,9 +88,13 @@ auto Device::get_buffer_alignment(Buffer_target target) -> std::size_t
 {
     return m_impl->get_buffer_alignment(target);
 }
-auto Device::wait_frame(Frame_state& out_frame_state) -> bool
+auto Device::wait_frame() -> bool
 {
-    return m_impl->wait_frame(out_frame_state);
+    return m_impl->wait_frame();
+}
+auto Device::wait_swapchain_frame(Frame_state& out_frame_state) -> bool
+{
+    return m_impl->wait_swapchain_frame(out_frame_state);
 }
 auto Device::begin_frame() -> bool
 {

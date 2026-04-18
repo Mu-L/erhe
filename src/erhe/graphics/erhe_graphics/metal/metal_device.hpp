@@ -55,12 +55,13 @@ public:
     void operator=(Device_impl&&)      = delete;
     ~Device_impl() noexcept;
 
-    [[nodiscard]] auto wait_frame (Frame_state& out_frame_state) -> bool;
+    [[nodiscard]] auto wait_frame () -> bool;
     [[nodiscard]] auto begin_frame() -> bool;
     [[nodiscard]] auto end_frame  () -> bool;
     [[nodiscard]] auto begin_frame(const Frame_begin_info& frame_begin_info) -> bool;
     [[nodiscard]] auto end_frame  (const Frame_end_info& frame_end_info) -> bool;
 
+    [[nodiscard]] auto wait_swapchain_frame (Frame_state& out_frame_state) -> bool;
     [[nodiscard]] auto begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool;
     void               end_swapchain_frame  (const Frame_end_info& frame_end_info);
     void               wait_idle            ();

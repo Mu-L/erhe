@@ -321,8 +321,10 @@ public:
         std::lock_guard<std::mutex> lock{m_mutex};
 
         erhe::graphics::Frame_state frame_state{};
-        const bool wait_ok = m_graphics_device.wait_frame(frame_state);
+        const bool wait_ok = m_graphics_device.wait_frame();
         ERHE_VERIFY(wait_ok);
+        const bool wait_swap_ok = m_graphics_device.wait_swapchain_frame(frame_state);
+        ERHE_VERIFY(wait_swap_ok);
 
         std::vector<erhe::window::Input_event>& input_events = m_window.get_input_events();
 

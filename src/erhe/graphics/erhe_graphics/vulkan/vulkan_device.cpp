@@ -1173,9 +1173,21 @@ void Device_impl::frame_completed(const uint64_t completed_frame)
     }
 }
 
-auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
+auto Device_impl::wait_frame() -> bool
 {
     ERHE_VERIFY(m_state == Device_frame_state::idle);
+    m_state = Device_frame_state::waited;
+    return true;
+}
+
+auto Device_impl::wait_swapchain_frame(Frame_state& out_frame_state) -> bool
+{
+    // Must be called after wait_frame() (device state = waited). The Vulkan
+    // swapchain owns its own state machine driven by wait/begin/end; skipping
+    // this call is valid when the desktop window is not being rendered into
+    // (e.g. OpenXR), provided begin_swapchain_frame / end_swapchain_frame are
+    // skipped to match.
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
 
     bool result = false;
     if (m_surface) {
@@ -1190,8 +1202,6 @@ auto Device_impl::wait_frame(Frame_state& out_frame_state) -> bool
         out_frame_state.should_render            = false;
         return false;
     }
-
-    m_state = Device_frame_state::waited;
     return true;
 }
 
