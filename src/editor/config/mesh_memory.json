@@ -1,4 +1,4 @@
 {
-    "vertex_buffer_size": 1024,
-    "index_buffer_size": 256
+    "vertex_buffer_size": 128,
+    "index_buffer_size": 64
 }
