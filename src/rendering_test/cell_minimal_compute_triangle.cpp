@@ -102,14 +102,16 @@ void Rendering_test::make_minimal_compute_triangle()
                 { 1, Binding_type::storage_buffer },
                 { 3, Binding_type::uniform_buffer },
             },
-            .debug_label = "Minimal compute (3-binding wide-line shape)"
+            .debug_label       = "Minimal compute (3-binding wide-line shape)",
+            .uses_texture_heap = false
         }
     );
     m_minimal_graphics_bind_group_layout = std::make_unique<Bind_group_layout>(
         m_graphics_device,
         Bind_group_layout_create_info{
-            .bindings    = {},
-            .debug_label = "Minimal graphics"
+            .bindings          = {},
+            .debug_label       = "Minimal graphics",
+            .uses_texture_heap = false
         }
     );
 

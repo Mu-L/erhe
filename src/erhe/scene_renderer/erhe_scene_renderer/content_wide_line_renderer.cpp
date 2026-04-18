@@ -135,7 +135,8 @@ Content_wide_line_renderer::Content_wide_line_renderer(
                         ? erhe::graphics::Binding_type::storage_buffer
                         : erhe::graphics::Binding_type::uniform_buffer},
             },
-            .debug_label = "Content wide line"
+            .debug_label       = "Content wide line",
+            .uses_texture_heap = false
         }
     );
 

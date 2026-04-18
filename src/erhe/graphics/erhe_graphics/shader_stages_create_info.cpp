@@ -242,9 +242,15 @@ auto Shader_stages_create_info::final_source(
             sb << "layout(push_constant) uniform Erhe_draw_id_block { int ERHE_DRAW_ID; };\n";
         }
     }
-    sb << "#define ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING 1\n";
-    sb << "#extension GL_EXT_nonuniform_qualifier : enable\n";
-    sb << "layout(set = 1, binding = 0) uniform sampler2D erhe_texture_heap[];\n";
+    // Only declare the bindless texture heap when the bind group layout
+    // opts in. Shaders that don't sample from the heap (e.g. most compute
+    // shaders) must NOT declare set 1, or validation warns that the
+    // declared descriptor set is never bound.
+    if ((bind_group_layout == nullptr) || bind_group_layout->uses_texture_heap()) {
+        sb << "#define ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING 1\n";
+        sb << "#extension GL_EXT_nonuniform_qualifier : enable\n";
+        sb << "layout(set = 1, binding = 0) uniform sampler2D erhe_texture_heap[];\n";
+    }
     // Vulkan SPIR-V uses gl_VertexIndex / gl_InstanceIndex instead of gl_VertexID / gl_InstanceID
     sb << "#define gl_VertexID gl_VertexIndex\n";
     sb << "#define gl_InstanceID gl_InstanceIndex\n";

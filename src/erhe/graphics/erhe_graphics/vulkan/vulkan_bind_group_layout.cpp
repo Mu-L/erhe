@@ -128,12 +128,17 @@ Bind_group_layout_impl::Bind_group_layout_impl(
     };
     const bool emulate_multi_draw = m_device_impl.get_device().get_info().emulate_multi_draw_indirect;
 
-    // Pipeline layout with set 0 (this layout) and optionally set 1 (texture heap from device)
+    // Pipeline layout with set 0 (this layout) and optionally set 1 (texture heap from device).
+    // Set 1 is only included when the caller opts in -- otherwise compute and
+    // other non-sampling pipelines declare a layout whose set is never bound,
+    // which produces Vulkan validation warnings.
     std::vector<VkDescriptorSetLayout> set_layouts;
     set_layouts.push_back(m_descriptor_set_layout);
-    VkDescriptorSetLayout texture_set_layout = m_device_impl.get_texture_set_layout();
-    if (texture_set_layout != VK_NULL_HANDLE) {
-        set_layouts.push_back(texture_set_layout);
+    if (create_info.uses_texture_heap) {
+        VkDescriptorSetLayout texture_set_layout = m_device_impl.get_texture_set_layout();
+        if (texture_set_layout != VK_NULL_HANDLE) {
+            set_layouts.push_back(texture_set_layout);
+        }
     }
 
     const VkPipelineLayoutCreateInfo pipeline_layout_create_info{

@@ -62,6 +62,15 @@ class Bind_group_layout_create_info
 public:
     std::vector<Bind_group_layout_binding> bindings;
     erhe::utility::Debug_label             debug_label;
+
+    // When true, pipelines built with this layout participate in the
+    // device-level bindless texture heap (Vulkan: descriptor set 1, sampled
+    // via "erhe_texture_heap[]" in GLSL). Shaders that sample material or
+    // imgui textures via the heap need this. Compute and other pipelines
+    // that do not sample from the heap must set this to false so the
+    // shader preamble and pipeline layout omit set 1 -- otherwise
+    // validation warns that the declared set is never bound.
+    bool                                   uses_texture_heap{true};
 };
 
 class Bind_group_layout_impl;
@@ -80,6 +89,7 @@ public:
     [[nodiscard]] auto get_impl                  () const -> const Bind_group_layout_impl&;
     [[nodiscard]] auto get_debug_label           () const -> erhe::utility::Debug_label;
     [[nodiscard]] auto get_sampler_binding_offset() const -> uint32_t;
+    [[nodiscard]] auto uses_texture_heap         () const -> bool;
 
     // The Shader_resource of type "samplers" built from the create_info's
     // combined_image_sampler bindings plus (on GL sampler-array and Metal
@@ -92,6 +102,7 @@ public:
 
 private:
     std::unique_ptr<Bind_group_layout_impl> m_impl;
+    bool                                    m_uses_texture_heap{true};
 };
 
 } // namespace erhe::graphics

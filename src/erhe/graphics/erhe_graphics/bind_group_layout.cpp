@@ -16,7 +16,8 @@
 namespace erhe::graphics {
 
 Bind_group_layout::Bind_group_layout(Device& device, const Bind_group_layout_create_info& create_info)
-    : m_impl{std::make_unique<Bind_group_layout_impl>(device, create_info)}
+    : m_impl             {std::make_unique<Bind_group_layout_impl>(device, create_info)}
+    , m_uses_texture_heap{create_info.uses_texture_heap}
 {
 }
 
@@ -49,6 +50,11 @@ auto Bind_group_layout::get_sampler_binding_offset() const -> uint32_t
 auto Bind_group_layout::get_default_uniform_block() const -> const Shader_resource&
 {
     return m_impl->get_default_uniform_block();
+}
+
+auto Bind_group_layout::uses_texture_heap() const -> bool
+{
+    return m_uses_texture_heap;
 }
 
 } // namespace erhe::graphics

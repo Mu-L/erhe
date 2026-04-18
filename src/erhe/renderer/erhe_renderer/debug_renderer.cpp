@@ -75,7 +75,10 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
 
     // Bind group layout will be created after all blocks are known
     auto make_bind_group_layout = [&]() {
-        erhe::graphics::Bind_group_layout_create_info layout_info{.debug_label = "Debug renderer"};
+        erhe::graphics::Bind_group_layout_create_info layout_info{
+            .debug_label       = "Debug renderer",
+            .uses_texture_heap = false
+        };
         if (line_vertex_buffer_block) {
             layout_info.bindings.push_back({line_vertex_buffer_block->get_binding_point(), erhe::graphics::Binding_type::storage_buffer});
         }
