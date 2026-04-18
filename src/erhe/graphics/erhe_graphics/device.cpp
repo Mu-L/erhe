@@ -120,6 +120,10 @@ void Device::end_swapchain_frame(const Frame_end_info& frame_end_info)
 {
     m_impl->end_swapchain_frame(frame_end_info);
 }
+void Device::prime_device_frame_slot()
+{
+    m_impl->prime_device_frame_slot();
+}
 void Device::wait_idle()
 {
     m_impl->wait_idle();

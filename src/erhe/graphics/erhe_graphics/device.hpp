@@ -254,6 +254,14 @@ public:
     [[nodiscard]] auto begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool;
     void               end_swapchain_frame  (const Frame_end_info& frame_end_info);
 
+    // Prime the device-frame slot without engaging the swapchain. Use this
+    // in place of wait_swapchain_frame when the caller does not render into
+    // the desktop window (e.g. OpenXR). Must be called after wait_frame()
+    // and before begin_frame(). Must NOT be combined with wait_swapchain_frame
+    // in the same tick. No-op on backends that have nothing per-frame to
+    // prepare (GL, Metal, null).
+    void               prime_device_frame_slot();
+
     // Blocks until all in-flight device frames complete; flushes pending
     // completion handlers. For init boundaries, not the steady-state loop.
     void wait_idle();

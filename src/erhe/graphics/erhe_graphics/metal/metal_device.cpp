@@ -443,6 +443,12 @@ void Device_impl::end_swapchain_frame(const Frame_end_info& /*frame_end_info*/)
     m_state = Device_frame_state::recording;
 }
 
+void Device_impl::prime_device_frame_slot()
+{
+    // Metal has no per-slot command-buffer / fence infrastructure to prime; no-op.
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
+}
+
 auto Device_impl::is_in_device_frame() const -> bool
 {
     return (m_state == Device_frame_state::recording) ||

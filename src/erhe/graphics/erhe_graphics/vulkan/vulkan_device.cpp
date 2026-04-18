@@ -53,6 +53,29 @@ auto Device_impl::get_device_frame_in_flight(size_t index) -> Device_frame_in_fl
     return m_device_submit_history[index];
 }
 
+void Device_impl::ensure_device_frame_slot(size_t index)
+{
+    // Extracted from Swapchain_impl::setup_frame's device-scope block:
+    // wait on the prior-cycle fence, recycle the fence and command pool,
+    // then install a fresh fence and ensure the command buffer exists.
+    // Same fence flow and same guard (submit_fence != NULL) as setup_frame;
+    // no swapchain primitives touched. See plan: milestone 2.
+    ERHE_VERIFY(index < m_device_submit_history.size());
+    Device_frame_in_flight& df = m_device_submit_history[index];
+    if (df.submit_fence != VK_NULL_HANDLE) {
+        const VkResult result = vkWaitForFences(m_vulkan_device, 1, &df.submit_fence, true, UINT64_MAX);
+        if (result != VK_SUCCESS) {
+            log_context->critical("vkWaitForFences() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+            abort();
+        }
+        m_sync_pool->recycle_fence(df.submit_fence);
+        reset_device_frame_command_pool(index);
+        df.submit_fence = VK_NULL_HANDLE;
+    }
+    df.submit_fence = m_sync_pool->get_fence();
+    ensure_device_frame_command_buffer(index);
+}
+
 void Device_impl::ensure_device_frame_command_buffer(size_t index)
 {
     ERHE_VERIFY(index < m_device_submit_history.size());
@@ -1386,6 +1409,16 @@ void Device_impl::end_swapchain_frame(const Frame_end_info& /*frame_end_info*/)
     // vkQueuePresentKHR (guarded on m_had_swapchain_frame). We just flip
     // state back to recording so end_frame's precondition is met.
     m_state = Device_frame_state::recording;
+}
+
+void Device_impl::prime_device_frame_slot()
+{
+    // Alternative to wait_swapchain_frame when the caller does not engage
+    // the desktop swapchain (e.g. OpenXR). Must be called after wait_frame()
+    // and before begin_frame(). MUST NOT be combined with wait_swapchain_frame
+    // in the same tick -- that would double-prime the slot.
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
+    ensure_device_frame_slot(get_frame_in_flight_index());
 }
 
 void Device_impl::wait_idle()

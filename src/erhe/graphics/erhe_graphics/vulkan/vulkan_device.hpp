@@ -128,6 +128,14 @@ public:
     [[nodiscard]] auto wait_swapchain_frame (Frame_state& out_frame_state) -> bool;
     [[nodiscard]] auto begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool;
     void               end_swapchain_frame  (const Frame_end_info& frame_end_info);
+
+    // Prime the current frame's device-frame slot: wait on its prior submit
+    // fence (if any), recycle the fence + command pool, allocate a fresh fence,
+    // ensure its command buffer is allocated. Alternative to wait_swapchain_frame
+    // when the caller does not engage the desktop swapchain (e.g. OpenXR).
+    // Call after wait_frame() and before begin_frame(). Calling both this and
+    // wait_swapchain_frame in the same frame is a misuse (double-prime).
+    void               prime_device_frame_slot();
     void               wait_idle            ();
     [[nodiscard]] auto is_in_device_frame   () const -> bool;
     [[nodiscard]] auto is_in_swapchain_frame() const -> bool;
@@ -254,6 +262,7 @@ public:
     [[nodiscard]] auto get_device_frame_in_flight      (size_t index) -> Device_frame_in_flight&;
     void               ensure_device_frame_command_buffer(size_t index);
     void               reset_device_frame_command_pool   (size_t index);
+    void               ensure_device_frame_slot         (size_t index);
 
     // Per-frame descriptor operation counters (for trace logging).
     // Public so Render_command_encoder_impl and Texture_heap_impl

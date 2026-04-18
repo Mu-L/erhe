@@ -64,6 +64,7 @@ public:
     [[nodiscard]] auto wait_swapchain_frame (Frame_state& out_frame_state) -> bool;
     [[nodiscard]] auto begin_swapchain_frame(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool;
     void               end_swapchain_frame  (const Frame_end_info& frame_end_info);
+    void               prime_device_frame_slot();
     void               wait_idle            ();
     [[nodiscard]] auto is_in_device_frame   () const -> bool;
     [[nodiscard]] auto is_in_swapchain_frame() const -> bool;

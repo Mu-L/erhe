@@ -1572,6 +1572,12 @@ void Device_impl::end_swapchain_frame(const Frame_end_info& /*frame_end_info*/)
     m_state = Device_frame_state::recording;
 }
 
+void Device_impl::prime_device_frame_slot()
+{
+    // GL has no per-slot command-buffer / fence infrastructure to prime; no-op.
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
+}
+
 void Device_impl::wait_idle()
 {
     // Block CPU until all submitted GL commands have completed on the GPU.

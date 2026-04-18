@@ -262,10 +262,16 @@ public:
         erhe::graphics::Frame_state frame_state{};
         const bool wait_ok = m_graphics_device->wait_frame();
         ERHE_VERIFY(wait_ok);
-        // Skip the desktop swapchain wait under OpenXR for the same reason
-        // begin_swapchain_frame / end_swapchain_frame are skipped below:
-        // the headset owns display and the window swapchain is not engaged.
-        if (!m_app_context.OpenXR) {
+        // Under OpenXR the headset owns display, so the desktop swapchain
+        // is not engaged (begin/end_swapchain_frame skipped below too).
+        // Still need to prime the device-frame slot -- fence wait, recycle,
+        // fresh fence, ensure cb -- so begin_frame has a valid cb to open
+        // and end_frame's device-only submit branch actually submits.
+        // Non-XR path gets the same priming as a side effect of
+        // wait_swapchain_frame -> Swapchain_impl::setup_frame.
+        if (m_app_context.OpenXR) {
+            m_graphics_device->prime_device_frame_slot();
+        } else {
             const bool wait_swap_ok = m_graphics_device->wait_swapchain_frame(frame_state);
             ERHE_VERIFY(wait_swap_ok);
         }

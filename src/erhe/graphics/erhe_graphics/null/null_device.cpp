@@ -128,6 +128,11 @@ void Device_impl::end_swapchain_frame(const Frame_end_info& frame_end_info)
     static_cast<void>(frame_end_info);
 }
 
+void Device_impl::prime_device_frame_slot()
+{
+    // Null backend has nothing per-slot to prepare; no-op.
+}
+
 void Device_impl::wait_idle()
 {
     // No-op for null backend
