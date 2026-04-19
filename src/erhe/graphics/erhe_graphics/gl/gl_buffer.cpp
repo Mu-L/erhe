@@ -250,7 +250,6 @@ void Buffer_impl::allocate_storage(const void* init_data)
     ERHE_VERIFY(m_capacity_byte_count > 0);
 
     const gl::Buffer_storage_mask gl_storage_mask = get_gl_storage_mask();
-    capability_check(gl_storage_mask);
 
     log_buffer->trace(
         "Buffer_impl::allocate_storage buffer = {} {}, m_capacity_byte_count = {}, gl_storage_mask = {}",
@@ -258,6 +257,7 @@ void Buffer_impl::allocate_storage(const void* init_data)
     );
 
     if (m_device.get_info().use_direct_state_access) {
+        capability_check(gl_storage_mask);
         gl::named_buffer_storage(gl_name(), static_cast<GLintptr>(m_capacity_byte_count), init_data, gl_storage_mask);
     } else {
         auto guard = m_device.get_impl().get_binding_state().push_buffer(gl::Buffer_target::copy_write_buffer, gl_name());
