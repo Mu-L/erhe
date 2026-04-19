@@ -38,6 +38,7 @@ build_xcode_metal_asan
 build_xcode_opengl
 build_xcode_opengl_asan
 build_xcode_vulkan
+build_xcode_vulkan_minimal
 build_xcode_vulkan_asan
 cmake-build-*
 vscode-cmake-*
