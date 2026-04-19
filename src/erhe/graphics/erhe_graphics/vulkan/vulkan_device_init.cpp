@@ -58,6 +58,83 @@ void set_env(const char* key, const char* value)
     }
 }
 
+// Collects validation layer settings, then materializes the VkLayerSettingEXT array in finalize().
+// After finalize() the internal vectors are not modified, so the addresses handed to Vulkan via
+// VkLayerSettingEXT::pValues remain valid for the lifetime of this object.
+class Validation_layer_settings
+{
+public:
+    static constexpr const char* c_layer_name = "VK_LAYER_KHRONOS_validation";
+
+    void add_bool(const char* key, const bool value)
+    {
+        Entry entry{};
+        entry.key        = key;
+        entry.kind       = Kind::bool_value;
+        entry.bool_value = value ? VK_TRUE : VK_FALSE;
+        m_entries.push_back(std::move(entry));
+    }
+
+    void add_string(const char* key, std::string value)
+    {
+        Entry entry{};
+        entry.key          = key;
+        entry.kind         = Kind::string_value;
+        entry.string_value = std::move(value);
+        m_entries.push_back(std::move(entry));
+    }
+
+    void finalize()
+    {
+        const std::size_t entry_count = m_entries.size();
+        m_string_c_strs.reserve(entry_count);
+        m_settings.reserve(entry_count);
+        for (Entry& entry : m_entries) {
+            VkLayerSettingEXT setting{
+                .pLayerName   = c_layer_name,
+                .pSettingName = entry.key,
+                .type         = VK_LAYER_SETTING_TYPE_BOOL32_EXT,
+                .valueCount   = 1,
+                .pValues      = nullptr
+            };
+            switch (entry.kind) {
+                case Kind::bool_value: {
+                    setting.type    = VK_LAYER_SETTING_TYPE_BOOL32_EXT;
+                    setting.pValues = &entry.bool_value;
+                    break;
+                }
+                case Kind::string_value: {
+                    m_string_c_strs.push_back(entry.string_value.c_str());
+                    setting.type    = VK_LAYER_SETTING_TYPE_STRING_EXT;
+                    setting.pValues = &m_string_c_strs.back();
+                    break;
+                }
+            }
+            m_settings.push_back(setting);
+        }
+    }
+
+    [[nodiscard]] auto get_settings() const -> const std::vector<VkLayerSettingEXT>&
+    {
+        return m_settings;
+    }
+
+private:
+    enum class Kind { bool_value, string_value };
+    class Entry
+    {
+    public:
+        const char* key          = nullptr;
+        Kind        kind         = Kind::bool_value;
+        VkBool32    bool_value   = VK_FALSE;
+        std::string string_value;
+    };
+
+    std::vector<Entry>             m_entries;
+    std::vector<const char*>       m_string_c_strs;
+    std::vector<VkLayerSettingEXT> m_settings;
+};
+
 Device_impl::Device_impl(
     Device&                         device,
     const Surface_create_info&      surface_create_info,
@@ -232,9 +309,8 @@ Device_impl::Device_impl(
     // https://vulkan.lunarg.com/doc/sdk/1.4.328.1/windows/khronos_validation_layer.html
     // https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/layer_configuration.html
     // https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/blob/master/layers/vk_layer_settings.txt
-    std::vector<std::unique_ptr<VkBool32>>     bool_values;
-    std::vector<VkLayerSettingEXT>             layer_settings;
-    std::vector<VkValidationFeatureEnableEXT>  enabled_validation_features;
+    Validation_layer_settings                 validation_settings;
+    std::vector<VkValidationFeatureEnableEXT> enabled_validation_features;
     //std::vector<VkValidationFeatureDisableEXT> disabled_validation_features;
     VkValidationFeaturesEXT validation_features{
         .sType                          = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
@@ -247,8 +323,8 @@ Device_impl::Device_impl(
     VkLayerSettingsCreateInfoEXT layer_settings_create_info{
         .sType        = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
         .pNext        = nullptr,
-        .settingCount = 0,       // static_cast<uint32_t>(layer_settings.size()),
-        .pSettings    = nullptr, // layer_settings.data()
+        .settingCount = 0,
+        .pSettings    = nullptr,
     };
     if (m_instance_layers.m_VK_LAYER_KHRONOS_validation) {
         instance_create_info.pNext = &validation_features;
@@ -258,62 +334,35 @@ Device_impl::Device_impl(
         validation_features.enabledValidationFeatureCount = static_cast<uint32_t>(enabled_validation_features.size());
         validation_features.pEnabledValidationFeatures = enabled_validation_features.data();
 
-        auto set_validation_setting_bool = [&](const char* key, const bool value)
-        {
-            bool_values.push_back(std::make_unique<VkBool32>(value ? VK_TRUE : VK_FALSE));
-            layer_settings.emplace_back(
-                std::move(
-                    VkLayerSettingEXT{
-                        .pLayerName   = "VK_LAYER_KHRONOS_validation",
-                        .pSettingName = key,
-                        .type         = VK_LAYER_SETTING_TYPE_BOOL32_EXT,
-                        .valueCount   = 1,
-                        .pValues      = bool_values.back().get()
-                    }
-                )
-            );
-        };
-        auto set_validation_setting_c_str = [&](const char* key, const char* value)
-        {
-            layer_settings.emplace_back(
-                std::move(
-                    VkLayerSettingEXT{
-                        .pLayerName   = "VK_LAYER_KHRONOS_validation",
-                        .pSettingName = key,
-                        .type         = VK_LAYER_SETTING_TYPE_STRING_EXT,
-                        .valueCount   = 1,
-                        .pValues      = value
-                    }
-                )
-            );
-        };
-        set_validation_setting_c_str("debug_action", "VK_DBG_LAYER_ACTION_CALLBACK");
-    
-        set_validation_setting_bool("validate_core",                     true);
-        set_validation_setting_bool("check_image_layout",                true);
-        set_validation_setting_bool("check_command_buffer",              true);
-        set_validation_setting_bool("check_object_in_use",               true);
-        set_validation_setting_bool("check_query",                       true);
-        set_validation_setting_bool("check_shaders",                     true);
-        set_validation_setting_bool("check_shaders_caching",             true);
-        set_validation_setting_bool("unique_handles",                    true);
-        set_validation_setting_bool("object_lifetime",                   true);
-        set_validation_setting_bool("stateless_param",                   true);
-        set_validation_setting_bool("thread_safety",                     true);
-        set_validation_setting_bool("validate_sync",                     true);
-        set_validation_setting_bool("syncval_submit_time_validation",    true);
-        set_validation_setting_bool("syncval_shader_accesses_heuristic", true);
-        set_validation_setting_bool("syncval_message_extra_properties",  true);
+        validation_settings.add_string("debug_action", "VK_DBG_LAYER_ACTION_CALLBACK");
+
+        validation_settings.add_bool("validate_core",                     true);
+        validation_settings.add_bool("check_image_layout",                true);
+        validation_settings.add_bool("check_command_buffer",              true);
+        validation_settings.add_bool("check_object_in_use",               true);
+        validation_settings.add_bool("check_query",                       true);
+        validation_settings.add_bool("check_shaders",                     true);
+        validation_settings.add_bool("check_shaders_caching",             true);
+        validation_settings.add_bool("unique_handles",                    true);
+        validation_settings.add_bool("object_lifetime",                   true);
+        validation_settings.add_bool("stateless_param",                   true);
+        validation_settings.add_bool("thread_safety",                     true);
+        validation_settings.add_bool("validate_sync",                     true);
+        validation_settings.add_bool("syncval_submit_time_validation",    true);
+        validation_settings.add_bool("syncval_shader_accesses_heuristic", true);
+        validation_settings.add_bool("syncval_message_extra_properties",  true);
 
         // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/11207
-        set_validation_setting_bool("validate_best_practices",        true);
-        //set_validation_setting_bool("validate_best_practices_amd",    true);
-        //set_validation_setting_bool("validate_best_practices_arm",    true);
-        //set_validation_setting_bool("validate_best_practices_img",    true);
-        //set_validation_setting_bool("validate_best_practices_nvidia", true);
+        validation_settings.add_bool("validate_best_practices",           true);
+        //validation_settings.add_bool("validate_best_practices_amd",       true);
+        //validation_settings.add_bool("validate_best_practices_arm",       true);
+        //validation_settings.add_bool("validate_best_practices_img",       true);
+        //validation_settings.add_bool("validate_best_practices_nvidia",    true);
 
-        layer_settings_create_info.settingCount = static_cast<uint32_t>(layer_settings.size());
-        layer_settings_create_info.pSettings    = layer_settings.data();
+        validation_settings.finalize();
+
+        layer_settings_create_info.settingCount = static_cast<uint32_t>(validation_settings.get_settings().size());
+        layer_settings_create_info.pSettings    = validation_settings.get_settings().data();
     }
 
     if ((m_external_creators != nullptr) && static_cast<bool>(m_external_creators->create_instance)) {
