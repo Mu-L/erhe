@@ -294,6 +294,8 @@ void Viewport_window::imgui_viewport()
                 .texture_reference = rendergraph_output_node,
                 .width             = static_cast<int>(size.x),
                 .height            = static_cast<int>(size.y),
+                .uv0               = m_app_context.imgui_renderer->get_rtt_uv0(),
+                .uv1               = m_app_context.imgui_renderer->get_rtt_uv1(),
                 .debug_label       = "Viewport_window::imgui()"
             }
         );
