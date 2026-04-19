@@ -407,7 +407,7 @@ void Post_processing_node::execute_rendergraph_node()
 /// //////////////////////////////////////////
 
 auto Post_processing::make_program(
-    erhe::graphics::Device& /*graphics_device*/,
+    erhe::graphics::Device& graphics_device,
     const char*             name,
     const std::string&      fs_path,
     const unsigned int      flags
@@ -422,6 +422,9 @@ auto Post_processing::make_program(
     if (flags & flag_source_input     ) { defines.push_back({"SOURCE", "s_input"}); }
     if (flags & flag_source_downsample) { defines.push_back({"SOURCE", "s_downsample"}); }
     if (flags & flag_source_upsample  ) { defines.push_back({"SOURCE", "s_upsample"}); }
+    if (graphics_device.get_info().coordinate_conventions.framebuffer_origin == erhe::math::Framebuffer_origin::top_left) {
+        defines.push_back({"FRAMEBUFFER_TOP_LEFT", "1"});
+    }
 
     return
         erhe::graphics::Shader_stages_create_info{

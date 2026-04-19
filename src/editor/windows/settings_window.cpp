@@ -483,6 +483,9 @@ void Settings_window::imgui()
         Editor_settings_config& settings = *m_context.editor_settings;
 
         push_group("Editor Settings", ImGuiTreeNodeFlags_Framed);
+        add_entry("Post Processing", [&settings](){
+            ImGui::Checkbox("##", &settings.post_processing);
+        }, "Enable Post Processing. Takes effect on next viewport creation.");
         add_config_section(settings.camera_controls);
         add_config_section(settings.developer);
         add_config_section(settings.grid);

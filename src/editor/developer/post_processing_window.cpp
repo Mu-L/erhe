@@ -144,6 +144,8 @@ void Post_processing_window::imgui()
                 .texture_reference = input_texture,
                 .width             = display_width,
                 .height            = display_height,
+                .uv0               = m_context.imgui_renderer->get_rtt_uv0(),
+                .uv1               = m_context.imgui_renderer->get_rtt_uv1(),
                 .filter            = filter,
                 .debug_label       = erhe::utility::Debug_label{"post_processing input"}
             }
@@ -172,6 +174,8 @@ void Post_processing_window::imgui()
                 .texture_reference = t,
                 .width             = display_width,
                 .height            = display_height,
+                .uv0               = m_context.imgui_renderer->get_rtt_uv0(),
+                .uv1               = m_context.imgui_renderer->get_rtt_uv1(),
                 .filter            = filter,
                 .debug_label       = erhe::utility::Debug_label{"post_processing downsample"}
             }
@@ -200,6 +204,8 @@ void Post_processing_window::imgui()
                 .texture_reference = t,
                 .width             = display_width,
                 .height            = display_height,
+                .uv0               = m_context.imgui_renderer->get_rtt_uv0(),
+                .uv1               = m_context.imgui_renderer->get_rtt_uv1(),
                 .filter            = filter,
                 .debug_label       = erhe::utility::Debug_label{"post_processing upsample"}
             }
