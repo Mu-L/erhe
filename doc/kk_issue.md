@@ -2,9 +2,9 @@
 
 On macOS running the Vulkan backend through KosmicKrisp, my rendering test
 produces a visibly wrong result for a specific test sequence. The test renders
-correctly on macOS using OpenGL and metal backend, and renders correctly, without
-validation layer issues, on other vulkan implementations I've managed to test with.
-So far the misrender has only been observed on macOS/vulkan.
+correctly on macOS Metal backend, on OpenGL backend on non-macOS systems, and
+on Vulkan backend (without validation layer issues) on vulkan systems other than
+macaOS. So issue has only reproduced on macOS/Vulkan.
 
 ## Reproduction
 
@@ -20,12 +20,12 @@ build_xcode_vulkan_minimal/src/rendering_test/Debug/rendering_test \
 ## Test setup
 
 The test renders two scenes, to left and right halves of the window.
-Both halves. involve using compute shader to emit vertex positions for two output triangles
-per each line input primitive.
+The test involves compute shader producing content consumed by later draw calls and stencil
+test.
 Rendering steps:
-1. The compute shader is run for left half and then right half, producing edge lines for a cube
-   for left half, and edge lines for a sphere for the right half
-2. The left half renders cube, basic rendering pipeline
+1. A compute shader is run for left half and then for right half, producing edge lines for a cube
+   for left half, and edge lines for a sphere for the right half.
+2. The left half renders cube, basic rendering pipeline.
 3. The left half renders wide "edge" lines for the cube, consuming output of the compute shader
 4. The right half renders cube, rendering pipeline sets stencil value unconditional to 1.
 5. The right half render wide "edge" lines for a sphere, consuming output of the compute shader,
