@@ -88,5 +88,5 @@ void main()
         out_color = vec4(0.0, 0.01 * grid_l3, 0.0, grid_l3);
         return;
     }
-
+    discard;
 }
