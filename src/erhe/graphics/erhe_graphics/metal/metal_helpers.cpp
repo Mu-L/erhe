@@ -222,6 +222,23 @@ auto to_mtl_cull_mode(const bool face_cull_enable, const Cull_face_mode mode) ->
     }
 }
 
+auto to_mtl_triangle_fill_mode(const Polygon_mode mode) -> MTL::TriangleFillMode
+{
+    switch (mode) {
+        case Polygon_mode::fill:  return MTL::TriangleFillModeFill;
+        case Polygon_mode::line:  return MTL::TriangleFillModeLines;
+        // Metal has no point fill mode. Point rendering must go through
+        // Primitive_type::point at draw time; fall back to Fill here.
+        case Polygon_mode::point: return MTL::TriangleFillModeFill;
+        default:                  return MTL::TriangleFillModeFill;
+    }
+}
+
+auto to_mtl_depth_clip_mode(const bool depth_clamp_enable) -> MTL::DepthClipMode
+{
+    return depth_clamp_enable ? MTL::DepthClipModeClamp : MTL::DepthClipModeClip;
+}
+
 auto to_mtl_depth_resolve_filter(const Resolve_mode mode) -> MTL::MultisampleDepthResolveFilter
 {
     switch (mode) {

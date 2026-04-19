@@ -55,6 +55,11 @@ Render_pipeline_impl::Render_pipeline_impl(Device& device, const Render_pipeline
         desc->setSampleCount(static_cast<NS::UInteger>(create_info.sample_count));
     }
 
+    // Multisample coverage/one state (pipeline-descriptor state, applies
+    // even when sample_count == 1 - Metal ignores the flags in that case).
+    desc->setAlphaToCoverageEnabled(create_info.multisample.alpha_to_coverage_enable);
+    desc->setAlphaToOneEnabled(create_info.multisample.alpha_to_one_enable);
+
     // Depth/stencil pixel formats
     if (create_info.depth_attachment_format != erhe::dataformat::Format::format_undefined) {
         desc->setDepthAttachmentPixelFormat(to_mtl_pixel_format(create_info.depth_attachment_format));

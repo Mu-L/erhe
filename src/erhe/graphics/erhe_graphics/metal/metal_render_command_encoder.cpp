@@ -117,6 +117,16 @@ void Render_command_encoder_impl::set_render_pipeline(const Render_pipeline& pip
     const Render_pipeline_create_info& create_info = pipeline.get_create_info();
     encoder->setFrontFacingWinding(to_mtl_winding(create_info.rasterization.front_face_direction));
     encoder->setCullMode(to_mtl_cull_mode(create_info.rasterization.face_cull_enable, create_info.rasterization.cull_face_mode));
+    encoder->setTriangleFillMode(to_mtl_triangle_fill_mode(create_info.rasterization.polygon_mode));
+    encoder->setDepthClipMode(to_mtl_depth_clip_mode(create_info.rasterization.depth_clamp_enable));
+
+    // Blend constant color (used when blend factors reference constant_color/alpha)
+    encoder->setBlendColor(
+        create_info.color_blend.constant[0],
+        create_info.color_blend.constant[1],
+        create_info.color_blend.constant[2],
+        create_info.color_blend.constant[3]
+    );
 
     // Stencil reference values
     if (create_info.depth_stencil.stencil_test_enable) {
@@ -169,12 +179,24 @@ void Render_command_encoder_impl::set_render_pipeline_state(
     desc->setVertexFunction(vertex_function);
     desc->setFragmentFunction(fragment_function);
 
-    // Color attachment pixel format - must match the render pass
-    // When no color attachment is set (e.g. shadow depth-only pass),
-    // the pixel format must be MTLPixelFormatInvalid.
+    // Color attachment pixel formats - must match the render pass.
+    // Walks all slots so MRT passes bind blend/write-mask on every active
+    // attachment. Slot 0 is always written (may be Invalid for depth-only).
+    unsigned int active_color_attachment_count = 0;
     {
-        unsigned long color_fmt = Render_pass_impl::get_active_color_pixel_format(0);
-        desc->colorAttachments()->object(0)->setPixelFormat(static_cast<MTL::PixelFormat>(color_fmt));
+        constexpr unsigned int max_color_attachments = 4;
+        const unsigned long invalid_fmt = static_cast<unsigned long>(MTL::PixelFormatInvalid);
+        for (unsigned int i = 0; i < max_color_attachments; ++i) {
+            const unsigned long color_fmt = Render_pass_impl::get_active_color_pixel_format(i);
+            if ((color_fmt != invalid_fmt) || (i == 0)) {
+                desc->colorAttachments()->object(static_cast<NS::UInteger>(i))->setPixelFormat(
+                    static_cast<MTL::PixelFormat>(color_fmt)
+                );
+            }
+            if (color_fmt != invalid_fmt) {
+                active_color_attachment_count = i + 1;
+            }
+        }
     }
 
     // Sample count
@@ -184,6 +206,10 @@ void Render_command_encoder_impl::set_render_pipeline_state(
             desc->setSampleCount(static_cast<NS::UInteger>(sample_count));
         }
     }
+
+    // Multisample coverage/one state
+    desc->setAlphaToCoverageEnabled(data.multisample.alpha_to_coverage_enable);
+    desc->setAlphaToOneEnabled(data.multisample.alpha_to_one_enable);
 
     // Depth/stencil pixel formats
     {
@@ -228,25 +254,29 @@ void Render_command_encoder_impl::set_render_pipeline_state(
         vertex_desc->release();
     }
 
-    // Color blend state
+    // Color blend state - applied to all active color attachments
     {
-        MTL::RenderPipelineColorAttachmentDescriptor* color_att = desc->colorAttachments()->object(0);
-        if (data.color_blend.enabled) {
-            color_att->setBlendingEnabled(true);
-            color_att->setSourceRGBBlendFactor(to_mtl_blend_factor(data.color_blend.rgb.source_factor));
-            color_att->setDestinationRGBBlendFactor(to_mtl_blend_factor(data.color_blend.rgb.destination_factor));
-            color_att->setRgbBlendOperation(to_mtl_blend_operation(data.color_blend.rgb.equation_mode));
-            color_att->setSourceAlphaBlendFactor(to_mtl_blend_factor(data.color_blend.alpha.source_factor));
-            color_att->setDestinationAlphaBlendFactor(to_mtl_blend_factor(data.color_blend.alpha.destination_factor));
-            color_att->setAlphaBlendOperation(to_mtl_blend_operation(data.color_blend.alpha.equation_mode));
-        }
-
         MTL::ColorWriteMask mask = MTL::ColorWriteMaskNone;
         if (data.color_blend.write_mask.red)   mask |= MTL::ColorWriteMaskRed;
         if (data.color_blend.write_mask.green) mask |= MTL::ColorWriteMaskGreen;
         if (data.color_blend.write_mask.blue)  mask |= MTL::ColorWriteMaskBlue;
         if (data.color_blend.write_mask.alpha) mask |= MTL::ColorWriteMaskAlpha;
-        color_att->setWriteMask(mask);
+
+        const unsigned int attachment_loop_count = std::max(1u, active_color_attachment_count);
+        for (unsigned int i = 0; i < attachment_loop_count; ++i) {
+            MTL::RenderPipelineColorAttachmentDescriptor* color_att =
+                desc->colorAttachments()->object(static_cast<NS::UInteger>(i));
+            if (data.color_blend.enabled) {
+                color_att->setBlendingEnabled(true);
+                color_att->setSourceRGBBlendFactor(to_mtl_blend_factor(data.color_blend.rgb.source_factor));
+                color_att->setDestinationRGBBlendFactor(to_mtl_blend_factor(data.color_blend.rgb.destination_factor));
+                color_att->setRgbBlendOperation(to_mtl_blend_operation(data.color_blend.rgb.equation_mode));
+                color_att->setSourceAlphaBlendFactor(to_mtl_blend_factor(data.color_blend.alpha.source_factor));
+                color_att->setDestinationAlphaBlendFactor(to_mtl_blend_factor(data.color_blend.alpha.destination_factor));
+                color_att->setAlphaBlendOperation(to_mtl_blend_operation(data.color_blend.alpha.equation_mode));
+            }
+            color_att->setWriteMask(mask);
+        }
     }
 
     NS::Error* error = nullptr;
@@ -321,6 +351,16 @@ void Render_command_encoder_impl::set_render_pipeline_state(
     // Rasterization state
     encoder->setFrontFacingWinding(to_mtl_winding(data.rasterization.front_face_direction));
     encoder->setCullMode(to_mtl_cull_mode(data.rasterization.face_cull_enable, data.rasterization.cull_face_mode));
+    encoder->setTriangleFillMode(to_mtl_triangle_fill_mode(data.rasterization.polygon_mode));
+    encoder->setDepthClipMode(to_mtl_depth_clip_mode(data.rasterization.depth_clamp_enable));
+
+    // Blend constant color (used when blend factors reference constant_color/alpha)
+    encoder->setBlendColor(
+        data.color_blend.constant[0],
+        data.color_blend.constant[1],
+        data.color_blend.constant[2],
+        data.color_blend.constant[3]
+    );
 
     // Samplers are now provided via the texture argument buffer, not individual slots
 }

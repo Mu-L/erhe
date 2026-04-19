@@ -16,6 +16,8 @@ namespace erhe::graphics {
 [[nodiscard]] auto to_mtl_stencil_operation     (Stencil_op op) -> MTL::StencilOperation;
 [[nodiscard]] auto to_mtl_winding               (Front_face_direction direction) -> MTL::Winding;
 [[nodiscard]] auto to_mtl_cull_mode             (bool face_cull_enable, Cull_face_mode mode) -> MTL::CullMode;
+[[nodiscard]] auto to_mtl_triangle_fill_mode    (Polygon_mode mode) -> MTL::TriangleFillMode;
+[[nodiscard]] auto to_mtl_depth_clip_mode       (bool depth_clamp_enable) -> MTL::DepthClipMode;
 [[nodiscard]] auto to_mtl_depth_resolve_filter  (Resolve_mode mode) -> MTL::MultisampleDepthResolveFilter;
 [[nodiscard]] auto to_mtl_stencil_resolve_filter(Resolve_mode mode) -> MTL::MultisampleStencilResolveFilter;
 
