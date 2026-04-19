@@ -47,6 +47,28 @@
 
 namespace erhe::graphics {
 
+auto c_str(const Device_frame_state state) -> const char*
+{
+    switch (state) {
+        case Device_frame_state::idle:               return "idle";
+        case Device_frame_state::waited:             return "waited";
+        case Device_frame_state::recording:          return "recording";
+        case Device_frame_state::in_swapchain_frame: return "in_swapchain_frame";
+    }
+    return "?";
+}
+
+void Device_impl::set_state(const Device_frame_state new_state, const char* const site)
+{
+    ERHE_VULKAN_SYNC_TRACE(
+        "[STATE] {} -> {} (at {}), frame_index={}, slot={}",
+        c_str(m_state), c_str(new_state), site,
+        m_frame_index,
+        m_frame_index % get_number_of_frames_in_flight()
+    );
+    m_state = new_state;
+}
+
 auto Device_impl::get_device_frame_in_flight(size_t index) -> Device_frame_in_flight&
 {
     ERHE_VERIFY(index < m_device_submit_history.size());
@@ -1205,7 +1227,7 @@ void Device_impl::frame_completed(const uint64_t completed_frame)
 auto Device_impl::wait_frame() -> bool
 {
     ERHE_VERIFY(m_state == Device_frame_state::idle);
-    m_state = Device_frame_state::waited;
+    set_state(Device_frame_state::waited, "wait_frame");
     return true;
 }
 
@@ -1246,31 +1268,36 @@ auto Device_impl::begin_frame() -> bool
     reset_descriptor_pool();
     m_had_swapchain_frame = false;
 
-    // Open the slot's device command buffer. ensure_device_frame_command_buffer
-    // was run by wait_frame (via Swapchain_impl::setup_frame) when a swapchain
-    // is present; for no-swapchain device frames the cb is VK_NULL_HANDLE and
-    // we leave the body empty (no Vulkan call).
+    // Open the slot's device command buffer. The slot must have been
+    // primed exactly once before begin_frame: either by
+    // Swapchain_impl::setup_frame (called from wait_swapchain_frame), or
+    // by Device_impl::prime_device_frame_slot (the no-swapchain path used
+    // for init and OpenXR ticks). Both routes call
+    // ensure_device_frame_command_buffer for the same slot the device
+    // will index here, so df.command_buffer is always non-null at this
+    // point. The assert catches future regressions of the slot-priming
+    // contract immediately, instead of letting cb=NULL propagate into
+    // get_device_frame_command_buffer warnings tens of upload sites later.
     const size_t slot = static_cast<size_t>(get_frame_in_flight_index());
     Device_frame_in_flight& df = m_device_submit_history[slot];
-    if (df.command_buffer != VK_NULL_HANDLE) {
-        const VkCommandBufferBeginInfo begin_info{
-            .sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .pNext            = nullptr,
-            .flags            = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-            .pInheritanceInfo = nullptr
-        };
-        const VkResult result = vkBeginCommandBuffer(df.command_buffer, &begin_info);
-        if (result != VK_SUCCESS) {
-            log_context->critical(
-                "vkBeginCommandBuffer() failed with {} {}",
-                static_cast<int32_t>(result), c_str(result)
-            );
-            abort();
-        }
+    ERHE_VERIFY(df.command_buffer != VK_NULL_HANDLE);
+    const VkCommandBufferBeginInfo begin_info{
+        .sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext            = nullptr,
+        .flags            = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = nullptr
+    };
+    const VkResult result = vkBeginCommandBuffer(df.command_buffer, &begin_info);
+    if (result != VK_SUCCESS) {
+        log_context->critical(
+            "vkBeginCommandBuffer() failed with {} {}",
+            static_cast<int32_t>(result), c_str(result)
+        );
+        abort();
     }
 
     m_active_device_frame_command_buffer = df.command_buffer;
-    m_state = Device_frame_state::recording;
+    set_state(Device_frame_state::recording, "begin_frame");
     return true;
 }
 
@@ -1367,7 +1394,7 @@ auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
     update_frame_completion();
 
     ERHE_VULKAN_SYNC_TRACE("[FRAME_END] frame_index={}", m_frame_index);
-    m_state = Device_frame_state::idle;
+    set_state(Device_frame_state::idle, "end_frame");
     return result;
 }
 
@@ -1396,7 +1423,7 @@ auto Device_impl::begin_swapchain_frame(const Frame_begin_info& frame_begin_info
     const bool ok = swapchain->get_impl().begin_frame(frame_begin_info);
     out_frame_state.should_render = ok;
     if (ok) {
-        m_state = Device_frame_state::in_swapchain_frame;
+        set_state(Device_frame_state::in_swapchain_frame, "begin_swapchain_frame");
         m_had_swapchain_frame = true;
     }
     return ok;
@@ -1408,7 +1435,7 @@ void Device_impl::end_swapchain_frame(const Frame_end_info& /*frame_end_info*/)
     // No submit yet; end_frame() performs the actual vkQueueSubmit2 +
     // vkQueuePresentKHR (guarded on m_had_swapchain_frame). We just flip
     // state back to recording so end_frame's precondition is met.
-    m_state = Device_frame_state::recording;
+    set_state(Device_frame_state::recording, "end_swapchain_frame");
 }
 
 void Device_impl::prime_device_frame_slot()
@@ -1498,6 +1525,11 @@ void Device_impl::update_frame_completion()
     }
 
     ++m_frame_index;
+    ERHE_VULKAN_SYNC_TRACE(
+        "[FRAME_INDEX] advanced to {} (slot now {})",
+        m_frame_index,
+        m_frame_index % get_number_of_frames_in_flight()
+    );
 
     uint64_t latest_completed_frame{0};
     result = vkGetSemaphoreCounterValue(m_vulkan_device, m_vulkan_frame_end_semaphore, &latest_completed_frame);
@@ -2099,6 +2131,10 @@ auto Device_impl::get_active_command_buffer() const -> VkCommandBuffer
 auto Device_impl::get_device_frame_command_buffer() const -> VkCommandBuffer
 {
     if (!is_in_device_frame()) {
+        ERHE_VULKAN_SYNC_TRACE(
+            "[GET_CB] null: not in device frame (state={}, frame_index={})",
+            c_str(m_state), m_frame_index
+        );
         return VK_NULL_HANDLE;
     }
     // Transfer/blit/clear commands and their pipeline barriers are not
@@ -2109,10 +2145,30 @@ auto Device_impl::get_device_frame_command_buffer() const -> VkCommandBuffer
     // fall back to the immediate-commands path and record into an
     // independent cb.
     if (m_active_render_pass != nullptr) {
+        ERHE_VULKAN_SYNC_TRACE(
+            "[GET_CB] null: render pass active (state={}, frame_index={})",
+            c_str(m_state), m_frame_index
+        );
         return VK_NULL_HANDLE;
     }
     const size_t slot = static_cast<size_t>(get_frame_in_flight_index());
-    return m_device_submit_history[slot].command_buffer;
+    const VkCommandBuffer cb = m_device_submit_history[slot].command_buffer;
+    if (cb == VK_NULL_HANDLE) {
+        // Unexpected: we are in a device frame and no render pass is
+        // active, yet the slot we are about to index into has no cb.
+        // This indicates that begin_frame opened a slot whose cb was
+        // never allocated -- typically a swapchain/device slot-index
+        // mismatch. Warn (not trace) so the condition surfaces even in
+        // release-style logging configurations.
+        log_context->warn(
+            "get_device_frame_command_buffer: slot {} has no cb "
+            "(state={}, frame_index={}, active_device_cb={}, N={})",
+            slot, c_str(m_state), m_frame_index,
+            reinterpret_cast<uintptr_t>(m_active_device_frame_command_buffer),
+            get_number_of_frames_in_flight()
+        );
+    }
+    return cb;
 }
 
 auto Device_impl::get_active_render_pass() const -> VkRenderPass

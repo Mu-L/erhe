@@ -29,6 +29,16 @@ Swapchain_impl::Swapchain_impl(
     // on demand from m_device_impl.
 }
 
+auto Swapchain_impl::current_slot() const -> size_t
+{
+    // Single source of truth for "which frame-in-flight slot is the
+    // current one". Defined by the device's frame index modulo N. The
+    // device advances this exactly once per Device_impl::end_frame; reads
+    // are stable for the duration of a single frame
+    // (wait_frame -> begin_frame -> ... -> end_frame).
+    return m_device_impl.get_frame_in_flight_index();
+}
+
 Swapchain_impl::~Swapchain_impl() noexcept
 {
     log_swapchain->debug("Swapchain_impl::~Swapchain_impl()");
@@ -54,7 +64,11 @@ Swapchain_impl::~Swapchain_impl() noexcept
         device_frame.submit_fence = VK_NULL_HANDLE;
     }
     for (Swapchain_frame_in_flight& frame : m_submit_history) {
-        recycle_semaphore(frame.acquire_semaphore);
+        if (frame.acquire_semaphore_pending_recycle) {
+            recycle_semaphore(frame.acquire_semaphore);
+            frame.acquire_semaphore                = VK_NULL_HANDLE;
+            frame.acquire_semaphore_pending_recycle = false;
+        }
         for (Swapchain_objects& garbage : frame.swapchain_garbage) {
             cleanup_swapchain_objects(garbage);
         }
@@ -96,8 +110,8 @@ auto Swapchain_impl::submit_command_buffer() -> bool
 
     ERHE_VERIFY(m_state == Swapchain_frame_state::render_pass_end);
 
-    const Swapchain_frame_in_flight& frame        = m_submit_history[m_submit_history_index];
-    const Device_frame_in_flight&    device_frame = m_device_impl.get_device_frame_in_flight(m_submit_history_index);
+    const Swapchain_frame_in_flight& frame        = m_submit_history[current_slot()];
+    const Device_frame_in_flight&    device_frame = m_device_impl.get_device_frame_in_flight(current_slot());
     VkQueue  vulkan_graphics_queue = m_device_impl.get_graphics_queue();
     VkResult result                = VK_SUCCESS;
 
@@ -198,13 +212,13 @@ auto Swapchain_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bo
     }
     // Allocate present_semaphore now that an image has been acquired.
     // setup_frame no longer does this unconditionally; see its comment.
-    Swapchain_frame_in_flight& frame = m_submit_history[m_submit_history_index];
+    Swapchain_frame_in_flight& frame = m_submit_history[current_slot()];
     ERHE_VERIFY(frame.present_semaphore == VK_NULL_HANDLE);
     frame.present_semaphore = get_semaphore();
     m_state = Swapchain_frame_state::image_ackquired;
     ERHE_VULKAN_SYNC_TRACE(
         "[SWAPCHAIN_BEGIN] frame_index={} acquired_image_index={} submit_history_index={}",
-        m_device_impl.get_frame_index(), m_acquired_image_index, m_submit_history_index
+        m_device_impl.get_frame_index(), m_acquired_image_index, current_slot()
     );
     return true;
 }
@@ -221,13 +235,13 @@ auto Swapchain_impl::begin_render_pass(VkRenderPassBeginInfo& render_pass_begin_
         (m_state == Swapchain_frame_state::render_pass_end)
     );
 
-    //const Swapchain_frame_in_flight& frame = m_submit_history[m_submit_history_index];
+    //const Swapchain_frame_in_flight& frame = m_submit_history[current_slot()];
     //VkQueue  vulkan_graphics_queue = m_device_impl.get_graphics_queue();
     uint64_t frame_index           = m_device_impl.get_frame_index();
 
     log_swapchain->trace(
-        "Swapchain_impl::begin_render_pass() m_submit_history_index = {} m_acquired_image_index = {} frame_index = {}",
-        m_submit_history_index, m_acquired_image_index, frame_index
+        "Swapchain_impl::begin_render_pass() slot = {} m_acquired_image_index = {} frame_index = {}",
+        current_slot(), m_acquired_image_index, frame_index
     );
 
     const VkCommandBuffer vulkan_command_buffer = get_command_buffer();
@@ -366,7 +380,7 @@ void Swapchain_impl::cleanup_swapchain_objects(Swapchain_objects& garbage)
 
 void Swapchain_impl::add_present_to_history(const uint32_t index, const VkFence present_fence)
 {
-    Swapchain_frame_in_flight& frame = m_submit_history[m_submit_history_index];
+    Swapchain_frame_in_flight& frame = m_submit_history[current_slot()];
 
     m_present_history.emplace_back();
     m_present_history.back().present_semaphore = frame.present_semaphore;
@@ -630,7 +644,7 @@ void Swapchain_impl::init_swapchain_framebuffer(const uint32_t index, VkRenderPa
     ) {
         Swapchain_objects need_cleanup{};
         need_cleanup.framebuffers.push_back(m_swapchain_objects.framebuffers[index]);
-        m_submit_history[m_submit_history_index].swapchain_garbage.push_back(std::move(need_cleanup));
+        m_submit_history[current_slot()].swapchain_garbage.push_back(std::move(need_cleanup));
         m_swapchain_objects.framebuffers[index] = VK_NULL_HANDLE;
     }
 
@@ -717,7 +731,7 @@ void Swapchain_impl::init_swapchain(Vulkan_swapchain_create_info& swapchain_crea
     );
 
     // Schedule destruction of the old swapchain resources once this frame's submission is finished.
-    m_submit_history[m_submit_history_index].swapchain_garbage.push_back(std::move(m_swapchain_objects));
+    m_submit_history[current_slot()].swapchain_garbage.push_back(std::move(m_swapchain_objects));
 
     // Schedule destruction of the old swapchain itself once its last presentation is finished.
     if (old_swapchain != VK_NULL_HANDLE) {
@@ -811,7 +825,7 @@ auto Swapchain_impl::get_command_buffer() -> VkCommandBuffer
         return VK_NULL_HANDLE;
     }
 
-    const Device_frame_in_flight& device_frame = m_device_impl.get_device_frame_in_flight(m_submit_history_index);
+    const Device_frame_in_flight& device_frame = m_device_impl.get_device_frame_in_flight(current_slot());
 
     return device_frame.command_buffer;
 }
@@ -826,10 +840,14 @@ void Swapchain_impl::setup_frame()
     // - A semaphore for image acquire
     // - A semaphore for image present
 
-    // But first, pace the CPU. Wait for frame N-2 to finish before starting recording of frame N.
-    m_submit_history_index = (m_submit_history_index + 1) % m_submit_history.size();
-    Swapchain_frame_in_flight& frame        = m_submit_history[m_submit_history_index];
-    Device_frame_in_flight&    device_frame = m_device_impl.get_device_frame_in_flight(m_submit_history_index);
+    // The slot is owned by Device_impl::m_frame_index (advanced exactly
+    // once per Device_impl::end_frame in update_frame_completion). Snapshot
+    // it here -- do not advance an independent counter, or the swapchain
+    // and device sides will desynchronize whenever an end_frame happens
+    // without a matching setup_frame (init-time prime, OpenXR-only ticks,
+    // etc.).
+    Swapchain_frame_in_flight& frame        = m_submit_history[current_slot()];
+    Device_frame_in_flight&    device_frame = m_device_impl.get_device_frame_in_flight(current_slot());
     if (device_frame.submit_fence != VK_NULL_HANDLE) {
         result = vkWaitForFences(vulkan_device, 1, &device_frame.submit_fence, true, UINT64_MAX);
         if (result != VK_SUCCESS) {
@@ -839,8 +857,18 @@ void Swapchain_impl::setup_frame()
 
         // Reset/recycle resources, they are no longer in use.
         recycle_fence(device_frame.submit_fence);
-        recycle_semaphore(frame.acquire_semaphore);
-        m_device_impl.reset_device_frame_command_pool(m_submit_history_index);
+        if (frame.acquire_semaphore_pending_recycle) {
+            // A prior visit to this slot allocated an acquire_semaphore and
+            // its swapchain submit consumed it. The submission is done --
+            // either the fence wait above just confirmed it, or an
+            // intervening device-only submit already drained the earlier
+            // fence in ensure_device_frame_slot -- so the handle is idle
+            // and safe to return to the pool.
+            recycle_semaphore(frame.acquire_semaphore);
+            frame.acquire_semaphore                = VK_NULL_HANDLE;
+            frame.acquire_semaphore_pending_recycle = false;
+        }
+        m_device_impl.reset_device_frame_command_pool(current_slot());
 
         // Destroy any garbage that's associated with this submission.
         for (Swapchain_objects& garbage : frame.swapchain_garbage) {
@@ -859,14 +887,16 @@ void Swapchain_impl::setup_frame()
         ERHE_VERIFY(frame.present_semaphore == VK_NULL_HANDLE);
     }
 
-    device_frame.submit_fence = get_fence();
-    frame.acquire_semaphore   = get_semaphore();
+    device_frame.submit_fence                = get_fence();
+    ERHE_VERIFY(frame.acquire_semaphore == VK_NULL_HANDLE);
+    frame.acquire_semaphore                  = get_semaphore();
+    frame.acquire_semaphore_pending_recycle  = true;
     // present_semaphore is allocated in begin_frame() after a successful
     // image acquire, not here. This keeps init-time device frames that
     // never nest a swapchain frame from leaking a present_semaphore into
     // the slot (which would later trip the recycle-time VERIFY).
 
-    m_device_impl.ensure_device_frame_command_buffer(m_submit_history_index);
+    m_device_impl.ensure_device_frame_command_buffer(current_slot());
 
     m_state = Swapchain_frame_state::command_buffer_ready;
 }
@@ -874,7 +904,7 @@ void Swapchain_impl::setup_frame()
 auto Swapchain_impl::acquire_next_image(uint32_t* index) -> VkResult
 {
     VkDevice                   vulkan_device = m_device_impl.get_vulkan_device();
-    Swapchain_frame_in_flight& frame         = m_submit_history[m_submit_history_index];
+    Swapchain_frame_in_flight& frame         = m_submit_history[current_slot()];
 
     // Use a fence to know when acquire is done.  Without VK_EXT_swapchain_maintenance1, this
     // fence is used to infer when the _previous_ present to this image index has finished.
@@ -913,7 +943,7 @@ auto Swapchain_impl::acquire_next_image(uint32_t* index) -> VkResult
 auto Swapchain_impl::present_image(uint32_t index) -> VkResult
 {
     VkQueue                    vulkan_present_queue = m_device_impl.get_present_queue();
-    Swapchain_frame_in_flight& frame                = m_submit_history[m_submit_history_index];
+    Swapchain_frame_in_flight& frame                = m_submit_history[current_slot()];
 
     VkPresentInfoKHR present_info{
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,

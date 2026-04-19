@@ -256,6 +256,7 @@ public:
         erhe::graphics::Frame_state frame_state{};
         const bool wait_ok = m_graphics_device->wait_frame();
         ERHE_VERIFY(wait_ok);
+
         // Under OpenXR the headset owns display, so the desktop swapchain
         // is not engaged (begin/end_swapchain_frame skipped below too).
         // Still need to prime the device-frame slot -- fence wait, recycle,
@@ -265,9 +266,13 @@ public:
         // wait_swapchain_frame -> Swapchain_impl::setup_frame.
         if (m_app_context.OpenXR) {
             m_graphics_device->prime_device_frame_slot();
+            const bool begin_device_frame_ok = m_graphics_device->begin_frame();
+            ERHE_VERIFY(begin_device_frame_ok);
         } else {
             const bool wait_swap_ok = m_graphics_device->wait_swapchain_frame(frame_state);
             ERHE_VERIFY(wait_swap_ok);
+            const bool begin_device_frame_ok = m_graphics_device->begin_frame();
+            ERHE_VERIFY(begin_device_frame_ok);
         }
 
         // log_input_frame->trace("----------------------- Editor::tick() -----------------------");
@@ -367,12 +372,6 @@ public:
         // Rendering
         m_app_rendering->process_start_capture();
         m_graphics_device->get_shader_monitor().update_once_per_frame();
-
-        // Open the device frame before any GPU-producing work. Init-time
-        // uploads will eventually record into this frame's command buffer;
-        // today they still go through the immediate-commands path.
-        const bool begin_device_frame_ok = m_graphics_device->begin_frame();
-        ERHE_VERIFY(begin_device_frame_ok);
 
         m_mesh_memory->buffer_transfer_queue.flush();
 
@@ -686,6 +685,19 @@ public:
                     log_render->info("{}", state_dump);
                 }
             );
+
+            // Init-time command buffer. No desktop swapchain is engaged
+            // here, so the slot must be primed explicitly between
+            // wait_frame and begin_frame -- fence wait, recycle, fresh
+            // fence, ensure cb -- so begin_frame has a valid cb to open
+            // and end_frame's device-only submit branch actually submits.
+            // Non-init frames get the same priming as a side effect of
+            // wait_swapchain_frame -> Swapchain_impl::setup_frame.
+            const bool init_wait_frame_ok = m_graphics_device->wait_frame();
+            ERHE_VERIFY(init_wait_frame_ok);
+            m_graphics_device->prime_device_frame_slot();
+            const bool init_begin_frame_ok = m_graphics_device->begin_frame();
+            ERHE_VERIFY(init_begin_frame_ok);
 
             m_app_settings->apply_limits(
                 *m_graphics_device.get(),
@@ -1373,6 +1385,7 @@ public:
             // device-level wait so begin_frame / end_frame are valid.
             const bool init_wait_ok = m_graphics_device->wait_frame();
             if (init_wait_ok) {
+                m_graphics_device->prime_device_frame_slot();
                 const bool init_begin_ok = m_graphics_device->begin_frame();
                 ERHE_VERIFY(init_begin_ok);
                 m_executor->run(taskflow).wait();
@@ -1388,6 +1401,7 @@ public:
 #endif
         } catch (std::runtime_error& e) {
             log_startup->error("exception: {}", e.what());
+            ERHE_FATAL("editor initialization failed");
         }
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
@@ -1588,6 +1602,9 @@ public:
         }
 #endif
         m_tools->set_priority_tool(m_physics_tool.get());
+
+        const bool init_end_frame_ok = m_graphics_device->end_frame();
+        ERHE_VERIFY(init_end_frame_ok);
 
         m_last_window_width  = m_window->get_width();
         m_last_window_height = m_window->get_height();

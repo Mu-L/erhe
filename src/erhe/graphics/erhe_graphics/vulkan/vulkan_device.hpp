@@ -103,6 +103,8 @@ enum class Device_frame_state : uint8_t
     in_swapchain_frame
 };
 
+[[nodiscard]] auto c_str(Device_frame_state state) -> const char*;
+
 class Device;
 class Device_impl final
 {
@@ -277,6 +279,15 @@ private:
     static constexpr size_t s_number_of_frames_in_flight = 2;
 
     void update_frame_completion();
+
+    // Single point of truth for transitioning m_state. Every assignment
+    // to m_state goes through here so that one trace site captures all
+    // transitions along with frame_index and slot -- critical for
+    // diagnosing frame-lifecycle / slot-desync bugs. The site parameter
+    // is a short literal naming the caller (e.g. "wait_frame",
+    // "begin_frame", "end_frame"); it shows up in the trace and makes
+    // the log skimmable.
+    void set_state(Device_frame_state new_state, const char* site);
 
     [[nodiscard]] static auto get_physical_device_score(VkPhysicalDevice vulkan_physical_device, Surface_impl* surface_impl) -> float;
     [[nodiscard]] static auto query_device_queue_family_indices(

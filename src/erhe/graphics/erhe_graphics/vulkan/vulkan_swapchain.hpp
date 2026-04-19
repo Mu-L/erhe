@@ -44,6 +44,16 @@ public:
     VkSemaphore                    acquire_semaphore{VK_NULL_HANDLE};
     VkSemaphore                    present_semaphore{VK_NULL_HANDLE};
 
+    // True while acquire_semaphore holds a handle that was taken from the
+    // sync pool and has not yet been returned. The handle stays valid in
+    // the field after its submission consumes it (safe to recycle on the
+    // next visit to this slot) and across intervening device-only submits
+    // that don't touch swapchain state. Device-only slots (init-time
+    // priming, or OpenXR ticks with the mirror window off) never allocate
+    // an acquire_semaphore, so the flag stays false for them and
+    // setup_frame knows to skip the recycle.
+    bool                           acquire_semaphore_pending_recycle{false};
+
     // Garbage to clean up once the submit_fence is signaled, if any.
     std::vector<Swapchain_objects> swapchain_garbage;
 };
@@ -117,6 +127,7 @@ private:
     [[nodiscard]] auto get_semaphore     () -> VkSemaphore;
     [[nodiscard]] auto get_fence         () -> VkFence;
     void recycle_semaphore                     (VkSemaphore semaphore);
+    [[nodiscard]] auto current_slot() const -> size_t;
     void recycle_fence                         (VkFence fence);
     void cleanup_swapchain_objects             (Swapchain_objects& garbage);
     void cleanup_present_history               ();
@@ -146,9 +157,14 @@ private:
     Swapchain_frame_state m_state{Swapchain_frame_state::idle};
     // TODO Move to Render_pass_impl
 
-    /// The submission history. This is a fixed-size queue, implemented as a circular buffer.
-    std::array<Swapchain_frame_in_flight, 2> m_submit_history      {};
-    size_t                                   m_submit_history_index{0};
+    /// The submission history. This is a fixed-size queue, indexed by the
+    /// device's frame-in-flight slot (Device_impl::get_frame_in_flight_index).
+    /// Swapchain_impl does not own a separate counter -- having two
+    /// independent counters caused the swapchain and device to disagree on
+    /// the current slot whenever an end_frame happened without a matching
+    /// setup_frame (init-time prime, OpenXR-only ticks). All slot lookups
+    /// go through current_slot() below.
+    std::array<Swapchain_frame_in_flight, 2> m_submit_history{};
 
     /// The present operation history. This is used to clean up present semaphores and old swapchains.
     std::deque<Present_history_entry>        m_present_history;
