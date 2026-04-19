@@ -129,7 +129,10 @@ Device_impl::Device_impl(
         }
     };
 
-    if (graphics_config.vulkan.vulkan_validation_layers && !graphics_config.renderdoc_capture_support) {
+    if (
+        graphics_config.vulkan.vulkan_validation_layers &&
+        !graphics_config.renderdoc_capture_support
+    ) {
         check_layer("VK_LAYER_KHRONOS_validation", m_instance_layers.m_VK_LAYER_KHRONOS_validation);
     }
 
@@ -215,61 +218,9 @@ Device_impl::Device_impl(
         check_instance_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME, m_instance_extensions.m_VK_EXT_debug_report);
     }
 
-    // https://vulkan.lunarg.com/doc/sdk/1.4.328.1/windows/khronos_validation_layer.html
-    // https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/layer_configuration.html
-    // https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/blob/master/layers/vk_layer_settings.txt
-    std::vector<std::unique_ptr<VkBool32>> bool_values;
-    std::vector<VkLayerSettingEXT> layer_settings;
-    auto set_validation_setting_bool = [&](const char* key, const bool value)
-    {
-        bool_values.push_back(std::make_unique<VkBool32>(value ? VK_TRUE : VK_FALSE));
-        layer_settings.emplace_back(
-            std::move(
-                VkLayerSettingEXT{
-                    .pLayerName   = "VK_LAYER_KHRONOS_validation",
-                    .pSettingName = key,
-                    .type         = VK_LAYER_SETTING_TYPE_BOOL32_EXT,
-                    .valueCount   = 1,
-                    .pValues      = bool_values.back().get()
-                }
-            )
-        );
-    };
-    auto set_validation_setting_c_str = [&](const char* key, const char* value)
-    {
-        layer_settings.emplace_back(
-            std::move(
-                VkLayerSettingEXT{
-                    .pLayerName   = "VK_LAYER_KHRONOS_validation",
-                    .pSettingName = key,
-                    .type         = VK_LAYER_SETTING_TYPE_BOOL32_EXT,
-                    .valueCount   = 1,
-                    .pValues      = value
-                }
-            )
-        );
-    };
-    set_validation_setting_c_str("debug_action", "VK_DBG_LAYER_ACTION_CALLBACK");
-    set_validation_setting_bool("validate_sync",                     true);
-    set_validation_setting_bool("syncval_shader_accesses_heuristic", true);
-
-    // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/11207
-    // set_validation_setting_bool("validate_best_practices",     true);
-    set_validation_setting_bool("validate_best_practices_amd",    true);
-    set_validation_setting_bool("validate_best_practices_arm",    true);
-    set_validation_setting_bool("validate_best_practices_img",    true);
-    set_validation_setting_bool("validate_best_practices_nvidia", true);
-
-    const VkLayerSettingsCreateInfoEXT layer_settings_create_info{
-        .sType        = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
-        .pNext        = nullptr,
-        .settingCount = static_cast<uint32_t>(layer_settings.size()),
-        .pSettings    = layer_settings.data()
-    };
-
-    const VkInstanceCreateInfo instance_create_info = {
+    VkInstanceCreateInfo instance_create_info = {
         .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext                   = &layer_settings_create_info,
+        .pNext                   = nullptr,
         .flags                   = 0,
         .pApplicationInfo        = &application_info,
         .enabledLayerCount       = static_cast<uint32_t>(enabled_instance_layers_c_str.size()),
@@ -277,6 +228,94 @@ Device_impl::Device_impl(
         .enabledExtensionCount   = static_cast<uint32_t>(enabled_instance_extensions_c_str.size()),
         .ppEnabledExtensionNames = enabled_instance_extensions_c_str.data()
     };
+
+    // https://vulkan.lunarg.com/doc/sdk/1.4.328.1/windows/khronos_validation_layer.html
+    // https://vulkan.lunarg.com/doc/view/1.4.328.1/windows/layer_configuration.html
+    // https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/blob/master/layers/vk_layer_settings.txt
+    std::vector<std::unique_ptr<VkBool32>>     bool_values;
+    std::vector<VkLayerSettingEXT>             layer_settings;
+    std::vector<VkValidationFeatureEnableEXT>  enabled_validation_features;
+    //std::vector<VkValidationFeatureDisableEXT> disabled_validation_features;
+    VkValidationFeaturesEXT validation_features{
+        .sType                          = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+        .pNext                          = nullptr,
+        .enabledValidationFeatureCount  = 0,
+        .pEnabledValidationFeatures     = nullptr,
+        .disabledValidationFeatureCount = 0,
+        .pDisabledValidationFeatures    = nullptr,
+    };
+    VkLayerSettingsCreateInfoEXT layer_settings_create_info{
+        .sType        = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
+        .pNext        = nullptr,
+        .settingCount = 0,       // static_cast<uint32_t>(layer_settings.size()),
+        .pSettings    = nullptr, // layer_settings.data()
+    };
+    if (m_instance_layers.m_VK_LAYER_KHRONOS_validation) {
+        instance_create_info.pNext = &validation_features;
+        validation_features.pNext = &layer_settings_create_info;
+        enabled_validation_features.push_back(VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT);
+        enabled_validation_features.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);
+        validation_features.enabledValidationFeatureCount = static_cast<uint32_t>(enabled_validation_features.size());
+        validation_features.pEnabledValidationFeatures = enabled_validation_features.data();
+
+        auto set_validation_setting_bool = [&](const char* key, const bool value)
+        {
+            bool_values.push_back(std::make_unique<VkBool32>(value ? VK_TRUE : VK_FALSE));
+            layer_settings.emplace_back(
+                std::move(
+                    VkLayerSettingEXT{
+                        .pLayerName   = "VK_LAYER_KHRONOS_validation",
+                        .pSettingName = key,
+                        .type         = VK_LAYER_SETTING_TYPE_BOOL32_EXT,
+                        .valueCount   = 1,
+                        .pValues      = bool_values.back().get()
+                    }
+                )
+            );
+        };
+        auto set_validation_setting_c_str = [&](const char* key, const char* value)
+        {
+            layer_settings.emplace_back(
+                std::move(
+                    VkLayerSettingEXT{
+                        .pLayerName   = "VK_LAYER_KHRONOS_validation",
+                        .pSettingName = key,
+                        .type         = VK_LAYER_SETTING_TYPE_STRING_EXT,
+                        .valueCount   = 1,
+                        .pValues      = value
+                    }
+                )
+            );
+        };
+        set_validation_setting_c_str("debug_action", "VK_DBG_LAYER_ACTION_CALLBACK");
+    
+        set_validation_setting_bool("validate_core",                     true);
+        set_validation_setting_bool("check_image_layout",                true);
+        set_validation_setting_bool("check_command_buffer",              true);
+        set_validation_setting_bool("check_object_in_use",               true);
+        set_validation_setting_bool("check_query",                       true);
+        set_validation_setting_bool("check_shaders",                     true);
+        set_validation_setting_bool("check_shaders_caching",             true);
+        set_validation_setting_bool("unique_handles",                    true);
+        set_validation_setting_bool("object_lifetime",                   true);
+        set_validation_setting_bool("stateless_param",                   true);
+        set_validation_setting_bool("thread_safety",                     true);
+        set_validation_setting_bool("validate_sync",                     true);
+        set_validation_setting_bool("syncval_submit_time_validation",    true);
+        set_validation_setting_bool("syncval_shader_accesses_heuristic", true);
+        set_validation_setting_bool("syncval_message_extra_properties",  true);
+
+        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/11207
+        set_validation_setting_bool("validate_best_practices",        true);
+        //set_validation_setting_bool("validate_best_practices_amd",    true);
+        //set_validation_setting_bool("validate_best_practices_arm",    true);
+        //set_validation_setting_bool("validate_best_practices_img",    true);
+        //set_validation_setting_bool("validate_best_practices_nvidia", true);
+
+        layer_settings_create_info.settingCount = static_cast<uint32_t>(layer_settings.size());
+        layer_settings_create_info.pSettings    = layer_settings.data();
+    }
+
     if ((m_external_creators != nullptr) && static_cast<bool>(m_external_creators->create_instance)) {
         log_context->info("Creating Vulkan instance via external (XR) hook");
         result = m_external_creators->create_instance(&instance_create_info, &m_vulkan_instance);
@@ -472,6 +511,8 @@ Device_impl::Device_impl(
                 // side chatter even without validation layers. Re-enable them
                 // if you need loader-level diagnostics; for normal runs keep
                 // to warnings and errors.
+                VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
             .messageType     = message_types,
