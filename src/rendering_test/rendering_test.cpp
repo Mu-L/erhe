@@ -39,12 +39,13 @@ namespace rendering_test {
 
 Rendering_test::Rendering_test(std::string_view config_path)
     : m_settings{ erhe::codegen::load_config<Rendering_test_settings>(config_path) }
-    , m_graphics_config{ erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json") }
+    , m_graphics_config{ erhe::codegen::load_config<Graphics_config>("config/rendering_test/erhe_graphics.json") }
     , m_window{
         erhe::window::Window_configuration{
-            .use_depth = true,
-            .size      = glm::ivec2{1280, 720},
-            .title     = "erhe rendering test"
+            .use_depth                = true,
+            .size                     = glm::ivec2{1280, 720},
+            .title                    = "erhe rendering test",
+            .initialize_frame_capture = m_graphics_config.renderdoc_capture_support
         }
     }
     , m_graphics_device{
@@ -89,14 +90,34 @@ Rendering_test::Rendering_test(std::string_view config_path)
             }
         }
     }
-    , m_mesh_memory      {erhe::codegen::load_config<Mesh_memory_config>("config/mesh_memory.json"), m_graphics_device, m_vertex_format}
+    , m_mesh_memory      {erhe::codegen::load_config<Mesh_memory_config>("config/rendering_test/mesh_memory.json"), m_graphics_device, m_vertex_format}
+    , m_program_interface_config{
+        .shader_paths = {
+            std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
+            std::filesystem::path{"res"} / std::filesystem::path{"rendering_test"} / std::filesystem::path{"shaders"}
+        }
+    }
     , m_program_interface{m_graphics_device, m_mesh_memory.vertex_format, m_program_interface_config}
     , m_programs         {m_graphics_device, m_program_interface}
-    , m_forward_renderer {m_graphics_device, m_program_interface}
     , m_scene            {"rendering test scene", nullptr}
 {
     print_conventions();
+
+    // Init-time GPU work (mesh buffer uploads in create_test_scene,
+    // Forward_renderer construction, and create_test_textures) must
+    // record into the device frame command buffer instead of falling
+    // back to immediate commands. Mirror the editor's init pattern
+    // (src/editor/editor.cpp:696-700).
+    const bool init_wait_frame_ok = m_graphics_device.wait_frame();
+    ERHE_VERIFY(init_wait_frame_ok);
+    m_graphics_device.prime_device_frame_slot();
+    const bool init_begin_frame_ok = m_graphics_device.begin_frame();
+    ERHE_VERIFY(init_begin_frame_ok);
+
     create_test_scene();
+    m_forward_renderer = std::make_unique<erhe::scene_renderer::Forward_renderer>(
+        m_graphics_device, m_program_interface
+    );
 
     m_last_window_width  = m_window.get_width();
     m_last_window_height = m_window.get_height();
@@ -129,6 +150,9 @@ Rendering_test::Rendering_test(std::string_view config_path)
     make_separate_samplers_pipeline();
     make_depth_visualize_pipeline();
     create_test_textures();
+
+    const bool init_end_frame_ok = m_graphics_device.end_frame();
+    ERHE_VERIFY(init_end_frame_ok);
 }
 
 auto Rendering_test::on_window_resize_event(const erhe::window::Input_event& input_event) -> bool
@@ -284,7 +308,7 @@ void Rendering_test::dispatch_subtest(
             encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
             encoder.set_scissor_rect (viewport.x, viewport.y, viewport.width, viewport.height);
             const auto& conventions = m_graphics_device.get_info().coordinate_conventions;
-            m_forward_renderer.render(
+            m_forward_renderer->render(
                 erhe::scene_renderer::Forward_renderer::Render_parameters{
                     .render_encoder         = encoder,
                     .index_type             = erhe::dataformat::Format::format_32_scalar_uint,
@@ -323,7 +347,7 @@ void Rendering_test::dispatch_subtest(
             encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
             encoder.set_scissor_rect (viewport.x, viewport.y, viewport.width, viewport.height);
             const auto& conventions = m_graphics_device.get_info().coordinate_conventions;
-            m_forward_renderer.render(
+            m_forward_renderer->render(
                 erhe::scene_renderer::Forward_renderer::Render_parameters{
                     .render_encoder         = encoder,
                     .index_type             = erhe::dataformat::Format::format_32_scalar_uint,
@@ -421,7 +445,7 @@ void Rendering_test::dispatch_subtest(
         // 2) forward_renderer(stw1)
         const std::vector<std::shared_ptr<erhe::scene::Mesh>> cube_meshes{m_stencil_cube};
         const auto& conventions = m_graphics_device.get_info().coordinate_conventions;
-        m_forward_renderer.render(
+        m_forward_renderer->render(
             erhe::scene_renderer::Forward_renderer::Render_parameters{
                 .render_encoder         = encoder,
                 .index_type             = erhe::dataformat::Format::format_32_scalar_uint,
@@ -478,7 +502,7 @@ void Rendering_test::dispatch_subtest(
         encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
         encoder.set_scissor_rect (viewport.x, viewport.y, viewport.width, viewport.height);
         const auto& conventions = m_graphics_device.get_info().coordinate_conventions;
-        m_forward_renderer.render(
+        m_forward_renderer->render(
             erhe::scene_renderer::Forward_renderer::Render_parameters{
                 .render_encoder         = encoder,
                 .index_type             = erhe::dataformat::Format::format_32_scalar_uint,
@@ -540,7 +564,7 @@ void Rendering_test::dispatch_subtest(
         encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
         encoder.set_scissor_rect (viewport.x, viewport.y, viewport.width, viewport.height);
         const auto& conventions = m_graphics_device.get_info().coordinate_conventions;
-        m_forward_renderer.render(
+        m_forward_renderer->render(
             erhe::scene_renderer::Forward_renderer::Render_parameters{
                 .render_encoder         = encoder,
                 .index_type             = erhe::dataformat::Format::format_32_scalar_uint,
@@ -751,11 +775,11 @@ void Rendering_test::tick()
 
 void run_rendering_test(std::string_view config_path)
 {
-    erhe::file::ensure_working_directory_contains("rendering_test", "config/erhe_graphics.json");
+    erhe::file::ensure_working_directory_contains("config/rendering_test/erhe_graphics.json");
 
     erhe::log::initialize_log_sinks();
     {
-        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        std::optional<std::string> contents = erhe::file::read("logging config", "config/rendering_test/logging.json");
         if (contents.has_value()) {
             erhe::log::load_log_configuration(contents.value());
         }

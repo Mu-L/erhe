@@ -1,11 +1,29 @@
 message(STATUS "Configuring executable 'example'.")
 set(_target "example")
 add_executable(${_target})
+
+erhe_target_sources_grouped(
+    ${_target} TREE "${PROJECT_SOURCE_DIR}" FILES
+
+    config/example/erhe_graphics.json
+    config/example/mesh_memory.json
+    config/example/window.json
+
+    res/shaders/erhe_bxdf.glsl
+    res/shaders/erhe_ggx.glsl
+    res/shaders/erhe_light.glsl
+    res/shaders/erhe_math.glsl
+    res/shaders/erhe_srgb.glsl
+    res/shaders/erhe_texture.glsl
+    res/shaders/erhe_tonemap.glsl
+    #res/shaders/depth.vert
+    #res/shaders/depth.frag
+    res/shaders/standard.vert
+    res/shaders/standard.frag
+)
+
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    config/erhe_graphics.json
-    config/mesh_memory.json
-    config/window.json
 
     example.cpp
     example.hpp
@@ -16,19 +34,6 @@ erhe_target_sources_grouped(
     main.cpp
     programs.cpp
     programs.hpp
-    res/models/Box.gltf
-    res/shaders/erhe_bxdf.glsl
-    res/shaders/erhe_ggx.glsl
-    res/shaders/erhe_light.glsl
-    res/shaders/erhe_math.glsl
-    res/shaders/erhe_srgb.glsl
-    res/shaders/erhe_texture.glsl
-    res/shaders/erhe_tonemap.glsl
-    res/shaders/depth.vert
-    res/shaders/depth.frag
-    res/shaders/standard.vert
-    res/shaders/standard.frag
-    
 )
 
 # Required for log init
@@ -95,11 +100,9 @@ target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAK
 
 set_target_properties(
     ${_target} PROPERTIES
-    CXX_STANDARD                  20
-    CXX_STANDARD_REQUIRED         YES
-    CXX_EXTENSIONS                NO
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    DEBUGGER_WORKING_DIRECTORY    "${CMAKE_CURRENT_SOURCE_DIR}"
+    CXX_STANDARD          20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS        NO
 )
 
 erhe_target_settings(${_target} "erhe-executables")

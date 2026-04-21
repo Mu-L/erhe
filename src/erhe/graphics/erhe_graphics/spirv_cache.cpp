@@ -24,7 +24,7 @@ auto shader_type_string(Shader_type type) -> const char*
 // Compilation settings salt - change this when SpvOptions or target env changes
 // to invalidate the cache
 static constexpr const char* c_settings_salt =
-    "vulkan_1_1:spv_1_6:debug:noopt:validate:v1";
+    "vulkan_1_1:spv_1_6:debug:noopt:validate:includer:v3";
 
 } // anonymous namespace
 

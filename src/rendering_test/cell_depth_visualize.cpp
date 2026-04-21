@@ -19,7 +19,7 @@ void Rendering_test::make_depth_visualize_pipeline()
     // The Sampler_aspect::depth annotation on s_depth is what tells
     // Render_command_encoder::set_sampled_image() to bind a depth-aspect
     // image view when this cell pushes the resolved depth target.
-    const std::filesystem::path shader_path{"res/shaders"};
+    const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"rendering_test"} / std::filesystem::path{"shaders"};
 
     // The depth visualize cell needs its own bind group layout that adds
     // an s_depth combined_image_sampler binding alongside the quad's

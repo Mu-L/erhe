@@ -89,8 +89,8 @@ public:
     void render   (erhe::graphics::Render_command_encoder& render_encoder, const erhe::graphics::Render_pass& render_pass, erhe::math::Viewport viewport);
 
 private:
-    auto make_prototype(erhe::graphics::Device& graphics_device) const -> erhe::graphics::Shader_stages_prototype;
-    auto make_program(erhe::graphics::Shader_stages_prototype&& prototype) const -> erhe::graphics::Shader_stages;
+    [[nodiscard]] auto make_prototype(erhe::graphics::Device& graphics_device) const -> erhe::graphics::Shader_stages_prototype;
+    [[nodiscard]] auto make_program  (erhe::graphics::Shader_stages_prototype&& prototype) const -> erhe::graphics::Shader_stages;
 
     erhe::graphics::Device&      m_graphics_device;
     erhe::imgui::Imgui_renderer& m_imgui_renderer;
@@ -132,7 +132,6 @@ private:
     size_t                                    m_u_clip_from_window_offset{0};
     size_t                                    m_u_texture_size           {0};
     size_t                                    m_u_texture_offset         {0};
-    std::filesystem::path                     m_shader_path;
     erhe::graphics::Shader_stages             m_shader_stages;
     std::shared_ptr<erhe::graphics::Texture>  m_tileset_texture;
     Image                                     m_tileset_image;
@@ -140,7 +139,7 @@ private:
     erhe::graphics::Ring_buffer_client        m_vertex_buffer;
     erhe::graphics::Ring_buffer_client        m_projection_buffer;
     erhe::graphics::Vertex_input_state        m_vertex_input;
-    erhe::graphics::Lazy_render_pipeline       m_pipeline;
+    erhe::graphics::Lazy_render_pipeline      m_pipeline;
 
     std::optional<erhe::graphics::Ring_buffer_range> m_vertex_buffer_range;
     size_t                                           m_index_count        {0};

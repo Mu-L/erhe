@@ -36,13 +36,12 @@ public:
     );
 
     // Public members
-    int                              shadow_texture_unit_compare{0};
-    int                              shadow_texture_unit_no_compare{1};
-    std::filesystem::path            shader_path;
-    erhe::graphics::Sampler          nearest_sampler;
-    erhe::graphics::Sampler          linear_sampler;
-    erhe::graphics::Sampler          linear_mipmap_linear_sampler;
-    erhe::graphics::Shader_stages    standard;
+    int                           shadow_texture_unit_compare{0};
+    int                           shadow_texture_unit_no_compare{1};
+    erhe::graphics::Sampler       nearest_sampler;
+    erhe::graphics::Sampler       linear_sampler;
+    erhe::graphics::Sampler       linear_mipmap_linear_sampler;
+    erhe::graphics::Shader_stages standard;
 };
 
 }

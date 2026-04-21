@@ -648,7 +648,7 @@ void Scene_builder::make_brushes(
         }
     }
 
-    Json_library library{"res/polyhedra/johnson.json"};
+    Json_library library{"res/editor/polyhedra/johnson.json"};
     if (executor.num_workers() > 1) {
         tf::Taskflow tf;
         if (make_platonic_solid_brushes_) {

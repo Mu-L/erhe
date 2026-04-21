@@ -461,19 +461,19 @@ void Settings_window::imgui()
     add_entry("", [this, button_size](){
         if (ImGui::Button("Save Config", button_size)) {
             if (m_context.graphics_config != nullptr) {
-                erhe::codegen::save_config(*m_context.graphics_config, "config/erhe_graphics.json");
+                erhe::codegen::save_config(*m_context.graphics_config, "config/editor/erhe_graphics.json");
             }
             if (m_context.mesh_memory_config != nullptr) {
-                erhe::codegen::save_config(*m_context.mesh_memory_config, "config/mesh_memory.json");
+                erhe::codegen::save_config(*m_context.mesh_memory_config, "config/editor/mesh_memory.json");
             }
             if (m_context.renderer_config != nullptr) {
-                erhe::codegen::save_config(*m_context.renderer_config, "config/renderer.json");
+                erhe::codegen::save_config(*m_context.renderer_config, "config/editor/renderer.json");
             }
             if (m_context.text_renderer_config != nullptr) {
-                erhe::codegen::save_config(*m_context.text_renderer_config, "config/text_renderer.json");
+                erhe::codegen::save_config(*m_context.text_renderer_config, "config/editor/text_renderer.json");
             }
             if (m_context.window_config != nullptr) {
-                erhe::codegen::save_config(*m_context.window_config, "config/window.json");
+                erhe::codegen::save_config(*m_context.window_config, "config/editor/window.json");
             }
         }
     });
@@ -506,7 +506,7 @@ void Settings_window::imgui()
                 if (m_context.inventory_window != nullptr) {
                     m_context.inventory_window->write_config(settings.inventory);
                 }
-                erhe::codegen::save_config(settings, "editor_settings.json");
+                erhe::codegen::save_config(settings, "config/editor/editor_settings.json");
             }
         });
         pop_group();

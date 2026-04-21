@@ -71,7 +71,7 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
     padding1_offset        = view_block->add_float("_padding1"      )->get_offset_in_parent();
     padding2_offset        = view_block->add_float("_padding2"      )->get_offset_in_parent();
 
-    const auto shader_path = std::filesystem::path("res") / std::filesystem::path("shaders");
+    const auto shader_path = std::filesystem::path{"res"} / std::filesystem::path{"shaders"};
 
     // Bind group layout will be created after all blocks are known
     auto make_bind_group_layout = [&]() {
@@ -128,7 +128,7 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
         using namespace erhe::graphics;
         // Compute shader
         {
-            const std::filesystem::path comp_path = shader_path / std::filesystem::path("compute_before_line.comp");
+            const std::filesystem::path comp_path = shader_path / std::filesystem::path{"compute_before_line.comp"};
             Shader_stages_create_info create_info{
                 .name             = "compute_before_line",
                 .struct_types     = { line_vertex_struct.get(), triangle_vertex_struct.get() },
@@ -147,8 +147,8 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
         }
         // Triangle rendering shader (reads triangle vertices produced by compute shader)
         {
-            const std::filesystem::path vert_path = shader_path / std::filesystem::path("line_after_compute.vert");
-            const std::filesystem::path frag_path = shader_path / std::filesystem::path("line_after_compute.frag");
+            const std::filesystem::path vert_path = shader_path / std::filesystem::path{"line_after_compute.vert"};
+            const std::filesystem::path frag_path = shader_path / std::filesystem::path{"line_after_compute.frag"};
             Shader_stages_create_info create_info{
                 .name             = "line_after_compute",
                 .interface_blocks = { view_block.get() },
@@ -178,8 +178,8 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
         }
         using namespace erhe::graphics;
 
-        const std::filesystem::path vert_path = shader_path / std::filesystem::path("line_simple.vert");
-        const std::filesystem::path frag_path = shader_path / std::filesystem::path("line_simple.frag");
+        const std::filesystem::path vert_path = shader_path / std::filesystem::path{"line_simple.vert"};
+        const std::filesystem::path frag_path = shader_path / std::filesystem::path{"line_simple.frag"};
         Shader_stages_create_info create_info{
             .name             = "line_simple",
             .interface_blocks = { view_block.get() },
@@ -205,9 +205,9 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
     if (!use_compute) {
         using namespace erhe::graphics;
 
-        const std::filesystem::path vert_path = shader_path / std::filesystem::path("debug_line.vert");
-        const std::filesystem::path geom_path = shader_path / std::filesystem::path("debug_line.geom");
-        const std::filesystem::path frag_path = shader_path / std::filesystem::path("line_after_compute.frag");
+        const std::filesystem::path vert_path = shader_path / std::filesystem::path{"debug_line.vert"};
+        const std::filesystem::path geom_path = shader_path / std::filesystem::path{"debug_line.geom"};
+        const std::filesystem::path frag_path = shader_path / std::filesystem::path{"line_after_compute.frag"};
         Shader_stages_create_info create_info{
             .name             = "debug_line_geometry",
             .interface_blocks = { view_block.get() },

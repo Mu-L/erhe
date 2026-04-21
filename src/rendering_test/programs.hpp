@@ -20,11 +20,10 @@ public:
     );
 
     // Public members
-    std::filesystem::path            shader_path;
-    erhe::graphics::Sampler          nearest_sampler;
-    erhe::graphics::Sampler          linear_sampler;
-    erhe::graphics::Sampler          linear_mipmap_linear_sampler;
-    erhe::graphics::Shader_stages    standard;
+    erhe::graphics::Sampler       nearest_sampler;
+    erhe::graphics::Sampler       linear_sampler;
+    erhe::graphics::Sampler       linear_mipmap_linear_sampler;
+    erhe::graphics::Shader_stages standard;
 };
 
 } // namespace rendering_test

@@ -33,7 +33,11 @@ private:
 class Logs : public erhe::commands::Command_host
 {
 public:
-    Logs(erhe::commands::Commands& commands, Imgui_renderer& imgui_renderer);
+    Logs(
+        erhe::commands::Commands& commands,
+        Imgui_renderer&           imgui_renderer,
+        const char*               logging_configuration_file_path
+    );
 
     // Commands
     void toggle_pause();
@@ -47,6 +51,7 @@ private:
     void save_settings();
 
     Imgui_renderer&           m_imgui_renderer;
+    const char*               m_logging_configuration_file_path;
     Logs_toggle_pause_command m_toggle_pause_command;
     int                       m_tail_buffer_show_size{10000};
     int                       m_tail_buffer_trim_size{10000};

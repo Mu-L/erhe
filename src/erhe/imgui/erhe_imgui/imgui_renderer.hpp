@@ -124,6 +124,13 @@ public:
     auto image       (Draw_texture_parameters&& parameters) -> bool;
     auto image_button(Draw_texture_parameters&& parameters) -> bool;
 
+    // Process ImGui texture create/update/destroy commands for the current
+    // frame's draw data. Must be called while the calling ImGui context is
+    // current (Scoped_imgui_context), AFTER ImGui::Render(), and BEFORE any
+    // render pass begins - uploads use Blit_command_encoder which Vulkan
+    // does not permit inside a render pass.
+    void update_draw_data_textures();
+
     void render_draw_data(
         erhe::graphics::Render_command_encoder& encoder,
         const erhe::graphics::Render_pass&      render_pass

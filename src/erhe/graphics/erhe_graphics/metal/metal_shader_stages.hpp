@@ -3,7 +3,9 @@
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/glsl_to_spirv.hpp"
 
+#include <filesystem>
 #include <string>
+#include <vector>
 
 namespace MTL { class Library; }
 namespace MTL { class Function; }
@@ -34,6 +36,7 @@ public:
     void dump_reflection() const;
 
     [[nodiscard]] auto get_final_source(const Shader_stage& shader, std::optional<unsigned int> gl_name) -> std::string;
+    [[nodiscard]] auto get_dependency_paths() -> std::vector<std::filesystem::path>&;
 
     [[nodiscard]] auto get_vertex_function  () const -> MTL::Function*;
     [[nodiscard]] auto get_fragment_function() const -> MTL::Function*;
@@ -43,10 +46,11 @@ private:
     friend class Shader_stages_impl;
     friend class Reloadable_shader_stages;
 
-    Device&                   m_device;
-    Shader_stages_create_info m_create_info;
-    bool                      m_is_valid{true};
-    Glslang_shader_stages     m_glslang_shader_stages;
+    Device&                            m_device;
+    Shader_stages_create_info          m_create_info;
+    bool                               m_is_valid{true};
+    Glslang_shader_stages              m_glslang_shader_stages;
+    std::vector<std::filesystem::path> m_paths;
     MTL::Library*             m_vertex_library      {nullptr};
     MTL::Library*             m_fragment_library     {nullptr};
     MTL::Library*             m_compute_library      {nullptr};

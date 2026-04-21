@@ -1,12 +1,16 @@
 message(STATUS "Configuring executable 'hello_swap'.")
 set(_target "hello_swap")
 add_executable(${_target})
+
+erhe_target_sources_grouped(
+    ${_target} TREE "${PROJECT_SOURCE_DIR}" FILES
+    config/hello_swap/erhe_graphics.json
+    config/hello_swap/logging.json
+    config/hello_swap/window.json
+)
+
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    config/erhe_graphics.json
-    config/logging.json
-    config/window.json
-
     hello_swap.cpp
     hello_swap.hpp
     hello_swap_log.cpp
@@ -59,11 +63,9 @@ target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set_target_properties(
     ${_target} PROPERTIES
-    CXX_STANDARD                  20
-    CXX_STANDARD_REQUIRED         YES
-    CXX_EXTENSIONS                NO
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    DEBUGGER_WORKING_DIRECTORY    "${CMAKE_CURRENT_SOURCE_DIR}"
+    CXX_STANDARD          20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS        NO
 )
 
 erhe_target_settings(${_target} "erhe-executables")

@@ -461,7 +461,7 @@ public:
 
     [[nodiscard]] static auto get_windows_ini_path(bool openxr) -> std::string
     {
-        return openxr ? "config/openxr_windows.json" : "config/windows.json";
+        return openxr ? "config/editor/openxr_windows.json" : "config/editor/windows.json";
     }
 
     [[nodiscard]] static auto conditionally_enable_window_imgui_host(erhe::window::Context_window* context_window, bool openxr)
@@ -541,12 +541,12 @@ public:
     }
 
     Editor()
-        : m_graphics_config     {erhe::codegen::load_config<Graphics_config>       ("config/erhe_graphics.json")}
-        , m_mesh_memory_config  {erhe::codegen::load_config<Mesh_memory_config>    ("config/mesh_memory.json")}
-        , m_renderer_config     {erhe::codegen::load_config<Renderer_config>       ("config/renderer.json")}
-        , m_text_renderer_config{erhe::codegen::load_config<Text_renderer_config>  ("config/text_renderer.json")}
-        , m_window_config       {erhe::codegen::load_config<Window_config>         ("config/window.json")}
-        , m_editor_settings     {erhe::codegen::load_config<Editor_settings_config>("config/editor_settings.json")}
+        : m_graphics_config     {erhe::codegen::load_config<Graphics_config>       ("config/editor/erhe_graphics.json")}
+        , m_mesh_memory_config  {erhe::codegen::load_config<Mesh_memory_config>    ("config/editor/mesh_memory.json")}
+        , m_renderer_config     {erhe::codegen::load_config<Renderer_config>       ("config/editor/renderer.json")}
+        , m_text_renderer_config{erhe::codegen::load_config<Text_renderer_config>  ("config/editor/text_renderer.json")}
+        , m_window_config       {erhe::codegen::load_config<Window_config>         ("config/editor/window.json")}
+        , m_editor_settings     {erhe::codegen::load_config<Editor_settings_config>("config/editor/editor_settings.json")}
     {
         if (m_editor_settings.headset.openxr) {
             m_editor_settings.hud.enabled = true;
@@ -776,6 +776,10 @@ public:
             m_scene_commands       = std::make_unique<Scene_commands>(commands, m_app_context);
             m_debug_draw           = std::make_unique<Debug_draw    >(m_app_context);
             erhe::scene_renderer::Program_interface_config program_interface_config{
+                .shader_paths = {
+                    std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
+                    std::filesystem::path{"res"} / std::filesystem::path{"editor"} / std::filesystem::path{"shaders"},
+                },
                 .max_camera_count    = m_renderer_config.max_camera_count,
                 .max_joint_count     = m_renderer_config.max_joint_count,
                 .max_light_count     = m_renderer_config.max_light_count,
@@ -879,7 +883,8 @@ public:
                     nullptr
                 );
                 if (m_graphics_device->get_info().use_compute_shader) {
-                    const std::filesystem::path shader_path{"res/shaders"};
+                    const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"shaders"};
+
                     using namespace erhe::graphics;
                     // Compute shader
                     {
@@ -1020,7 +1025,7 @@ public:
                 m_tool_properties_window = std::make_unique<Tool_properties_window          >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
                 m_viewport_config_window = std::make_unique<Viewport_config_window          >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
                 m_scene_view_config_window = std::make_unique<Scene_view_config_window      >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
-                m_logs                   = std::make_unique<erhe::imgui::Logs               >(*m_commands.get(),       *m_imgui_renderer.get());
+                m_logs                   = std::make_unique<erhe::imgui::Logs               >(*m_commands.get(),       *m_imgui_renderer.get(), "config/editor/logging.json");
                 m_log_settings_window    = std::make_unique<erhe::imgui::Log_settings_window>(*m_imgui_renderer.get(), *m_imgui_windows.get(),  *m_logs.get());
                 m_tail_log_window        = std::make_unique<erhe::imgui::Tail_log_window    >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  *m_logs.get());
                 m_frame_log_window       = std::make_unique<erhe::imgui::Frame_log_window   >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  *m_logs.get());
@@ -1947,7 +1952,7 @@ void run_editor()
 #endif
     // Workaround for
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
-    erhe::file::ensure_working_directory_contains("editor", "config/editor_settings.json");
+    erhe::file::ensure_working_directory_contains("config/editor/editor_settings.json");
 
     // initialize_log_sinks creates "logs/log.txt" relative to cwd; must
     // run AFTER ensure_working_directory_contains so the file lands in
@@ -1958,7 +1963,7 @@ void run_editor()
     }
 
     {
-        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        std::optional<std::string> contents = erhe::file::read("logging config", "config/editor/logging.json");
         if (contents.has_value()) {
             erhe::log::load_log_configuration(contents.value());
         }

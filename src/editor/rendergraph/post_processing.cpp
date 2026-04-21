@@ -24,15 +24,12 @@ namespace editor {
 Post_processing::Offsets::Offsets(erhe::graphics::Shader_resource& block)
     : input_texture        {block.add_uvec2("input_texture"        )->get_offset_in_parent()}
     , downsample_texture   {block.add_uvec2("downsample_texture"   )->get_offset_in_parent()}
-
     , upsample_texture     {block.add_uvec2("upsample_texture"     )->get_offset_in_parent()}
     , texel_scale          {block.add_vec2 ("texel_scale"          )->get_offset_in_parent()}
-
     , source_lod           {block.add_float("source_lod"           )->get_offset_in_parent()}
     , level_count          {block.add_float("level_count"          )->get_offset_in_parent()}
     , upsample_radius      {block.add_float("upsample_radius"      )->get_offset_in_parent()}
     , mix_weight           {block.add_float("mix_weight"           )->get_offset_in_parent()}
-
     , tonemap_luminance_max{block.add_float("tonemap_luminance_max")->get_offset_in_parent()}
     , tonemap_alpha        {block.add_float("tonemap_alpha"        )->get_offset_in_parent()}
 {
@@ -428,14 +425,18 @@ auto Post_processing::make_program(
 
     return
         erhe::graphics::Shader_stages_create_info{
-            .name                  = name,
-            .defines               = defines,
-            .extensions            = extensions,
-            .interface_blocks      = { &m_parameter_block },
-            .fragment_outputs      = &m_fragment_outputs,
+            .name                = name,
+            .defines             = defines,
+            .extensions          = extensions,
+            .interface_blocks    = { &m_parameter_block },
+            .fragment_outputs    = &m_fragment_outputs,
             .shaders = {
-                { erhe::graphics::Shader_type::vertex_shader,   m_shader_path / std::filesystem::path("post_processing.vert")},
+                { erhe::graphics::Shader_type::vertex_shader,   m_shader_path / std::filesystem::path{"post_processing.vert"}},
                 { erhe::graphics::Shader_type::fragment_shader, m_shader_path / fs_path }
+            },
+            .extra_include_paths = {
+                std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
+                std::filesystem::path{"res"} / std::filesystem::path{"editor"} / std::filesystem::path{"shaders"}
             },
             .bind_group_layout     = &m_bind_group_layout,
             .build                 = true
@@ -520,7 +521,7 @@ Post_processing::Post_processing(erhe::graphics::Device& d, App_context& app_con
     }
     , m_offsets           {m_parameter_block}
     , m_empty_vertex_input{d}
-    , m_shader_path{std::filesystem::path("res") / std::filesystem::path("shaders")}
+    , m_shader_path{std::filesystem::path{"res"} / std::filesystem::path{"editor"} / std::filesystem::path{"shaders"}}
     , m_shader_stages{
         .downsample_with_lowpass_input{d, make_program(d, "downsample_lowpass", "downsample_lowpass.frag", flag_source_input)},
         .downsample_with_lowpass      {d, make_program(d, "downsample_lowpass", "downsample_lowpass.frag", flag_source_downsample)},

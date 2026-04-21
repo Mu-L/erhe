@@ -390,6 +390,11 @@ auto Shader_stages_prototype_impl::get_final_source(
     return m_create_info.final_source(m_device, shader, &m_paths, gl_name);
 }
 
+auto Shader_stages_prototype_impl::get_dependency_paths() -> std::vector<std::filesystem::path>&
+{
+    return m_paths;
+}
+
 auto Shader_stages_prototype_impl::post_compile(const Shader_stage& shader, Gl_shader& gl_shader) -> bool
 {
     ERHE_PROFILE_FUNCTION();

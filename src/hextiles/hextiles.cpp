@@ -56,7 +56,7 @@ class Hextiles : public erhe::window::Input_event_handler
 public:
     Hextiles()
         : m_graphics_config{
-            erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json")
+            erhe::codegen::load_config<Graphics_config>("config/hextiles/erhe_graphics.json")
         }
         // TODO m_window_config etc.
         , m_window{
@@ -75,7 +75,7 @@ public:
                 .prefer_low_bandwidth      = false,
                 .prefer_high_dynamic_range = false
             },
-            erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json"),
+            erhe::codegen::load_config<Graphics_config>("config/hextiles/erhe_graphics.json"),
             [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
                 if (severity == erhe::graphics::Message_severity::error) {
                     std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
@@ -99,11 +99,29 @@ public:
                 }
             ),
         true)}
+
+        // Init-time command buffer. No desktop swapchain is engaged here,
+        // so the slot must be primed explicitly between wait_frame and
+        // begin_frame -- fence wait, recycle, fresh fence, ensure cb -- so
+        // begin_frame has a valid cb to open and end_frame's device-only
+        // submit branch actually submits. Subsequent members (Tile_renderer
+        // etc.) may record GPU commands (texture uploads, buffer copies)
+        // during construction and need an open init cb. end_frame() is
+        // called at the bottom of the constructor body.
+        , m_init_frame_started{[this]{
+            const bool init_wait_frame_ok = m_graphics_device.wait_frame();
+            ERHE_VERIFY(init_wait_frame_ok);
+            m_graphics_device.prime_device_frame_slot();
+            const bool init_begin_frame_ok = m_graphics_device.begin_frame();
+            ERHE_VERIFY(init_begin_frame_ok);
+            return true;
+        }()}
+
         , m_text_renderer       {m_graphics_device}
         , m_rendergraph         {m_graphics_device}
         , m_imgui_renderer      {m_graphics_device, m_settings.imgui}
         , m_imgui_windows       {m_imgui_renderer, m_graphics_device, m_rendergraph, &m_window, "windows.ini"}
-        , m_logs                {m_commands, m_imgui_renderer}
+        , m_logs                {m_commands, m_imgui_renderer, "config/hextiles/logging.json"}
         , m_log_settings_window {m_imgui_renderer, m_imgui_windows, m_logs}
         , m_tail_log_window     {m_imgui_renderer, m_imgui_windows, m_logs}
         , m_frame_log_window    {m_imgui_renderer, m_imgui_windows, m_logs}
@@ -136,6 +154,10 @@ public:
                 tick(0.01f, new_timestamp_ns);
             }
         );
+
+        // Close the init-time command buffer opened in the member init list.
+        const bool init_end_frame_ok = m_graphics_device.end_frame();
+        ERHE_VERIFY(init_end_frame_ok);
     }
 
     std::optional<erhe::window::Input_event> m_window_resize_event{};
@@ -325,6 +347,13 @@ public:
         ERHE_VERIFY(wait_ok);
         const bool wait_swap_ok = m_graphics_device.wait_swapchain_frame(frame_state);
         ERHE_VERIFY(wait_swap_ok);
+        // Open the device-level command buffer before any imgui work: the
+        // imgui code path calls Map_window::render() which starts a render
+        // pass and records GPU commands. Under Vulkan the command buffer
+        // must be in the recording state, so begin_frame() must happen
+        // before draw_imgui_windows().
+        const bool begin_device_frame_ok = m_graphics_device.begin_frame();
+        ERHE_VERIFY(begin_device_frame_ok);
 
         std::vector<erhe::window::Input_event>& input_events = m_window.get_input_events();
 
@@ -336,7 +365,6 @@ public:
         m_imgui_windows .draw_imgui_windows();
         m_imgui_windows .end_frame();
 
-        // editor does this via m_app_rendering->begin_frame()
         const erhe::graphics::Frame_begin_info frame_begin_info{
             .resize_width   = static_cast<uint32_t>(m_last_window_width),
             .resize_height  = static_cast<uint32_t>(m_last_window_height),
@@ -344,8 +372,9 @@ public:
         };
         m_request_resize_pending.store(false);
 
-        const bool begin_frame_ok = m_graphics_device.begin_frame(frame_begin_info);
-        ERHE_VERIFY(begin_frame_ok);
+        erhe::graphics::Frame_state swapchain_frame_state{};
+        const bool begin_swap_ok = m_graphics_device.begin_swapchain_frame(frame_begin_info, swapchain_frame_state);
+        ERHE_VERIFY(begin_swap_ok);
 
         if (m_map_window.is_window_visible()) {
             m_map_window.render();
@@ -357,7 +386,8 @@ public:
             .requested_display_time = 0 // TODO
         };
 
-        const bool end_frame_ok = m_graphics_device.end_frame(frame_end_info);
+        m_graphics_device.end_swapchain_frame(frame_end_info);
+        const bool end_frame_ok = m_graphics_device.end_frame();
         ERHE_VERIFY(end_frame_ok);
         m_in_tick.store(false);
     }
@@ -374,6 +404,7 @@ public:
     erhe::commands::Commands         m_commands;
     erhe::graphics::Device           m_graphics_device;
     bool                             m_shader_error_callback_set{false};
+    bool                             m_init_frame_started       {false};
     erhe::renderer::Text_renderer    m_text_renderer;
     erhe::rendergraph::Rendergraph   m_rendergraph;
     erhe::imgui::Imgui_renderer      m_imgui_renderer;
@@ -408,11 +439,11 @@ void run_hextiles()
 {
     // Workaround for
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
-    erhe::file::ensure_working_directory_contains("hextiles", "config/erhe_graphics.json");
+    erhe::file::ensure_working_directory_contains("config/hextiles/erhe_graphics.json");
 
     erhe::log::initialize_log_sinks();
     {
-        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        std::optional<std::string> contents = erhe::file::read("logging config", "config/hextiles/logging.json");
         if (contents.has_value()) {
             erhe::log::load_log_configuration(contents.value());
         }

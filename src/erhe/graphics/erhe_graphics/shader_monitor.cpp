@@ -67,7 +67,7 @@ void Shader_monitor::add(Shader_stages_create_info create_info, erhe::graphics::
         for (const std::filesystem::path& path : shader.paths) {
             if (erhe::file::check_is_existing_non_empty_regular_file("Shader_monitor::add", path)) {
                 Glsl_file_loader loader;
-                static_cast<void>(loader.read_shader_source_file(path));
+                static_cast<void>(loader.read_shader_source_file(path, create_info.extra_include_paths));
                 for (const std::filesystem::path& included_path : loader.get_file_paths()) {
                     if (erhe::file::check_is_existing_non_empty_regular_file("Shader_monitor::add", included_path)) {
                         add(included_path, create_info, shader_stages);

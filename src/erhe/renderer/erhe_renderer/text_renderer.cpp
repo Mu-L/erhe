@@ -26,9 +26,9 @@ auto Text_renderer::build_shader_stages() -> erhe::graphics::Shader_stages_proto
 {
     using namespace erhe::graphics;
 
-    const auto shader_path = std::filesystem::path("res") / std::filesystem::path("shaders");
-    const std::filesystem::path vs_path = shader_path / std::filesystem::path("text.vert");
-    const std::filesystem::path fs_path = shader_path / std::filesystem::path("text.frag");
+    const auto shader_path = std::filesystem::path{"res"} / std::filesystem::path{"shaders"};
+    const std::filesystem::path vs_path = shader_path / std::filesystem::path{"text.vert"};
+    const std::filesystem::path fs_path = shader_path / std::filesystem::path{"text.frag"};
     Shader_stages_create_info create_info{
         .name             = "text",
         .interface_blocks = m_use_buffer_texture

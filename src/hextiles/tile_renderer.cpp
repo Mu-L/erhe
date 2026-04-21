@@ -46,8 +46,12 @@ auto Tile_renderer::make_prototype(erhe::graphics::Device& graphics_device) cons
         .fragment_outputs      = &m_fragment_outputs,
         .vertex_format         = &m_vertex_format,
         .shaders = {
-            { erhe::graphics::Shader_type::vertex_shader,   m_shader_path / std::filesystem::path{"tile.vert"} },
-            { erhe::graphics::Shader_type::fragment_shader, m_shader_path / std::filesystem::path{"tile.frag"} }
+            { erhe::graphics::Shader_type::vertex_shader,   std::filesystem::path{"tile.vert"} },
+            { erhe::graphics::Shader_type::fragment_shader, std::filesystem::path{"tile.frag"} }
+        },
+        .extra_include_paths = {
+            std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
+            std::filesystem::path{"res"} / std::filesystem::path{"hextiles"} / std::filesystem::path{"shaders"}
         },
         .bind_group_layout = &m_bind_group_layout,
         .dump_interface    = true,
@@ -139,7 +143,6 @@ Tile_renderer::Tile_renderer(
     , m_u_clip_from_window_offset{m_clip_from_window->get_offset_in_parent()}
     , m_u_texture_size           {m_texture_handle  ->get_size_bytes()}
     , m_u_texture_offset         {m_texture_handle  ->get_offset_in_parent()}
-    , m_shader_path              {std::filesystem::path{"res"} / std::filesystem::path{"shaders"}}
     , m_shader_stages            {make_program(make_prototype(graphics_device))}
     , m_vertex_buffer{
         graphics_device,
@@ -193,9 +196,9 @@ static constexpr std::string_view c_text_renderer_initialize_component{"Tile_ren
 void Tile_renderer::compose_tileset_texture()
 {
     const auto texture_path =
-        std::filesystem::path("res") /
-        std::filesystem::path("hextiles") /
-        std::filesystem::path("hextiles.png");
+        std::filesystem::path{"res"} /
+        std::filesystem::path{"hextiles"} /
+        std::filesystem::path{"hextiles.png"};
     m_tileset_image = load_png(texture_path);
 
     // Tile layout:

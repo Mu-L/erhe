@@ -31,7 +31,7 @@ class Hello_swap : public erhe::window::Input_event_handler
 {
 public:
     Hello_swap()
-        : m_graphics_config{ erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json") }
+        : m_graphics_config{ erhe::codegen::load_config<Graphics_config>("config/hello_swap/erhe_graphics.json") }
         // TODO m_window_config etc.
         , m_window{
             erhe::window::Window_configuration{
@@ -135,8 +135,7 @@ public:
         erhe::graphics::Frame_state frame_state{};
         const bool wait_ok = m_graphics_device.wait_frame();
         ERHE_VERIFY(wait_ok);
-        const bool wait_swap_ok = m_graphics_device.wait_swapchain_frame(frame_state);
-        ERHE_VERIFY(wait_swap_ok);
+        const bool use_swapchain = m_graphics_device.wait_swapchain_frame(frame_state);
 
         // TODO use predicted display time
         const auto tick_end_time = std::chrono::steady_clock::now();
@@ -170,12 +169,10 @@ public:
         };
         m_request_resize_pending.store(false);
 
-        const bool begin_frame_ok = m_graphics_device.begin_frame(frame_begin_info);
-        ERHE_VERIFY(begin_frame_ok);
+        const bool should_render = use_swapchain && m_graphics_device.begin_frame(frame_begin_info);
 
-        update_render_pass(width, height);
-
-        {
+        if (should_render) {
+            update_render_pass(width, height);
             erhe::graphics::Render_command_encoder render_encoder = m_graphics_device.make_render_command_encoder();
             erhe::graphics::Scoped_render_pass scoped_render_pass{*m_render_pass.get()};
         }
@@ -183,7 +180,6 @@ public:
         const erhe::graphics::Frame_end_info frame_end_info{
             .requested_display_time = 0 // TODO
         };
-
         const bool end_frame_ok = m_graphics_device.end_frame(frame_end_info);
         ERHE_VERIFY(end_frame_ok);
 
@@ -238,11 +234,11 @@ void run()
 {
     // Workaround for
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
-    erhe::file::ensure_working_directory_contains("hello_swap", "config/erhe_graphics.json");
+    erhe::file::ensure_working_directory_contains("config/hello_swap/erhe_graphics.json");
 
     erhe::log::initialize_log_sinks();
     {
-        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        std::optional<std::string> contents = erhe::file::read("logging config", "config/hello_swap/logging.json");
         if (contents.has_value()) {
             erhe::log::load_log_configuration(contents.value());
         }

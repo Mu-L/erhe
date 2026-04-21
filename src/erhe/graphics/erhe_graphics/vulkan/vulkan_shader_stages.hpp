@@ -48,6 +48,7 @@ public:
     auto link_program   () -> bool;
 
     auto get_final_source(const Shader_stage& shader, std::optional<unsigned int> gl_name) -> std::string;
+    auto get_dependency_paths() -> std::vector<std::filesystem::path>&;
 
     [[nodiscard]] auto get_spirv_binary(Shader_type type) const -> std::span<const unsigned int>;
 

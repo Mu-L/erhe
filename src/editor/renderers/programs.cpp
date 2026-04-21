@@ -11,12 +11,11 @@ namespace editor {
 
 Programs::Shader_stages_builder::Shader_stages_builder(
     erhe::graphics::Reloadable_shader_stages& reloadable_shader_stages,
-    erhe::scene_renderer::Program_interface&  program_interface,
-    std::filesystem::path                     shader_path
+    erhe::scene_renderer::Program_interface&  program_interface
 )
     : reloadable_shader_stages{reloadable_shader_stages}
     , prototype{
-        program_interface.make_prototype(shader_path, reloadable_shader_stages.create_info)
+        program_interface.make_prototype(reloadable_shader_stages.create_info)
     }
 {
 }
@@ -28,7 +27,10 @@ Programs::Shader_stages_builder::Shader_stages_builder(Shader_stages_builder&& o
 }
 
 Programs::Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer::Program_interface& /*program_interface*/)
-    : shader_path{std::filesystem::path("res") / std::filesystem::path("shaders")}
+    : shader_paths{
+        std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
+        std::filesystem::path{"res"} / std::filesystem::path{"editor"} / std::filesystem::path{"shaders"},
+    }
     , error                   {graphics_device, "error-not_loaded"}
     , brdf_slice              {graphics_device, "brdf_slice-not_loaded"}
     , brush                   {graphics_device, "brush-not_loaded"}
@@ -84,9 +86,6 @@ void Programs::load_programs(
     erhe::scene_renderer::Program_interface& program_interface
 )
 {
-    // Not available on Dell laptop.
-    //standard      = make_program("standard", {}, {{gl::Shader_type::fragment_shader, "GL_NV_fragment_shader_barycentric"}});
-
     std::vector<Shader_stages_builder> prototypes;
 
     using CI = erhe::graphics::Shader_stages_create_info;
@@ -96,7 +95,7 @@ void Programs::load_programs(
         erhe::graphics::Shader_stages_create_info&& create_info
     ) {
         reloadable_shader_stages.create_info = std::move(create_info);
-        prototypes.emplace_back(reloadable_shader_stages, program_interface, shader_path);
+        prototypes.emplace_back(reloadable_shader_stages, program_interface);
     };
 
     add_shader(error                   , CI{ .name = "error"                   , .dump_interface = true } );

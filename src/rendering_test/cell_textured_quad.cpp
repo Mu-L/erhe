@@ -11,7 +11,7 @@ namespace rendering_test {
 
 void Rendering_test::make_quad_pipeline()
 {
-    const std::filesystem::path shader_path{"res/shaders"};
+    const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"rendering_test"} / std::filesystem::path{"shaders"};
 
     // Shared between the textured-quad and multi-texture cells, so the
     // s_textures array is sized to the largest caller (3, for multi-texture).

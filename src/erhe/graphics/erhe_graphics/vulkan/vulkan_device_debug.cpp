@@ -90,6 +90,11 @@ auto Device_impl::debug_utils_messenger_callback(
     if (callback_data->messageIdNumber == 0x675dc32e) {
         // Validation Warning: [ BestPractices-specialuse-extension ] | MessageID = 0x675dc32e
         // vkCreateInstance(): Attempting to enable extension VK_EXT_debug_utils, but this extension is intended to support use by applications when debugging and it is strongly recommended that it be otherwise avoided.
+        return VK_FALSE;
+    }
+    if (callback_data->messageIdNumber == 0x2d90c7c0) {
+        // [2d90c7c0 VUID-VkSwapchainPresentModesCreateInfoKHR-pPresentModes-07763] vkCreateSwapchainKHR(): pCreateInfo->pNext<VkSwapchainPresentModesCreateInfoKHR>.pPresentModes[0] VK_PRESENT_MODE_FIFO_KHR is a non-compatible presentMode.
+        return VK_FALSE;
     }
 
     spdlog::level::level_enum level = spdlog::level::info;

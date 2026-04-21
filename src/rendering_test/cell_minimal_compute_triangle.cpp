@@ -115,7 +115,7 @@ void Rendering_test::make_minimal_compute_triangle()
         }
     );
 
-    const std::filesystem::path shader_path{"res/shaders"};
+    const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"rendering_test"} / std::filesystem::path{"shaders"};
 
     // --- Compile the compute shader.
     {

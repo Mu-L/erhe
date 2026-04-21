@@ -50,7 +50,7 @@ File_read_stream::File_read_stream(const char* path)
         log_stream->error("File open fail: {} - {}", path, strerror(errno));
         abort();
     }
-}
+}                                                                       
 
 File_read_stream::~File_read_stream() noexcept
 {

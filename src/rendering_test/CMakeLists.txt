@@ -1,32 +1,53 @@
 message(STATUS "Configuring executable 'rendering_test'.")
 set(_target "rendering_test")
 add_executable(${_target})
+
+erhe_target_sources_grouped(
+    ${_target} TREE "${PROJECT_SOURCE_DIR}" FILES
+    config/rendering_test/erhe_graphics.json
+    config/rendering_test/logging.json
+    config/rendering_test/mesh_memory.json
+    config/rendering_test/rendering_test_settings.json
+    config/rendering_test/rendering_test_scene_wideline_scene.json
+    config/rendering_test/rendering_test_wideline_scene_wideline.json
+    config/rendering_test/rendering_test_cube_sphere.json
+    config/rendering_test/rendering_test_sphere_cube.json
+    config/rendering_test/rendering_test_cube_sphere_masked.json
+    config/rendering_test/rendering_test_sphere_cube_masked.json
+    config/rendering_test/rendering_test_pipeline_switch_AB.json
+    config/rendering_test/rendering_test_pipeline_switch_BA.json
+    config/rendering_test/rendering_test_pipeline_switch_AC.json
+    config/rendering_test/rendering_test_pipeline_switch_CA.json
+    config/rendering_test/rendering_test_wideline_pipe_switch.json
+    config/rendering_test/rendering_test_wel_then_stencil_wl.json
+    config/rendering_test/rendering_test_minimal_compute_AB.json
+    config/rendering_test/rendering_test_minimal_compute_BA.json
+    config/rendering_test/rendering_test_minimal_compute_CD.json
+    config/rendering_test/rendering_test_minimal_stw1_then_D.json
+    config/rendering_test/rendering_test_minimal_C_stw1_D.json
+    config/rendering_test/rendering_test_minimal_C_and_stw1_then_D.json
+    config/rendering_test/window.json
+
+    res/shaders/standard.vert
+    res/shaders/standard.frag
+    res/rendering_test/shaders/textured_quad.vert
+    res/rendering_test/shaders/textured_quad.frag
+    res/rendering_test/shaders/multi_texture_test.vert
+    res/rendering_test/shaders/multi_texture_test.frag
+    res/rendering_test/shaders/separate_samplers_test.frag
+    res/rendering_test/shaders/stencil_color.vert
+    res/rendering_test/shaders/stencil_color.frag
+    res/rendering_test/shaders/compute_before_content_line.comp
+    res/rendering_test/shaders/minimal_compute_triangle.comp
+    res/rendering_test/shaders/minimal_triangle.vert
+    res/rendering_test/shaders/minimal_triangle.frag
+    res/rendering_test/shaders/line_after_compute.vert
+    res/rendering_test/shaders/line_after_compute.frag
+    res/rendering_test/shaders/content_line_after_compute.frag
+)
+
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    config/erhe_graphics.json
-    config/logging.json
-    config/mesh_memory.json
-    config/rendering_test_settings.json
-    config/rendering_test_scene_wideline_scene.json
-    config/rendering_test_wideline_scene_wideline.json
-    config/rendering_test_cube_sphere.json
-    config/rendering_test_sphere_cube.json
-    config/rendering_test_cube_sphere_masked.json
-    config/rendering_test_sphere_cube_masked.json
-    config/rendering_test_pipeline_switch_AB.json
-    config/rendering_test_pipeline_switch_BA.json
-    config/rendering_test_pipeline_switch_AC.json
-    config/rendering_test_pipeline_switch_CA.json
-    config/rendering_test_wideline_pipe_switch.json
-    config/rendering_test_wel_then_stencil_wl.json
-    config/rendering_test_minimal_compute_AB.json
-    config/rendering_test_minimal_compute_BA.json
-    config/rendering_test_minimal_compute_CD.json
-    config/rendering_test_minimal_stw1_then_D.json
-    config/rendering_test_minimal_C_stw1_D.json
-    config/rendering_test_minimal_C_and_stw1_then_D.json
-    config/window.json
-
     main.cpp
     programs.cpp
     programs.hpp
@@ -44,22 +65,6 @@ erhe_target_sources_grouped(
     cell_stencil.cpp
     cell_stencil_wide_line.cpp
     cell_minimal_compute_triangle.cpp
-    res/shaders/standard.vert
-    res/shaders/standard.frag
-    res/shaders/textured_quad.vert
-    res/shaders/textured_quad.frag
-    res/shaders/multi_texture_test.vert
-    res/shaders/multi_texture_test.frag
-    res/shaders/separate_samplers_test.frag
-    res/shaders/stencil_color.vert
-    res/shaders/stencil_color.frag
-    res/shaders/compute_before_content_line.comp
-    res/shaders/minimal_compute_triangle.comp
-    res/shaders/minimal_triangle.vert
-    res/shaders/minimal_triangle.frag
-    res/shaders/line_after_compute.vert
-    res/shaders/line_after_compute.frag
-    res/shaders/content_line_after_compute.frag
 )
 
 # Graphics_config serialize/deserialize must compile here (same target as
@@ -153,11 +158,9 @@ endif ()
 
 set_target_properties(
     ${_target} PROPERTIES
-    CXX_STANDARD                  20
-    CXX_STANDARD_REQUIRED         YES
-    CXX_EXTENSIONS                NO
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    DEBUGGER_WORKING_DIRECTORY    "${CMAKE_CURRENT_SOURCE_DIR}"
+    CXX_STANDARD          20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS        NO
 )
 
 erhe_target_settings(${_target} "erhe-executables")

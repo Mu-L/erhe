@@ -97,99 +97,100 @@ Shader_stages::Shader_stages(Device& device, const std::string& failed_name)
 }
 
 Shader_stages::~Shader_stages() noexcept = default;
+
 Shader_stages::Shader_stages(Shader_stages&&) noexcept = default;
+
 Shader_stages& Shader_stages::operator=(Shader_stages&&) noexcept = default;
-//Shader_stages& Shader_stages::operator=(Shader_stages&& from)
-//{
-//    if (*this != from) {
-//        m_impl = std::move(from.m_impl);
-//    }
-//    return *this;
-//}
+
 Shader_stages::Shader_stages(Device& device, Shader_stages_prototype&& prototype)
     : m_impl{std::make_unique<Shader_stages_impl>(device, std::move(prototype))}
 {
 }
+
 auto Shader_stages::name() const -> const std::string&
 {
     return m_impl->name();
 }
+
 auto Shader_stages::is_valid() const -> bool
 {
     return m_impl->is_valid();
 }
+
 auto Shader_stages::get_bind_group_layout() const -> const Bind_group_layout*
 {
     return m_impl->get_bind_group_layout();
 }
+
 void Shader_stages::invalidate() const
 {
     m_impl->invalidate();
 }
+
 auto Shader_stages::get_impl() -> Shader_stages_impl&
 {
     return *m_impl.get();
 }
+
 auto Shader_stages::get_impl() const -> const Shader_stages_impl&
 {
     return *m_impl.get();
 }
+
 void Shader_stages::reload(Shader_stages_prototype&& prototype) const
 {
     m_impl->reload(std::move(prototype));
 }
 
-
-/// auto operator==(const Shader_stages& lhs, const Shader_stages& rhs) noexcept -> bool
-/// {
-///     return lhs.m_impl == rhs.m_impl;
-/// }
-/// 
-/// auto operator!=(const Shader_stages& lhs, const Shader_stages& rhs) noexcept -> bool
-/// {
-///     return !(lhs == rhs);
-/// }
-
-
 Shader_stages_prototype::Shader_stages_prototype(Device& device, Shader_stages_create_info&& create_info)
     : m_impl{std::make_unique<Shader_stages_prototype_impl>(device, std::move(create_info))}
 {
 }
+
 Shader_stages_prototype::Shader_stages_prototype(Device& device, const Shader_stages_create_info& create_info)
     : m_impl{std::make_unique<Shader_stages_prototype_impl>(device, create_info)}
 {
 }
+
 Shader_stages_prototype::~Shader_stages_prototype() noexcept = default;
+
 Shader_stages_prototype::Shader_stages_prototype(Shader_stages_prototype&&) noexcept = default;
 
 void Shader_stages_prototype::compile_shaders() const
 {
     m_impl->compile_shaders();
 }
+
 auto Shader_stages_prototype::link_program() const -> bool
 {
     return m_impl->link_program();
 }
+
 auto Shader_stages_prototype::name() const -> const std::string&
 {
     return m_impl->name();
 }
+
 auto Shader_stages_prototype::create_info() const -> const Shader_stages_create_info&
 {
     return m_impl->create_info();
 }
+
 auto Shader_stages_prototype::is_valid() const -> bool
 {
     return m_impl->is_valid();
 }
+
 auto Shader_stages_prototype::get_final_source(const Shader_stage& shader, std::optional<unsigned int> gl_name) const -> std::string
 {
     return m_impl->get_final_source(shader, gl_name);
 }
+
 auto Shader_stages_prototype::get_impl() -> Shader_stages_prototype_impl&
 {
     return *m_impl.get();
 }
+
 auto Shader_stages_prototype::get_impl() const -> const Shader_stages_prototype_impl&
 {
     return *m_impl.get();

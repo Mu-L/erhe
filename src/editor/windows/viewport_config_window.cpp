@@ -149,7 +149,7 @@ void Viewport_config_window::imgui()
 
         const std::string after = serialize(*m_edit_data);
         if (before != after) {
-            erhe::codegen::save_config(*m_edit_data, "default_viewport_config.json");
+            erhe::codegen::save_config(*m_edit_data, "config/editor/default_viewport_config.json");
         }
     }
 }

@@ -652,9 +652,9 @@ void Fly_camera_tool::serialize_transform(bool store)
         Fly_camera_config fly_camera_config;
         fly_camera_config.translation = translation;
         fly_camera_config.rotation    = glm::vec4{rotation.x, rotation.y, rotation.z, rotation.w};
-        erhe::codegen::save_config(fly_camera_config, "fly_camera.json");
+        erhe::codegen::save_config(fly_camera_config, "config/editor/fly_camera.json");
     } else {
-        Fly_camera_config fly_camera_config = erhe::codegen::load_config<Fly_camera_config>("fly_camera.json");
+        Fly_camera_config fly_camera_config = erhe::codegen::load_config<Fly_camera_config>("config/editor/fly_camera.json");
         glm::vec3 translation = fly_camera_config.translation;
         glm::quat rotation{fly_camera_config.rotation.w, fly_camera_config.rotation.x, fly_camera_config.rotation.y, fly_camera_config.rotation.z};
         const erhe::scene::Trs_transform& world_from_node{translation, rotation};

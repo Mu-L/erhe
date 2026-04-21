@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -26,9 +27,11 @@ public:
     Glslang_shader_stages(Shader_stages_prototype_impl& shader_stages_prototype, Spirv_cache* cache = nullptr);
     ~Glslang_shader_stages() noexcept;
 
-    auto link_program    () -> bool;
-    auto compile_shader  (Device& device, const Shader_stage& shader) -> bool;
-    auto get_spirv_binary(Shader_type type) const -> std::span<const unsigned int>;
+    auto link_program          () -> bool;
+    auto compile_shader        (Device& device, const Shader_stage& shader) -> bool;
+    auto get_spirv_binary      (Shader_type type) const -> std::span<const unsigned int>;
+    auto get_last_compile_log  () const -> const std::string&;
+    auto get_last_link_log     () const -> const std::string&;
 
     // Check if all stages can be loaded from cache, populating m_spirv_shaders directly
     auto try_load_all_from_cache(Device& device) -> bool;
@@ -40,6 +43,8 @@ private:
     std::unordered_map<::EShLanguage, std::vector<unsigned int>>         m_spirv_shaders;
     std::unordered_set<::EShLanguage>                                    m_active_stages;
     std::shared_ptr<glslang::TProgram>                                   m_glslang_program;
+    std::string                                                          m_last_compile_log;
+    std::string                                                          m_last_link_log;
 };
 
 } // namespace erhe::graphics

@@ -1,8 +1,10 @@
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/glsl_to_spirv.hpp"
 #include "erhe_graphics/glsl_format_source.hpp"
+#include "erhe_graphics/glsl_includer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/spirv_cache.hpp"
+#include "erhe_file/file.hpp"
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
 # include "erhe_graphics/gl/gl_shader_stages.hpp"
@@ -16,12 +18,16 @@
 
 #include "erhe_verify/verify.hpp"
 
+#include <fmt/format.h>
+
 #include "glslang/Public/ResourceLimits.h"
 #include "glslang/Public/ShaderLang.h"
 #include <glslang/MachineIndependent/localintermediate.h>
 #include <SPIRV/GlslangToSpv.h>
+#include <SPIRV/disassemble.h>
 
 #include <algorithm>
+#include <sstream>
 
 namespace erhe::graphics {
 
@@ -35,6 +41,17 @@ namespace erhe::graphics {
         default: {
             ERHE_FATAL("TODO");
         }
+    }
+}
+
+[[nodiscard]] auto glslang_stage_name(::EShLanguage language) -> const char*
+{
+    switch (language) {
+        case EShLanguage::EShLangVertex:   return "vertex";
+        case EShLanguage::EShLangFragment: return "fragment";
+        case EShLanguage::EShLangGeometry: return "geometry";
+        case EShLanguage::EShLangCompute:  return "compute";
+        default:                           return "unknown";
     }
 }
 
@@ -90,23 +107,107 @@ Glslang_shader_stages::~Glslang_shader_stages() noexcept = default;
 
 auto Glslang_shader_stages::compile_shader(Device& device, const Shader_stage& shader) -> bool
 {
-    const std::string source   = m_shader_stages_prototype.get_final_source(shader, std::nullopt);
-    const std::string name     = !shader.paths.empty() ? shader.paths.front().string() : std::string{};
     const EShLanguage language = to_glslang(shader.type);
 
-    //std::shared_ptr<glslang::TShader> glslang_shader = std::make_shared<glslang::TShader>(language);
+    const Shader_stages_create_info& create_info = m_shader_stages_prototype.create_info();
+
+    // Build the synthesized preamble by calling final_source() with both
+    // the shader paths AND inline source cleared, so neither the file-loader
+    // branch nor the inline-source append branch in final_source() emits
+    // the shader body. Otherwise the body would end up in both the preamble
+    // (served via #include) and main_source below, causing redefinition
+    // errors for any top-of-shader declarations (varyings, etc.).
+    std::string preamble;
+    {
+        Shader_stage preamble_shader = shader;
+        preamble_shader.paths.clear();
+        preamble_shader.source.clear();
+        preamble = create_info.final_source(device, preamble_shader, nullptr, std::nullopt);
+    }
+
+    // #version must be the first non-comment line of a GLSL translation unit,
+    // so it has to live at the top of the main string we hand to glslang, not
+    // inside the preamble served by the includer. Split the first line off
+    // the preamble; everything after it becomes the preamble body.
+    std::string version_line;
+    std::string preamble_body;
+    {
+        const std::size_t nl = preamble.find('\n');
+        if (nl == std::string::npos) {
+            version_line = preamble;
+            preamble.clear();
+        } else {
+            version_line = preamble.substr(0, nl + 1);
+            preamble_body = preamble.substr(nl + 1);
+        }
+    }
+
+    static constexpr const char* c_preamble_include_name = "erhe_preamble.glsl";
+
+    // Read the top-level shader file raw — do NOT pre-expand #includes. The
+    // glslang Includer resolves them during parse so each one becomes its own
+    // named source string (and thus its own DebugSource with Text).
+    std::string main_source;
+    std::filesystem::path main_path;
+    std::filesystem::path primary_dir;
+    if (!shader.paths.empty()) {
+        main_path = shader.paths.front();
+        // Resolve against create_info.extra_include_paths when the path
+        // does not exist as-is. Matches the fallback order in
+        // Glsl_file_loader::read_shader_source_file so callers that pass
+        // a bare filename (e.g. Tile_renderer with "tile.vert") resolve
+        // the same way on the glslang path as on the legacy load path.
+        std::error_code error_code;
+        if (!std::filesystem::exists(main_path, error_code)) {
+            for (const std::filesystem::path& extra : create_info.extra_include_paths) {
+                const std::filesystem::path candidate = extra / main_path.filename();
+                if (std::filesystem::exists(candidate, error_code)) {
+                    main_path = candidate;
+                    break;
+                }
+            }
+        }
+        primary_dir = main_path.parent_path();
+        auto file_source = erhe::file::read("Glslang_shader_stages::compile_shader", main_path);
+        if (file_source.has_value()) {
+            main_source = std::move(file_source.value());
+        } else {
+            m_last_compile_log = fmt::format("Failed to read shader source file {}", main_path.string());
+            log_glsl->error("{}", m_last_compile_log);
+            return false;
+        }
+    } else if (!shader.source.empty()) {
+        main_source = shader.source;
+    }
+
+    // Track the top-level file as a monitor dependency.
+    if (!main_path.empty()) {
+        std::vector<std::filesystem::path>& deps = m_shader_stages_prototype.get_dependency_paths();
+        const auto i = std::find(deps.begin(), deps.end(), main_path);
+        if (i == deps.end()) {
+            deps.push_back(main_path);
+        }
+    }
+
+    std::string main_with_preamble;
+    main_with_preamble.reserve(version_line.size() + main_source.size() + 128);
+    main_with_preamble += version_line;
+    main_with_preamble += "#extension GL_GOOGLE_include_directive : require\n";
+    main_with_preamble += "#include \"";
+    main_with_preamble += c_preamble_include_name;
+    main_with_preamble += "\"\n";
+    main_with_preamble += main_source;
+
+    const std::string main_name = !main_path.empty() ? main_path.generic_string() : create_info.name;
+
     m_glslang_shaders[language].reset();
     m_glslang_shaders[language] = std::make_shared<glslang::TShader>(language);
     glslang::TShader& glslang_shader = *m_glslang_shaders[language].get();
 
-    const char* const source_string = source.data();
-    const int         source_length = static_cast<int>(source.size());
-    const char* const source_name   = name.c_str();
-    if (!name.empty()) {
-        glslang_shader.setStringsWithLengthsAndNames(&source_string, &source_length, &source_name, 1);
-    } else {
-        glslang_shader.setStringsWithLengths(&source_string, &source_length, 1);
-    }
+    const char* const source_string = main_with_preamble.data();
+    const int         source_length = static_cast<int>(main_with_preamble.size());
+    const char* const source_name   = main_name.c_str();
+    glslang_shader.setStringsWithLengthsAndNames(&source_string, &source_length, &source_name, 1);
 
 #if defined(ERHE_GRAPHICS_LIBRARY_METAL) || defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
     glslang_shader.setEnvInput(glslang::EShSource::EShSourceGlsl, language, glslang::EShClient::EShClientVulkan, 100);
@@ -125,20 +226,66 @@ auto Glslang_shader_stages::compile_shader(Device& device, const Shader_stage& s
         EShMsgDisplayErrorColumn   // Display error message column aswell as line
     };
 
+    Glsl_includer includer{
+        primary_dir,
+        create_info.extra_include_paths,
+        std::move(preamble_body),
+        c_preamble_include_name,
+        &m_shader_stages_prototype.get_dependency_paths()
+    };
+
     const ::TBuiltInResource glslang_built_in_resources = get_built_in_resources(device);
-    const bool parse_ok = glslang_shader.parse(&glslang_built_in_resources, 100, true, static_cast<const EShMessages>(messages));
-    const char* info_log = glslang_shader.getInfoLog();
+    const bool parse_ok = glslang_shader.parse(
+        &glslang_built_in_resources,
+        100,
+        true,
+        static_cast<const EShMessages>(messages),
+        includer
+    );
+    const char* info_log       = glslang_shader.getInfoLog();
+    const char* info_debug_log = glslang_shader.getInfoDebugLog();
     if (!parse_ok) {
-        const std::string formatted_source = format_source(source);
-        log_glsl->error("glslang parse error in shader = {}\n{}\n{}\n{}\n", name, info_log, formatted_source, info_log);
-        //log_glsl->error("glslang parse error in shader = {}\n{}\n{}\n{}\n", name, info_log, source, info_log);
+        const std::string formatted_source = format_source(main_with_preamble);
+        log_glsl->error(
+            "glslang parse error in shader = {}\n{}\n{}\n{}\n{}\n",
+            main_name,
+            info_log       != nullptr ? info_log       : "",
+            info_debug_log != nullptr ? info_debug_log : "",
+            formatted_source,
+            info_log       != nullptr ? info_log       : ""
+        );
+        m_last_compile_log.clear();
+        if ((info_log != nullptr) && (info_log[0] != '\0')) {
+            m_last_compile_log += info_log;
+        }
+        if ((info_debug_log != nullptr) && (info_debug_log[0] != '\0')) {
+            if (!m_last_compile_log.empty() && m_last_compile_log.back() != '\n') {
+                m_last_compile_log += '\n';
+            }
+            m_last_compile_log += info_debug_log;
+        }
+        if (m_last_compile_log.empty()) {
+            m_last_compile_log = fmt::format(
+                "glslang parse returned false but produced no info log for shader = {}",
+                main_name
+            );
+        }
         return false;
-        //m_state = state_fail;
-    } else if (info_log[0] != '\0') {
+    } else if ((info_log != nullptr) && (info_log[0] != '\0')) {
         log_glsl->info("\n{}\n", info_log);
     }
-    
-    return true; //glslang_shader;
+
+    return true;
+}
+
+auto Glslang_shader_stages::get_last_compile_log() const -> const std::string&
+{
+    return m_last_compile_log;
+}
+
+auto Glslang_shader_stages::get_last_link_log() const -> const std::string&
+{
+    return m_last_link_log;
 }
 
 auto Glslang_shader_stages::link_program() -> bool
@@ -172,6 +319,7 @@ auto Glslang_shader_stages::link_program() -> bool
     }
     if (!link_ok) {
         log_program->error("glslang program link failed");
+        m_last_link_log = (info_log != nullptr) ? info_log : "";
         //// m_state = state_fail;
         return false;
     }
@@ -229,6 +377,17 @@ auto Glslang_shader_stages::link_program() -> bool
                     }
                 }
             }
+        }
+
+        if (create_info.dump_spirv_disassembly) {
+            std::ostringstream disasm;
+            spv::Disassemble(disasm, m_spirv_shaders[stage]);
+            log_glsl->info(
+                "SPIR-V disassembly for {} {} stage:\n{}\n",
+                create_info.name,
+                glslang_stage_name(stage),
+                disasm.str()
+            );
         }
     }
 

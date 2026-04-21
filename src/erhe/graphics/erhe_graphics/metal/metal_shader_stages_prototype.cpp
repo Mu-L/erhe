@@ -325,7 +325,12 @@ void Shader_stages_prototype_impl::compile_shaders()
         }
         const bool compile_ok = m_glslang_shader_stages.compile_shader(m_device, shader);
         if (!compile_ok) {
-            std::string error_msg = fmt::format("GLSL compilation failed for shader: {}", m_create_info.name);
+            const std::string& compile_log = m_glslang_shader_stages.get_last_compile_log();
+            std::string error_msg = fmt::format(
+                "GLSL compilation failed for shader: {}\n{}",
+                m_create_info.name,
+                compile_log
+            );
             log_program->error("{}", error_msg);
             std::string source = m_create_info.final_source(m_device, shader, nullptr);
             m_device.shader_error(error_msg, source);
@@ -409,7 +414,12 @@ auto Shader_stages_prototype_impl::get_final_source(
     std::optional<unsigned int> gl_name
 ) -> std::string
 {
-    return m_create_info.final_source(m_device, shader, nullptr, gl_name);
+    return m_create_info.final_source(m_device, shader, &m_paths, gl_name);
+}
+
+auto Shader_stages_prototype_impl::get_dependency_paths() -> std::vector<std::filesystem::path>&
+{
+    return m_paths;
 }
 
 auto Shader_stages_prototype_impl::get_vertex_function() const -> MTL::Function*

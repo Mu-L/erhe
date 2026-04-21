@@ -73,6 +73,26 @@ auto Shader_stages_create_info::attributes_source() const -> std::string
     return sb.str();
 }
 
+auto Shader_stages_create_info::attribute_defines_source() const -> std::string
+{
+    // Just the ERHE_ATTRIBUTE_<name> defines -- no input declarations.
+    // Fragment shaders (and any other non-vertex stage) need these defines so
+    // #ifdef ERHE_ATTRIBUTE_* branches read the interpolated varyings that
+    // were actually declared on the vertex side.
+    std::stringstream sb;
+
+    if (vertex_format != nullptr) {
+        Vertex_input_state_data vertex_input = Vertex_input_state_data::make(*vertex_format);
+        sb << "// Attribute defines\n";
+        for (const auto& attribute : vertex_input.attributes) {
+            sb << "#define ERHE_ATTRIBUTE_" << attribute.name << " 1\n";
+        }
+        sb << "\n";
+    }
+
+    return sb.str();
+}
+
 auto Shader_stages_create_info::fragment_outputs_source() const -> std::string
 {
     std::stringstream sb;
@@ -280,8 +300,14 @@ auto Shader_stages_create_info::final_source(
 
     if (shader.type == Shader_type::vertex_shader) {
         sb << attributes_source();
-    } else if (shader.type == Shader_type::fragment_shader) {
-        sb << fragment_outputs_source();
+    } else {
+        // Non-vertex stages still need ERHE_ATTRIBUTE_<name> defines so
+        // their #ifdef guards agree with the vertex declarations and read
+        // the interpolated varyings the vertex shader actually wrote.
+        sb << attribute_defines_source();
+        if (shader.type == Shader_type::fragment_shader) {
+            sb << fragment_outputs_source();
+        }
     }
 
     if (defines.size() > 0) {
@@ -322,7 +348,7 @@ auto Shader_stages_create_info::final_source(
     if (!shader.paths.empty()) {
         Glsl_file_loader loader;
         ERHE_VERIFY(shader.paths.size() == 1);
-        std::string source = loader.read_shader_source_file(shader.paths.front());
+        std::string source = loader.read_shader_source_file(shader.paths.front(), extra_include_paths);
         if (paths != nullptr) {
             for (const std::filesystem::path& path : loader.get_file_paths()) {
                 paths->push_back(path);

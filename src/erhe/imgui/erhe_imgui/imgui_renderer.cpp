@@ -1078,6 +1078,24 @@ void Imgui_renderer::update_texture(ImTextureData* tex)
     }
 }
 
+void Imgui_renderer::update_draw_data_textures()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    const ImDrawData* draw_data = ImGui::GetDrawData();
+    if (draw_data == nullptr) {
+        return;
+    }
+    if (draw_data->Textures == nullptr) {
+        return;
+    }
+    for (ImTextureData* tex : *draw_data->Textures) {
+        if (tex->Status != ImTextureStatus_OK) {
+            update_texture(tex);
+        }
+    }
+}
+
 void Imgui_renderer::render_draw_data(
     erhe::graphics::Render_command_encoder& render_encoder,
     const erhe::graphics::Render_pass&      render_pass
@@ -1100,14 +1118,6 @@ void Imgui_renderer::render_draw_data(
     const ImDrawData* draw_data = ImGui::GetDrawData();
     if (draw_data == nullptr) {
         return;
-    }
-
-    if (draw_data->Textures != nullptr) {
-        for (ImTextureData* tex : *draw_data->Textures) {
-            if (tex->Status != ImTextureStatus_OK) {
-                update_texture(tex);
-            }
-        }
     }
 
     const int fb_width  = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);

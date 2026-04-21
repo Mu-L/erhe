@@ -42,7 +42,7 @@ void Rendering_test::render_scene(
     render_encoder.set_scissor_rect(viewport.x, viewport.y, viewport.width, viewport.height);
 
     const auto& conventions = m_graphics_device.get_info().coordinate_conventions;
-    m_forward_renderer.render(
+    m_forward_renderer->render(
         erhe::scene_renderer::Forward_renderer::Render_parameters{
             .render_encoder         = render_encoder,
             .index_type             = erhe::dataformat::Format::format_32_scalar_uint,
@@ -90,7 +90,7 @@ void Rendering_test::make_content_wide_line_renderer()
     // Build compute shader using renderer's resource definitions
     {
         using namespace erhe::graphics;
-        const std::filesystem::path shader_path{"res/shaders"};
+        const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"rendering_test"} / std::filesystem::path{"shaders"};
         Shader_stages_create_info create_info{
             .name             = "compute_before_content_line",
             .struct_types     = {
@@ -124,7 +124,7 @@ void Rendering_test::make_content_wide_line_renderer()
     // viewport-relative pixel coords.
     {
         using namespace erhe::graphics;
-        const std::filesystem::path shader_path{"res/shaders"};
+        const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"rendering_test"} / std::filesystem::path{"shaders"};
         Shader_stages_create_info create_info{
             .name             = "content_line_after_compute",
             .struct_types     = { &m_program_interface.camera_interface.camera_struct },

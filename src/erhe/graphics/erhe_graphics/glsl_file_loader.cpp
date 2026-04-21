@@ -88,7 +88,7 @@ auto Glsl_file_loader::process_includes(std::size_t source_string_index, const s
                             }
                             sb << "\n";
 
-                            const std::string included_source = read_shader_source_file(path);
+                            const std::string included_source = read_shader_source_file(path, m_extra_include_paths);
                             sb << included_source;
                             if (included_source.empty() || included_source.back() != '\n') {
                                 sb << '\n';
@@ -124,8 +124,12 @@ auto Glsl_file_loader::process_includes(std::size_t source_string_index, const s
     return sb.str();
 }
 
-auto Glsl_file_loader::read_shader_source_file(const std::filesystem::path& path) -> std::string
+auto Glsl_file_loader::read_shader_source_file(
+    const std::filesystem::path&              path,
+    const std::vector<std::filesystem::path>& extra_include_paths
+) -> std::string
 {
+    m_extra_include_paths = extra_include_paths;
     auto i = std::find(m_include_stack.begin(), m_include_stack.end(), path);
     if (i != m_include_stack.end()) {
         log_glsl->warn("#include cycle for {}", path.string());
@@ -134,18 +138,31 @@ auto Glsl_file_loader::read_shader_source_file(const std::filesystem::path& path
     if (path.empty()) {
         return {};
     }
-    auto source = erhe::file::read("Shader_stages_create_info::final_source", path);
-    if (!source.has_value()) {
-        return fmt::format("// Source load failed from: {}", path.string());
+
+    std::filesystem::path resolved_path = path;
+    std::error_code error_code{};
+    if (!std::filesystem::exists(resolved_path, error_code)) {
+        for (const std::filesystem::path& extra : m_extra_include_paths) {
+            const std::filesystem::path candidate = extra / path.filename();
+            if (std::filesystem::exists(candidate, error_code)) {
+                resolved_path = candidate;
+                break;
+            }
+        }
     }
 
-    m_include_stack.push_back(path);
+    auto source = erhe::file::read("Shader_stages_create_info::final_source", resolved_path);
+    if (!source.has_value()) {
+        return fmt::format("// Source load failed from: {}", resolved_path.string());
+    }
+
+    m_include_stack.push_back(resolved_path);
 
     std::size_t source_string_index = 1 + m_source_string_index_to_path.size();
-    m_source_string_index_to_path.push_back(path);
+    m_source_string_index_to_path.push_back(resolved_path);
     std::string processed_source = process_includes(source_string_index, source.value());
     std::stringstream ss;
-    ss << "#line 1 " << source_string_index << " // " << path.string() << '\n';
+    ss << "#line 1 " << source_string_index << " // " << resolved_path.string() << '\n';
     ss << processed_source;
 
     m_include_stack.pop_back();

@@ -4,6 +4,6 @@
     "shader_monitor_enabled": false,
     "vulkan": {
         "_version": 1,
-        "vulkan_validation_layers": false
+        "vulkan_validation_layers": true
     }
 }

@@ -35,6 +35,7 @@ public:
     void dump_reflection() const;
 
     [[nodiscard]] auto get_final_source(const Shader_stage& shader, std::optional<unsigned int> gl_name) -> std::string;
+    [[nodiscard]] auto get_dependency_paths() -> std::vector<std::filesystem::path>&;
 
 private:
     void post_link();

@@ -1,12 +1,26 @@
 message(STATUS "Configuring executable 'hextiles'.")
 set(_target "hextiles")
 add_executable(${_target})
+
+erhe_target_sources_grouped(
+    ${_target} TREE "${PROJECT_SOURCE_DIR}" FILES
+    config/hextiles/erhe_graphics.json
+    config/hextiles/logging.json
+    config/hextiles/window.json
+
+    res/hextiles/shaders/line.vert
+    res/hextiles/shaders/line.geom
+    res/hextiles/shaders/line.frag
+    res/hextiles/shaders/text.vert
+    res/hextiles/shaders/text.frag
+    res/hextiles/shaders/textured.vert
+    res/hextiles/shaders/textured.frag
+    res/hextiles/shaders/tile.vert
+    res/hextiles/shaders/tile.frag
+)
+
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    config/erhe_graphics.json
-    config/logging.json
-    config/window.json
-
     hextiles.cpp
     hextiles.hpp
     coordinate.cpp
@@ -77,15 +91,6 @@ erhe_target_sources_grouped(
     type_editors/type_editor.hpp
     type_editors/unit_editor_window.cpp
     type_editors/unit_editor_window.hpp
-    res/shaders/line.vert
-    res/shaders/line.geom
-    res/shaders/line.frag
-    res/shaders/text.vert
-    res/shaders/text.frag
-    res/shaders/textured.vert
-    res/shaders/textured.frag
-    res/shaders/tile.vert
-    res/shaders/tile.frag
 )
 
 # Graphics_config serialize/deserialize must compile here (same target as
@@ -145,11 +150,9 @@ target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set_target_properties(
     ${_target} PROPERTIES
-    CXX_STANDARD                  20
-    CXX_STANDARD_REQUIRED         YES
-    CXX_EXTENSIONS                NO
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    DEBUGGER_WORKING_DIRECTORY    "${CMAKE_CURRENT_SOURCE_DIR}"
+    CXX_STANDARD          20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS        NO
 )
 
 erhe_target_settings(${_target} "erhe-executables")

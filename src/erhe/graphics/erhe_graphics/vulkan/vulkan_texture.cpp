@@ -115,6 +115,8 @@ Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_inf
     , m_buffer                {create_info.buffer}
     , m_debug_label           {create_info.debug_label}
 {
+    ERHE_VERIFY(m_width > 0);
+    ERHE_VERIFY(m_height > 0);
     // Texture view: share the source texture's VkImage. We do not create any
     // VkImageView eagerly here; callers obtain views via the explicit
     // get_vk_image_view(aspect_mask, ...) overload.

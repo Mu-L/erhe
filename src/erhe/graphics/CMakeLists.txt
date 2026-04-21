@@ -334,6 +334,8 @@ endif ()
 if (ERHE_SPIRV)
     erhe_target_sources_grouped(
         ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        erhe_graphics/glsl_includer.cpp
+        erhe_graphics/glsl_includer.hpp
         erhe_graphics/glsl_to_spirv.cpp
         erhe_graphics/glsl_to_spirv.hpp
     )

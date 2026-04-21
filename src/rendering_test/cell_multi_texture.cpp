@@ -11,7 +11,7 @@ namespace rendering_test {
 
 void Rendering_test::make_multi_texture_pipeline()
 {
-    const std::filesystem::path shader_path{"res/shaders"};
+    const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"rendering_test"} / std::filesystem::path{"shaders"};
 
     m_multi_tex_block = std::make_unique<erhe::graphics::Shader_resource>(
         m_graphics_device, "multi_tex", 0, erhe::graphics::Shader_resource::Type::uniform_block

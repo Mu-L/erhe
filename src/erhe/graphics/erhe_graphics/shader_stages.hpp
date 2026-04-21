@@ -52,8 +52,9 @@ public:
         std::optional<unsigned int>         gl_name = {}
     ) const -> std::string;
 
-    [[nodiscard]] auto attributes_source      () const -> std::string;
-    [[nodiscard]] auto fragment_outputs_source() const -> std::string;
+    [[nodiscard]] auto attributes_source        () const -> std::string;
+    [[nodiscard]] auto attribute_defines_source () const -> std::string;
+    [[nodiscard]] auto fragment_outputs_source  () const -> std::string;
     [[nodiscard]] auto struct_types_source    () const -> std::string;
     [[nodiscard]] auto interface_blocks_source() const -> std::string;
     [[nodiscard]] auto interface_source       () const -> std::string;
@@ -63,20 +64,22 @@ public:
     [[nodiscard]] auto get_description() const -> std::string;
 
     std::string                                      name;
-    std::vector<std::string>                         pragmas              {};
-    std::vector<std::pair<std::string, std::string>> defines              {};
-    std::vector<Shader_stage_extension>              extensions           {};
-    std::vector<const Shader_resource*>              struct_types         {};
-    std::vector<const Shader_resource*>              interface_blocks     {};
-    const Fragment_outputs*                          fragment_outputs     {nullptr};
-    const erhe::dataformat::Vertex_format*           vertex_format        {nullptr};
-    bool                                             no_vertex_input      {false};   // fullscreen passes: don't inject vertex attributes
-    std::vector<Shader_stage>                        shaders              {};
-    const Bind_group_layout*                           bind_group_layout    {nullptr};
-    bool                                             dump_reflection      {false};
-    bool                                             dump_interface       {false};
-    bool                                             dump_final_source    {false};
-    bool                                             build                {false};
+    std::vector<std::string>                         pragmas            {};
+    std::vector<std::pair<std::string, std::string>> defines            {};
+    std::vector<Shader_stage_extension>              extensions         {};
+    std::vector<const Shader_resource*>              struct_types       {};
+    std::vector<const Shader_resource*>              interface_blocks   {};
+    const Fragment_outputs*                          fragment_outputs   {nullptr};
+    const erhe::dataformat::Vertex_format*           vertex_format      {nullptr};
+    bool                                             no_vertex_input    {false};   // fullscreen passes: don't inject vertex attributes
+    std::vector<Shader_stage>                        shaders            {};
+    std::vector<std::filesystem::path>               extra_include_paths{};
+    const Bind_group_layout*                         bind_group_layout  {nullptr};
+    bool                                             dump_reflection        {false};
+    bool                                             dump_interface         {false};
+    bool                                             dump_final_source      {false};
+    bool                                             dump_spirv_disassembly {false};
+    bool                                             build                  {false};
 };
 
 class Shader_stages_prototype_impl;
@@ -148,17 +151,5 @@ public:
 private:
     [[nodiscard]] auto make_prototype(Device& graphics_device) const -> Shader_stages_prototype;
 };
-
-// class Shader_stages_impl_hash
-// {
-// public:
-//     [[nodiscard]] auto operator()(const Shader_stages_impl& shader_stages) const noexcept -> std::size_t
-//     {
-//         return static_cast<std::size_t>(shader_stages.gl_name());
-//     }
-// };
-
-// [[nodiscard]] auto operator==(const Shader_stages& lhs, const Shader_stages& rhs) noexcept -> bool;
-// [[nodiscard]] auto operator!=(const Shader_stages& lhs, const Shader_stages& rhs) noexcept -> bool;
 
 } // namespace erhe::graphics

@@ -271,7 +271,7 @@ void Asset_browser::scan(const std::filesystem::path& path, Asset_node* parent)
 
 void Asset_browser::scan()
 {
-    std::filesystem::path assets_root = std::filesystem::path("res") / std::filesystem::path("assets");
+    std::filesystem::path assets_root = std::filesystem::path{"res"} / std::filesystem::path{"editor"} / std::filesystem::path{"assets"};
 
     m_root = make_node(assets_root, nullptr);
     scan(assets_root, m_root.get());

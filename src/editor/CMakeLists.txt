@@ -2,20 +2,87 @@ message(STATUS "Configuring executable 'editor'.")
 
 set(_target "editor")
 add_executable(${_target})
+
+erhe_target_sources_grouped(
+    ${_target} TREE "${PROJECT_SOURCE_DIR}" FILES
+
+    config/editor/erhe_graphics.json
+    config/editor/mesh_memory.json
+    config/editor/renderer.json
+    config/editor/text_renderer.json
+    config/editor/logging.json
+    config/editor/graphics_presets.json
+    config/editor/openxr_windows.json
+    config/editor/editor_settings.json
+    config/editor/windows.json
+
+    res/editor/shaders/brdf_slice.frag
+    res/editor/shaders/brdf_slice.vert
+    res/editor/shaders/brush.frag
+    res/editor/shaders/brush.vert
+    res/editor/shaders/compose.frag
+    res/editor/shaders/downsample.frag
+    res/editor/shaders/downsample_lowpass.frag
+    res/editor/shaders/downsample_x.frag
+    res/editor/shaders/downsample_y.frag
+    res/editor/shaders/debug_line.geom
+    res/editor/shaders/debug_line.vert
+    res/editor/shaders/post_processing.vert
+    res/editor/shaders/shadow_debug.frag
+    res/editor/shaders/shadow_debug.vert
+    res/editor/shaders/sky.frag
+    res/editor/shaders/sky.vert
+    res/editor/shaders/grid.frag
+    res/editor/shaders/grid.vert
+    res/editor/shaders/tool.frag
+    res/editor/shaders/tool.vert
+    res/editor/shaders/upsample.frag
+    res/editor/shaders/visualize_depth.frag
+    res/editor/shaders/visualize_depth.vert
+
+    res/shaders/anisotropic_engine_ready.frag
+    res/shaders/anisotropic_engine_ready.vert
+    res/shaders/anisotropic_slope.frag
+    res/shaders/anisotropic_slope.vert
+    res/shaders/circular_brushed_metal.frag
+    res/shaders/circular_brushed_metal.vert
+    res/shaders/compute_before_line.comp
+    res/shaders/compute_before_content_line.comp
+    res/shaders/depth_only.frag
+    res/shaders/depth_only.vert
+    res/shaders/edge_lines.frag
+    res/shaders/edge_lines.vert
+    res/shaders/erhe_bxdf.glsl
+    res/shaders/erhe_ggx.glsl
+    res/shaders/erhe_light.glsl
+    res/shaders/erhe_math.glsl
+    res/shaders/erhe_srgb.glsl
+    res/shaders/erhe_texture.glsl
+    res/shaders/erhe_tonemap.glsl
+    res/shaders/error.frag
+    res/shaders/error.vert
+    res/shaders/id.frag
+    res/shaders/id.vert
+    res/shaders/line_after_compute.frag
+    res/shaders/line_after_compute.vert
+    res/shaders/content_line_after_compute.frag
+    res/shaders/points.frag
+    res/shaders/points.vert
+    res/shaders/standard.frag
+    res/shaders/standard.vert
+    res/shaders/standard_debug.frag
+    res/shaders/standard_debug.vert
+    res/shaders/text.frag
+    res/shaders/text.vert
+    res/shaders/textured.frag
+    res/shaders/textured.vert
+    res/shaders/wide_lines.frag
+    res/shaders/wide_lines.geom
+    res/shaders/wide_lines.vert
+)
+
 erhe_target_sources_grouped(
     ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    config/erhe_graphics.json
-    config/mesh_memory.json
-    config/renderer.json
-    config/text_renderer.json
-    config/logging.json
-    config/graphics_presets.json
-    config/openxr_windows.json
-    config/editor_settings.json
-    config/windows.json
-
-    # config/editor_config.hpp and .cpp removed -- replaced by codegen'd per-library configs and Editor_settings_config
-
     animation/animation_curve.cpp
     animation/animation_curve.hpp
     animation/animation_window.cpp
@@ -213,68 +280,6 @@ erhe_target_sources_grouped(
     rendertarget_imgui_host.hpp
     rendertarget_mesh.cpp
     rendertarget_mesh.hpp
-    res/shaders/anisotropic_engine_ready.frag
-    res/shaders/anisotropic_engine_ready.vert
-    res/shaders/anisotropic_slope.frag
-    res/shaders/anisotropic_slope.vert
-    res/shaders/brdf_slice.frag
-    res/shaders/brdf_slice.vert
-    res/shaders/brush.frag
-    res/shaders/brush.vert
-    res/shaders/circular_brushed_metal.frag
-    res/shaders/circular_brushed_metal.vert
-    res/shaders/compose.frag
-    res/shaders/compute_before_line.comp
-    res/shaders/compute_before_content_line.comp
-    res/shaders/depth_only.frag
-    res/shaders/depth_only.vert
-    res/shaders/downsample.frag
-    res/shaders/downsample_lowpass.frag
-    res/shaders/downsample_x.frag
-    res/shaders/downsample_y.frag
-    res/shaders/edge_lines.frag
-    res/shaders/edge_lines.vert
-    res/shaders/erhe_bxdf.glsl
-    res/shaders/erhe_ggx.glsl
-    res/shaders/erhe_light.glsl
-    res/shaders/erhe_math.glsl
-    res/shaders/erhe_srgb.glsl
-    res/shaders/erhe_texture.glsl
-    res/shaders/erhe_tonemap.glsl
-    res/shaders/error.frag
-    res/shaders/error.vert
-    res/shaders/grid.frag
-    res/shaders/grid.vert
-    res/shaders/id.frag
-    res/shaders/id.vert
-    res/shaders/debug_line.geom
-    res/shaders/debug_line.vert
-    res/shaders/line_after_compute.frag
-    res/shaders/line_after_compute.vert
-    res/shaders/content_line_after_compute.frag
-    res/shaders/points.frag
-    res/shaders/points.vert
-    res/shaders/post_processing.vert
-    res/shaders/shadow_debug.frag
-    res/shaders/shadow_debug.vert
-    res/shaders/sky.frag
-    res/shaders/sky.vert
-    res/shaders/standard.frag
-    res/shaders/standard.vert
-    res/shaders/standard_debug.frag
-    res/shaders/standard_debug.vert
-    res/shaders/text.frag
-    res/shaders/text.vert
-    res/shaders/textured.frag
-    res/shaders/textured.vert
-    res/shaders/tool.frag
-    res/shaders/tool.vert
-    res/shaders/upsample.frag
-    res/shaders/visualize_depth.frag
-    res/shaders/visualize_depth.vert
-    res/shaders/wide_lines.frag
-    res/shaders/wide_lines.geom
-    res/shaders/wide_lines.vert
     robin_hood.h
     scene/debug_draw.cpp
     scene/debug_draw.hpp
@@ -725,11 +730,9 @@ target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAK
 
 set_target_properties(
     ${_target} PROPERTIES
-    CXX_STANDARD                  20
-    CXX_STANDARD_REQUIRED         YES
-    CXX_EXTENSIONS                NO
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    DEBUGGER_WORKING_DIRECTORY    "${CMAKE_CURRENT_SOURCE_DIR}"
+    CXX_STANDARD          20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS        NO
 )
 
 erhe_target_settings(${_target} "erhe-executables")

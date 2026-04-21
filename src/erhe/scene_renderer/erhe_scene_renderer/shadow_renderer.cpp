@@ -37,7 +37,6 @@ Shadow_renderer::Shadow_renderer(erhe::graphics::Device& graphics_device, Progra
     , m_shader_stages{
         graphics_device,
         program_interface.make_prototype(
-            "res/shaders",
             erhe::graphics::Shader_stages_create_info{
                 .name             = "depth_only",
                 .fragment_outputs = &m_empty_fragment_outputs,

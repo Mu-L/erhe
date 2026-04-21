@@ -9,9 +9,9 @@ namespace editor {
 auto make_viewport_config(const Viewport_config_data& viewport_config_data) -> Viewport_config
 {
     // Try loading from default_viewport_config.json first
-    std::optional<std::string> contents = erhe::file::read("viewport_config", "default_viewport_config.json");
+    std::optional<std::string> contents = erhe::file::read("viewport_config", "config/editor/default_viewport_config.json");
     if (contents.has_value()) {
-        return erhe::codegen::load_config<Viewport_config>("default_viewport_config.json");
+        return erhe::codegen::load_config<Viewport_config>("config/editor/default_viewport_config.json");
     }
 
     // Fallback: build from Viewport_config_data (legacy editor_settings.json)

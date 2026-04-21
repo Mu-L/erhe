@@ -11,7 +11,7 @@ namespace rendering_test {
 
 void Rendering_test::make_separate_samplers_pipeline()
 {
-    const std::filesystem::path shader_path{"res/shaders"};
+    const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"rendering_test"} / std::filesystem::path{"shaders"};
 
     // Uniform block with texture handles and count
     m_sep_tex_block = std::make_unique<erhe::graphics::Shader_resource>(

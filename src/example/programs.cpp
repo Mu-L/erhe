@@ -6,8 +6,7 @@
 namespace example {
 
 Programs::Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer::Program_interface& program_interface)
-    : shader_path{std::filesystem::path("res") / std::filesystem::path("shaders")}
-    , nearest_sampler{
+    : nearest_sampler{
         graphics_device,
         erhe::graphics::Sampler_create_info{
             .min_filter  = erhe::graphics::Filter::nearest,
@@ -38,7 +37,6 @@ Programs::Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer
     , standard{
         program_interface.make_program(
             program_interface.make_prototype(
-                shader_path,
                 erhe::graphics::Shader_stages_create_info{
                     .name              = "standard",
                     .dump_interface    = false,

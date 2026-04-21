@@ -113,7 +113,7 @@ void Rendering_test::make_stencil_pipelines()
         };
         return std::make_unique<erhe::graphics::Shader_stages>(
             m_graphics_device,
-            m_program_interface.make_prototype(m_programs.shader_path, std::move(create_info))
+            m_program_interface.make_prototype(std::move(create_info))
         );
     };
     m_stencil_red_shader_stages   = make_stencil_color_shader("vec4(1.0, 0.0, 0.0, 1.0)");
@@ -305,7 +305,7 @@ void Rendering_test::render_stencil_cell(
     ) {
         render_encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
         render_encoder.set_scissor_rect(viewport.x, viewport.y, viewport.width, viewport.height);
-        m_forward_renderer.render(
+        m_forward_renderer->render(
             erhe::scene_renderer::Forward_renderer::Render_parameters{
                 .render_encoder         = render_encoder,
                 .index_type             = erhe::dataformat::Format::format_32_scalar_uint,

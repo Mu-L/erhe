@@ -86,7 +86,7 @@ void Rendering_test::render_stencil_wide_line_cell(
 
     // Pass 1: red cube stamps stencil = 1 (reuse cell 1,3 pipeline).
     const std::vector<std::shared_ptr<erhe::scene::Mesh>> cube_meshes{m_stencil_cube};
-    m_forward_renderer.render(
+    m_forward_renderer->render(
         erhe::scene_renderer::Forward_renderer::Render_parameters{
             .render_encoder         = render_encoder,
             .index_type             = erhe::dataformat::Format::format_32_scalar_uint,

@@ -25,7 +25,7 @@ auto write_file(std::filesystem::path path, const std::string& text) -> bool;
     bool                         silent_if_not_exists = false
 ) -> bool;
 
-void ensure_working_directory_contains(const char* app_name, const char* target);
+void ensure_working_directory_contains(const char* target);
 
 [[nodiscard]] auto ensure_directory_exists(std::filesystem::path path) -> bool;
 

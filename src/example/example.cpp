@@ -43,7 +43,7 @@
 #include "erhe_scene_renderer/program_interface.hpp"
 #include "erhe_scene_renderer/scene_renderer_log.hpp"
 #include "erhe_ui/ui_log.hpp"
-#include "erhe_verify/verify.hpp"
+//#include "erhe_verify/verify.hpp"
 #include "erhe_window/renderdoc_capture.hpp"
 #include "erhe_window/window.hpp"
 #include "erhe_window/window_event_handler.hpp"
@@ -60,7 +60,7 @@ class Example : public erhe::window::Input_event_handler
 {
 public:
     Example()
-        : m_graphics_config{erhe::codegen::load_config<Graphics_config>("config/erhe_graphics.json")}
+        : m_graphics_config{erhe::codegen::load_config<Graphics_config>("config/example/erhe_graphics.json")}
         , m_window{
             erhe::window::Window_configuration{
                 .use_depth                = true,
@@ -101,6 +101,23 @@ public:
                 true
             )
         }
+        // Init-time command buffer. No desktop swapchain is engaged here,
+        // so the slot must be primed explicitly between wait_frame and
+        // begin_frame -- fence wait, recycle, fresh fence, ensure cb -- so
+        // begin_frame has a valid cb to open and end_frame's device-only
+        // submit branch actually submits. Subsequent members (Mesh_memory,
+        // Program_interface, Programs, Forward_renderer) and the constructor
+        // body (gltf parse -> texture uploads, primitive GPU buffer builds,
+        // pipeline state creation) may record GPU commands and need an open
+        // init cb. end_frame() is called at the bottom of the constructor body.
+        , m_init_frame_started{[this]{
+            const bool init_wait_frame_ok = m_graphics_device.wait_frame();
+            ERHE_VERIFY(init_wait_frame_ok);
+            m_graphics_device.prime_device_frame_slot();
+            const bool init_begin_frame_ok = m_graphics_device.begin_frame();
+            ERHE_VERIFY(init_begin_frame_ok);
+            return true;
+        }()}
         , m_y_flip{m_graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
         , m_image_transfer   {m_graphics_device}
         , m_vertex_format{
@@ -120,7 +137,13 @@ public:
                 }
             }
         }
-        , m_mesh_memory      {erhe::codegen::load_config<Mesh_memory_config>("config/mesh_memory.json"), m_graphics_device, m_vertex_format}
+        , m_mesh_memory      {erhe::codegen::load_config<Mesh_memory_config>("config/example/mesh_memory.json"), m_graphics_device, m_vertex_format}
+        , m_program_interface_config{
+            .shader_paths = {
+                std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
+                std::filesystem::path{"res"} / std::filesystem::path{"example"} / std::filesystem::path{"shaders"},
+            },
+        }
         , m_program_interface{m_graphics_device, m_mesh_memory.vertex_format, m_program_interface_config}
         , m_programs         {m_graphics_device, m_program_interface}
         , m_forward_renderer {m_graphics_device, m_program_interface}
@@ -138,8 +161,7 @@ public:
                 .executor        = executor,
                 .image_transfer  = m_image_transfer,
                 .root_node       = m_scene.get_root_node(),
-                //.path          = "res/models/Box.gltf"
-                .path            = "res/models/SM_Deccer_Cubes_Textured.glb"
+                .path            = "res/example/models/SM_Deccer_Cubes_Textured.glb"
             }
         );
 
@@ -197,6 +219,10 @@ public:
 #endif
 
         make_render_pipeline_states();
+
+        // Close the init-time command buffer opened in the member init list.
+        const bool init_end_frame_ok = m_graphics_device.end_frame();
+        ERHE_VERIFY(init_end_frame_ok);
     }
 
     std::optional<erhe::window::Input_event> m_window_resize_event{};
@@ -540,6 +566,7 @@ private:
     erhe::window::Context_window                   m_window;
     erhe::graphics::Device                         m_graphics_device;
     bool                                           m_shader_error_callback_set{false};
+    bool                                           m_init_frame_started       {false};
     bool                                           m_y_flip;
     erhe::gltf::Image_transfer                     m_image_transfer;
     erhe::dataformat::Vertex_format                m_vertex_format;
@@ -579,11 +606,11 @@ void run_example()
 {
     // Workaround for
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
-    erhe::file::ensure_working_directory_contains("example", "config/erhe_graphics.json");
+    erhe::file::ensure_working_directory_contains("config/example/erhe_graphics.json");
 
     erhe::log::initialize_log_sinks();
     {
-        std::optional<std::string> contents = erhe::file::read("logging config", erhe::log::c_logging_configuration_file_path);
+        std::optional<std::string> contents = erhe::file::read("logging config", "config/example/logging.json");
         if (contents.has_value()) {
             erhe::log::load_log_configuration(contents.value());
         }

@@ -83,16 +83,14 @@ Program_interface::Program_interface(
 }
 
 auto Program_interface::make_prototype(
-    const std::filesystem::path&                shader_path,
     erhe::graphics::Shader_stages_create_info&& in_create_info
 ) -> erhe::graphics::Shader_stages_prototype
 {
     erhe::graphics::Shader_stages_create_info create_info = std::move(in_create_info);
-    return make_prototype(shader_path, create_info);
+    return make_prototype(create_info);
 }
 
 auto Program_interface::make_prototype(
-    const std::filesystem::path&               shader_path,
     erhe::graphics::Shader_stages_create_info& create_info
 ) -> erhe::graphics::Shader_stages_prototype
 {
@@ -101,17 +99,13 @@ auto Program_interface::make_prototype(
     SPDLOG_LOGGER_TRACE(log_programs, "Programs::make_program({})", create_info.name);
     SPDLOG_LOGGER_TRACE(log_programs, "current directory is {}", std::filesystem::current_path().string());
 
-    const std::filesystem::path cs_path = shader_path / std::filesystem::path(create_info.name + ".comp");
-    const std::filesystem::path fs_path = shader_path / std::filesystem::path(create_info.name + ".frag");
-    const std::filesystem::path gs_path = shader_path / std::filesystem::path(create_info.name + ".geom");
-    const std::filesystem::path vs_path = shader_path / std::filesystem::path(create_info.name + ".vert");
-
     if (create_info.fragment_outputs == nullptr) {
         create_info.fragment_outputs = &fragment_outputs;
     }
     if (!create_info.no_vertex_input) {
         create_info.vertex_format = &vertex_format;
     }
+    create_info.extra_include_paths = config.shader_paths;
     create_info.struct_types.push_back(&material_interface.material_struct);
     create_info.struct_types.push_back(&light_interface.light_struct);
     create_info.struct_types.push_back(&camera_interface.camera_struct);
@@ -142,13 +136,22 @@ auto Program_interface::make_prototype(
         }
     };
 
-    process_shader(erhe::graphics::Shader_type::compute_shader,  cs_path);
-    process_shader(erhe::graphics::Shader_type::fragment_shader, fs_path);
-#if !defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    process_shader(erhe::graphics::Shader_type::geometry_shader, gs_path);
-#endif
-    process_shader(erhe::graphics::Shader_type::vertex_shader,   vs_path);
+    for (const std::filesystem::path& shader_path : config.shader_paths) {
+        const std::filesystem::path cs_path = shader_path / std::filesystem::path(create_info.name + ".comp");
+        const std::filesystem::path fs_path = shader_path / std::filesystem::path(create_info.name + ".frag");
+        const std::filesystem::path gs_path = shader_path / std::filesystem::path(create_info.name + ".geom");
+        const std::filesystem::path vs_path = shader_path / std::filesystem::path(create_info.name + ".vert");
 
+        process_shader(erhe::graphics::Shader_type::compute_shader,  cs_path);
+        process_shader(erhe::graphics::Shader_type::fragment_shader, fs_path);
+#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
+        process_shader(erhe::graphics::Shader_type::geometry_shader, gs_path);
+#endif
+        process_shader(erhe::graphics::Shader_type::vertex_shader,   vs_path);
+        if (found) {
+            break;
+        }
+    }
     if (!found) {
         log_program_interface->error("Could not load shader source file {} (.vert / .frag / .comp / .geom)", create_info.name);
         log_program_interface->error("current directory is {}", std::filesystem::current_path().string());

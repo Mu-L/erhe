@@ -57,7 +57,12 @@ void Shader_stages_prototype_impl::compile_shaders()
             return;
         }
         if (!m_glslang_shader_stages.compile_shader(m_device, shader)) {
-            std::string error_msg = fmt::format("GLSL compilation failed for shader: {}", m_create_info.name);
+            const std::string& compile_log = m_glslang_shader_stages.get_last_compile_log();
+            std::string error_msg = fmt::format(
+                "GLSL compilation failed for shader: {}\n{}",
+                m_create_info.name,
+                compile_log
+            );
             log_program->error("{}", error_msg);
             std::string source = m_create_info.final_source(m_device, shader, nullptr);
             m_device.shader_error(error_msg, source);
@@ -91,7 +96,17 @@ auto Shader_stages_prototype_impl::link_program() -> bool
     ERHE_VERIFY(m_state == Shader_build_state::shader_compilation_started);
 
     if (!m_glslang_shader_stages.link_program()) {
-        log_program->error("GLSL -> SPIR-V link failed for: {}", m_create_info.name);
+        const std::string& link_log = m_glslang_shader_stages.get_last_link_log();
+        std::string error_msg = fmt::format(
+            "GLSL -> SPIR-V link failed for: {}\n{}",
+            m_create_info.name,
+            link_log
+        );
+        log_program->error("{}", error_msg);
+        if (!m_create_info.shaders.empty()) {
+            std::string source = m_create_info.final_source(m_device, m_create_info.shaders.front(), nullptr);
+            m_device.shader_error(error_msg, source);
+        }
         m_state = Shader_build_state::fail;
         return false;
     }
@@ -106,6 +121,11 @@ auto Shader_stages_prototype_impl::get_final_source(
 ) -> std::string
 {
     return m_create_info.final_source(m_device, shader, &m_paths, gl_name);
+}
+
+auto Shader_stages_prototype_impl::get_dependency_paths() -> std::vector<std::filesystem::path>&
+{
+    return m_paths;
 }
 
 auto Shader_stages_prototype_impl::is_valid() -> bool

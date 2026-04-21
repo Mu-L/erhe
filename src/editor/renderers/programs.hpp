@@ -97,7 +97,7 @@ public:
     [[nodiscard]] auto get_variant_shader_stages(Shader_stages_variant variant) const -> const erhe::graphics::Shader_stages*;
 
     // Public members
-    std::filesystem::path                    shader_path;
+    std::vector<std::filesystem::path>       shader_paths;
     erhe::graphics::Reloadable_shader_stages error;
     erhe::graphics::Reloadable_shader_stages brdf_slice;
     erhe::graphics::Reloadable_shader_stages brush;
@@ -150,11 +150,9 @@ public:
     public:
         Shader_stages_builder(
             erhe::graphics::Reloadable_shader_stages& reloadable_shader_stages,
-            erhe::scene_renderer::Program_interface&  program_interface,
-            std::filesystem::path                     shader_path
+            erhe::scene_renderer::Program_interface&  program_interface
         );
         Shader_stages_builder(Shader_stages_builder&& other) noexcept;
-        //Shader_stages_builder& operator=(Shader_stages_builder&& other);
 
         erhe::graphics::Reloadable_shader_stages& reloadable_shader_stages;
         erhe::graphics::Shader_stages_prototype   prototype;

@@ -3,12 +3,37 @@
 #include "erhe_texture.glsl"
 
 layout(location = 0) in vec4      v_position;
+
+#ifdef ERHE_ATTRIBUTE_a_texcoord_0
 layout(location = 1) in vec2      v_texcoord;
+#else
+const  vec2 v_texcoord = vec2(0.5, 0.5);
+#endif
+
+#ifdef ERHE_ATTRIBUTE_a_color_0
 layout(location = 2) in vec4      v_color;
+#else
+const  vec4 v_color = vec4(1.0);
+#endif
+
+#ifdef ERHE_ATTRIBUTE_a_custom_1
 layout(location = 3) in vec2      v_aniso_control;
+#else
+const  vec2 v_aniso_control = vec2(0.0);
+#endif
+
+#if defined(ERHE_ATTRIBUTE_a_tangent)
 layout(location = 4) in vec3      v_T;
+#endif
+
+#if defined(ERHE_ATTRIBUTE_a_normal) && defined(ERHE_ATTRIBUTE_a_tangent)
 layout(location = 5) in vec3      v_B;
+#endif
+
+#ifdef ERHE_ATTRIBUTE_a_normal
 layout(location = 6) in vec3      v_N;
+#endif
+
 layout(location = 7) flat in uint v_material_index;
 
 void main()
@@ -29,12 +54,21 @@ void main()
             camera.cameras[0].world_from_node[3][0],
             camera.cameras[0].world_from_node[3][1],
             camera.cameras[0].world_from_node[3][2]
-        ); 
+        );
 
         vec3 V = normalize(view_position_in_world - v_position.xyz);
+
+#ifdef ERHE_ATTRIBUTE_a_tangent
         vec3 T = normalize(v_T);
+#endif
+#if defined(ERHE_ATTRIBUTE_a_normal) && defined(ERHE_ATTRIBUTE_a_tangent)
         vec3 B = normalize(v_B);
+#endif
+#ifdef ERHE_ATTRIBUTE_a_normal
         vec3 N = normalize(v_N);
+#else
+        vec3 N = vec3(0.0, 1.0, 0.0);
+#endif
 
         uvec2 metallic_roughness_texture = material.metallic_roughness_texture;
         uvec2 normal_texture             = material.normal_texture;
@@ -59,7 +93,11 @@ void main()
             ).xyz * 2.0 - vec3(1.0);
             ntex.xy = ntex.xy * material.normal_texture_scale;
             ntex    = normalize(ntex);
+#if defined(ERHE_ATTRIBUTE_a_normal) && defined(ERHE_ATTRIBUTE_a_tangent)
             N       = normalize(mat3(T, B, N) * ntex);
+#else
+            N       = ntex;
+#endif
         }
 
         vec3 emissive = material.emissive.rgb * material.emissive.rgb * sample_texture(

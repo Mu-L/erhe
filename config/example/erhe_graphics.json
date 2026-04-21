@@ -6,7 +6,7 @@
     "force_disable_vsync": false,
     "opengl": {
         "_version": 1,
-        "force_bindless_textures_off": true,
+        "force_bindless_textures_off": false,
         "force_no_persistent_buffers": false,
         "force_no_direct_state_access": false,
         "force_no_clip_control": false,
@@ -17,6 +17,6 @@
     },
     "vulkan": {
         "_version": 1,
-        "vulkan_validation_layers": true
+        "vulkan_validation_layers": false
     }
 }

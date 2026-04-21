@@ -2135,6 +2135,15 @@ auto Device_impl::get_device_frame_command_buffer() const -> VkCommandBuffer
             "[GET_CB] null: not in device frame (state={}, frame_index={})",
             c_str(m_state), m_frame_index
         );
+        m_device.device_message(
+            Message_severity::error,
+            fmt::format(
+                "get_device_frame_command_buffer: not in device frame "
+                "(state={}, frame_index={}); callers will fall back to the "
+                "immediate-commands path",
+                c_str(m_state), m_frame_index
+            )
+        );
         return VK_NULL_HANDLE;
     }
     // Transfer/blit/clear commands and their pipeline barriers are not
@@ -2148,6 +2157,16 @@ auto Device_impl::get_device_frame_command_buffer() const -> VkCommandBuffer
         ERHE_VULKAN_SYNC_TRACE(
             "[GET_CB] null: render pass active (state={}, frame_index={})",
             c_str(m_state), m_frame_index
+        );
+        m_device.device_message(
+            Message_severity::error,
+            fmt::format(
+                "get_device_frame_command_buffer: render pass active "
+                "(state={}, frame_index={}); transfer/blit/clear cannot record "
+                "into the device cb inside a render pass, callers will fall "
+                "back to the immediate-commands path",
+                c_str(m_state), m_frame_index
+            )
         );
         return VK_NULL_HANDLE;
     }

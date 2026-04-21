@@ -3,7 +3,7 @@
 ## Purpose
 
 Editor configuration loading. Each library's config is loaded from a separate JSON file
-in the `config/` directory (e.g. `config/erhe_graphics.json`, `config/window.json`).
+in the `config/` directory (e.g. `config/<app_name/erhe_graphics.json`, `config/<app_name>/window.json`).
 
 ## Key Types
 
@@ -16,7 +16,7 @@ in the `config/` directory (e.g. `config/erhe_graphics.json`, `config/window.jso
 
 ## Public API / Integration Points
 
-- `load_config<Graphics_config>("config/erhe_graphics.json")` -- per-library config loading
+- `load_config<Graphics_config>("config/<app_name>/erhe_graphics.json")` -- per-library config loading
 - Individual config structs are stored in the `Editor` class and pointers placed in `App_context`
 - Individual config structs are passed to subsystem constructors
 

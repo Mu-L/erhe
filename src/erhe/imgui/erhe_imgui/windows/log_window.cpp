@@ -30,8 +30,13 @@ auto Logs_toggle_pause_command::try_call() -> bool
     return true;
 }
 
-Logs::Logs(erhe::commands::Commands& commands, Imgui_renderer& imgui_renderer)
+Logs::Logs(
+    erhe::commands::Commands& commands,
+    Imgui_renderer&           imgui_renderer,
+    const char*               logging_configuration_file_path
+)
     : m_imgui_renderer{imgui_renderer}
+    , m_logging_configuration_file_path{logging_configuration_file_path}
     , m_toggle_pause_command{commands, *this}
 {
     commands.register_command   (&m_toggle_pause_command);
@@ -149,7 +154,7 @@ void Logs::save_settings()
             config.loggers.emplace(name, erhe::log::get_levelname(logger->level()));
         }
     );
-    erhe::codegen::save_config(config, erhe::log::c_logging_configuration_file_path);
+    erhe::codegen::save_config(config, m_logging_configuration_file_path);
 }
 
 auto log_level_combo(const char* label, spdlog::level::level_enum& level) -> bool

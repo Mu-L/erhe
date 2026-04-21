@@ -19,6 +19,8 @@ namespace erhe::scene_renderer {
 
 struct Program_interface_config
 {
+    std::vector<std::filesystem::path> shader_paths;
+
     int max_camera_count   {256};
     int max_joint_count    {1000};
     int max_light_count    {32};
@@ -41,17 +43,9 @@ public:
     Program_interface(Program_interface&&)      = delete;
     void operator=   (Program_interface&&)      = delete;
 
-    [[nodiscard]] auto make_prototype(
-        const std::filesystem::path&                shader_path,
-        erhe::graphics::Shader_stages_create_info&& create_info
-    ) -> erhe::graphics::Shader_stages_prototype;
-
-    [[nodiscard]] auto make_prototype(
-        const std::filesystem::path&               shader_path,
-        erhe::graphics::Shader_stages_create_info& create_info
-    ) -> erhe::graphics::Shader_stages_prototype;
-
-    [[nodiscard]] auto make_program(erhe::graphics::Shader_stages_prototype&& prototype) -> erhe::graphics::Shader_stages;
+    [[nodiscard]] auto make_prototype(erhe::graphics::Shader_stages_create_info&& create_info) -> erhe::graphics::Shader_stages_prototype;
+    [[nodiscard]] auto make_prototype(erhe::graphics::Shader_stages_create_info& create_info) -> erhe::graphics::Shader_stages_prototype;
+    [[nodiscard]] auto make_program  (erhe::graphics::Shader_stages_prototype&& prototype) -> erhe::graphics::Shader_stages;
 
     erhe::graphics::Device&                            graphics_device;
     erhe::graphics::Fragment_outputs                   fragment_outputs;

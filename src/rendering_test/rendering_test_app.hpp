@@ -181,7 +181,7 @@ public:
     erhe::scene_renderer::Program_interface_config              m_program_interface_config;
     erhe::scene_renderer::Program_interface                     m_program_interface;
     rendering_test::Programs                                    m_programs;
-    erhe::scene_renderer::Forward_renderer                      m_forward_renderer;
+    std::unique_ptr<erhe::scene_renderer::Forward_renderer>     m_forward_renderer;
     erhe::scene::Scene                                          m_scene;
     std::shared_ptr<erhe::scene::Camera>                        m_camera;
     std::shared_ptr<erhe::scene::Light>                         m_light;
