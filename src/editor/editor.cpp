@@ -22,6 +22,7 @@
 #include "erhe_graphics/generated/graphics_config.hpp"
 #include "erhe_graphics/generated/graphics_config_serialization.hpp"
 #include "items.hpp"
+#include "editor_default_layout.hpp"
 #include "editor_log.hpp"
 #include "app_message_bus.hpp"
 #include "app_rendering.hpp"
@@ -459,9 +460,9 @@ public:
         m_in_tick.store(false);
     }
 
-    [[nodiscard]] static auto get_windows_ini_path(bool openxr) -> std::string
+    [[nodiscard]] static auto get_imgui_config_path(bool openxr) -> std::string
     {
-        return openxr ? "config/editor/openxr_windows.json" : "config/editor/windows.json";
+        return openxr ? "config/editor/openxr_" : "config/editor/desktop_";
     }
 
     [[nodiscard]] static auto conditionally_enable_window_imgui_host(erhe::window::Context_window* context_window, bool openxr)
@@ -658,6 +659,7 @@ public:
                     if (severity == erhe::graphics::Message_severity::error) {
                         ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
                     } else {
+                        log_render->warn("Device message (copied to clipboard): %s", error_message.c_str());
                         static int counter = 0;
                         ++counter;
                     }
@@ -954,7 +956,7 @@ public:
                     *m_graphics_device.get(),
                     *m_rendergraph.get(),
                     conditionally_enable_window_imgui_host(m_window.get(), m_app_context.OpenXR),
-                    get_windows_ini_path(m_app_context.OpenXR)
+                    get_imgui_config_path(m_app_context.OpenXR)
                 );
             }
             ERHE_TASK_FOOTER( .name("Imgui_windows") .succeed(imgui_renderer_task, rendergraph_task) );
@@ -1459,6 +1461,7 @@ public:
                     m_app_windows->viewport_menu(imgui_host);
                 }
             );
+            install_default_layout(*window_imgui_host, m_app_context);
             window_imgui_host->set_status_bar_callback(
                 [this](erhe::imgui::Window_imgui_host&) {
                     {

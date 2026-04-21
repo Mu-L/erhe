@@ -153,7 +153,7 @@ Imgui_host::Imgui_host(
     ImFontAtlas*                    font_atlas
 )
     : Rendergraph_node{rendergraph, debug_label}
-    , m_imgui_ini_path{imgui_ini ? fmt::format("imgui_{}.ini", debug_label.string_view()) : ""}
+    , m_imgui_ini_path{imgui_ini ? fmt::format("{}_imgui.ini", debug_label.string_view()) : ""}
     , m_imgui_renderer{imgui_renderer}
 {
     IMGUI_CHECKVERSION();
@@ -235,6 +235,11 @@ auto Imgui_host::has_cursor() const -> bool
 auto Imgui_host::imgui_context() const -> ImGuiContext*
 {
     return m_imgui_context;
+}
+
+auto Imgui_host::get_root_dock_id() const -> ImGuiID
+{
+    return m_root_dock_id;
 }
 
 void Imgui_host::set_begin_callback(const std::function<void(Imgui_host& viewport)>& callback)

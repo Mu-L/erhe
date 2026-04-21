@@ -6,6 +6,6 @@ struct("Windows_visibility_config",
     long_desc="",
     developer=False,
     fields=[
-        field("windows", Vector(StructRef("Window_visibility_entry")), added_in=1),
+        field("windows", Map(String, Bool), added_in=1),
     ],
 )

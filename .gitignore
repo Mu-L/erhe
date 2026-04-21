@@ -42,6 +42,9 @@ build_xcode_vulkan_minimal
 build_xcode_vulkan_asan
 cmake-build-*
 vscode-cmake-*
+logs/*
+cache/*
+spirv_cache/*
 log.txt
 releases
 erhe_cmake_dependencies.dot*

@@ -14,7 +14,7 @@ cd erhe
 scripts/configure_xcode_vulkan_minimal.sh
 cmake --build build_xcode_vulkan_minimal --target rendering_test --config Debug
 build_xcode_vulkan_minimal/src/rendering_test/Debug/rendering_test \
-    config/rendering_test_wel_then_stencil_wl.json
+    config/rendering_test/wel_then_stencil_wl.json
 ```
 
 ## Test setup

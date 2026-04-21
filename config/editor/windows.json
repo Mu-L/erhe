@@ -1,168 +1,45 @@
 {
-    "windows": [
-        {
-            "label": "asset_browser",
-            "visible": true
-        },
-        {
-            "label": "clipboard",
-            "visible": false
-        },
-        {
-            "label": "commands",
-            "visible": false
-        },
-        {
-            "label": "composer",
-            "visible": false
-        },
-        {
-            "label": "Content_library_240",
-            "visible": true
-        },
-        {
-            "label": "create",
-            "visible": false
-        },
-        {
-            "label": "debug_visualizations",
-            "visible": false
-        },
-        {
-            "label": "depth_visualization",
-            "visible": false
-        },
-        {
-            "label": "fly_camera",
-            "visible": false
-        },
-        {
-            "label": "frame_log",
-            "visible": false
-        },
-        {
-            "label": "gradient_editor",
-            "visible": false
-        },
-        {
-            "label": "graph",
-            "visible": false
-        },
-        {
-            "label": "graph_style",
-            "visible": false
-        },
-        {
-            "label": "grid",
-            "visible": false
-        },
-        {
-            "label": "headset",
-            "visible": false
-        },
-        {
-            "label": "hover_tool",
-            "visible": false
-        },
-        {
-            "label": "icon_browser",
-            "visible": false
-        },
-        {
-            "label": "inventory",
-            "visible": false
-        },
-        {
-            "label": "layers",
-            "visible": false
-        },
-        {
-            "label": "log_settings",
-            "visible": false
-        },
-        {
-            "label": "network",
-            "visible": false
-        },
-        {
-            "label": "node_pproperties",
-            "visible": false
-        },
-        {
-            "label": "operation_stack",
-            "visible": false
-        },
-        {
-            "label": "operations",
-            "visible": true
-        },
-        {
-            "label": "paint_tool",
-            "visible": false
-        },
-        {
-            "label": "performance",
-            "visible": false
-        },
-        {
-            "label": "physics",
-            "visible": true
-        },
-        {
-            "label": "pipelines",
-            "visible": false
-        },
-        {
-            "label": "post_processing",
-            "visible": false
-        },
-        {
-            "label": "properties",
-            "visible": true
-        },
-        {
-            "label": "rendergraph",
-            "visible": false
-        },
-        {
-            "label": "scene_view_config",
-            "visible": false
-        },
-        {
-            "label": "selection",
-            "visible": false
-        },
-        {
-            "label": "settings",
-            "visible": false
-        },
-        {
-            "label": "sheet",
-            "visible": false
-        },
-        {
-            "label": "tail_log",
-            "visible": false
-        },
-        {
-            "label": "timeline",
-            "visible": true
-        },
-        {
-            "label": "tool_properties",
-            "visible": false
-        },
-        {
-            "label": "tools_content_library",
-            "visible": false
-        },
-        {
-            "label": "transform",
-            "visible": false
-        },
-        {
-            "label": "viewport_config",
-            "visible": false
-        }
-    ]
+    "windows": {
+        "asset_browser": true,
+        "clipboard": false,
+        "commands": false,
+        "composer": false,
+        "Content_library_240": true,
+        "create": false,
+        "debug_visualizations": false,
+        "depth_visualization": false,
+        "fly_camera": false,
+        "frame_log": false,
+        "gradient_editor": false,
+        "graph": false,
+        "graph_style": false,
+        "grid": false,
+        "headset": false,
+        "hover_tool": false,
+        "icon_browser": false,
+        "inventory": false,
+        "layers": false,
+        "log_settings": false,
+        "network": false,
+        "node_pproperties": false,
+        "operation_stack": false,
+        "operations": true,
+        "paint_tool": false,
+        "performance": false,
+        "physics": true,
+        "pipelines": false,
+        "post_processing": false,
+        "properties": true,
+        "rendergraph": false,
+        "scene_view_config": false,
+        "selection": false,
+        "settings": false,
+        "sheet": false,
+        "tail_log": false,
+        "timeline": true,
+        "tool_properties": false,
+        "tools_content_library": false,
+        "transform": false,
+        "viewport_config": false
+    }
 }

@@ -65,6 +65,7 @@ public:
     [[nodiscard]] auto get_window_request_mouse   () const -> bool;
     [[nodiscard]] auto has_cursor                 () const -> bool;
     [[nodiscard]] auto imgui_context              () const -> ImGuiContext*;
+    [[nodiscard]] auto get_root_dock_id           () const -> ImGuiID;
 
     void update_input_request(bool request_keyboard, bool request_mouse);
     void request_cursor_relative_hold();
@@ -91,6 +92,7 @@ protected:
     bool            m_request_cursor_relative_hold{false};
     Imgui_renderer& m_imgui_renderer;
     ImGuiContext*   m_imgui_context{nullptr};
+    ImGuiID         m_root_dock_id {0};
 };
 
 } // namespace erhe::imgui

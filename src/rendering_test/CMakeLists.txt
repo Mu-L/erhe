@@ -7,25 +7,25 @@ erhe_target_sources_grouped(
     config/rendering_test/erhe_graphics.json
     config/rendering_test/logging.json
     config/rendering_test/mesh_memory.json
-    config/rendering_test/rendering_test_settings.json
-    config/rendering_test/rendering_test_scene_wideline_scene.json
-    config/rendering_test/rendering_test_wideline_scene_wideline.json
-    config/rendering_test/rendering_test_cube_sphere.json
-    config/rendering_test/rendering_test_sphere_cube.json
-    config/rendering_test/rendering_test_cube_sphere_masked.json
-    config/rendering_test/rendering_test_sphere_cube_masked.json
-    config/rendering_test/rendering_test_pipeline_switch_AB.json
-    config/rendering_test/rendering_test_pipeline_switch_BA.json
-    config/rendering_test/rendering_test_pipeline_switch_AC.json
-    config/rendering_test/rendering_test_pipeline_switch_CA.json
-    config/rendering_test/rendering_test_wideline_pipe_switch.json
-    config/rendering_test/rendering_test_wel_then_stencil_wl.json
-    config/rendering_test/rendering_test_minimal_compute_AB.json
-    config/rendering_test/rendering_test_minimal_compute_BA.json
-    config/rendering_test/rendering_test_minimal_compute_CD.json
-    config/rendering_test/rendering_test_minimal_stw1_then_D.json
-    config/rendering_test/rendering_test_minimal_C_stw1_D.json
-    config/rendering_test/rendering_test_minimal_C_and_stw1_then_D.json
+    config/rendering_test/settings.json
+    config/rendering_test/scene_wideline_scene.json
+    config/rendering_test/wideline_scene_wideline.json
+    config/rendering_test/cube_sphere.json
+    config/rendering_test/sphere_cube.json
+    config/rendering_test/cube_sphere_masked.json
+    config/rendering_test/sphere_cube_masked.json
+    config/rendering_test/pipeline_switch_AB.json
+    config/rendering_test/pipeline_switch_BA.json
+    config/rendering_test/pipeline_switch_AC.json
+    config/rendering_test/pipeline_switch_CA.json
+    config/rendering_test/wideline_pipe_switch.json
+    config/rendering_test/wel_then_stencil_wl.json
+    config/rendering_test/minimal_compute_AB.json
+    config/rendering_test/minimal_compute_BA.json
+    config/rendering_test/minimal_compute_CD.json
+    config/rendering_test/minimal_stw1_then_D.json
+    config/rendering_test/minimal_C_stw1_D.json
+    config/rendering_test/minimal_C_and_stw1_then_D.json
     config/rendering_test/window.json
 
     res/shaders/standard.vert

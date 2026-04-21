@@ -746,9 +746,13 @@ auto Surface_impl::update_swapchain(Vulkan_swapchain_create_info& out_swapchain_
     // Build the pNext chain for the swapchain create info.
     // When swapchain_maintenance1 is enabled, provide VkSwapchainPresentModesCreateInfoKHR
     // to inform the implementation which present modes the application may use.
+    // Per VUID-VkSwapchainPresentModesCreateInfoKHR-pPresentModes-07763, each entry must be
+    // compatible with the chosen presentMode as returned by VkSurfacePresentModeCompatibilityKHR.
+    // We never switch present modes at runtime via VkSwapchainPresentModeInfoKHR, so listing
+    // the chosen mode (trivially compatible with itself) is sufficient and always correct.
     bool use_present_modes = m_device_impl.get_capabilities().m_swapchain_maintenance1;
 
-    out_swapchain_create_info.present_modes = m_present_modes;
+    out_swapchain_create_info.present_modes = {m_present_mode};
     out_swapchain_create_info.swapchain_present_modes_create_info = VkSwapchainPresentModesCreateInfoKHR{
         .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_KHR, // VkStructureType
         .pNext            = nullptr,                                                   // const void*

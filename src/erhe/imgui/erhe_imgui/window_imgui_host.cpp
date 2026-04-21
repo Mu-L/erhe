@@ -197,7 +197,12 @@ void Window_imgui_host::begin_imgui_frame()
     }
 
     // Dockspace
-    ImGui::DockSpace(ImGui::GetID(0), ImVec2{0.0f, -status_bar_height}, ImGuiDockNodeFlags_PassthruCentralNode);
+    m_root_dock_id = ImGui::GetID(0);
+    if (m_dock_layout_callback) {
+        const ImVec2 available_size{static_cast<float>(width), static_cast<float>(height) - status_bar_height};
+        m_dock_layout_callback(*this, available_size);
+    }
+    ImGui::DockSpace(m_root_dock_id, ImVec2{0.0f, -status_bar_height}, ImGuiDockNodeFlags_PassthruCentralNode);
 
     // Status bar
     ImGui::SetCursorPos(ImVec2{0.0f, viewport->Size.y - status_bar_height});
@@ -273,6 +278,11 @@ auto Window_imgui_host::get_viewport() const -> erhe::math::Viewport
 void Window_imgui_host::set_status_bar_callback(const std::function<void(Window_imgui_host& host)>& callback)
 {
     m_status_bar_callback = callback;
+}
+
+void Window_imgui_host::set_dock_layout_callback(Dock_layout_callback callback)
+{
+    m_dock_layout_callback = std::move(callback);
 }
 
 }  // namespace erhe::imgui

@@ -39,7 +39,7 @@ public:
         erhe::graphics::Device&         graphics_device,
         erhe::rendergraph::Rendergraph& rendergraph,
         erhe::window::Context_window*   context_window,
-        std::string_view                windows_ini_path
+        std::string_view                config_path // prefix for windows.json and imgui_ini
     );
 
     ~Imgui_windows();
@@ -89,7 +89,8 @@ private:
     ERHE_PROFILE_MUTEX(std::mutex,     m_queued_operations_mutex);
     std::vector<std::function<void()>> m_queued_operations;
     erhe::rendergraph::Rendergraph&    m_rendergraph;
-    std::string                        m_windows_ini_path;
+    std::string                        m_config_path;
+    std::string                        m_imgui_ini_path;
 
     mutable std::unique_ptr<Windows_visibility_config> m_windows_config;
     std::shared_ptr<Window_imgui_host>                 m_window_imgui_host;

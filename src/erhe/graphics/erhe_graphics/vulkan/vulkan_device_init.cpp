@@ -5,8 +5,6 @@
 #include "erhe_graphics/vulkan/vulkan_scoped_debug_group.hpp"
 #include "erhe_graphics/vulkan/vulkan_surface.hpp"
 #include "erhe_graphics/ring_buffer.hpp"
-#include "erhe_graphics/ring_buffer_client.hpp"
-#include "erhe_graphics/ring_buffer_range.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/vulkan_external_creators.hpp"
 

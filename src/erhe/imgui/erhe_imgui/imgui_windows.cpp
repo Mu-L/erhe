@@ -4,8 +4,6 @@
 
 #include "erhe_imgui/imgui_log.hpp"
 
-#include "erhe_imgui/generated/window_visibility_entry.hpp"
-#include "erhe_imgui/generated/window_visibility_entry_serialization.hpp"
 #include "erhe_imgui/generated/windows_visibility_config.hpp"
 #include "erhe_imgui/generated/windows_visibility_config_serialization.hpp"
 #include "erhe_codegen/config_io.hpp"
@@ -26,12 +24,12 @@ Imgui_windows::Imgui_windows(
     erhe::graphics::Device&         graphics_device,
     erhe::rendergraph::Rendergraph& rendergraph,
     erhe::window::Context_window*   context_window,
-    std::string_view                windows_ini_path
+    std::string_view                config_path
 )
-    : m_imgui_renderer  {imgui_renderer}
-    , m_context_window  {context_window}
-    , m_rendergraph     {rendergraph}
-    , m_windows_ini_path{windows_ini_path}
+    : m_imgui_renderer{imgui_renderer}
+    , m_context_window{context_window}
+    , m_rendergraph   {rendergraph}
+    , m_config_path   {config_path}
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -41,7 +39,7 @@ Imgui_windows::Imgui_windows(
             graphics_device,
             rendergraph,
             *context_window,
-            "window_imgui_host"
+            erhe::utility::Debug_label{m_config_path + "window_imgui_host"}
         );
     }
 }
@@ -119,14 +117,13 @@ void Imgui_windows::unregister_imgui_window(Imgui_window* window)
 
 auto Imgui_windows::get_persistent_window_open(std::string_view ini_label) const -> bool
 {
-    if (m_windows_ini_path.empty()) {
+    if (m_config_path.empty()) {
         return true;
     }
     const Windows_visibility_config& config = get_windows_config();
-    for (const Window_visibility_entry& entry : config.windows) {
-        if (entry.label == ini_label) {
-            return entry.visible;
-        }
+    const auto it = config.windows.find(std::string{ini_label});
+    if (it != config.windows.end()) {
+        return it->second;
     }
     return true;
 }
@@ -135,7 +132,7 @@ auto Imgui_windows::get_windows_config() const -> const Windows_visibility_confi
 {
     if (!m_windows_config) {
         m_windows_config = std::make_unique<Windows_visibility_config>(
-            erhe::codegen::load_config<Windows_visibility_config>(m_windows_ini_path)
+            erhe::codegen::load_config<Windows_visibility_config>(m_config_path + "windows.json")
         );
     }
     return *m_windows_config;
@@ -143,23 +140,20 @@ auto Imgui_windows::get_windows_config() const -> const Windows_visibility_confi
 
 void Imgui_windows::save_window_state()
 {
-    if (m_windows_ini_path.empty()) {
+    if (m_config_path.empty()) {
         return;
     }
     Windows_visibility_config config;
     for (auto& imgui_window : m_imgui_windows) {
-        const std::string label = imgui_window->get_ini_label();
+        std::string label = imgui_window->get_ini_label();
         if (label.empty()) {
             continue;
         }
-        Window_visibility_entry entry;
-        entry.label   = label;
-        entry.visible = imgui_window->is_window_visible();
-        config.windows.push_back(entry);
+        config.windows.emplace(std::move(label), imgui_window->is_window_visible());
     }
-    const bool save_ok = erhe::codegen::save_config(config, m_windows_ini_path);
+    const bool save_ok = erhe::codegen::save_config(config, m_config_path + "windows.json");
     if (!save_ok) {
-        log_imgui->warn("Imgui_windows::save_window_state() failed to write {}", m_windows_ini_path.c_str());
+        log_imgui->warn("Imgui_windows::save_window_state() failed to write {}", m_config_path + "windows.json");
     }
 }
 

@@ -33,8 +33,15 @@ public:
     // Implements Rendergraph_node
     void execute_rendergraph_node() override;
 
+    // Called each frame before ImGui::DockSpace(). The callback is responsible for
+    // deciding whether the layout needs to be (re)built, for any multi-frame
+    // measurement passes, and for the actual DockBuilder operations. The host only
+    // provides the root dock id and the available size.
+    using Dock_layout_callback = std::function<void(Window_imgui_host& host, ImVec2 available_size)>;
+
     [[nodiscard]] auto get_viewport() const -> erhe::math::Viewport;
-    void set_status_bar_callback(const std::function<void(Window_imgui_host& host)>& callback);
+    void set_status_bar_callback    (const std::function<void(Window_imgui_host& host)>& callback);
+    void set_dock_layout_callback   (Dock_layout_callback callback);
 
     // Implements Imgui_host
     void begin_imgui_frame  ()                            override;
@@ -54,6 +61,7 @@ private:
     bool                                         m_is_visible         {false};
     float                                        m_this_frame_dt_s    {0.0f};
     std::function<void(Window_imgui_host& host)> m_status_bar_callback{};
+    Dock_layout_callback                         m_dock_layout_callback{};
 };
 
 } // namespace erhe::imgui

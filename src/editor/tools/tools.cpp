@@ -241,7 +241,7 @@ Tools::Tools(
     erhe::imgui::Imgui_windows&        imgui_windows,
     App_context&                       app_context,
     App_rendering&                     app_rendering,
-    App_settings&                      app_settings,
+    App_settings&                      /*app_settings*/,
     erhe::scene_renderer::Mesh_memory& mesh_memory,
     Programs&                          programs
 )
@@ -307,10 +307,6 @@ Tools::Tools(
             }
         );
         m_content_library_tree_window->set_developer();
-
-        m_tool_scene_browser = m_scene_root->make_browser_window(
-            imgui_renderer, imgui_windows, app_context, app_settings
-        );
     }
 }
 

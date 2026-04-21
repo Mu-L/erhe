@@ -2,8 +2,6 @@
 #include "rendering_test_log.hpp"
 
 #include "erhe_graphics/render_command_encoder.hpp"
-#include "erhe_graphics/render_pipeline_state.hpp"
-#include "erhe_primitive/material.hpp"
 #include "erhe_scene_renderer/primitive_buffer.hpp"
 
 #include <filesystem>
@@ -18,7 +16,7 @@ void Rendering_test::make_render_pipeline_states()
     m_standard_render_pipeline_state = std::make_unique<erhe::graphics::Lazy_render_pipeline>(
         m_graphics_device,
         erhe::graphics::Render_pipeline_create_info{
-            .debug_label    = erhe::utility::Debug_label{"Orientation Test Pipeline"},
+            .debug_label    = erhe::utility::Debug_label{"Standard"},
             .shader_stages  = &m_programs.standard,
             .vertex_input   = &m_mesh_memory.vertex_input,
             .input_assembly = erhe::graphics::Input_assembly_state::triangle,

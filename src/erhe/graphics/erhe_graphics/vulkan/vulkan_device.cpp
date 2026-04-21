@@ -60,6 +60,7 @@ auto c_str(const Device_frame_state state) -> const char*
 
 void Device_impl::set_state(const Device_frame_state new_state, const char* const site)
 {
+    static_cast<void>(site);
     ERHE_VULKAN_SYNC_TRACE(
         "[STATE] {} -> {} (at {}), frame_index={}, slot={}",
         c_str(m_state), c_str(new_state), site,
@@ -157,7 +158,7 @@ auto Device_impl::acquire_shared_command_buffer() -> VkCommandBuffer
     //
     // Note: we bypass get_device_frame_command_buffer() because this is
     // called from Render_pass_impl::start_render_pass BEFORE
-    // vkCmdBeginRenderPass runs - the Device_impl::m_active_render_pass
+    // vkCmdBeginRenderPass2 runs - the Device_impl::m_active_render_pass
     // flag is already set (for tracking), but the cb is still in
     // recording state, not inside a Vulkan render pass instance yet.
     ERHE_VERIFY(m_state != Device_frame_state::idle);

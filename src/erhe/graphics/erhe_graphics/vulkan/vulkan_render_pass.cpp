@@ -341,13 +341,25 @@ Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor&
         Swapchain_impl& swapchain_impl = m_swapchain->get_impl();
         const VkSampleCountFlagBits sample_count = get_vulkan_sample_count(window_configuration.msaa_sample_count);
         const Render_pass_attachment_descriptor& color_att = descriptor.color_attachments[0];
-        const VkImageLayout color_initial_layout = to_vk_image_layout(color_att.layout_before);
-        const VkImageLayout color_final_layout   = to_vk_image_layout(color_att.layout_after);
 
         const VkAttachmentLoadOp swapchain_color_load_op = to_vk_load_op(color_att.load_action);
         if (swapchain_color_load_op == VK_ATTACHMENT_LOAD_OP_CLEAR) {
             m_any_load_op_clear = true;
         }
+
+        // The layout of the swapchain image at the start of a frame is not deterministic:
+        // it is UNDEFINED on first use, and PRESENT_SRC_KHR after it has been presented at
+        // least once. When the load op is CLEAR or DONT_CARE we advertise UNDEFINED so
+        // the render pass drives a (discarding) transition itself, matching how the
+        // swapchain depth attachment is handled below. This removes the need to pre-
+        // transition every swapchain image from UNDEFINED to PRESENT_SRC_KHR at swapchain
+        // init time. LOAD cannot discard, so it still honours the caller-supplied
+        // layout_before.
+        const VkImageLayout color_initial_layout =
+            (swapchain_color_load_op == VK_ATTACHMENT_LOAD_OP_LOAD)
+                ? to_vk_image_layout(color_att.layout_before)
+                : VK_IMAGE_LAYOUT_UNDEFINED;
+        const VkImageLayout color_final_layout = to_vk_image_layout(color_att.layout_after);
         std::vector<VkAttachmentDescription2> attachment_descriptions;
         attachment_descriptions.push_back(
             VkAttachmentDescription2{
@@ -1266,7 +1278,12 @@ void Render_pass_impl::start_render_pass(Render_pass* const render_pass_before, 
             .clearValueCount = m_any_load_op_clear ? static_cast<uint32_t>(m_clear_values.size()) : 0u,
             .pClearValues    = m_any_load_op_clear ? m_clear_values.data() : nullptr
         };
-        vkCmdBeginRenderPass(m_command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        const VkSubpassBeginInfo subpass_begin_info{
+            .sType    = VK_STRUCTURE_TYPE_SUBPASS_BEGIN_INFO,
+            .pNext    = nullptr,
+            .contents = VK_SUBPASS_CONTENTS_INLINE
+        };
+        vkCmdBeginRenderPass2(m_command_buffer, &render_pass_begin_info, &subpass_begin_info);
 
         {
             int color_count = 0;
@@ -1356,7 +1373,11 @@ void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
         // End the render pass. The device-frame command buffer stays
         // open and is finalized by Device_impl::end_frame.
         if (m_command_buffer != VK_NULL_HANDLE) {
-            vkCmdEndRenderPass(m_command_buffer);
+            const VkSubpassEndInfo subpass_end_info{
+                .sType = VK_STRUCTURE_TYPE_SUBPASS_END_INFO,
+                .pNext = nullptr
+            };
+            vkCmdEndRenderPass2(m_command_buffer, &subpass_end_info);
 
             // Option A: post-renderpass barrier. Makes attachment writes
             // visible for the usage_after stages (e.g. FRAGMENT_SHADER

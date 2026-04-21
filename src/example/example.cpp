@@ -77,10 +77,14 @@ public:
             },
             m_graphics_config,
             [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
+                std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
+                SDL_SetClipboardText(clipboard_text.c_str());
                 if (severity == erhe::graphics::Message_severity::error) {
-                    std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
-                    SDL_SetClipboardText(clipboard_text.c_str());
                     ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
+                } else {
+                    log_startup->warn("Device message (copied to clipboard): %s", error_message.c_str());
+                    static int counter = 0;
+                    ++counter;
                 }
             }
         }

@@ -87,13 +87,13 @@ auto Device_impl::debug_utils_messenger_callback(
     const VkDebugUtilsMessengerCallbackDataEXT* callback_data
 ) -> VkBool32
 {
-    if (callback_data->messageIdNumber == 0x675dc32e) {
-        // Validation Warning: [ BestPractices-specialuse-extension ] | MessageID = 0x675dc32e
-        // vkCreateInstance(): Attempting to enable extension VK_EXT_debug_utils, but this extension is intended to support use by applications when debugging and it is strongly recommended that it be otherwise avoided.
+    if (callback_data->messageIdNumber == 0xe19c8e05) {
+        // BestPractices-Verbose-Success-Logging
         return VK_FALSE;
     }
-    if (callback_data->messageIdNumber == 0x2d90c7c0) {
-        // [2d90c7c0 VUID-VkSwapchainPresentModesCreateInfoKHR-pPresentModes-07763] vkCreateSwapchainKHR(): pCreateInfo->pNext<VkSwapchainPresentModesCreateInfoKHR>.pPresentModes[0] VK_PRESENT_MODE_FIFO_KHR is a non-compatible presentMode.
+    if (callback_data->messageIdNumber == 0xde900250) {
+        // https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/issues/530
+        // vkGetPhysicalDeviceMemoryProperties(): vkGetPhysicalDeviceMemoryProperties is a legacy command and this VkInstance was created with VK_VERSION_1_1 which contains vkGetPhysicalDeviceMemoryProperties2 that can be used instead.
         return VK_FALSE;
     }
 
@@ -195,9 +195,9 @@ auto Device_impl::debug_utils_messenger_callback(
     // VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R32G32B32A32_SFLOAT, or
     // VK_FORMAT_B10G11R11_UFLOAT_PACK32.
     //if (callback_data->messageIdNumber == 0x916108d1) {
-        //severity = Message_severity::error;
-        //static int counter = 0;
-        //++counter;
+    //    severity = Message_severity::error;
+    //    static int counter = 0;
+    //    ++counter;
     //}
     m_device.device_message(severity, ss.str());
 

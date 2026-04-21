@@ -258,7 +258,7 @@ Build the editor and `rendering_test` on Windows
 1. `src/rendering_test/config/erhe_graphics.json` with
    `"force_no_compute_shader": false`
    - Run `rendering_test.exe` (default config
-     `rendering_test_wel_then_stencil_wl.json`).
+     `wel_then_stencil_wl.json`).
    - Expect left cell (`cube_with_edge_lines`): phong cube with wide edge
      lines.
    - Expect right cell (`stencil_wide_line`): stencil cube + wide lines on

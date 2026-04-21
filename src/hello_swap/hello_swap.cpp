@@ -68,7 +68,9 @@ public:
                     m_last_window_width  = m_window.get_width();
                     m_last_window_height = m_window.get_height();
                     log_swap->info("resize - changed, setting m_request_resize_pending");
-                    tick();
+                    if ((m_last_window_width != 0) && (m_last_window_height != 0)) {
+                        tick();
+                    }
                 } else {
                     log_swap->info("resize - unchanged");
                 }

@@ -14,7 +14,8 @@ erhe_target_sources_grouped(
     config/editor/graphics_presets.json
     config/editor/openxr_windows.json
     config/editor/editor_settings.json
-    config/editor/windows.json
+    config/editor/desktop_windows.json
+    config/editor/desktop_window_imgui_host_imgui.ini
 
     res/editor/shaders/brdf_slice.frag
     res/editor/shaders/brdf_slice.vert
@@ -154,6 +155,8 @@ erhe_target_sources_grouped(
     developer/tool_properties_window.hpp
     editor.cpp
     editor.hpp
+    editor_default_layout.cpp
+    editor_default_layout.hpp
     editor_log.cpp
     editor_log.hpp
     experiments/gradient_editor.cpp

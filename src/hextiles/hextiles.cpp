@@ -120,7 +120,7 @@ public:
         , m_text_renderer       {m_graphics_device}
         , m_rendergraph         {m_graphics_device}
         , m_imgui_renderer      {m_graphics_device, m_settings.imgui}
-        , m_imgui_windows       {m_imgui_renderer, m_graphics_device, m_rendergraph, &m_window, "windows.ini"}
+        , m_imgui_windows       {m_imgui_renderer, m_graphics_device, m_rendergraph, &m_window, "config/hextiles/"}
         , m_logs                {m_commands, m_imgui_renderer, "config/hextiles/logging.json"}
         , m_log_settings_window {m_imgui_renderer, m_imgui_windows, m_logs}
         , m_tail_log_window     {m_imgui_renderer, m_imgui_windows, m_logs}
@@ -142,6 +142,9 @@ public:
                 if (m_in_tick.load()) {
                     return;
                 }
+                if ((m_last_window_width < 1) || (m_last_window_height < 1)) {
+                    return;
+                }
                 if (
                     (m_last_window_width  != m_window.get_width()) ||
                     (m_last_window_height != m_window.get_height())
@@ -150,8 +153,11 @@ public:
                     m_last_window_width  = m_window.get_width();
                     m_last_window_height = m_window.get_height();
                 }
-                int64_t new_timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                tick(0.01f, new_timestamp_ns);
+                // TODO throttle redraws - if last redraw was less than live resize redraw threshold limit ago, don't redraw
+                if ((m_last_window_width != 0) && (m_last_window_height != 0)) {
+                    int64_t new_timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                    tick(0.01f, new_timestamp_ns);
+                }
             }
         );
 

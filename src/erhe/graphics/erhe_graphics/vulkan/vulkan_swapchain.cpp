@@ -1,7 +1,6 @@
 #include "erhe_graphics/vulkan/vulkan_swapchain.hpp"
 #include "erhe_graphics/vulkan/vulkan_device_sync_pool.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
-#include "erhe_graphics/vulkan/vulkan_immediate_commands.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/surface.hpp"
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
@@ -250,7 +249,7 @@ auto Swapchain_impl::begin_render_pass(VkRenderPassBeginInfo& render_pass_begin_
     }
 
     // Note: the command buffer was already vkBeginCommandBuffer'd by
-    // Device_impl::begin_frame(). We just record vkCmdBeginRenderPass here
+    // Device_impl::begin_frame(). We just record vkCmdBeginRenderPass2 here
     // and let Device_impl::end_frame() end + submit it.
 
     if (
@@ -263,8 +262,13 @@ auto Swapchain_impl::begin_render_pass(VkRenderPassBeginInfo& render_pass_begin_
     render_pass_begin_info.framebuffer = m_swapchain_objects.framebuffers[m_acquired_image_index];
     render_pass_begin_info.renderArea  = VkRect2D{{0,0}, m_swapchain_extent};
 
-    log_swapchain->trace("vkCmdBeginRenderPass()");
-    vkCmdBeginRenderPass(vulkan_command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    const VkSubpassBeginInfo subpass_begin_info{
+        .sType    = VK_STRUCTURE_TYPE_SUBPASS_BEGIN_INFO,
+        .pNext    = nullptr,
+        .contents = VK_SUBPASS_CONTENTS_INLINE
+    };
+    log_swapchain->trace("vkCmdBeginRenderPass2()");
+    vkCmdBeginRenderPass2(vulkan_command_buffer, &render_pass_begin_info, &subpass_begin_info);
 
     m_state = Swapchain_frame_state::render_pass_begin;
     return vulkan_command_buffer;
@@ -283,8 +287,12 @@ auto Swapchain_impl::end_render_pass() -> bool
         return false;
     }
 
-    log_swapchain->trace("vkCmdEndRenderPass()");
-    vkCmdEndRenderPass(vulkan_command_buffer);
+    const VkSubpassEndInfo subpass_end_info{
+        .sType = VK_STRUCTURE_TYPE_SUBPASS_END_INFO,
+        .pNext = nullptr
+    };
+    log_swapchain->trace("vkCmdEndRenderPass2()");
+    vkCmdEndRenderPass2(vulkan_command_buffer, &subpass_end_info);
 
     // Note: vkEndCommandBuffer is now done by Device_impl::end_frame(),
     // which ends and submits the unified device-frame command buffer.
@@ -770,41 +778,10 @@ void Swapchain_impl::init_swapchain(Vulkan_swapchain_create_info& swapchain_crea
         }
     }
 
-    // Transition all swapchain images from UNDEFINED to PRESENT_SRC_KHR
-    // so the render pass initialLayout = PRESENT_SRC_KHR is valid from the first frame
-    {
-        const Vulkan_immediate_commands::Command_buffer_wrapper& cmd = m_device_impl.get_immediate_commands().acquire();
-        for (uint32_t i = 0; i < image_count; ++i) {
-            const VkImageMemoryBarrier2 barrier{
-                .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                .pNext               = nullptr,
-                .srcStageMask        = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-                .srcAccessMask       = 0,
-                .dstStageMask        = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-                .dstAccessMask       = 0,
-                .oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED,
-                .newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .image               = m_swapchain_objects.images[i],
-                .subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
-            };
-            const VkDependencyInfo dep_info{
-                .sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                .pNext                    = nullptr,
-                .dependencyFlags          = 0,
-                .memoryBarrierCount       = 0,
-                .pMemoryBarriers          = nullptr,
-                .bufferMemoryBarrierCount = 0,
-                .pBufferMemoryBarriers    = nullptr,
-                .imageMemoryBarrierCount  = 1,
-                .pImageMemoryBarriers     = &barrier,
-            };
-            vkCmdPipelineBarrier2(cmd.m_cmd_buf, &dep_info);
-        }
-        Submit_handle submit = m_device_impl.get_immediate_commands().submit(cmd);
-        m_device_impl.get_immediate_commands().wait(submit);
-    }
+    // The swapchain render pass declares initialLayout = UNDEFINED for the color
+    // attachment (see vulkan_render_pass.cpp, swapchain branch) so no pre-transition
+    // of the swapchain images from UNDEFINED to PRESENT_SRC_KHR is required here --
+    // the render pass drives the discarding transition on its first use of each image.
 
     const Surface_create_info& surface_create_info = m_surface_impl.get_surface_create_info();
     if ((surface_create_info.context_window != nullptr) &&

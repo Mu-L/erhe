@@ -56,7 +56,11 @@ Rendering_test::Rendering_test(std::string_view config_path)
         },
         m_graphics_config,
         [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
-            if (severity == erhe::graphics::Message_severity::error) {
+            if (
+                (severity == erhe::graphics::Message_severity::warning) ||
+                (severity == erhe::graphics::Message_severity::error)
+            )
+            {
                 std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
                 SDL_SetClipboardText(clipboard_text.c_str());
                 ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
