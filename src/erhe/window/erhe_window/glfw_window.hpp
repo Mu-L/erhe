@@ -72,6 +72,7 @@ public:
     void poll_events                      (float wait_time = 0.0f);
     void get_cursor_position              (float& xpos, float& ypos);
     void get_cursor_relative_hold_position(float& xpos, float& ypos);
+    void set_title                        (const std::string& title);
     void set_visible                      (bool visible);
     void set_cursor                       (Mouse_cursor cursor);
     void set_cursor_relative_hold         (bool capture);

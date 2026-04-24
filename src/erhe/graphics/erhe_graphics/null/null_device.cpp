@@ -21,6 +21,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
 
     // Initialize Device_info with reasonable defaults for headless/server mode
     m_info.glsl_version                             = 460;
+    m_info.api_info                                 = "Null";
     m_info.max_texture_size                         = 16384;
     m_info.max_samples                              = 8;
     m_info.max_color_texture_samples                = 8;

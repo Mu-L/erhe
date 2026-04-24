@@ -688,6 +688,12 @@ public:
                 }
             );
 
+            m_window->set_title(
+                erhe::window::format_window_title(
+                    fmt::format("erhe editor by Timo Suoranta - {}", m_graphics_device->get_info().api_info).c_str()
+                )
+            );
+
             // Init-time command buffer. No desktop swapchain is engaged
             // here, so the slot must be primed explicitly between
             // wait_frame and begin_frame -- fence wait, recycle, fresh

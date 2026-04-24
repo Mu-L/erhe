@@ -1028,6 +1028,14 @@ Device_impl::Device_impl(
     m_info.vendor                  = get_vendor(properties.vendorID);
     m_info.glsl_version            = 460;
     m_info.vulkan_api_version      = application_info.apiVersion;
+    m_info.vulkan_driver_id        = static_cast<uint32_t>(m_driver_properties.driverID);
+    m_info.api_info                = fmt::format(
+        "Vulkan {}.{}.{} ({})",
+        VK_API_VERSION_MAJOR(application_info.apiVersion),
+        VK_API_VERSION_MINOR(application_info.apiVersion),
+        VK_API_VERSION_PATCH(application_info.apiVersion),
+        c_str(m_driver_properties.driverID)
+    );
     m_info.use_binary_shaders      = true;
     m_info.use_integer_polygon_ids = true;
     m_info.texture_heap_path       = Texture_heap_path::vulkan_descriptor_indexing;

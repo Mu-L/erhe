@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace erhe::window { class Context_window; }
@@ -85,6 +86,11 @@ class Device_info
 public:
     Vendor vendor{Vendor::Unknown};
 
+    // Human-readable backend API identifier for diagnostics and window title.
+    // Example: "OpenGL 4.1 Core", "Vulkan 1.3.0 VK_DRIVER_ID_MOLTENVK",
+    // "Metal (Apple M1)", "Null".
+    std::string api_info;
+
     int  glsl_version           {0};
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
@@ -95,6 +101,7 @@ public:
 #endif
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
     uint32_t vulkan_api_version {0};
+    uint32_t vulkan_driver_id   {0};
 #endif
 
     bool use_clip_control            {false};

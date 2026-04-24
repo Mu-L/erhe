@@ -717,6 +717,15 @@ void Context_window::get_cursor_relative_hold_position(float& xpos, float& ypos)
     ypos = static_cast<float>(m_mouse_capture_ypos);
 }
 
+void Context_window::set_title(const std::string& title)
+{
+    auto* const window = reinterpret_cast<GLFWwindow*>(m_glfw_window);
+    if (window != nullptr) {
+        glfwSetWindowTitle(window, title.c_str());
+    }
+    m_configuration.title = title;
+}
+
 void Context_window::set_visible(const bool visible)
 {
     auto* const window = reinterpret_cast<GLFWwindow*>(m_glfw_window);

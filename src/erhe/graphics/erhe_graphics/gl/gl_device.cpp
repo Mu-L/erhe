@@ -279,6 +279,16 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         gl::get_integer_v(gl::Get_p_name::max_texture_buffer_size, &m_info.max_texture_buffer_size);
     }
 
+    {
+        const int resolved_major = m_info.gl_version / 100;
+        const int resolved_minor = (m_info.gl_version / 10) % 10;
+        const char* profile_str =
+            m_info.core_profile          ? " Core" :
+            m_info.compatibility_profile ? " Compatibility" :
+                                           "";
+        m_info.api_info = fmt::format("OpenGL {}.{}{}", resolved_major, resolved_minor, profile_str);
+    }
+
     // GL 4.3 core has debug_message_callback and push/pop_debug_group.
     // ARB_debug_output has glDebugMessageCallbackARB but not push/pop_debug_group,
     // and the ARB-suffixed functions are not in the generated GL wrapper.

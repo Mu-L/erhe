@@ -99,6 +99,11 @@ void Context_window::get_cursor_relative_hold_position(float& xpos, float& ypos)
     ypos = 0.0f;
 }
 
+void Context_window::set_title(const std::string& title)
+{
+    m_configuration.title = title;
+}
+
 void Context_window::set_visible(bool visible)
 {
     static_cast<void>(visible);
