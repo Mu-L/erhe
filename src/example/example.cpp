@@ -153,6 +153,10 @@ public:
         , m_forward_renderer {m_graphics_device, m_program_interface}
         , m_scene            {"example scene", nullptr}
     {
+        m_window.set_title(
+            erhe::window::format_window_title("erhe example", m_graphics_device.get_info().api_info)
+        );
+
         if (m_graphics_config.renderdoc_capture_support) {
             erhe::window::initialize_frame_capture();
         }

@@ -11,9 +11,11 @@
 #endif
 
 #include <string>
+#include <string_view>
 
 namespace erhe::window {
 
 [[nodiscard]] auto format_window_title(const char* window_name) -> std::string;
+[[nodiscard]] auto format_window_title(const char* window_name, std::string_view backend_info) -> std::string;
 
 } // namespace erhe::window

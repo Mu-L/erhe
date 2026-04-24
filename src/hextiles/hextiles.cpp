@@ -131,6 +131,10 @@ public:
         , m_map_window          {m_commands, m_graphics_device, m_imgui_renderer, m_imgui_windows, m_text_renderer, m_tile_renderer}
         , m_menu_window         {m_commands, m_imgui_renderer, m_imgui_windows, *this, m_map_window, m_tiles, m_tile_renderer}
     {
+        m_window.set_title(
+            erhe::window::format_window_title("erhe HexTiles by Timo Suoranta", m_graphics_device.get_info().api_info)
+        );
+
         //// auto& root_event_handler = m_window.get_root_window_event_handler();
         //// root_event_handler.attach(&m_imgui_windows, 2);
         //// root_event_handler.attach(&m_commands, 1);

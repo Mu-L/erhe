@@ -690,7 +690,8 @@ public:
 
             m_window->set_title(
                 erhe::window::format_window_title(
-                    fmt::format("erhe editor by Timo Suoranta - {}", m_graphics_device->get_info().api_info).c_str()
+                    "erhe editor by Timo Suoranta",
+                    m_graphics_device->get_info().api_info
                 )
             );
 

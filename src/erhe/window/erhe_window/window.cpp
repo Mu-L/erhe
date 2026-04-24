@@ -32,6 +32,15 @@ auto format_window_title(const char* window_name) -> std::string
     );
 }
 
+auto format_window_title(const char* window_name, std::string_view backend_info) -> std::string
+{
+    if (backend_info.empty()) {
+        return format_window_title(window_name);
+    }
+    const std::string decorated = fmt::format("{} - {}", window_name, backend_info);
+    return format_window_title(decorated.c_str());
+}
+
 //void flush_clear_to_gray()
 //{
 //    for (size_t i = 0; i < 3; ++i) {

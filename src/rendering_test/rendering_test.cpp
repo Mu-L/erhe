@@ -105,6 +105,10 @@ Rendering_test::Rendering_test(std::string_view config_path)
     , m_programs         {m_graphics_device, m_program_interface}
     , m_scene            {"rendering test scene", nullptr}
 {
+    m_window.set_title(
+        erhe::window::format_window_title("erhe rendering test", m_graphics_device.get_info().api_info)
+    );
+
     print_conventions();
 
     // Init-time GPU work (mesh buffer uploads in create_test_scene,

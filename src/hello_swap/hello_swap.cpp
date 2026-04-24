@@ -50,6 +50,10 @@ public:
             m_graphics_config
         }
     {
+        m_window.set_title(
+            erhe::window::format_window_title("erhe hello_swap", m_graphics_device.get_info().api_info)
+        );
+
         m_last_window_width  = m_window.get_width();
         m_last_window_height = m_window.get_height();
 
