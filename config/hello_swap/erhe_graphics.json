@@ -16,7 +16,8 @@
         "force_glsl_version": 0
     },
     "vulkan": {
-        "_version": 1,
-        "vulkan_validation_layers": false
+        "_version": 2,
+        "vulkan_validation_layers": false,
+        "use_kosmickrisp": true
     }
 }

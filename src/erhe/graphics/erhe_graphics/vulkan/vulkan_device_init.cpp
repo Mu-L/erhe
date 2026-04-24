@@ -10,6 +10,13 @@
 
 #include "erhe_window/window.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <sstream>
+#include <string>
+#include <vector>
+
 namespace erhe::graphics {
 
 [[nodiscard]] auto get_vendor(const uint32_t vendor_id) -> Vendor
@@ -51,6 +58,74 @@ void set_env(const char* key, const char* value)
         log_context->warn("Setting {}={} environment variable failed with error code {}.", key, value, ret);
     }
 }
+
+#if defined(ERHE_OS_OSX)
+// Parse a dotted version string like "1.4.341.0" into integer components.
+// Returns an empty vector if any component is not a non-negative integer.
+auto parse_version_components(const std::string& name) -> std::vector<int>
+{
+    std::vector<int> parts;
+    std::stringstream ss(name);
+    std::string token;
+    while (std::getline(ss, token, '.')) {
+        if (token.empty()) {
+            return {};
+        }
+        for (char c : token) {
+            if (c < '0' || c > '9') {
+                return {};
+            }
+        }
+        try {
+            parts.push_back(std::stoi(token));
+        } catch (...) {
+            return {};
+        }
+    }
+    return parts;
+}
+
+// Locate the macOS subdirectory of the highest-versioned LunarG Vulkan SDK install
+// (e.g. $HOME/VulkanSDK/1.4.341.0/macOS). Used when VULKAN_SDK is not set in the
+// environment -- which is normal for GUI-launched apps (Xcode/Finder/Dock) on macOS,
+// since they do not inherit the shell's environment.
+// Returns an empty string if no SDK is found.
+auto find_vulkan_sdk_macos_dir() -> std::string
+{
+    const char* home = std::getenv("HOME");
+    if ((home == nullptr) || (home[0] == '\0')) {
+        return {};
+    }
+    std::error_code ec;
+    const std::filesystem::path root = std::filesystem::path(home) / "VulkanSDK";
+    if (!std::filesystem::is_directory(root, ec)) {
+        return {};
+    }
+    std::vector<std::pair<std::vector<int>, std::filesystem::path>> candidates;
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(root, ec)) {
+        if (!entry.is_directory()) {
+            continue;
+        }
+        const std::filesystem::path macos_dir = entry.path() / "macOS";
+        if (!std::filesystem::is_directory(macos_dir, ec)) {
+            continue;
+        }
+        std::vector<int> version = parse_version_components(entry.path().filename().string());
+        if (version.empty()) {
+            continue;
+        }
+        candidates.emplace_back(std::move(version), macos_dir);
+    }
+    if (candidates.empty()) {
+        return {};
+    }
+    std::sort(
+        candidates.begin(), candidates.end(),
+        [](const auto& a, const auto& b) { return a.first < b.first; }
+    );
+    return candidates.back().second.string();
+}
+#endif
 
 // Collects validation layer settings, then materializes the VkLayerSettingEXT array in finalize().
 // After finalize() the internal vectors are not modified, so the addresses handed to Vulkan via
@@ -154,7 +229,49 @@ Device_impl::Device_impl(
         set_env("DISABLE_VULKAN_OBS_CAPTURE", "1");
 #endif
 #if defined(ERHE_OS_OSX)
-        set_env("VK_LOADER_LAYERS_DISABLE", "~implicit~");
+        //set_env("VK_LOADER_LAYERS_DISABLE", "~implicit~");
+        if (graphics_config.vulkan.use_kosmickrisp) {
+            // KosmicKrisp ICD lives at <vulkan_sdk>/share/vulkan/icd.d/libkosmickrisp_icd.json
+            // (LunarG SDK >= 1.4.335). Point the loader at it explicitly so it is used
+            // instead of MoltenVK. Must be set before volkInitialize() / vkCreateInstance().
+            //
+            // VULKAN_SDK is set by the SDK's setup-env.sh and is typically present in a shell
+            // that sourced it, but GUI launches on macOS (Xcode, Finder, Dock) do not inherit
+            // shell environment, so fall back to scanning $HOME/VulkanSDK/*/macOS.
+            std::string vulkan_sdk_dir;
+            const char* vulkan_sdk_env = std::getenv("VULKAN_SDK");
+            if ((vulkan_sdk_env != nullptr) && (vulkan_sdk_env[0] != '\0')) {
+                vulkan_sdk_dir = vulkan_sdk_env;
+                log_context->info("KosmicKrisp: using VULKAN_SDK from environment: {}", vulkan_sdk_dir);
+            } else {
+                vulkan_sdk_dir = find_vulkan_sdk_macos_dir();
+                if (!vulkan_sdk_dir.empty()) {
+                    log_context->info(
+                        "KosmicKrisp: VULKAN_SDK not set in environment; using auto-detected SDK: {}",
+                        vulkan_sdk_dir
+                    );
+                }
+            }
+            if (vulkan_sdk_dir.empty()) {
+                log_context->warn(
+                    "use_kosmickrisp is enabled but no Vulkan SDK found. "
+                    "Install the LunarG SDK to ~/VulkanSDK/<version>/ or set VULKAN_SDK in the launch environment."
+                );
+            } else {
+                const std::string icd_path = fmt::format("{}/share/vulkan/icd.d/libkosmickrisp_icd.json", vulkan_sdk_dir);
+                std::error_code ec;
+                if (!std::filesystem::exists(icd_path, ec)) {
+                    log_context->warn(
+                        "use_kosmickrisp is enabled but {} does not exist. "
+                        "KosmicKrisp requires LunarG SDK 1.4.335 or newer.",
+                        icd_path
+                    );
+                } else {
+                    log_context->info("KosmicKrisp selected: VK_DRIVER_FILES={}", icd_path);
+                    set_env("VK_DRIVER_FILES", icd_path.c_str());
+                }
+            }
+        }
 #endif
     }
 

@@ -3,7 +3,8 @@
     "initial_clear": true,
     "shader_monitor_enabled": false,
     "vulkan": {
-        "_version": 1,
-        "vulkan_validation_layers": true
+        "_version": 2,
+        "vulkan_validation_layers": true,
+        "use_kosmickrisp": true
     }
 }
