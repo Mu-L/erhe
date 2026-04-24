@@ -4,7 +4,7 @@
 #include "erhe_window/renderdoc_app.h"
 #include "erhe_verify/verify.hpp"
 
-#if defined(_WIN32)
+#if defined(ERHE_OS_WINDOWS)
 #   ifndef _CRT_SECURE_NO_WARNINGS
 #       define _CRT_SECURE_NO_WARNINGS
 #   endif
@@ -21,7 +21,7 @@
 #   include <windows.h>
 #endif
 
-#if __unix__
+#if defined(ERHE_OS_LINUX) || defined(ERHE_OS_OSX)
 #   include <dlfcn.h>
 #endif
 
@@ -36,7 +36,7 @@ bool is_initialized{false};
 
 void initialize_frame_capture()
 {
-#if defined(_WIN32) || defined(WIN32)
+#if defined(ERHE_OS_WINDOWS)
     HMODULE renderdoc_module = LoadLibraryExA("C:\\Program Files\\RenderDoc\\renderdoc.dll", NULL, 0);
     if (renderdoc_module) {
         auto RENDERDOC_GetAPI = reinterpret_cast<pRENDERDOC_GetAPI>(
@@ -48,28 +48,40 @@ void initialize_frame_capture()
         }
 
         int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, (void **)&renderdoc_api);
-        log_renderdoc->trace("Loaded RenderDoc DLL, RENDERDOC_GetAPI() return value = {}", ret);
+        log_renderdoc->trace("Loaded RenderDoc .dll, RENDERDOC_GetAPI() return value = {}", ret);
         ERHE_VERIFY(ret == 1);
-
+    }
+#elif defined(ERHE_OS_LINUX)
+    // For android replace librenderdoc.so with libVkLayer_GLES_RenderDoc.so
+    void* renderdoc_so = dlopen("librenderdoc.so", RTLD_NOW);
+    if (renderdoc_so != nullptr) {
+        pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(renderdoc_so, "RENDERDOC_GetAPI");
+        int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, (void **)&renderdoc_api);
+        log_renderdoc->trace("Loaded RenderDoc .so, RENDERDOC_GetAPI() return value = {}", ret);
+        ERHE_VERIFY(ret == 1);
+    }
+#elif defined(ERHE_OS_OSX)
+    void* renderdoc_so = dlopen("/Applications/qrenderdoc.app/Contents/lib/librenderdoc.dylib", RTLD_NOW);
+    if (renderdoc_so != nullptr) {
+        pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(renderdoc_so, "RENDERDOC_GetAPI");
+        int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, (void **)&renderdoc_api);
+        log_renderdoc->trace("Loaded RenderDoc .dylib, RENDERDOC_GetAPI() return value = {}", ret);
+        ERHE_VERIFY(ret == 1);
+    } else {
+        log_renderdoc->warn("dlopen librenderdoc.dylib failed: {}", dlerror());
+    }
+#endif
+    // Enable capturing callstacks
+    if (renderdoc_api != nullptr) {
         if (renderdoc_api->MaskOverlayBits == nullptr) {
             log_renderdoc->warn("RenderDoc: RENDERDOC_MaskOverlayBits() not found in renderdoc.dll");
         } else {
             renderdoc_api->MaskOverlayBits(eRENDERDOC_Overlay_None, eRENDERDOC_Overlay_None);
         }
 
-        // Enable capturing callstacks
         renderdoc_api->SetCaptureOptionU32(eRENDERDOC_Option_CaptureCallstacks, 1);
     }
-#elif __unix__
-    // For android replace librenderdoc.so with libVkLayer_GLES_RenderDoc.so
-    void* renderdoc_so = dlopen("librenderdoc.so", RTLD_NOW);
-    if (renderdoc_so != nullptr) {
-        pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(renderdoc_so, "RENDERDOC_GetAPI");
-        int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_6_0, (void **)&renderdoc_api);
-        log_renderdoc->trace("Loaded RenderDoc DLL, RENDERDOC_GetAPI() return value = {}", ret);
-        ERHE_VERIFY(ret == 1);
-    }
-#endif
+
     is_initialized = true;
 }
 

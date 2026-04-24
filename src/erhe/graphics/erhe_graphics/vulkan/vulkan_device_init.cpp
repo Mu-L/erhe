@@ -42,14 +42,10 @@ void set_env(const char* key, const char* value)
 {
     int ret = -1;
 #if defined(ERHE_OS_WINDOWS)
-    {
-        std::string assignment = fmt::format("{}={}", key, value);
-        ret = _putenv(assignment.c_str());
-    }
-#elif defined(ERHE_OS_LINUX)
-    {
-        int ret = setenv(key, value, 1);
-    }
+    std::string assignment = fmt::format("{}={}", key, value);
+    ret = _putenv(assignment.c_str());
+#elif defined(ERHE_OS_LINUX) || defined(ERHE_OS_OSX)
+    ret = setenv(key, value, 1);
 #endif
     if (ret != 0) {
         log_context->warn("Setting {}={} environment variable failed with error code {}.", key, value, ret);
@@ -148,15 +144,18 @@ Device_impl::Device_impl(
     {
         // Disable nuisance implicit layers, but not when RenderDoc is attached
         // (RenderDoc uses an implicit layer for Vulkan capture)
-#if defined(_WIN32)
+#if defined(ERHE_OS_WINDOWS)
         const bool renderdoc_attached = (GetModuleHandleA("renderdoc.dll") != nullptr);
         if (!renderdoc_attached) {
             set_env("VK_LOADER_LAYERS_DISABLE", "~implicit~");
         }
-#endif
         set_env("DISABLE_LAYER_NV_OPTIMUS_1", "1");
         set_env("DISABLE_LAYER_NV_GR2608_1", "1");
         set_env("DISABLE_VULKAN_OBS_CAPTURE", "1");
+#endif
+#if defined(ERHE_OS_OSX)
+        set_env("VK_LOADER_LAYERS_DISABLE", "~implicit~");
+#endif
     }
 
     VkResult result{VK_SUCCESS};
@@ -239,13 +238,37 @@ Device_impl::Device_impl(
 
     // Setup vulkan instance extensions
 
-    // SDL_Vulkan_GetInstanceExtensions() will request KHR_SURFACE and platform specific required instance extensions
+    auto is_instance_extension_advertised = [&](const char* name) -> bool {
+        for (const VkExtensionProperties& extension : instance_extensions) {
+            if (strcmp(extension.extensionName, name) == 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // SDL_Vulkan_GetInstanceExtensions() will request KHR_SURFACE and platform specific required instance extensions.
+    // On macOS SDL also returns VK_KHR_portability_enumeration, which the loader only advertises on portability-subset
+    // drivers (e.g. MoltenVK) and which the RenderDoc capture layer does not pass through. Filter SDL's list against
+    // what the loader actually advertises so we don't request an extension that will make vkCreateInstance() fail.
     std::vector<const char*> enabled_instance_extensions_c_str{};
+    bool portability_enumeration_enabled = false;
     if (m_context_window != nullptr) {
         const std::vector<std::string>& required_extensions = m_context_window->get_required_vulkan_instance_extensions();
+        log_debug->info("SDL_Vulkan_GetInstanceExtensions() returned {} extension(s):", required_extensions.size());
         for (const std::string& extension_name : required_extensions) {
+            log_debug->info("  {}", extension_name);
+        }
+        for (const std::string& extension_name : required_extensions) {
+            if (!is_instance_extension_advertised(extension_name.c_str())) {
+                log_debug->info("  Skipping SDL-requested extension {} (not advertised by loader)", extension_name);
+                continue;
+            }
             enabled_instance_extensions_c_str.push_back(extension_name.c_str());
-            log_debug->info("  SDL_Vulkan_GetInstanceExtensions(): {}", extension_name);
+            log_debug->info("  Enabling SDL-requested extension {}", extension_name);
+            if (strcmp(extension_name.c_str(), VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0) {
+                portability_enumeration_enabled = true;
+            }
         }
     }
 
@@ -296,7 +319,7 @@ Device_impl::Device_impl(
     VkInstanceCreateInfo instance_create_info = {
         .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext                   = nullptr,
-        .flags                   = 0,
+        .flags                   = portability_enumeration_enabled ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
         .pApplicationInfo        = &application_info,
         .enabledLayerCount       = static_cast<uint32_t>(enabled_instance_layers_c_str.size()),
         .ppEnabledLayerNames     = enabled_instance_layers_c_str.data(),
@@ -361,6 +384,19 @@ Device_impl::Device_impl(
 
         layer_settings_create_info.settingCount = static_cast<uint32_t>(validation_settings.get_settings().size());
         layer_settings_create_info.pSettings    = validation_settings.get_settings().data();
+    }
+
+    log_context->info(
+        "vkCreateInstance() with flags = 0x{:08x}, {} layer(s), {} extension(s):",
+        static_cast<uint32_t>(instance_create_info.flags),
+        instance_create_info.enabledLayerCount,
+        instance_create_info.enabledExtensionCount
+    );
+    for (uint32_t i = 0; i < instance_create_info.enabledLayerCount; ++i) {
+        log_context->info("  layer:     {}", instance_create_info.ppEnabledLayerNames[i]);
+    }
+    for (uint32_t i = 0; i < instance_create_info.enabledExtensionCount; ++i) {
+        log_context->info("  extension: {}", instance_create_info.ppEnabledExtensionNames[i]);
     }
 
     if ((m_external_creators != nullptr) && static_cast<bool>(m_external_creators->create_instance)) {

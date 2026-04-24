@@ -1,12 +1,23 @@
 #!/bin/bash
 
-# Source Vulkan SDK environment if available
-for sdk_dir in ~/VulkanSDK/*/; do
-    if [ -f "${sdk_dir}setup-env.sh" ]; then
-        source "${sdk_dir}setup-env.sh"
-        break
+# Source Vulkan SDK environment if available.
+# Respect an SDK already sourced in the current shell (VULKAN_SDK set).
+# Otherwise pick the highest-versioned SDK under ~/VulkanSDK (glob order is lexicographic,
+# which would otherwise pick e.g. 1.3.211 over 1.4.341).
+if [ -z "${VULKAN_SDK}" ]; then
+    latest_sdk_dir=""
+    for sdk_dir in $(printf '%s\n' ~/VulkanSDK/*/ 2>/dev/null | sort -V); do
+        if [ -f "${sdk_dir}setup-env.sh" ]; then
+            latest_sdk_dir="${sdk_dir}"
+        fi
+    done
+    if [ -n "${latest_sdk_dir}" ]; then
+        echo "Sourcing Vulkan SDK: ${latest_sdk_dir}"
+        source "${latest_sdk_dir}setup-env.sh"
     fi
-done
+else
+    echo "Using Vulkan SDK already in environment: ${VULKAN_SDK}"
+fi
 
 cmake \
     -G "Xcode" \
