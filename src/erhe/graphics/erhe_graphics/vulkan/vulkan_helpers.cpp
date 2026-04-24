@@ -225,6 +225,7 @@ auto c_str(const VkDriverId driver_id) -> const char*
         case VK_DRIVER_ID_IMAGINATION_OPEN_SOURCE_MESA:  return "VK_DRIVER_ID_IMAGINATION_OPEN_SOURCE_MESA";
         case VK_DRIVER_ID_MESA_HONEYKRISP:               return "VK_DRIVER_ID_MESA_HONEYKRISP";
         case VK_DRIVER_ID_VULKAN_SC_EMULATION_ON_VULKAN: return "VK_DRIVER_ID_VULKAN_SC_EMULATION_ON_VULKAN";
+        case VK_DRIVER_ID_MESA_KOSMICKRISP:              return "VK_DRIVER_ID_MESA_KOSMICKRISP";
         default: return "?";
     }
 }
