@@ -257,8 +257,9 @@ void run()
     erhe::graphics::initialize_logging();
     erhe::math::initialize_logging();
     erhe::window::initialize_logging();
-    // TODO: RenderDoc vulkan support
-    erhe::window::initialize_frame_capture();
+    // RenderDoc capture is initialized on window open via
+    // Window_configuration.initialize_frame_capture, which is gated by
+    // the graphics config's renderdoc_capture_support flag.
 
     Hello_swap hello_swap{};
     hello_swap.run();
