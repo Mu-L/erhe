@@ -469,7 +469,7 @@ Device_impl::Device_impl(
     const VkConformanceVersion& conformance = m_driver_properties.conformanceVersion;
     log_context->info("Vulkan physical device properties:");
     log_context->info("  API version         = {}.{}.{}.{}", api_version_major, api_version_minor, api_version_patch, api_version_variant);
-    log_context->info("  Driver ID           = {}",          c_str(m_driver_properties.driverID));
+    log_context->info("  Driver ID           = {} ({})",     c_str(m_driver_properties.driverID), static_cast<uint32_t>(m_driver_properties.driverID));
     log_context->info("  Driver name         = {}",          m_driver_properties.driverName);
     log_context->info("  Driver info         = {}",          m_driver_properties.driverInfo);
     log_context->info("  Driver version      = {:08x}",      properties.driverVersion);
@@ -915,9 +915,14 @@ Device_impl::Device_impl(
     m_info.use_integer_polygon_ids = true;
     m_info.texture_heap_path       = Texture_heap_path::vulkan_descriptor_indexing;
     m_info.use_sparse_texture      = false;
-    const bool has_multi_draw_indirect = (query_device_features.features.multiDrawIndirect == VK_TRUE);
+    const bool has_multi_draw_indirect    = (query_device_features.features.multiDrawIndirect == VK_TRUE);
     const bool has_shader_draw_parameters = (query_vulkan_11_features.shaderDrawParameters == VK_TRUE);
-    if (has_multi_draw_indirect && has_shader_draw_parameters) {
+    // MoltenVK advertises shaderDrawParameters = VK_TRUE to stay Vulkan 1.1 conformant, but Metal
+    // Shading Language has no equivalent of the SPIR-V DrawIndex built-in, so SPIRV-Cross refuses
+    // to translate any shader that uses gl_DrawID ("DrawIndex is not supported in MSL"). Force the
+    // push-constant emulation path on MoltenVK regardless of the advertised capability.
+    const bool is_moltenvk = (m_driver_properties.driverID == VK_DRIVER_ID_MOLTENVK);
+    if (has_multi_draw_indirect && has_shader_draw_parameters && !is_moltenvk) {
         m_info.use_multi_draw_indirect_core = true;
         m_info.emulate_multi_draw_indirect  = false;
         log_startup->info("Multi Draw Indirect: native Vulkan (multiDrawIndirect + shaderDrawParameters)");
@@ -925,8 +930,8 @@ Device_impl::Device_impl(
         m_info.use_multi_draw_indirect_core = false;
         m_info.emulate_multi_draw_indirect  = true;
         log_startup->info(
-            "Multi Draw Indirect: emulation via push constants (multiDrawIndirect={}, shaderDrawParameters={})",
-            has_multi_draw_indirect, has_shader_draw_parameters
+            "Multi Draw Indirect: emulation via push constants (multiDrawIndirect={}, shaderDrawParameters={}, MoltenVK={})",
+            has_multi_draw_indirect, has_shader_draw_parameters, is_moltenvk
         );
     }
     m_info.use_multi_draw_indirect_arb = false;
