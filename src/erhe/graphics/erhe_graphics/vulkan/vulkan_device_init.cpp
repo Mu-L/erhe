@@ -1029,13 +1029,29 @@ Device_impl::Device_impl(
     m_info.glsl_version            = 460;
     m_info.vulkan_api_version      = application_info.apiVersion;
     m_info.vulkan_driver_id        = static_cast<uint32_t>(m_driver_properties.driverID);
-    m_info.api_info                = fmt::format(
-        "Vulkan {}.{}.{} ({})",
-        VK_API_VERSION_MAJOR(application_info.apiVersion),
-        VK_API_VERSION_MINOR(application_info.apiVersion),
-        VK_API_VERSION_PATCH(application_info.apiVersion),
-        c_str(m_driver_properties.driverID)
-    );
+    {
+        // driverName / driverInfo are fixed-size null-terminated char arrays;
+        // drop either field from the title if the driver left it empty.
+        const char* const driver_name = m_driver_properties.driverName;
+        const char* const driver_info = m_driver_properties.driverInfo;
+        const bool has_name = (driver_name[0] != '\0');
+        const bool has_info = (driver_info[0] != '\0');
+        std::string driver_suffix;
+        if (has_name && has_info) {
+            driver_suffix = fmt::format(" - {} ({})", driver_name, driver_info);
+        } else if (has_name) {
+            driver_suffix = fmt::format(" - {}", driver_name);
+        } else if (has_info) {
+            driver_suffix = fmt::format(" - {}", driver_info);
+        }
+        m_info.api_info = fmt::format(
+            "Vulkan {}.{}.{}{}",
+            VK_API_VERSION_MAJOR(application_info.apiVersion),
+            VK_API_VERSION_MINOR(application_info.apiVersion),
+            VK_API_VERSION_PATCH(application_info.apiVersion),
+            driver_suffix
+        );
+    }
     m_info.use_binary_shaders      = true;
     m_info.use_integer_polygon_ids = true;
     m_info.texture_heap_path       = Texture_heap_path::vulkan_descriptor_indexing;
