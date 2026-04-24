@@ -71,12 +71,12 @@ public:
                     m_request_resize_pending.store(true);
                     m_last_window_width  = m_window.get_width();
                     m_last_window_height = m_window.get_height();
-                    log_swap->info("resize - changed, setting m_request_resize_pending");
+                    log_swap->trace("resize - changed, setting m_request_resize_pending");
                     if ((m_last_window_width != 0) && (m_last_window_height != 0)) {
                         tick();
                     }
                 } else {
-                    log_swap->info("resize - unchanged");
+                    log_swap->trace("resize - unchanged");
                 }
             }
         );
@@ -89,7 +89,7 @@ public:
 
     auto on_window_resize_event(const erhe::window::Input_event& input_event) -> bool override
     {
-        log_swap->info("on_window_resize_event()");
+        log_swap->trace("on_window_resize_event()");
         m_window_resize_event = input_event;
         return true;
     }
@@ -103,7 +103,7 @@ public:
 
     auto on_window_refresh_event(const erhe::window::Input_event&) -> bool override
     {
-        log_swap->info("on_window_refresh_event()");
+        log_swap->trace("on_window_refresh_event()");
         return true;
     }
 
@@ -242,6 +242,7 @@ void run()
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
     erhe::file::ensure_working_directory_contains("config/hello_swap/erhe_graphics.json");
 
+    erhe::log::redirect_stderr_to_file("logs/stderr.txt");
     erhe::log::initialize_log_sinks();
     {
         std::optional<std::string> contents = erhe::file::read("logging config", "config/hello_swap/logging.json");

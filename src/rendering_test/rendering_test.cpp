@@ -785,6 +785,7 @@ void run_rendering_test(std::string_view config_path)
 {
     erhe::file::ensure_working_directory_contains("config/rendering_test/erhe_graphics.json");
 
+    erhe::log::redirect_stderr_to_file("logs/stderr.txt");
     erhe::log::initialize_log_sinks();
     {
         std::optional<std::string> contents = erhe::file::read("logging config", "config/rendering_test/logging.json");

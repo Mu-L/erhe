@@ -18,6 +18,14 @@ void initialize_log_sinks();
 void log_to_console();
 void configure_log_levels(const std::vector<std::pair<std::string, std::string>>& name_level_pairs);
 
+// Redirect the process's stderr to the given file path (line-buffered) on
+// platforms where stderr would otherwise be awkward to capture from a GUI
+// launch -- today that means macOS, where Metal API validation and MoltenVK
+// diagnostics write directly to stderr rather than through spdlog. No-op on
+// other platforms. Best-effort: failure to open the file is silently
+// ignored, so this is safe to call unconditionally from application startup.
+void redirect_stderr_to_file(const std::string& path);
+
 // Parse JSON string with {"loggers":[{"name":"...","level":"..."},...]} and apply log levels.
 // The caller is responsible for reading the file contents (e.g. via erhe::file::read()).
 void load_log_configuration(const std::string& json_contents);

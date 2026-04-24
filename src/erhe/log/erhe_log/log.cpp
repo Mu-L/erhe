@@ -18,6 +18,7 @@
 #   include <unistd.h>
 #endif
 
+#include <cstdio>
 #include <unordered_map>
 #include <vector>
 
@@ -286,6 +287,20 @@ void log_to_console()
 void initialize_log_sinks()
 {
     Log_sinks::get_instance().create_sinks();
+}
+
+void redirect_stderr_to_file(const std::string& path)
+{
+#if defined(ERHE_OS_OSX)
+    // Line-buffer so a fatal validator abort does not lose the trailing
+    // message to a not-yet-flushed block buffer. See the header for the
+    // reason this is macOS-only.
+    if (std::freopen(path.c_str(), "w", stderr) != nullptr) {
+        std::setvbuf(stderr, nullptr, _IOLBF, 0);
+    }
+#else
+    static_cast<void>(path);
+#endif
 }
 
 auto get_groupname(const std::string& s) -> std::string

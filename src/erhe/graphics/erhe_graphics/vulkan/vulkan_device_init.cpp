@@ -708,11 +708,10 @@ Device_impl::Device_impl(
             .flags           = 0,
             .messageSeverity =
                 // Verbose/info severities produce a steady stream of driver-
-                // side chatter even without validation layers. Re-enable them
-                // if you need loader-level diagnostics; for normal runs keep
-                // to warnings and errors.
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
+                // side chatter even without validation layers (e.g. MoltenVK
+                // emits "Created 3 swapchain images..." on every swapchain
+                // recreation, which on live resize fires per frame). Re-enable
+                // them if you need loader-level diagnostics.
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
             .messageType     = message_types,

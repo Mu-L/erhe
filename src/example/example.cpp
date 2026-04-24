@@ -616,6 +616,7 @@ void run_example()
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
     erhe::file::ensure_working_directory_contains("config/example/erhe_graphics.json");
 
+    erhe::log::redirect_stderr_to_file("logs/stderr.txt");
     erhe::log::initialize_log_sinks();
     {
         std::optional<std::string> contents = erhe::file::read("logging config", "config/example/logging.json");

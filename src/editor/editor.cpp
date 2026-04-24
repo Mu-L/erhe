@@ -1967,6 +1967,7 @@ void run_editor()
     // initialize_log_sinks creates "logs/log.txt" relative to cwd; must
     // run AFTER ensure_working_directory_contains so the file lands in
     // the same logs/ directory used by graphics_log (logs/vulkan.txt).
+    erhe::log::redirect_stderr_to_file("logs/stderr.txt");
     {
         ERHE_PROFILE_SCOPE("erhe::log::initialize_log_sinks()");
         erhe::log::initialize_log_sinks();
