@@ -92,7 +92,13 @@ auto Joint_buffer::update(
     const auto&       offsets          = m_joint_interface.offsets;
     const std::size_t exact_byte_count = offsets.joint_struct + joint_count * entry_size;
 
-    erhe::graphics::Ring_buffer_range buffer_range       = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, exact_byte_count);
+    // Clamp acquire to the block's reported size so MoltenVK's Metal argument
+    // validation (offset + MSL_struct_size <= buffer_size) always holds, even
+    // when joint_count == 0 and the ring's tail fragment is smaller than
+    // prefix + one joint.
+    const std::size_t acquire_byte_count = std::max(exact_byte_count, m_joint_interface.joint_block.get_size_bytes());
+
+    erhe::graphics::Ring_buffer_range buffer_range       = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, acquire_byte_count);
     std::span<std::byte>              primitive_gpu_data = buffer_range.get_span();
     std::size_t                       write_offset       = 0;
 

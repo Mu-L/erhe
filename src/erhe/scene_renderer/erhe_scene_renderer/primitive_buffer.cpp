@@ -140,7 +140,11 @@ auto Primitive_buffer::update(
     const auto&       offsets        = m_primitive_interface.offsets;
     const std::size_t max_byte_count = primitive_count * entry_size;
 
-    erhe::graphics::Ring_buffer_range buffer_range       = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, max_byte_count);
+    // See note in joint_buffer.cpp: clamp to block size so MoltenVK's Metal
+    // argument validation has enough trailing space past the binding offset.
+    const std::size_t acquire_byte_count = std::max(max_byte_count, m_primitive_interface.primitive_block.get_size_bytes());
+
+    erhe::graphics::Ring_buffer_range buffer_range       = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, acquire_byte_count);
     std::span<std::byte>              primitive_gpu_data = buffer_range.get_span();
     std::size_t                       write_offset       = 0;
 
@@ -273,7 +277,10 @@ auto Primitive_buffer::update(
     const auto&       offsets         = m_primitive_interface.offsets;
     const std::size_t max_byte_count  = primitive_count * entry_size;
 
-    erhe::graphics::Ring_buffer_range buffer_range       = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, max_byte_count);
+    // See note in joint_buffer.cpp.
+    const std::size_t acquire_byte_count = std::max(max_byte_count, m_primitive_interface.primitive_block.get_size_bytes());
+
+    erhe::graphics::Ring_buffer_range buffer_range       = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, acquire_byte_count);
     std::span<std::byte>              primitive_gpu_data = buffer_range.get_span();
     std::size_t                       write_offset       = 0;
 

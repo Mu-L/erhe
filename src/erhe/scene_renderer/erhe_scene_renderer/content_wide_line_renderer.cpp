@@ -331,9 +331,14 @@ void Content_wide_line_renderer::compute(
         const uint32_t    workgroup_count     = static_cast<uint32_t>((dispatch.edge_count + 31) / 32);
         const std::size_t padded_edge_count   = static_cast<std::size_t>(workgroup_count) * 32;
         const std::size_t triangle_byte_count = 6 * padded_edge_count * triangle_vertex_stride;
+        // See note in joint_buffer.cpp.
+        const std::size_t triangle_acquire_byte_count = std::max(
+            triangle_byte_count,
+            m_triangle_vertex_buffer_block->get_size_bytes()
+        );
         dispatch.triangle_buffer_range = m_triangle_vertex_buffer_client.acquire(
             erhe::graphics::Ring_buffer_usage::GPU_access,
-            triangle_byte_count
+            triangle_acquire_byte_count
         );
         dispatch.triangle_buffer_range.bytes_gpu_used(triangle_byte_count);
         dispatch.triangle_buffer_range.close();

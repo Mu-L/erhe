@@ -130,7 +130,9 @@ auto Cube_control_buffer::update(
     const auto        entry_size      = m_cube_interface.cube_control_struct.get_size_bytes();
     const auto&       offsets         = m_cube_interface.cube_control_offsets;
     const std::size_t max_byte_count  = primitive_count * entry_size;
-    erhe::graphics::Ring_buffer_range buffer_range = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, max_byte_count);
+    // See note in joint_buffer.cpp.
+    const std::size_t acquire_byte_count = std::max(max_byte_count, m_cube_interface.cube_control_block.get_size_bytes());
+    erhe::graphics::Ring_buffer_range buffer_range = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, acquire_byte_count);
     std::span<std::byte>              gpu_data     = buffer_range.get_span();
     std::size_t                       write_offset = 0;
     using erhe::graphics::as_span;

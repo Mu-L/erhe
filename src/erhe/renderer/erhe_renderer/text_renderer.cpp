@@ -246,12 +246,17 @@ void Text_renderer::print(const glm::vec3 text_position, const uint32_t text_col
     const std::size_t vertex_stride     = m_u_vertex_data_size;
     const std::size_t vertex_byte_count = quad_count_requested * 4 * vertex_stride;
     const std::size_t min_range_size    = 4096;
+    // See note in joint_buffer.cpp: if the vertex SSBO block has an unsized
+    // trailing array, the acquire must always cover prefix + one element so
+    // MoltenVK's Metal argument validation holds at the ring tail.
+    const std::size_t ssbo_min_byte_count = m_vertex_ssbo_block.get_size_bytes();
+    const std::size_t acquire_byte_count  = std::max({vertex_byte_count, min_range_size, ssbo_min_byte_count});
 
     if (m_vertex_buffer_ranges.empty())  {
         m_vertex_buffer_ranges.push_back(
             m_vertex_ssbo_buffer.acquire(
                 erhe::graphics::Ring_buffer_usage::CPU_write,
-                std::max(vertex_byte_count, min_range_size)
+                acquire_byte_count
             )
         );
     }
@@ -260,7 +265,7 @@ void Text_renderer::print(const glm::vec3 text_position, const uint32_t text_col
         m_vertex_buffer_ranges.push_back(
             m_vertex_ssbo_buffer.acquire(
                 erhe::graphics::Ring_buffer_usage::CPU_write,
-                std::max(vertex_byte_count, min_range_size)
+                acquire_byte_count
             )
         );
     }

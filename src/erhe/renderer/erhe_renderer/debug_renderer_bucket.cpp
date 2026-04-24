@@ -191,10 +191,18 @@ auto Debug_renderer_bucket::make_draw(std::size_t vertex_byte_count, std::size_t
 
     auto& buffer_client = m_use_compute ? m_vertex_ssbo_buffer.value() : m_line_vertex_buffer.value();
 
+    // When the buffer_client is an SSBO (compute path), also clamp to the
+    // block's reported size so MoltenVK's Metal argument validation holds.
+    // See note in joint_buffer.cpp.
+    const std::size_t ssbo_min_byte_count = m_use_compute
+        ? m_debug_renderer.get_program_interface().line_vertex_buffer_block->get_size_bytes()
+        : std::size_t{0};
+    const std::size_t acquire_byte_count = std::max({vertex_byte_count, min_range_size, ssbo_min_byte_count});
+
     if (m_draws.empty() || m_start_new_draw) {
         m_start_new_draw = false;
         m_draws.emplace_back(
-            buffer_client.acquire(erhe::graphics::Ring_buffer_usage::CPU_write, std::max(vertex_byte_count, min_range_size)),
+            buffer_client.acquire(erhe::graphics::Ring_buffer_usage::CPU_write, acquire_byte_count),
             erhe::graphics::Ring_buffer_range{},
             0
         );
@@ -205,7 +213,7 @@ auto Debug_renderer_bucket::make_draw(std::size_t vertex_byte_count, std::size_t
         m_draws.emplace_back(
             buffer_client.acquire(
                 erhe::graphics::Ring_buffer_usage::CPU_write,
-                std::max(vertex_byte_count, min_range_size)
+                acquire_byte_count
             ),
             erhe::graphics::Ring_buffer_range{},
             0
@@ -290,8 +298,13 @@ void Debug_renderer_bucket::dispatch_compute(erhe::graphics::Compute_command_enc
             m_vertex_ssbo_buffer->bind(encoder, draw.input_buffer_range);
 
             const std::size_t triangle_byte_count = 6 * draw.primitive_count * triangle_vertex_stride;
+            // See note in joint_buffer.cpp.
+            const std::size_t triangle_acquire_byte_count = std::max(
+                triangle_byte_count,
+                m_debug_renderer.get_program_interface().triangle_vertex_buffer_block->get_size_bytes()
+            );
 
-            draw.draw_buffer_range = m_triangle_vertex_buffer->acquire(erhe::graphics::Ring_buffer_usage::GPU_access, triangle_byte_count);
+            draw.draw_buffer_range = m_triangle_vertex_buffer->acquire(erhe::graphics::Ring_buffer_usage::GPU_access, triangle_acquire_byte_count);
             ERHE_VERIFY(draw.draw_buffer_range.get_buffer() != nullptr);
             draw.draw_buffer_range.bytes_gpu_used(triangle_byte_count);
             draw.draw_buffer_range.close();

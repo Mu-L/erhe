@@ -128,7 +128,12 @@ auto Material_buffer::update(
     const auto&       offsets        = m_material_interface.offsets;
     const std::size_t max_byte_count = materials.size() * entry_size;
 
-    erhe::graphics::Ring_buffer_range buffer_range = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, max_byte_count);
+    // See note in joint_buffer.cpp: clamp acquire to the block's reported
+    // size so MoltenVK's Metal argument validation passes when the ring's
+    // tail fragment is smaller than the MSL struct footprint.
+    const std::size_t acquire_byte_count = std::max(max_byte_count, m_material_interface.material_block.get_size_bytes());
+
+    erhe::graphics::Ring_buffer_range buffer_range = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, acquire_byte_count);
     std::span<std::byte>              gpu_data     = buffer_range.get_span();
     std::size_t                       write_offset = 0;
 

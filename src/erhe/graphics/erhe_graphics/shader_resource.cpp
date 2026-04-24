@@ -556,6 +556,15 @@ auto Shader_resource::get_size_bytes() const -> std::size_t
             }
         }
 
+        // An unsized trailing array (m_array_size == unsized_array == 0) falls
+        // through with array_multiplier == 1, contributing one element's worth
+        // to the parent block's size. This matches what SPIRV-Cross emits when
+        // translating a SPIR-V runtime array to MSL for a discrete SSBO
+        // binding: a fixed-size array of length 1. Metal validates argument
+        // buffer bindings as offset + sizeof(MSL_struct) <= MTLBuffer.length,
+        // so ring-buffer acquires that bind such an SSBO must request at
+        // least the block's reported size (via get_size_bytes() on the block)
+        // to guarantee that validation passes on MoltenVK.
         return struct_size * array_multiplier;
     }
 
