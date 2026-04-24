@@ -624,31 +624,45 @@ auto Surface_impl::update_swapchain(Vulkan_swapchain_create_info& out_swapchain_
         return false;
     }
 
+    // Source the target extent from the window's pixel size rather than from
+    // surface_capabilities.currentExtent. On Windows / Linux the two are
+    // expected to match, but the window size is the authoritative
+    // user-intended extent. On macOS with
+    // SDL_HINT_VIDEO_METAL_AUTO_RESIZE_DRAWABLE disabled (Vulkan path, see
+    // sdl_window.cpp), surface_capabilities.currentExtent equals the last
+    // CAMetalLayer.drawableSize MoltenVK set, i.e. the PREVIOUS swapchain's
+    // imageExtent -- stale on resize. The window's SDL_GetWindowSizeInPixels
+    // result reflects the new pixel size. If no Context_window is attached
+    // (headless), fall back to currentExtent.
     VkExtent2D extent{.width = 0, .height = 0};
-    if (
+    if (m_surface_create_info.context_window != nullptr) {
+        extent.width  = static_cast<uint32_t>(m_surface_create_info.context_window->get_width ());
+        extent.height = static_cast<uint32_t>(m_surface_create_info.context_window->get_height());
+    } else if (
         (surface_capabilities.currentExtent.width  == std::numeric_limits<uint32_t>::max()) ||
         (surface_capabilities.currentExtent.height == std::numeric_limits<uint32_t>::max())
     ) {
-        extent.width  = m_surface_create_info.context_window->get_width();
-        extent.height = m_surface_create_info.context_window->get_height();
-        log_context->debug("  Surface current extent not set, using window size {} x {}", extent.width, extent.height);
+        extent.width  = 0;
+        extent.height = 0;
     } else {
         extent.width  = surface_capabilities.currentExtent.width;
         extent.height = surface_capabilities.currentExtent.height;
-        log_context->debug("  Surface current extent : {} x {}", extent.width, extent.height);
     }
+    log_context->debug(
+        "  Swapchain target extent : {} x {} (currentExtent : {} x {})",
+        extent.width, extent.height,
+        surface_capabilities.currentExtent.width, surface_capabilities.currentExtent.height
+    );
     log_context->debug("  Surface min extent : {} x {}", surface_capabilities.minImageExtent.width, surface_capabilities.minImageExtent.height);
     log_context->debug("  Surface max extent : {} x {}", surface_capabilities.maxImageExtent.width, surface_capabilities.maxImageExtent.height);
 
-    // Clamp swapchain size
-    extent.width  = extent.width;
-    extent.height = extent.height;
-    extent.width  = std::min(extent.width,  surface_capabilities.maxImageExtent.width);
-    extent.height = std::min(extent.height, surface_capabilities.maxImageExtent.height);                                                                                                    
-    extent.width  = std::max(extent.width,  surface_capabilities.minImageExtent.width);
-    extent.height = std::max(extent.height, surface_capabilities.minImageExtent.height);
-
-    m_is_empty = 
+    // Detect empty-surface conditions before clamping. A zero-width or
+    // zero-height window (minimized / shaded / otherwise hidden) must skip
+    // swapchain recreation; otherwise we'd clamp to the driver minimum
+    // (usually 1x1) and render into something the user cannot see.
+    m_is_empty =
+        (extent.width  == 0) ||
+        (extent.height == 0) ||
         (surface_capabilities.currentExtent.width  == 0) ||
         (surface_capabilities.currentExtent.height == 0);
 
@@ -656,6 +670,12 @@ auto Surface_impl::update_swapchain(Vulkan_swapchain_create_info& out_swapchain_
         extent = VkExtent2D{.width = 0, .height = 0};
         return false;
     }
+
+    // Clamp swapchain size
+    extent.width  = std::min(extent.width,  surface_capabilities.maxImageExtent.width);
+    extent.height = std::min(extent.height, surface_capabilities.maxImageExtent.height);
+    extent.width  = std::max(extent.width,  surface_capabilities.minImageExtent.width);
+    extent.height = std::max(extent.height, surface_capabilities.minImageExtent.height);
 
     if (
         (extent.width  == m_swapchain_extent.width) &&
@@ -798,6 +818,12 @@ auto Surface_impl::update_swapchain(Vulkan_swapchain_create_info& out_swapchain_
         .clipped               = VK_TRUE,                                       // VkBool32
         .oldSwapchain          = nullptr                                        // VkSwapchainKHR
     };
+    // Record the extent the caller will use to recreate the swapchain so the
+    // next call's "extent unchanged" early-out (above) actually fires.
+    // Without this, m_swapchain_extent stays at {0,0} and every
+    // request_resize pass rebuilds the swapchain even when the size did not
+    // change.
+    m_swapchain_extent = extent;
     return true;
 }
 

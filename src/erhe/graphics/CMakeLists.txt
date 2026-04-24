@@ -170,6 +170,7 @@ if (ERHE_GRAPHICS_API_VULKAN)
         erhe_graphics/vulkan/vulkan_compute_pipeline.hpp
         erhe_graphics/vulkan/vulkan_debug.cpp
         erhe_graphics/vulkan/vulkan_debug.hpp
+        erhe_graphics/vulkan/vulkan_metal_layer_mac.hpp
         erhe_graphics/vulkan/vulkan_device.cpp
         erhe_graphics/vulkan/vulkan_device_debug.cpp
         erhe_graphics/vulkan/vulkan_device_init.cpp
@@ -206,6 +207,13 @@ if (ERHE_GRAPHICS_API_VULKAN)
         erhe_graphics/vulkan/vulkan_submit_handle.hpp
         erhe_graphics/vulkan/vma_usage.cpp
     )
+
+    if (APPLE)
+        erhe_target_sources_grouped(
+            ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+            erhe_graphics/vulkan/vulkan_metal_layer_mac.mm
+        )
+    endif ()
 
     # get_target_property(ERHE_VMA_INCLUDES GPUOpen::VulkanMemoryAllocator INTERFACE_INCLUDE_DIRECTORIES)
     # get_target_property(ERHE_VMA_LIBS     GPUOpen::VulkanMemoryAllocator INTERFACE_LINK_LIBRARIES)

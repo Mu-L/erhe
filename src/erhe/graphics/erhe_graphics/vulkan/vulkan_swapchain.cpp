@@ -6,6 +6,9 @@
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
 #include "erhe_graphics/vulkan/vulkan_render_pass.hpp"
 #include "erhe_graphics/vulkan/vulkan_surface.hpp"
+#if defined(ERHE_OS_OSX)
+#   include "erhe_graphics/vulkan/vulkan_metal_layer_mac.hpp"
+#endif
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_window/window.hpp"
 #include "erhe_verify/verify.hpp"
@@ -186,7 +189,32 @@ auto Swapchain_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bo
 
     VkResult result = VK_SUCCESS;
 
+#if defined(ERHE_OS_OSX)
+    // Force CAMetalLayer.drawableSize to match the swapchain extent before
+    // every acquire. AppKit's live-resize layout callbacks can reset the
+    // layer's drawableSize to (bounds x contentsScale) transiently during
+    // fast drag operations -- the bounds go to 0 while the window is being
+    // re-laid-out, which CAMetalLayer clamps to a 1x1 drawable. We want
+    // MoltenVK's nextDrawable to hand us a drawable that matches the
+    // VkImage extent, not whatever AppKit last auto-adjusted to.
+    auto pin_drawable_size_to_swapchain_extent = [&]() {
+        const erhe::window::Context_window* const ctx_window =
+            m_surface_impl.get_surface_create_info().context_window;
+        if ((ctx_window == nullptr) || (m_swapchain_extent.width == 0) || (m_swapchain_extent.height == 0)) {
+            return;
+        }
+        set_sdl_window_drawable_size(
+            ctx_window->get_sdl_window(),
+            static_cast<int>(m_swapchain_extent.width),
+            static_cast<int>(m_swapchain_extent.height)
+        );
+    };
+#endif
+
     if (!frame_begin_info.request_resize) {
+#if defined(ERHE_OS_OSX)
+        pin_drawable_size_to_swapchain_extent();
+#endif
         result = acquire_next_image(&m_acquired_image_index);
     }
 
@@ -201,6 +229,9 @@ auto Swapchain_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bo
             m_state                = Swapchain_frame_state::idle;
             return false;
         }
+#if defined(ERHE_OS_OSX)
+        pin_drawable_size_to_swapchain_extent();
+#endif
         result = acquire_next_image(&m_acquired_image_index);
     }
     if ((result != VK_SUCCESS) && (result != VK_SUBOPTIMAL_KHR)) {
@@ -209,6 +240,7 @@ auto Swapchain_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bo
         m_state                = Swapchain_frame_state::idle;
         return false;
     }
+
     // Allocate present_semaphore now that an image has been acquired.
     // setup_frame no longer does this unconditionally; see its comment.
     Swapchain_frame_in_flight& frame = m_submit_history[current_slot()];
@@ -538,13 +570,20 @@ void Swapchain_impl::associate_fence_with_present_history(const uint32_t index, 
 
 void Swapchain_impl::schedule_old_swapchain_for_destruction(const VkSwapchainKHR old_swapchain)
 {
-    const VkDevice vulkan_device = m_device_impl.get_vulkan_device();
-
-    // If no presentation is done on the swapchain, destroy it right away.
-    if (!m_present_history.empty() && (m_present_history.back().image_index == INVALID_IMAGE_INDEX)) {
-        vkDestroySwapchainKHR(vulkan_device, old_swapchain, nullptr);
-        return;
-    }
+    // NOTE: do NOT destroy `old_swapchain` immediately even when m_present_history
+    // looks "empty of non-sentinel entries". With VK_KHR_swapchain_maintenance1
+    // every present inserts an entry with image_index == INVALID_IMAGE_INDEX
+    // (the sentinel means "fence-tracked present", not "no present"), so an
+    // early-destroy would tear down the VkSwapchainKHR while MoltenVK still has
+    // an MTLCommandBuffer schedule-handler block referencing the underlying
+    // MVKSwapchain -- we previously saw that surface as EXC_BAD_ACCESS in
+    // MVKSwapchain::beginPresentation on com.Metal.CompletionQueueDispatch.
+    //
+    // Instead always defer to m_old_swapchains. The next add_present_to_history
+    // move-grabs m_old_swapchains into the new present's old_swapchains list,
+    // and cleanup_present_info destroys each only once the present fence has
+    // signalled. If no further present happens, ~Swapchain_impl drains
+    // m_old_swapchains at shutdown.
 
     Swapchain_cleanup_data cleanup_data{
         .swapchain = old_swapchain
