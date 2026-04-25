@@ -1,3 +1,8 @@
+// Pull in vulkan_beta.h via volk so VkPhysicalDevicePortabilitySubsetFeaturesKHR
+// and VkPhysicalDevicePortabilitySubsetPropertiesKHR are available below
+// (only the queries log them; we don't currently consume any of the bits).
+#define VK_ENABLE_BETA_EXTENSIONS
+
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
 #include "erhe_graphics/vulkan/vulkan_device_sync_pool.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
@@ -572,6 +577,15 @@ Device_impl::Device_impl(
         .driverInfo         = {},
         .conformanceVersion = {},
     };
+    VkPhysicalDevicePortabilitySubsetPropertiesKHR portability_subset_properties{
+        .sType                                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_PROPERTIES_KHR,
+        .pNext                                = nullptr,
+        .minVertexInputBindingStrideAlignment = 0u
+    };
+    if (m_device_extensions.m_VK_KHR_portability_subset) {
+        portability_subset_properties.pNext = m_driver_properties.pNext;
+        m_driver_properties.pNext           = &portability_subset_properties;
+    }
     VkPhysicalDeviceProperties2 physical_device_properties2 {
         .sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
         .pNext      = &m_driver_properties,
@@ -595,6 +609,13 @@ Device_impl::Device_impl(
     log_context->info("  Device ID           = {:08x}",      properties.deviceID);
     log_context->info("  Device type         = {}",          c_str(properties.deviceType));
     log_context->info("  Device name         = {}",          properties.deviceName);
+    if (m_device_extensions.m_VK_KHR_portability_subset) {
+        log_context->info("Vulkan portability subset properties:");
+        log_context->info(
+            "  minVertexInputBindingStrideAlignment = {}",
+            portability_subset_properties.minVertexInputBindingStrideAlignment
+        );
+    }
 
     VkPhysicalDeviceFeatures2 query_device_features{
         .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
@@ -694,7 +715,51 @@ Device_impl::Device_impl(
         query_features_chain_last        = query_features_chain_last->pNext;
     }
 
+    VkPhysicalDevicePortabilitySubsetFeaturesKHR query_portability_subset_features{
+        .sType                                  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR,
+        .pNext                                  = nullptr,
+        .constantAlphaColorBlendFactors         = VK_FALSE,
+        .events                                 = VK_FALSE,
+        .imageViewFormatReinterpretation        = VK_FALSE,
+        .imageViewFormatSwizzle                 = VK_FALSE,
+        .imageView2DOn3DImage                   = VK_FALSE,
+        .multisampleArrayImage                  = VK_FALSE,
+        .mutableComparisonSamplers              = VK_FALSE,
+        .pointPolygons                          = VK_FALSE,
+        .samplerMipLodBias                      = VK_FALSE,
+        .separateStencilMaskRef                 = VK_FALSE,
+        .shaderSampleRateInterpolationFunctions = VK_FALSE,
+        .tessellationIsolines                   = VK_FALSE,
+        .tessellationPointMode                  = VK_FALSE,
+        .triangleFans                           = VK_FALSE,
+        .vertexAttributeAccessBeyondStride      = VK_FALSE,
+    };
+    if (m_device_extensions.m_VK_KHR_portability_subset) {
+        query_features_chain_last->pNext = reinterpret_cast<VkBaseOutStructure*>(&query_portability_subset_features);
+        query_features_chain_last        = query_features_chain_last->pNext;
+    }
+
     vkGetPhysicalDeviceFeatures2(m_vulkan_physical_device, &query_device_features);
+
+    if (m_device_extensions.m_VK_KHR_portability_subset) {
+        const VkPhysicalDevicePortabilitySubsetFeaturesKHR& p = query_portability_subset_features;
+        log_context->info("Vulkan portability subset features:");
+        log_context->info("  constantAlphaColorBlendFactors         = {}", p.constantAlphaColorBlendFactors         == VK_TRUE);
+        log_context->info("  events                                 = {}", p.events                                 == VK_TRUE);
+        log_context->info("  imageViewFormatReinterpretation        = {}", p.imageViewFormatReinterpretation        == VK_TRUE);
+        log_context->info("  imageViewFormatSwizzle                 = {}", p.imageViewFormatSwizzle                 == VK_TRUE);
+        log_context->info("  imageView2DOn3DImage                   = {}", p.imageView2DOn3DImage                   == VK_TRUE);
+        log_context->info("  multisampleArrayImage                  = {}", p.multisampleArrayImage                  == VK_TRUE);
+        log_context->info("  mutableComparisonSamplers              = {}", p.mutableComparisonSamplers              == VK_TRUE);
+        log_context->info("  pointPolygons                          = {}", p.pointPolygons                          == VK_TRUE);
+        log_context->info("  samplerMipLodBias                      = {}", p.samplerMipLodBias                      == VK_TRUE);
+        log_context->info("  separateStencilMaskRef                 = {}", p.separateStencilMaskRef                 == VK_TRUE);
+        log_context->info("  shaderSampleRateInterpolationFunctions = {}", p.shaderSampleRateInterpolationFunctions == VK_TRUE);
+        log_context->info("  tessellationIsolines                   = {}", p.tessellationIsolines                   == VK_TRUE);
+        log_context->info("  tessellationPointMode                  = {}", p.tessellationPointMode                  == VK_TRUE);
+        log_context->info("  triangleFans                           = {}", p.triangleFans                           == VK_TRUE);
+        log_context->info("  vertexAttributeAccessBeyondStride      = {}", p.vertexAttributeAccessBeyondStride      == VK_TRUE);
+    }
 
     bool debug_callback_registered = false;
     if (m_instance_extensions.m_VK_EXT_debug_utils) {

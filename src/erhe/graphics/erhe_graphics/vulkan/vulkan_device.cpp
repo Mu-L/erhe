@@ -778,6 +778,13 @@ auto Device_impl::query_device_extensions(
     check_device_extension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,                device_extensions_out.m_VK_KHR_push_descriptor               , 1.0f);
     check_device_extension(VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, device_extensions_out.m_VK_KHR_present_mode_fifo_latest_ready, 3.0f);
 
+    // VK_KHR_portability_subset must be enabled whenever the physical device
+    // advertises it (Vulkan spec VUID-VkDeviceCreateInfo-pProperties-04451).
+    // MoltenVK always does, because it is a portability implementation.
+    // Using the literal name keeps us independent of vulkan_beta.h /
+    // VK_ENABLE_BETA_EXTENSIONS gating of VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME.
+    check_device_extension("VK_KHR_portability_subset",                          device_extensions_out.m_VK_KHR_portability_subset            , 0.0f);
+
     if (!device_extensions_out.m_VK_KHR_load_store_op_none) {
         check_device_extension(VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME,             device_extensions_out.m_VK_EXT_load_store_op_none            , 2.0f);
     }

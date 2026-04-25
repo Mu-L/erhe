@@ -57,6 +57,7 @@ public:
     bool m_VK_KHR_load_store_op_none            {false};
     bool m_VK_EXT_load_store_op_none            {false};
     bool m_VK_KHR_push_descriptor               {false};
+    bool m_VK_KHR_portability_subset            {false};
 };
 class Capabilities
 {
