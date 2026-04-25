@@ -56,25 +56,18 @@ Light_interface::Light_interface(erhe::graphics::Device& graphics_device, const 
             .mag_filter        = erhe::graphics::Filter::nearest,
             .mipmap_mode       = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
             .compare_enable    = true,
-            .compare_operation = erhe::graphics::Compare_operation::greater_or_equal,
+            // Comparison op is baked here from the engine-wide reverse_depth
+            // setting because the descriptor set layout pins this sampler as
+            // an immutable sampler -- the Vulkan portability subset on
+            // MoltenVK refuses comparison samplers via push descriptors, so
+            // direction has to be fixed at engine init.
+            .compare_operation = graphics_device.get_graphics_config().reverse_depth
+                ? erhe::graphics::Compare_operation::greater_or_equal
+                : erhe::graphics::Compare_operation::less_or_equal,
             .lod_bias     = 0.0f,
             .max_lod      = 0.0f,
             .min_lod      = 0.0f,
             .debug_label  = "Light_interface::shadow_sampler_compare"
-        }
-    }
-    , shadow_sampler_compare_forward{
-        graphics_device,
-        erhe::graphics::Sampler_create_info{
-            .min_filter        = erhe::graphics::Filter::nearest,
-            .mag_filter        = erhe::graphics::Filter::nearest,
-            .mipmap_mode       = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-            .compare_enable    = true,
-            .compare_operation = erhe::graphics::Compare_operation::less_or_equal,
-            .lod_bias     = 0.0f,
-            .max_lod      = 0.0f,
-            .min_lod      = 0.0f,
-            .debug_label  = "Light_interface::shadow_sampler_compare_forward"
         }
     }
     , shadow_sampler_no_compare{
@@ -93,12 +86,9 @@ Light_interface::Light_interface(erhe::graphics::Device& graphics_device, const 
 {
 }
 
-auto Light_interface::get_sampler(const bool compare, const bool reverse_depth) const -> const erhe::graphics::Sampler*
+auto Light_interface::get_sampler(const bool compare) const -> const erhe::graphics::Sampler*
 {
-    if (!compare) {
-        return &shadow_sampler_no_compare;
-    }
-    return reverse_depth ? &shadow_sampler_compare : &shadow_sampler_compare_forward;
+    return compare ? &shadow_sampler_compare : &shadow_sampler_no_compare;
 }
 
 Light_buffer::Light_buffer(erhe::graphics::Device& graphics_device, Light_interface& light_interface)
@@ -229,8 +219,7 @@ auto Light_buffer::update(
     const uint32_t uint_zero              {0u};
     const uint32_t uvec4_zero[4]          {0u, 0u, 0u, 0u};
 
-    const bool reverse_depth = light_projections ? light_projections->parameters.reverse_depth : true;
-    const erhe::graphics::Sampler* compare_sampler    = m_light_interface.get_sampler(true, reverse_depth);
+    const erhe::graphics::Sampler* compare_sampler    = m_light_interface.get_sampler(true);
     const erhe::graphics::Sampler* no_compare_sampler = m_light_interface.get_sampler(false);
 
     uint64_t shadow_map_texture_handle_compare    = erhe::graphics::invalid_texture_handle;
@@ -375,8 +364,7 @@ void Light_buffer::bind_shadow_samplers(
     if (shadow_map_texture == nullptr) {
         return;
     }
-    const bool reverse_depth = (light_projections != nullptr) ? light_projections->parameters.reverse_depth : true;
-    const erhe::graphics::Sampler* compare_sampler    = m_light_interface.get_sampler(true, reverse_depth);
+    const erhe::graphics::Sampler* compare_sampler    = m_light_interface.get_sampler(true);
     const erhe::graphics::Sampler* no_compare_sampler = m_light_interface.get_sampler(false);
     // Bind shadow textures to the uniform sampler declarations in the
     // default uniform block. All backends use set_sampled_image() for

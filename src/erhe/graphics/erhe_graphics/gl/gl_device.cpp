@@ -110,6 +110,7 @@ auto get_string(const gl::String_name string_name) -> std::string
 
 Device_impl::Device_impl(Device& device, const Surface_create_info& surface_create_info, const Graphics_config& graphics_config)
     : m_device             {device}
+    , m_graphics_config    {graphics_config}
     , m_shader_monitor     {device}
     , m_gl_context_provider{device, m_gl_state_tracker}
 {
@@ -1250,6 +1251,11 @@ auto Device_impl::get_shader_monitor() -> Shader_monitor&
 auto Device_impl::get_info() const -> const Device_info&
 {
     return m_info;
+}
+
+auto Device_impl::get_graphics_config() const -> const Graphics_config&
+{
+    return m_graphics_config;
 }
 
 auto Device_impl::get_buffer_alignment(const Buffer_target target) -> std::size_t

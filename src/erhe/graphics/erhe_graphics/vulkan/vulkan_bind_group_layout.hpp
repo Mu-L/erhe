@@ -43,6 +43,15 @@ public:
     // user's binding into the actual descriptor binding to write.
     [[nodiscard]] auto get_vulkan_binding_for_sampler(uint32_t user_binding_point) const -> uint32_t;
 
+    // True when the binding was declared with Bind_group_layout_binding::
+    // immutable_sampler set, which makes its sampler pre-baked into the
+    // descriptor set layout via pImmutableSamplers. Encoder code uses this
+    // to write VK_NULL_HANDLE for the descriptor's sampler field, which is
+    // ignored by the driver but required on MoltenVK so that
+    // VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450 does not
+    // trip on comparison samplers.
+    [[nodiscard]] auto is_sampler_binding_immutable(uint32_t user_binding_point) const -> bool;
+
 private:
     class Sampler_binding_info
     {
@@ -50,6 +59,7 @@ private:
         uint32_t       user_binding_point{0};
         uint32_t       vk_binding_point  {0};
         Sampler_aspect aspect            {Sampler_aspect::color};
+        bool           is_immutable      {false};
     };
 
     Device_impl&                      m_device_impl;

@@ -325,6 +325,7 @@ public:
     [[nodiscard]] auto choose_depth_stencil_format        (unsigned int sort_flags, int requested_sample_count) const -> erhe::dataformat::Format;
     [[nodiscard]] auto get_shader_monitor                 () -> Shader_monitor&;
     [[nodiscard]] auto get_info                           () const -> const Device_info&;
+    [[nodiscard]] auto get_graphics_config                () const -> const Graphics_config&;
     [[nodiscard]] auto get_impl                           () -> Device_impl&;
     [[nodiscard]] auto get_impl                           () const -> const Device_impl&;
     [[nodiscard]] auto get_spirv_cache                    () -> Spirv_cache&;

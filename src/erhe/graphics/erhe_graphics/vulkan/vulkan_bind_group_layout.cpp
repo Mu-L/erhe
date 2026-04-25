@@ -1,8 +1,10 @@
 #include "erhe_graphics/vulkan/vulkan_bind_group_layout.hpp"
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
+#include "erhe_graphics/vulkan/vulkan_sampler.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/sampler.hpp"
 
 #include <vector>
 
@@ -75,6 +77,14 @@ Bind_group_layout_impl::Bind_group_layout_impl(
     std::vector<VkDescriptorSetLayoutBinding> vk_bindings;
     vk_bindings.reserve(create_info.bindings.size());
 
+    // Storage for VkSampler arrays referenced by VkDescriptorSetLayoutBinding::
+    // pImmutableSamplers entries. Each binding that opts into immutable
+    // samplers gets one VkSampler appended here; the address must remain
+    // valid through vkCreateDescriptorSetLayout(), so we keep the vector's
+    // capacity stable across the loop with reserve().
+    std::vector<VkSampler> immutable_sampler_storage;
+    immutable_sampler_storage.reserve(create_info.bindings.size());
+
     for (const Bind_group_layout_binding& binding : create_info.bindings) {
         VkShaderStageFlags stage_flags = VK_SHADER_STAGE_ALL;
         if (binding.type == Binding_type::combined_image_sampler) {
@@ -84,12 +94,20 @@ Bind_group_layout_impl::Bind_group_layout_impl(
         // Sampler bindings are offset past buffer bindings in Vulkan
         // (OpenGL has separate namespaces, Vulkan shares one)
         uint32_t vk_binding_point = binding.binding_point;
+        const VkSampler* p_immutable_samplers = nullptr;
+        bool             is_immutable         = false;
         if (binding.type == Binding_type::combined_image_sampler) {
             vk_binding_point += m_sampler_binding_offset;
+            if (binding.immutable_sampler != nullptr) {
+                immutable_sampler_storage.push_back(binding.immutable_sampler->get_impl().get_vulkan_sampler());
+                p_immutable_samplers = &immutable_sampler_storage.back();
+                is_immutable = true;
+            }
             m_sampler_bindings.push_back(Sampler_binding_info{
                 .user_binding_point = binding.binding_point,
                 .vk_binding_point   = vk_binding_point,
-                .aspect             = binding.sampler_aspect
+                .aspect             = binding.sampler_aspect,
+                .is_immutable       = is_immutable
             });
         }
         vk_bindings.push_back(VkDescriptorSetLayoutBinding{
@@ -97,7 +115,7 @@ Bind_group_layout_impl::Bind_group_layout_impl(
             .descriptorType     = to_vulkan_descriptor_type(binding.type),
             .descriptorCount    = binding.descriptor_count,
             .stageFlags         = stage_flags,
-            .pImmutableSamplers = nullptr
+            .pImmutableSamplers = p_immutable_samplers
         });
     }
 
@@ -228,6 +246,16 @@ auto Bind_group_layout_impl::get_vulkan_binding_for_sampler(const uint32_t user_
         }
     }
     return user_binding_point + m_sampler_binding_offset;
+}
+
+auto Bind_group_layout_impl::is_sampler_binding_immutable(const uint32_t user_binding_point) const -> bool
+{
+    for (const Sampler_binding_info& info : m_sampler_bindings) {
+        if (info.user_binding_point == user_binding_point) {
+            return info.is_immutable;
+        }
+    }
+    return false;
 }
 
 } // namespace erhe::graphics

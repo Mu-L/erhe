@@ -63,7 +63,13 @@ class Light_interface
 public:
     Light_interface(erhe::graphics::Device& graphics_device, int max_light_count);
 
-    [[nodiscard]] auto get_sampler(bool compare, bool reverse_depth = true) const -> const erhe::graphics::Sampler*;
+    // Returns the dedicated shadow sampler for the named role. The
+    // comparison-enabled variant uses the comparison op that matches the
+    // engine-wide reverse_depth choice (Graphics_config::reverse_depth);
+    // there is no per-call override because both Vulkan portability subset
+    // (MoltenVK) and the immutable-sampler descriptor wiring require the
+    // direction to be fixed at engine init.
+    [[nodiscard]] auto get_sampler(bool compare) const -> const erhe::graphics::Sampler*;
 
     std::size_t                     max_light_count;
     erhe::graphics::Shader_resource light_block;
@@ -72,7 +78,6 @@ public:
     Light_block                     offsets;
     std::size_t                     light_index_offset;
     erhe::graphics::Sampler         shadow_sampler_compare;
-    erhe::graphics::Sampler         shadow_sampler_compare_forward;
     erhe::graphics::Sampler         shadow_sampler_no_compare;
 };
 

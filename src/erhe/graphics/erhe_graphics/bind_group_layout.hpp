@@ -55,6 +55,17 @@ public:
     // 0 means "scalar" for dedicated samplers, or "use the GL sampler-
     // array implicit s_texture sizing" when this binding is omitted.
     uint32_t         array_size     {0};
+
+    // Optional pre-bound sampler. When non-null on a combined_image_sampler
+    // binding the Vulkan backend installs the sampler as a pImmutableSamplers
+    // entry on the descriptor set layout, and Render_command_encoder writes
+    // VK_NULL_HANDLE for the sampler field in the descriptor write (the
+    // layout's immutable sampler is used instead of any runtime-supplied one).
+    // Required on MoltenVK for comparison samplers
+    // (VkPhysicalDevicePortabilitySubsetFeaturesKHR::mutableComparisonSamplers
+    // is VK_FALSE there). The pointed-to Sampler must outlive the
+    // Bind_group_layout. OpenGL and Metal backends ignore this field.
+    const Sampler*   immutable_sampler{nullptr};
 };
 
 class Bind_group_layout_create_info

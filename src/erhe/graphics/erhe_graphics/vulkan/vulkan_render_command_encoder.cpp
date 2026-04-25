@@ -637,9 +637,10 @@ void Render_command_encoder_impl::set_sampled_image(
         return;
     }
 
-    const Bind_group_layout_impl& layout_impl = m_bind_group_layout->get_impl();
-    const Sampler_aspect          aspect      = layout_impl.get_sampler_aspect_for_binding(binding_point);
-    const uint32_t                vk_binding  = layout_impl.get_vulkan_binding_for_sampler(binding_point);
+    const Bind_group_layout_impl& layout_impl  = m_bind_group_layout->get_impl();
+    const Sampler_aspect          aspect       = layout_impl.get_sampler_aspect_for_binding(binding_point);
+    const uint32_t                vk_binding   = layout_impl.get_vulkan_binding_for_sampler(binding_point);
+    const bool                    is_immutable = layout_impl.is_sampler_binding_immutable(binding_point);
 
     VkImageAspectFlags vk_aspect    = VK_IMAGE_ASPECT_COLOR_BIT;
     VkImageLayout      image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -665,12 +666,21 @@ void Render_command_encoder_impl::set_sampled_image(
         std::max(1, texture_impl.get_array_layer_count())
     );
     VkSampler vk_sampler = sampler.get_impl().get_vulkan_sampler();
-    if ((image_view == VK_NULL_HANDLE) || (vk_sampler == VK_NULL_HANDLE)) {
+    if (image_view == VK_NULL_HANDLE) {
+        return;
+    }
+    if (!is_immutable && (vk_sampler == VK_NULL_HANDLE)) {
         return;
     }
 
+    // For immutable bindings the descriptor's sampler field is ignored by
+    // the driver; writing VK_NULL_HANDLE prevents validation tripping
+    // VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450 when the
+    // pre-baked sampler has compareEnable=true on devices that report
+    // VkPhysicalDevicePortabilitySubsetFeaturesKHR::mutableComparisonSamplers
+    // as VK_FALSE (e.g. MoltenVK).
     const VkDescriptorImageInfo image_info{
-        .sampler     = vk_sampler,
+        .sampler     = is_immutable ? VK_NULL_HANDLE : vk_sampler,
         .imageView   = image_view,
         .imageLayout = image_layout
     };

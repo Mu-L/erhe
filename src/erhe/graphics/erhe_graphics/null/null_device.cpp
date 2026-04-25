@@ -14,10 +14,10 @@
 namespace erhe::graphics {
 
 Device_impl::Device_impl(Device& device, const Surface_create_info& surface_create_info, const Graphics_config& graphics_config)
-    : m_device        {device}
-    , m_shader_monitor{device}
+    : m_device         {device}
+    , m_graphics_config{graphics_config}
+    , m_shader_monitor {device}
 {
-    static_cast<void>(graphics_config);
 
     // Initialize Device_info with reasonable defaults for headless/server mode
     m_info.glsl_version                             = 460;
@@ -364,6 +364,11 @@ auto Device_impl::get_shader_monitor() -> Shader_monitor&
 auto Device_impl::get_info() const -> const Device_info&
 {
     return m_info;
+}
+
+auto Device_impl::get_graphics_config() const -> const Graphics_config&
+{
+    return m_graphics_config;
 }
 
 void Device_impl::reset_shader_stages_state_tracker()

@@ -103,6 +103,7 @@ public:
     [[nodiscard]] auto choose_depth_stencil_format        (unsigned int sort_flags, int requested_sample_count) const -> erhe::dataformat::Format;
     [[nodiscard]] auto get_shader_monitor                 () -> Shader_monitor&;
     [[nodiscard]] auto get_info                           () const -> const Device_info&;
+    [[nodiscard]] auto get_graphics_config                () const -> const Graphics_config&;
 
     void reset_shader_stages_state_tracker();
     [[nodiscard]] auto get_draw_id_uniform_location() const -> GLint;
@@ -132,6 +133,7 @@ private:
     friend class Render_pass_impl;
 
     Device&                       m_device;
+    Graphics_config               m_graphics_config;
     std::unique_ptr<Surface>      m_surface{};
     Shader_monitor                m_shader_monitor;
     OpenGL_state_tracker          m_gl_state_tracker;

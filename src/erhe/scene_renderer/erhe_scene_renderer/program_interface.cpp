@@ -60,21 +60,32 @@ Program_interface::Program_interface(
             {cube_instance_buffer_binding_point, to_binding_type(cube_interface.cube_instance_block)},
             {cube_control_buffer_binding_point,  to_binding_type(cube_interface.cube_control_block)},
             {joint_buffer_binding_point,         to_binding_type(joint_interface.joint_block)},
+            // The shadow samplers are wired in as immutable samplers in the
+            // descriptor set layout. The Vulkan portability subset on
+            // MoltenVK rejects comparison samplers via push descriptors
+            // (VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450),
+            // so the comparison op is baked at engine init from
+            // Graphics_config::reverse_depth. The no-compare variant is also
+            // immutable to keep the layout uniform; runtime
+            // bind_shadow_samplers() calls write VK_NULL_HANDLE for the
+            // sampler field on Vulkan, the layout supplies the actual sampler.
             {
-                .binding_point   = c_texture_heap_slot_shadow_compare,
-                .type            = erhe::graphics::Binding_type::combined_image_sampler,
-                .sampler_aspect  = erhe::graphics::Sampler_aspect::depth,
-                .name            = "s_shadow_compare",
-                .glsl_type       = erhe::graphics::Glsl_type::sampler_2d_array_shadow,
-                .is_texture_heap = false
+                .binding_point     = c_texture_heap_slot_shadow_compare,
+                .type              = erhe::graphics::Binding_type::combined_image_sampler,
+                .sampler_aspect    = erhe::graphics::Sampler_aspect::depth,
+                .name              = "s_shadow_compare",
+                .glsl_type         = erhe::graphics::Glsl_type::sampler_2d_array_shadow,
+                .is_texture_heap   = false,
+                .immutable_sampler = &light_interface.shadow_sampler_compare
             },
             {
-                .binding_point   = c_texture_heap_slot_shadow_no_compare,
-                .type            = erhe::graphics::Binding_type::combined_image_sampler,
-                .sampler_aspect  = erhe::graphics::Sampler_aspect::depth,
-                .name            = "s_shadow_no_compare",
-                .glsl_type       = erhe::graphics::Glsl_type::sampler_2d_array,
-                .is_texture_heap = false
+                .binding_point     = c_texture_heap_slot_shadow_no_compare,
+                .type              = erhe::graphics::Binding_type::combined_image_sampler,
+                .sampler_aspect    = erhe::graphics::Sampler_aspect::depth,
+                .name              = "s_shadow_no_compare",
+                .glsl_type         = erhe::graphics::Glsl_type::sampler_2d_array,
+                .is_texture_heap   = false,
+                .immutable_sampler = &light_interface.shadow_sampler_no_compare
             },
         },
         .debug_label = "Scene renderer"

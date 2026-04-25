@@ -217,6 +217,10 @@ auto Device::get_info() const -> const Device_info&
 {
     return m_impl->get_info();
 }
+auto Device::get_graphics_config() const -> const Graphics_config&
+{
+    return m_impl->get_graphics_config();
+}
 auto Device::get_impl() -> Device_impl&
 {
     return *m_impl.get();

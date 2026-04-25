@@ -1,7 +1,7 @@
 from erhe_codegen import *
 
 struct("Graphics_config",
-    version=2,
+    version=3,
     short_desc="Graphics Settings",
     long_desc="",
     developer=False,
@@ -43,6 +43,16 @@ struct("Graphics_config",
             default="false",
             short_desc="Force Disable VSync",
             long_desc="Forces immediate presentation (no vsync) when supported. On Vulkan this maps to VK_PRESENT_MODE_IMMEDIATE_KHR. Intended for accurate performance measurements.",
+            visible=True,
+            developer=False
+        ),
+        field(
+            "reverse_depth",
+            Bool,
+            added_in=3,
+            default="true",
+            short_desc="Reverse Z",
+            long_desc="When true, depth buffers use reverse-Z (near=1.0, far=0.0) for better precision. Baked into pipeline depth state, projection matrices and shadow comparison samplers at engine init -- runtime callers must use the same direction.",
             visible=True,
             developer=False
         ),
