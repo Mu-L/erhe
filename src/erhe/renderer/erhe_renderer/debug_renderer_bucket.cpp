@@ -89,19 +89,25 @@ auto Debug_renderer_bucket::Debug_renderer_bucket::make_pipeline(const bool visi
                 },
             },
 
+            // RGB blend factors use CONSTANT_COLOR rather than CONSTANT_ALPHA
+            // because the Vulkan portability subset on MoltenVK rejects
+            // CONSTANT_ALPHA / ONE_MINUS_CONSTANT_ALPHA in the color channel
+            // (VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04454).
+            // Setting the blend constant's RGB equal to its alpha makes
+            // CONSTANT_COLOR produce the same blend as CONSTANT_ALPHA would.
             .color_blend = visible ? Color_blend_state::color_blend_premultiplied : Color_blend_state{
                 .enabled  = true,
                 .rgb      = {
                     .equation_mode      = Blend_equation_mode::func_add,
-                    .source_factor      = Blending_factor::constant_alpha,
-                    .destination_factor = Blending_factor::one_minus_constant_alpha
+                    .source_factor      = Blending_factor::constant_color,
+                    .destination_factor = Blending_factor::one_minus_constant_color
                 },
                 .alpha    = {
                     .equation_mode      = Blend_equation_mode::func_add,
                     .source_factor      = Blending_factor::constant_alpha,
                     .destination_factor = Blending_factor::one_minus_constant_alpha
                 },
-                .constant = { 0.0f, 0.0f, 0.0f, 0.1f },
+                .constant = { 0.1f, 0.1f, 0.1f, 0.1f },
             }
         }
     };

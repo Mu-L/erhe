@@ -201,19 +201,23 @@ Tools_pipeline_renderpasses::Tools_pipeline_renderpasses(
                 .write_mask         = 0b11111111u,
             },
         },
+        // RGB factors use CONSTANT_COLOR rather than CONSTANT_ALPHA because
+        // VK_KHR_portability_subset on MoltenVK rejects CONSTANT_ALPHA in the
+        // color channel (VUID-...-04454). Blend constant's RGB is set equal to
+        // its alpha so CONSTANT_COLOR yields the same result as CONSTANT_ALPHA.
         .color_blend = {
             .enabled                = true,
             .rgb = {
                 .equation_mode      = erhe::graphics::Blend_equation_mode::func_add,
-                .source_factor      = erhe::graphics::Blending_factor::constant_alpha,
-                .destination_factor = erhe::graphics::Blending_factor::one_minus_constant_alpha
+                .source_factor      = erhe::graphics::Blending_factor::constant_color,
+                .destination_factor = erhe::graphics::Blending_factor::one_minus_constant_color
             },
             .alpha = {
                 .equation_mode      = erhe::graphics::Blend_equation_mode::func_add,
                 .source_factor      = erhe::graphics::Blending_factor::constant_alpha,
                 .destination_factor = erhe::graphics::Blending_factor::one_minus_constant_alpha
             },
-            .constant               = { 0.0f, 0.0f, 0.0f, 0.6f }
+            .constant               = { 0.6f, 0.6f, 0.6f, 0.6f }
         }
     }}
 {
