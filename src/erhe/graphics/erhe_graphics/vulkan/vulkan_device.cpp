@@ -852,6 +852,16 @@ auto Device_impl::get_driver_properties() const -> const VkPhysicalDeviceDriverP
     return m_driver_properties;
 }
 
+auto Device_impl::get_portability_subset_features() const -> const VkPhysicalDevicePortabilitySubsetFeaturesKHR&
+{
+    return m_portability_subset_features;
+}
+
+auto Device_impl::get_portability_subset_properties() const -> const VkPhysicalDevicePortabilitySubsetPropertiesKHR&
+{
+    return m_portability_subset_properties;
+}
+
 auto Device_impl::get_memory_type(uint32_t memory_type_index) const -> const VkMemoryType&
 {
     return m_memory_properties.memoryProperties.memoryTypes[memory_type_index];

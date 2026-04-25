@@ -1,8 +1,6 @@
-// Pull in vulkan_beta.h via volk so VkPhysicalDevicePortabilitySubsetFeaturesKHR
-// and VkPhysicalDevicePortabilitySubsetPropertiesKHR are available below
-// (only the queries log them; we don't currently consume any of the bits).
-#define VK_ENABLE_BETA_EXTENSIONS
-
+// VK_ENABLE_BETA_EXTENSIONS is set as a PRIVATE compile definition for the
+// erhe_graphics target (see CMakeLists.txt) so the portability-subset structs
+// are visible everywhere in this library, not just in this translation unit.
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
 #include "erhe_graphics/vulkan/vulkan_device_sync_pool.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
@@ -577,14 +575,18 @@ Device_impl::Device_impl(
         .driverInfo         = {},
         .conformanceVersion = {},
     };
-    VkPhysicalDevicePortabilitySubsetPropertiesKHR portability_subset_properties{
+    // When VK_KHR_portability_subset is supported we chain the properties
+    // struct into the property2 query below. When it is NOT supported we
+    // leave m_portability_subset_properties at "no constraints" defaults
+    // (alignment 1) so call sites can read the value unconditionally.
+    m_portability_subset_properties = VkPhysicalDevicePortabilitySubsetPropertiesKHR{
         .sType                                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_PROPERTIES_KHR,
         .pNext                                = nullptr,
-        .minVertexInputBindingStrideAlignment = 0u
+        .minVertexInputBindingStrideAlignment = 1u
     };
     if (m_device_extensions.m_VK_KHR_portability_subset) {
-        portability_subset_properties.pNext = m_driver_properties.pNext;
-        m_driver_properties.pNext           = &portability_subset_properties;
+        m_portability_subset_properties.pNext = m_driver_properties.pNext;
+        m_driver_properties.pNext             = &m_portability_subset_properties;
     }
     VkPhysicalDeviceProperties2 physical_device_properties2 {
         .sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
@@ -609,11 +611,14 @@ Device_impl::Device_impl(
     log_context->info("  Device ID           = {:08x}",      properties.deviceID);
     log_context->info("  Device type         = {}",          c_str(properties.deviceType));
     log_context->info("  Device name         = {}",          properties.deviceName);
+    // Detach m_portability_subset_properties from the local property chain
+    // so it stays a self-contained struct for downstream queries.
+    m_portability_subset_properties.pNext = nullptr;
     if (m_device_extensions.m_VK_KHR_portability_subset) {
         log_context->info("Vulkan portability subset properties:");
         log_context->info(
             "  minVertexInputBindingStrideAlignment = {}",
-            portability_subset_properties.minVertexInputBindingStrideAlignment
+            m_portability_subset_properties.minVertexInputBindingStrideAlignment
         );
     }
 
@@ -715,34 +720,42 @@ Device_impl::Device_impl(
         query_features_chain_last        = query_features_chain_last->pNext;
     }
 
-    VkPhysicalDevicePortabilitySubsetFeaturesKHR query_portability_subset_features{
+    // When VK_KHR_portability_subset is NOT advertised the device is fully
+    // featured by definition, so we synthesise an all-VK_TRUE struct here.
+    // When it IS advertised we chain into the features2 query and the driver
+    // overwrites the per-bit defaults below.
+    m_portability_subset_features = VkPhysicalDevicePortabilitySubsetFeaturesKHR{
         .sType                                  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR,
         .pNext                                  = nullptr,
-        .constantAlphaColorBlendFactors         = VK_FALSE,
-        .events                                 = VK_FALSE,
-        .imageViewFormatReinterpretation        = VK_FALSE,
-        .imageViewFormatSwizzle                 = VK_FALSE,
-        .imageView2DOn3DImage                   = VK_FALSE,
-        .multisampleArrayImage                  = VK_FALSE,
-        .mutableComparisonSamplers              = VK_FALSE,
-        .pointPolygons                          = VK_FALSE,
-        .samplerMipLodBias                      = VK_FALSE,
-        .separateStencilMaskRef                 = VK_FALSE,
-        .shaderSampleRateInterpolationFunctions = VK_FALSE,
-        .tessellationIsolines                   = VK_FALSE,
-        .tessellationPointMode                  = VK_FALSE,
-        .triangleFans                           = VK_FALSE,
-        .vertexAttributeAccessBeyondStride      = VK_FALSE,
+        .constantAlphaColorBlendFactors         = VK_TRUE,
+        .events                                 = VK_TRUE,
+        .imageViewFormatReinterpretation        = VK_TRUE,
+        .imageViewFormatSwizzle                 = VK_TRUE,
+        .imageView2DOn3DImage                   = VK_TRUE,
+        .multisampleArrayImage                  = VK_TRUE,
+        .mutableComparisonSamplers              = VK_TRUE,
+        .pointPolygons                          = VK_TRUE,
+        .samplerMipLodBias                      = VK_TRUE,
+        .separateStencilMaskRef                 = VK_TRUE,
+        .shaderSampleRateInterpolationFunctions = VK_TRUE,
+        .tessellationIsolines                   = VK_TRUE,
+        .tessellationPointMode                  = VK_TRUE,
+        .triangleFans                           = VK_TRUE,
+        .vertexAttributeAccessBeyondStride      = VK_TRUE,
     };
     if (m_device_extensions.m_VK_KHR_portability_subset) {
-        query_features_chain_last->pNext = reinterpret_cast<VkBaseOutStructure*>(&query_portability_subset_features);
+        query_features_chain_last->pNext = reinterpret_cast<VkBaseOutStructure*>(&m_portability_subset_features);
         query_features_chain_last        = query_features_chain_last->pNext;
     }
 
     vkGetPhysicalDeviceFeatures2(m_vulkan_physical_device, &query_device_features);
 
+    // Detach m_portability_subset_features from the local feature chain so
+    // its pNext doesn't dangle after locals here go out of scope.
+    m_portability_subset_features.pNext = nullptr;
+
     if (m_device_extensions.m_VK_KHR_portability_subset) {
-        const VkPhysicalDevicePortabilitySubsetFeaturesKHR& p = query_portability_subset_features;
+        const VkPhysicalDevicePortabilitySubsetFeaturesKHR& p = m_portability_subset_features;
         log_context->info("Vulkan portability subset features:");
         log_context->info("  constantAlphaColorBlendFactors         = {}", p.constantAlphaColorBlendFactors         == VK_TRUE);
         log_context->info("  events                                 = {}", p.events                                 == VK_TRUE);

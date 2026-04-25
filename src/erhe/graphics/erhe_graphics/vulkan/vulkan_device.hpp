@@ -211,6 +211,8 @@ public:
     [[nodiscard]] auto get_present_queue              () const -> VkQueue;
     [[nodiscard]] auto get_capabilities               () const -> const Capabilities&;
     [[nodiscard]] auto get_driver_properties          () const -> const VkPhysicalDeviceDriverProperties&;
+    [[nodiscard]] auto get_portability_subset_features  () const -> const VkPhysicalDevicePortabilitySubsetFeaturesKHR&;
+    [[nodiscard]] auto get_portability_subset_properties() const -> const VkPhysicalDevicePortabilitySubsetPropertiesKHR&;
     [[nodiscard]] auto get_memory_type                (uint32_t memory_type_index) const -> const VkMemoryType&;
     [[nodiscard]] auto get_memory_heap                (uint32_t memory_heap_index) const -> const VkMemoryHeap&;
     [[nodiscard]] auto get_immediate_commands         () -> Vulkan_immediate_commands&;
@@ -369,9 +371,17 @@ private:
     Device_extensions        m_device_extensions  {};
     Capabilities             m_capabilities       {};
 
-    VkPhysicalDeviceDriverProperties              m_driver_properties{};
-    VkPhysicalDeviceDepthStencilResolveProperties m_depth_stencil_resolve_properties{};
-    VkPhysicalDeviceMemoryProperties2             m_memory_properties{};
+    VkPhysicalDeviceDriverProperties               m_driver_properties{};
+    VkPhysicalDeviceDepthStencilResolveProperties  m_depth_stencil_resolve_properties{};
+    VkPhysicalDeviceMemoryProperties2              m_memory_properties{};
+    // Portability subset features/properties as queried from the physical
+    // device. When VK_KHR_portability_subset is NOT advertised we treat the
+    // device as fully featured: every feature flag is forced to VK_TRUE and
+    // properties are set to values that impose no extra constraints. Vulkan
+    // backend classes can therefore consult these structs unconditionally
+    // instead of repeating the extension check at every call site.
+    VkPhysicalDevicePortabilitySubsetFeaturesKHR   m_portability_subset_features{};
+    VkPhysicalDevicePortabilitySubsetPropertiesKHR m_portability_subset_properties{};
 
     // Pipeline infrastructure
     VkPipelineCache                               m_pipeline_cache           {VK_NULL_HANDLE};

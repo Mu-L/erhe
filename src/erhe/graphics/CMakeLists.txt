@@ -225,6 +225,7 @@ if (ERHE_GRAPHICS_API_VULKAN)
         PRIVATE
             VMA_STATIC_VULKAN_FUNCTIONS
             VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+            VK_ENABLE_BETA_EXTENSIONS
 	)
 
     target_link_libraries(

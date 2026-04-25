@@ -73,6 +73,14 @@ Sampler_impl::Sampler_impl(Device& device, const Sampler_create_info& create_inf
 
     const bool enable_anisotropy = m_max_anisotropy > 1.0f;
 
+    // VUID-VkSamplerCreateInfo-samplerMipLodBias-04467: when the portability
+    // subset is in effect and samplerMipLodBias is unsupported (e.g. MoltenVK
+    // on Apple Silicon) mipLodBias must be exactly 0.0. Clamp here so callers
+    // can keep requesting biases that simply have no effect on such devices.
+    const bool sampler_mip_lod_bias_supported =
+        device.get_impl().get_portability_subset_features().samplerMipLodBias == VK_TRUE;
+    const float effective_lod_bias = sampler_mip_lod_bias_supported ? m_lod_bias : 0.0f;
+
     const VkSamplerCreateInfo sampler_create_info{
         .sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .pNext                   = nullptr,
@@ -83,7 +91,7 @@ Sampler_impl::Sampler_impl(Device& device, const Sampler_create_info& create_inf
         .addressModeU            = to_vk_sampler_address_mode(m_address_mode[0]),
         .addressModeV            = to_vk_sampler_address_mode(m_address_mode[1]),
         .addressModeW            = to_vk_sampler_address_mode(m_address_mode[2]),
-        .mipLodBias              = m_lod_bias,
+        .mipLodBias              = effective_lod_bias,
         .anisotropyEnable        = enable_anisotropy ? VK_TRUE : VK_FALSE,
         .maxAnisotropy           = m_max_anisotropy,
         .compareEnable           = m_compare_enable ? VK_TRUE : VK_FALSE,
