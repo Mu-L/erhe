@@ -1,7 +1,7 @@
 {
     "_version": 2,
     "initial_clear": true,
-    "renderdoc_capture_support": true,
+    "renderdoc_capture_support": false,
     "shader_monitor_enabled": false,
     "force_disable_vsync": false,
     "opengl": {
@@ -18,6 +18,6 @@
     "vulkan": {
         "_version": 2,
         "vulkan_validation_layers": false,
-        "use_kosmickrisp": true
+        "use_kosmickrisp": false
     }
 }

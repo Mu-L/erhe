@@ -4,7 +4,7 @@
     "shader_monitor_enabled": false,
     "vulkan": {
         "_version": 2,
-        "vulkan_validation_layers": true,
-        "use_kosmickrisp": true
+        "vulkan_validation_layers": false,
+        "use_kosmickrisp": false
     }
 }

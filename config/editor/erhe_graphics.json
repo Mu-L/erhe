@@ -3,7 +3,7 @@
     "initial_clear": true,
     "renderdoc_capture_support": false,
     "shader_monitor_enabled": false,
-    "force_disable_vsync": true,
+    "force_disable_vsync": false,
     "opengl": {
         "force_bindless_textures_off": false,
         "force_no_persistent_buffers": false,
