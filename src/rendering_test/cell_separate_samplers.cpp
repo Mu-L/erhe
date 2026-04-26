@@ -78,12 +78,11 @@ void Rendering_test::make_separate_samplers_pipeline()
             { erhe::graphics::Shader_type::vertex_shader,   shader_path / "multi_texture_test.vert" },
             { erhe::graphics::Shader_type::fragment_shader, shader_path / "separate_samplers_test.frag" }
         },
-        .bind_group_layout = m_sep_tex_bind_group_layout.get(),
-        .build = true
+        .bind_group_layout = m_sep_tex_bind_group_layout.get()
     };
     m_sep_tex_shader_stages = std::make_unique<erhe::graphics::Shader_stages>(
         m_graphics_device,
-        erhe::graphics::Shader_stages_prototype{m_graphics_device, create_info}
+        erhe::graphics::build_shader_stages(m_graphics_device, std::move(create_info))
     );
 
     m_sep_tex_pipeline = erhe::graphics::Lazy_render_pipeline{

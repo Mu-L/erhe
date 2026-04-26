@@ -157,8 +157,7 @@ void Shader_monitor::update_once_per_frame()
 
     for (auto* f : m_reload_list) {
         for (auto& entry : f->reload_entries) {
-            const auto& create_info = entry.create_info;
-            Shader_stages_prototype prototype{m_device, create_info};
+            Shader_stages_prototype prototype = build_shader_stages(m_device, entry.create_info);
             if (prototype.is_valid()) {
                 entry.shader_stages->reload(std::move(prototype));
                 std::stringstream ss;

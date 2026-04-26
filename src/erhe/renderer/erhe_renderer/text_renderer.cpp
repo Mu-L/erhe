@@ -51,6 +51,8 @@ auto Text_renderer::build_shader_stages() -> erhe::graphics::Shader_stages_proto
     // bind_group_layout's combined_image_sampler bindings above.
 
     Shader_stages_prototype prototype{m_graphics_device, create_info};
+    prototype.compile_shaders();
+    prototype.link_program();
     if (!prototype.is_valid()) {
         log_startup->error("Text renderer shader compilation failed");
         config.enabled = false;

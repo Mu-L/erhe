@@ -54,12 +54,11 @@ void Rendering_test::make_depth_visualize_pipeline()
             { erhe::graphics::Shader_type::vertex_shader,   shader_path / "depth_visualize.vert" },
             { erhe::graphics::Shader_type::fragment_shader, shader_path / "depth_visualize.frag" }
         },
-        .bind_group_layout = m_depth_visualize_bind_group_layout.get(),
-        .build = true
+        .bind_group_layout = m_depth_visualize_bind_group_layout.get()
     };
     m_depth_visualize_shader_stages = std::make_unique<erhe::graphics::Shader_stages>(
         m_graphics_device,
-        erhe::graphics::Shader_stages_prototype{m_graphics_device, create_info}
+        erhe::graphics::build_shader_stages(m_graphics_device, std::move(create_info))
     );
 
     m_depth_visualize_pipeline = erhe::graphics::Lazy_render_pipeline{

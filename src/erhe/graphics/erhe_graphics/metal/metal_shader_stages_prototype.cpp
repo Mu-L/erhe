@@ -272,21 +272,15 @@ auto compile_spirv_to_mtl_function(
 Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, Shader_stages_create_info&& create_info)
     : m_device               {device}
     , m_create_info           {std::move(create_info)}
-    , m_is_valid              {true}
     , m_glslang_shader_stages{*this, &device.get_spirv_cache()}
 {
-    compile_shaders();
-    link_program();
 }
 
 Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, const Shader_stages_create_info& create_info)
     : m_device               {device}
     , m_create_info           {create_info}
-    , m_is_valid              {true}
     , m_glslang_shader_stages{*this, &device.get_spirv_cache()}
 {
-    compile_shaders();
-    link_program();
 }
 
 Shader_stages_prototype_impl::~Shader_stages_prototype_impl() noexcept
@@ -313,14 +307,17 @@ Shader_stages_prototype_impl::~Shader_stages_prototype_impl() noexcept
 
 auto Shader_stages_prototype_impl::name() const -> const std::string& { return m_create_info.name; }
 auto Shader_stages_prototype_impl::create_info() const -> const Shader_stages_create_info& { return m_create_info; }
-auto Shader_stages_prototype_impl::is_valid() -> bool { return m_is_valid; }
+auto Shader_stages_prototype_impl::is_valid() -> bool { return m_linked && !m_failed; }
 
 void Shader_stages_prototype_impl::compile_shaders()
 {
+    if (m_compiled || m_failed) {
+        return;
+    }
     for (const Shader_stage& shader : m_create_info.shaders) {
         if (shader.type == Shader_type::geometry_shader) {
             log_program->warn("Metal does not support geometry shaders, marking invalid: {}", m_create_info.name);
-            m_is_valid = false;
+            m_failed = true;
             return;
         }
         const bool compile_ok = m_glslang_shader_stages.compile_shader(m_device, shader);
@@ -334,29 +331,39 @@ void Shader_stages_prototype_impl::compile_shaders()
             log_program->error("{}", error_msg);
             std::string source = m_create_info.final_source(m_device, shader, nullptr);
             m_device.shader_error(error_msg, source);
-            m_is_valid = false;
+            m_failed = true;
             return;
         }
     }
+    m_compiled = true;
 }
 
 auto Shader_stages_prototype_impl::link_program() -> bool
 {
-    if (!m_is_valid) {
+    if (m_failed) {
         return false;
+    }
+    if (!m_compiled) {
+        compile_shaders();
+    }
+    if (m_failed) {
+        return false;
+    }
+    if (m_linked) {
+        return true;
     }
 
     const bool link_ok = m_glslang_shader_stages.link_program();
     if (!link_ok) {
         log_program->error("GLSL -> SPIR-V link failed for: {}", m_create_info.name);
-        m_is_valid = false;
+        m_failed = true;
         return false;
     }
 
     Device_impl& device_impl = m_device.get_impl();
     MTL::Device* mtl_device = device_impl.get_mtl_device();
     if (mtl_device == nullptr) {
-        m_is_valid = false;
+        m_failed = true;
         return false;
     }
 
@@ -393,7 +400,7 @@ auto Shader_stages_prototype_impl::link_program() -> bool
 
     if ((m_vertex_function == nullptr) && (m_compute_function == nullptr)) {
         log_program->error("No vertex function for: {}", m_create_info.name);
-        m_is_valid = false;
+        m_failed = true;
         return false;
     }
 
@@ -404,6 +411,7 @@ auto Shader_stages_prototype_impl::link_program() -> bool
         (m_fragment_function != nullptr) ? "ok" : "missing"
     );
 
+    m_linked = true;
     return true;
 }
 

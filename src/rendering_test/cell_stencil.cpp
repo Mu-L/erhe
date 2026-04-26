@@ -113,7 +113,9 @@ void Rendering_test::make_stencil_pipelines()
         };
         return std::make_unique<erhe::graphics::Shader_stages>(
             m_graphics_device,
-            m_program_interface.make_prototype(std::move(create_info))
+            erhe::graphics::build_shader_stages(
+                m_program_interface.make_prototype(std::move(create_info))
+            )
         );
     };
     m_stencil_red_shader_stages   = make_stencil_color_shader("vec4(1.0, 0.0, 0.0, 1.0)");

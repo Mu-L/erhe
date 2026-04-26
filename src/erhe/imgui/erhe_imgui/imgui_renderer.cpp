@@ -258,7 +258,7 @@ Imgui_renderer::Imgui_renderer(erhe::graphics::Device& graphics_device, Imgui_se
     }
     , m_shader_stages{
         graphics_device,
-        erhe::graphics::Shader_stages_prototype{
+        erhe::graphics::build_shader_stages(
             graphics_device,
             erhe::graphics::Shader_stages_create_info{
                 .name                  = "ImGui Renderer",
@@ -271,10 +271,9 @@ Imgui_renderer::Imgui_renderer(erhe::graphics::Device& graphics_device, Imgui_se
                     { erhe::graphics::Shader_type::vertex_shader,   c_vertex_shader_source   },
                     { erhe::graphics::Shader_type::fragment_shader, c_fragment_shader_source }
                 },
-                .bind_group_layout     = &m_bind_group_layout,
-                .build = true
+                .bind_group_layout     = &m_bind_group_layout
             }
-        }
+        )
     }
     , m_vertex_buffer{
         graphics_device,

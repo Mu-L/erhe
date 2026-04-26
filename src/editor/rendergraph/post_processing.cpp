@@ -438,8 +438,7 @@ auto Post_processing::make_program(
                 std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
                 std::filesystem::path{"res"} / std::filesystem::path{"editor"} / std::filesystem::path{"shaders"}
             },
-            .bind_group_layout     = &m_bind_group_layout,
-            .build                 = true
+            .bind_group_layout     = &m_bind_group_layout
         };
 }
 

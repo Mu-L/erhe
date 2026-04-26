@@ -440,9 +440,6 @@ Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, Shade
     ERHE_PROFILE_FUNCTION();
 
     ERHE_VERIFY(m_handle.gl_name() != 0);
-    if (create_info.build) {
-        post_link();
-    }
 }
 Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, const Shader_stages_create_info& create_info)
     : m_device               {device}
@@ -456,9 +453,6 @@ Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, const
     ERHE_PROFILE_FUNCTION();
 
     ERHE_VERIFY(m_handle.gl_name() != 0);
-    if (create_info.build) {
-        post_link();
-    }
 }
 
 void Shader_stages_prototype_impl::compile_shaders()
@@ -516,7 +510,8 @@ auto Shader_stages_prototype_impl::link_program() -> bool
 #if defined(ERHE_SPIRV)
     m_glslang_shader_stages.link_program();
 #endif
-    return true;
+    post_link();
+    return m_state == state_ready;
 }
 
 void Shader_stages_prototype_impl::post_link()
@@ -669,16 +664,7 @@ void Shader_stages_prototype_impl::post_link()
 
 auto Shader_stages_prototype_impl::is_valid() -> bool
 {
-    if ((m_state != state_ready) && (m_state != state_fail)) {
-        post_link();
-    }
-    if (m_state == state_ready) {
-        return true;
-    }
-    //if (m_state == state_fail)
-    {
-        return false;
-    }
+    return m_state == state_ready;
 }
 
 auto is_array_and_nonzero(const std::string& name)

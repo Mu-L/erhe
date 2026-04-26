@@ -99,7 +99,7 @@ void Programs::load_programs(
         if (init_message) {
             init_message(
                 fmt::format(
-                    "Building shader stages: {}",
+                    "Loading shader stages: {}",
                     create_info.debug_label.empty()
                         ? create_info.name.c_str()
                         : create_info.debug_label.data()
@@ -168,16 +168,16 @@ void Programs::load_programs(
 
         /// tf::Taskflow compile_taskflow;
         for (auto& entry : prototypes) {
-            // if (init_message) {
-            //     init_message(
-            //         fmt::format(
-            //             "Compiling shader stages: {}",
-            //             entry.reloadable_shader_stages.create_info.debug_label.empty()
-            //                 ? entry.reloadable_shader_stages.create_info.name.c_str()
-            //                 : entry.reloadable_shader_stages.create_info.debug_label.data()
-            //         )
-            //     );
-            // }
+            if (init_message) {
+                init_message(
+                    fmt::format(
+                        "Compiling shader stages: {}",
+                        entry.reloadable_shader_stages.create_info.debug_label.empty()
+                            ? entry.reloadable_shader_stages.create_info.name.c_str()
+                            : entry.reloadable_shader_stages.create_info.debug_label.data()
+                    )
+                );
+            }
             entry.prototype.compile_shaders();
             // std::this_thread::sleep_for(std::chrono::milliseconds{100});
         }
@@ -190,16 +190,16 @@ void Programs::load_programs(
 
         //// tf::Taskflow link_taskflow;
         for (auto& entry : prototypes) {
-            // if (init_message) {
-            //     init_message(
-            //         fmt::format(
-            //             "Compiling shader stages: {}",
-            //             entry.reloadable_shader_stages.create_info.debug_label.empty()
-            //                 ? entry.reloadable_shader_stages.create_info.name.c_str()
-            //                 : entry.reloadable_shader_stages.create_info.debug_label.data()
-            //         )
-            //     );
-            // }
+            if (init_message) {
+                init_message(
+                    fmt::format(
+                        "Compiling shader stages: {}",
+                        entry.reloadable_shader_stages.create_info.debug_label.empty()
+                            ? entry.reloadable_shader_stages.create_info.name.c_str()
+                            : entry.reloadable_shader_stages.create_info.debug_label.data()
+                    )
+                );
+            }
             entry.prototype.link_program();
             // std::this_thread::sleep_for(std::chrono::milliseconds{100});
         }

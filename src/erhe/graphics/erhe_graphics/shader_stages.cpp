@@ -28,8 +28,7 @@ using std::string;
 auto Reloadable_shader_stages::make_prototype(Device& device) const -> Shader_stages_prototype
 {
     ERHE_PROFILE_FUNCTION();
-    Shader_stages_prototype prototype{device, create_info};
-    return prototype;
+    return build_shader_stages(device, create_info);
 }
 
 Reloadable_shader_stages::Reloadable_shader_stages(Device& device, const std::string& non_functional_name)
@@ -194,6 +193,18 @@ auto Shader_stages_prototype::get_impl() -> Shader_stages_prototype_impl&
 auto Shader_stages_prototype::get_impl() const -> const Shader_stages_prototype_impl&
 {
     return *m_impl.get();
+}
+
+auto build_shader_stages(Shader_stages_prototype&& prototype) -> Shader_stages_prototype
+{
+    prototype.compile_shaders();
+    prototype.link_program();
+    return std::move(prototype);
+}
+
+auto build_shader_stages(Device& device, Shader_stages_create_info create_info) -> Shader_stages_prototype
+{
+    return build_shader_stages(Shader_stages_prototype{device, std::move(create_info)});
 }
 
 } // namespace erhe::graphics

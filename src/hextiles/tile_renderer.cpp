@@ -64,7 +64,7 @@ auto Tile_renderer::make_prototype(erhe::graphics::Device& graphics_device) cons
     }
     // Vulkan descriptor indexing uses erhe_texture_heap[] from the preamble -- no defines needed
 
-    return erhe::graphics::Shader_stages_prototype{graphics_device, create_info};
+    return erhe::graphics::build_shader_stages(graphics_device, std::move(create_info));
 }
 
 auto Tile_renderer::make_program(erhe::graphics::Shader_stages_prototype&& prototype) const -> erhe::graphics::Shader_stages

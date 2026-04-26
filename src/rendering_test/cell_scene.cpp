@@ -103,7 +103,7 @@ void Rendering_test::make_content_wide_line_renderer()
             .shaders = { { Shader_type::compute_shader, shader_path / "compute_before_content_line.comp" } },
             .bind_group_layout = m_content_wide_line_renderer->get_bind_group_layout(),
         };
-        Shader_stages_prototype prototype{m_graphics_device, create_info};
+        Shader_stages_prototype prototype = build_shader_stages(m_graphics_device, create_info);
         if (prototype.is_valid()) {
             m_compute_shader_stages = std::make_unique<Shader_stages>(m_graphics_device, std::move(prototype));
         }
@@ -135,7 +135,7 @@ void Rendering_test::make_content_wide_line_renderer()
             },
             .bind_group_layout = m_program_interface.bind_group_layout.get(),
         };
-        Shader_stages_prototype prototype{m_graphics_device, create_info};
+        Shader_stages_prototype prototype = build_shader_stages(m_graphics_device, create_info);
         if (prototype.is_valid()) {
             m_graphics_shader_stages = std::make_unique<Shader_stages>(m_graphics_device, std::move(prototype));
         }

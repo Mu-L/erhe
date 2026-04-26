@@ -36,13 +36,14 @@ Shadow_renderer::Shadow_renderer(erhe::graphics::Device& graphics_device, Progra
     , m_empty_fragment_outputs{{}}
     , m_shader_stages{
         graphics_device,
-        program_interface.make_prototype(
-            erhe::graphics::Shader_stages_create_info{
-                .name             = "depth_only",
-                .fragment_outputs = &m_empty_fragment_outputs,
-                .dump_interface   = false,
-                .build            = true
-            }
+        erhe::graphics::build_shader_stages(
+            program_interface.make_prototype(
+                erhe::graphics::Shader_stages_create_info{
+                    .name             = "depth_only",
+                    .fragment_outputs = &m_empty_fragment_outputs,
+                    .dump_interface   = false
+                }
+            )
         )
     }
     , m_dummy_texture{graphics_device.create_dummy_texture(erhe::dataformat::Format::format_8_vec4_srgb)}

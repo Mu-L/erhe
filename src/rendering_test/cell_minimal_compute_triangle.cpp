@@ -126,7 +126,7 @@ void Rendering_test::make_minimal_compute_triangle()
             .shaders          = { { Shader_type::compute_shader, shader_path / "minimal_compute_triangle.comp" } },
             .bind_group_layout = m_minimal_compute_bind_group_layout.get(),
         };
-        Shader_stages_prototype prototype{m_graphics_device, create_info};
+        Shader_stages_prototype prototype = build_shader_stages(m_graphics_device, create_info);
         if (!prototype.is_valid()) {
             log_test->warn("minimal_compute_triangle: compute shader invalid");
             return;
@@ -160,7 +160,7 @@ void Rendering_test::make_minimal_compute_triangle()
             },
             .bind_group_layout = m_program_interface.bind_group_layout.get(),
         };
-        Shader_stages_prototype prototype{m_graphics_device, create_info};
+        Shader_stages_prototype prototype = build_shader_stages(m_graphics_device, create_info);
         if (!prototype.is_valid()) {
             log_test->warn("minimal_compute_triangle: graphics shader '{}' invalid", debug_name);
             return nullptr;

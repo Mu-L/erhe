@@ -35,12 +35,14 @@ Programs::Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer
     }
     , standard{
         program_interface.make_program(
-            program_interface.make_prototype(
-                erhe::graphics::Shader_stages_create_info{
-                    .name              = "standard",
-                    .dump_interface    = false,
-                    .dump_final_source = false
-                }
+            erhe::graphics::build_shader_stages(
+                program_interface.make_prototype(
+                    erhe::graphics::Shader_stages_create_info{
+                        .name              = "standard",
+                        .dump_interface    = false,
+                        .dump_final_source = false
+                    }
+                )
             )
         )
     }

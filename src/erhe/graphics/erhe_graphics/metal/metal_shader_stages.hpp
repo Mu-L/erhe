@@ -48,7 +48,9 @@ private:
 
     Device&                            m_device;
     Shader_stages_create_info          m_create_info;
-    bool                               m_is_valid{true};
+    bool                               m_compiled{false};
+    bool                               m_linked  {false};
+    bool                               m_failed  {false};
     Glslang_shader_stages              m_glslang_shader_stages;
     std::vector<std::filesystem::path> m_paths;
     MTL::Library*             m_vertex_library      {nullptr};

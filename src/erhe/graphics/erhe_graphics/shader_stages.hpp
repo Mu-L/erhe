@@ -81,7 +81,6 @@ public:
     bool                                             dump_interface        {false};
     bool                                             dump_final_source     {false};
     bool                                             dump_spirv_disassembly{false};
-    bool                                             build                 {false};
 };
 
 class Shader_stages_prototype_impl;
@@ -113,6 +112,9 @@ public:
 private:
     std::unique_ptr<Shader_stages_prototype_impl> m_impl;
 };
+
+[[nodiscard]] auto build_shader_stages(Shader_stages_prototype&& prototype) -> Shader_stages_prototype;
+[[nodiscard]] auto build_shader_stages(Device& device, Shader_stages_create_info create_info) -> Shader_stages_prototype;
 
 class Shader_stages_impl;
 class Shader_stages final

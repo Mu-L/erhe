@@ -137,7 +137,7 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
                 .bind_group_layout = bind_group_layout.get(),
             };
 
-            Shader_stages_prototype prototype{graphics_device, create_info};
+            Shader_stages_prototype prototype = build_shader_stages(graphics_device, create_info);
             if (prototype.is_valid()) {
                 compute_shader_stages = std::make_unique<Shader_stages>(graphics_device, std::move(prototype));
                 graphics_device.get_shader_monitor().add(create_info, compute_shader_stages.get());
@@ -161,7 +161,7 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
                 .bind_group_layout = bind_group_layout.get(),
             };
 
-            Shader_stages_prototype prototype{graphics_device, create_info};
+            Shader_stages_prototype prototype = build_shader_stages(graphics_device, create_info);
             if (prototype.is_valid()) {
                 graphics_shader_stages = std::make_unique<Shader_stages>(graphics_device, std::move(prototype));
                 graphics_device.get_shader_monitor().add(create_info, graphics_shader_stages.get());
@@ -192,7 +192,7 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
             .bind_group_layout = bind_group_layout.get(),
         };
 
-        Shader_stages_prototype prototype{graphics_device, create_info};
+        Shader_stages_prototype prototype = build_shader_stages(graphics_device, create_info);
         if (prototype.is_valid()) {
             line_shader_stages = std::make_unique<Shader_stages>(graphics_device, std::move(prototype));
             graphics_device.get_shader_monitor().add(create_info, line_shader_stages.get());
@@ -221,7 +221,7 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
             .bind_group_layout = bind_group_layout.get(),
         };
 
-        Shader_stages_prototype prototype{graphics_device, create_info};
+        Shader_stages_prototype prototype = build_shader_stages(graphics_device, create_info);
         if (prototype.is_valid()) {
             geometry_shader_stages = std::make_unique<Shader_stages>(graphics_device, std::move(prototype));
             graphics_device.get_shader_monitor().add(create_info, geometry_shader_stages.get());

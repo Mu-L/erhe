@@ -19,11 +19,6 @@ Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, Shade
 {
     if (m_glslang_shader_stages.try_load_all_from_cache(device)) {
         m_state = Shader_build_state::ready;
-    } else {
-        compile_shaders();
-        if (m_state != Shader_build_state::fail) {
-            link_program();
-        }
     }
 }
 
@@ -35,11 +30,6 @@ Shader_stages_prototype_impl::Shader_stages_prototype_impl(Device& device, const
 {
     if (m_glslang_shader_stages.try_load_all_from_cache(device)) {
         m_state = Shader_build_state::ready;
-    } else {
-        compile_shaders();
-        if (m_state != Shader_build_state::fail) {
-            link_program();
-        }
     }
 }
 
@@ -48,7 +38,7 @@ void Shader_stages_prototype_impl::compile_shaders()
     ERHE_PROFILE_FUNCTION();
 
     if (m_state != Shader_build_state::init) {
-        return; // Already compiled (constructor compiles eagerly)
+        return; // Already compiled or beyond compile stage
     }
     for (const auto& shader : m_create_info.shaders) {
         if (shader.type == Shader_type::geometry_shader) {
@@ -90,7 +80,7 @@ auto Shader_stages_prototype_impl::link_program() -> bool
     }
 
     if (m_state == Shader_build_state::ready) {
-        return true; // Already linked (constructor links eagerly)
+        return true; // Already linked (cache hit)
     }
 
     ERHE_VERIFY(m_state == Shader_build_state::shader_compilation_started);
