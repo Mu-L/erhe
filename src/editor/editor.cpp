@@ -30,6 +30,7 @@
 #include "app_settings.hpp"
 #include "app_windows.hpp"
 #include "content_library/material_library.hpp"
+#include "init_status_display.hpp"
 #include "input_state.hpp"
 #include "time.hpp"
 
@@ -585,8 +586,8 @@ public:
 #   define ERHE_TASK_FOOTER(ops) ) ops
 #else
 #   define ERHE_GET_GL_CONTEXT
-#   define ERHE_TASK_HEADER(var)
-#   define ERHE_TASK_FOOTER(ops)
+#   define ERHE_TASK_HEADER(var) init_status_display.set_line(1, #var);
+#   define ERHE_TASK_FOOTER(ops) init_status_display.set_line(1, "");
 #endif
 
 #if defined(ERHE_PARALLEL_INIT)
@@ -801,12 +802,40 @@ public:
                 m_vertex_format,
                 program_interface_config
             );
-            m_programs             = std::make_unique<Programs>(*m_graphics_device.get(), *m_program_interface.get());
+            m_programs = std::make_unique<Programs>(*m_graphics_device.get(), *m_program_interface.get());
+
+            m_text_renderer = std::make_unique<erhe::renderer::Text_renderer>(
+                *m_graphics_device.get(),
+                m_text_renderer_config.enabled,
+                m_text_renderer_config.font_size
+            );
+
+            // Stack-local: the status display is only useful during init,
+            // and Editor::Editor() is the only scope that drives it.
+            Init_status_display init_status_display{
+                *m_graphics_device.get(),
+                *m_window.get(),
+                *m_text_renderer.get(),
+                !m_app_context.OpenXR
+            };
+
+            init_status_display.set_line(0, "Initializing erhe editor...");
+            auto init_message = [&init_status_display](std::string_view msg) {
+                init_status_display.set_line(2, msg);
+            };
 
             ERHE_TASK_HEADER(programs_load_task)
             {
                 ERHE_GET_GL_CONTEXT
-                m_programs->load_programs(*m_executor.get(), *m_graphics_device.get(), *m_program_interface.get());
+                init_status_display.set_line(1, "Loading shader stages");
+
+                m_programs->load_programs(
+                    *m_executor.get(),
+                    *m_graphics_device.get(),
+                    *m_program_interface.get(),
+                    init_message
+                );
+                init_status_display.set_line(1, "");
             }
             ERHE_TASK_FOOTER( .name("Programs (load)") );
 
@@ -846,17 +875,6 @@ public:
             }
             ERHE_TASK_FOOTER( .name("Jolt_debug_renderer").succeed(debug_renderer_task) );
 #endif
-
-            ERHE_TASK_HEADER(text_renderer_task)
-            {
-                ERHE_GET_GL_CONTEXT
-                m_text_renderer = std::make_unique<erhe::renderer::Text_renderer>(
-                    *m_graphics_device.get(),
-                    m_text_renderer_config.enabled,
-                    m_text_renderer_config.font_size
-                );
-            }
-            ERHE_TASK_FOOTER( .name("Text_renderer") );
 
             ERHE_TASK_HEADER(forward_renderer_task)
             {

@@ -4,11 +4,16 @@
 #include "erhe_graphics/shader_resource.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 
+#include <functional>
+#include <string_view>
+
 namespace erhe::graphics       { class Device; }
 namespace erhe::scene_renderer { class Program_interface; }
 namespace tf                   { class Executor; }
 
 namespace editor {
+
+using Init_message_fn = std::function<void(std::string_view)>;
 
 enum class Shader_stages_variant : int {
     not_set,
@@ -92,7 +97,12 @@ class Programs
 public:
     Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer::Program_interface& program_interface);
 
-    void load_programs(tf::Executor& executor, erhe::graphics::Device& graphics_device, erhe::scene_renderer::Program_interface& program_interface);
+    void load_programs(
+        tf::Executor&                            executor,
+        erhe::graphics::Device&                  graphics_device,
+        erhe::scene_renderer::Program_interface& program_interface,
+        const Init_message_fn&                   init_message
+    );
 
     [[nodiscard]] auto get_variant_shader_stages(Shader_stages_variant variant) const -> const erhe::graphics::Shader_stages*;
 

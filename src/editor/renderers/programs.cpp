@@ -5,6 +5,7 @@
 #include "erhe_scene_renderer/program_interface.hpp"
 #include "erhe_profile/profile.hpp"
 
+#include <fmt/format.h>
 #include <taskflow/taskflow.hpp>
 
 namespace editor {
@@ -83,17 +84,29 @@ Programs::Programs(erhe::graphics::Device& graphics_device, erhe::scene_renderer
 void Programs::load_programs(
     tf::Executor&                            executor,
     erhe::graphics::Device&                  graphics_device,
-    erhe::scene_renderer::Program_interface& program_interface
+    erhe::scene_renderer::Program_interface& program_interface,
+    const Init_message_fn&                   init_message
 )
 {
     std::vector<Shader_stages_builder> prototypes;
 
     using CI = erhe::graphics::Shader_stages_create_info;
 
-    auto add_shader = [this, &program_interface, &prototypes](
+    auto add_shader = [this, &program_interface, &prototypes, &init_message](
         erhe::graphics::Reloadable_shader_stages&   reloadable_shader_stages,
         erhe::graphics::Shader_stages_create_info&& create_info
     ) {
+        if (init_message) {
+            init_message(
+                fmt::format(
+                    "Building shader stages: {}",
+                    create_info.debug_label.empty()
+                        ? create_info.name.c_str()
+                        : create_info.debug_label.data()
+                )
+            );
+        }
+
         reloadable_shader_stages.create_info = std::move(create_info);
         prototypes.emplace_back(reloadable_shader_stages, program_interface);
     };
@@ -117,35 +130,35 @@ void Programs::load_programs(
     add_shader(id                      , CI{ .name = "id"     } );
     add_shader(tool                    , CI{ .name = "tool"   } );
     add_shader(debug_depth             , CI{ .name = "visualize_depth", .no_vertex_input = true } );
-    add_shader(debug_vertex_normal     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_NORMAL",      "1"}} } );
-    add_shader(debug_fragment_normal   , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_FRAGMENT_NORMAL",    "1"}} } );
-    add_shader(debug_normal_texture    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_NORMAL_TEXTURE",     "1"}} } );
-    add_shader(debug_tangent           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TANGENT",            "1"}} } );
-    add_shader(debug_vertex_tangent_w  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TANGENT_W",          "1"}} } );
-    add_shader(debug_bitangent         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_BITANGENT",          "1"}} } );
-    add_shader(debug_texcoord          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_TEXCOORD",           "1"}} } );
-    add_shader(debug_base_color_texture, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_BASE_COLOR_TEXTURE", "1"}} } );
-    add_shader(debug_vertex_color_rgb  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_COLOR_RGB",   "1"}} } );
-    add_shader(debug_vertex_color_alpha, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_COLOR_ALPHA", "1"}} } );
-    add_shader(debug_aniso_strength    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ANISO_STRENGTH",     "1"}} } );
-    add_shader(debug_aniso_texcoord    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ANISO_TEXCOORD",     "1"}} } );
-    add_shader(debug_vdotn             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VDOTN",              "1"}} } );
-    add_shader(debug_ldotn             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_LDOTN",              "1"}} } );
-    add_shader(debug_hdotv             , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_HDOTV",              "1"}} } );
-    add_shader(debug_joint_indices     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_JOINT_INDICES",      "1"}} } );
-    add_shader(debug_joint_weights     , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_JOINT_WEIGHTS",      "1"}} } );
-    add_shader(debug_omega_o           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_O",            "1"}} } );
-    add_shader(debug_omega_i           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_I",            "1"}} } );
-    add_shader(debug_omega_g           , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OMEGA_G",            "1"}} } );
-    add_shader(debug_vertex_valency    , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_VERTEX_VALENCY",     "1"}} } );
-    add_shader(debug_polygon_edge_count, CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_POLYGON_EDGE_COUNT", "1"}} } );
-    add_shader(debug_metallic          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_METALLIC",           "1"}} } );
-    add_shader(debug_roughness         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_ROUGHNESS",          "1"}} } );
-    add_shader(debug_occlusion         , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_OCCLUSION",          "1"}} } );
-    add_shader(debug_emissive          , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_EMISSIVE",           "1"}} } );
-    add_shader(debug_shadowmap_texels  , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_SHADOWMAP_TEXELS",   "1"}} } );
-    add_shader(debug_shadow            , CI{ .name = "shadow_debug" } );
-    add_shader(debug_misc              , CI{ .name = "standard_debug", .defines = {{"ERHE_DEBUG_MISC",               "1"}} } );
+    add_shader(debug_vertex_normal     , CI{ .name = "standard_debug", .debug_label = "debug_vertex_normal",      .defines = {{"ERHE_DEBUG_VERTEX_NORMAL",      "1"}} } );
+    add_shader(debug_fragment_normal   , CI{ .name = "standard_debug", .debug_label = "debug_fragment_normal",    .defines = {{"ERHE_DEBUG_FRAGMENT_NORMAL",    "1"}} } );
+    add_shader(debug_normal_texture    , CI{ .name = "standard_debug", .debug_label = "debug_normal_texture",     .defines = {{"ERHE_DEBUG_NORMAL_TEXTURE",     "1"}} } );
+    add_shader(debug_tangent           , CI{ .name = "standard_debug", .debug_label = "debug_tangent",            .defines = {{"ERHE_DEBUG_TANGENT",            "1"}} } );
+    add_shader(debug_vertex_tangent_w  , CI{ .name = "standard_debug", .debug_label = "debug_vertex_tangent_w",   .defines = {{"ERHE_DEBUG_TANGENT_W",          "1"}} } );
+    add_shader(debug_bitangent         , CI{ .name = "standard_debug", .debug_label = "debug_bitangent",          .defines = {{"ERHE_DEBUG_BITANGENT",          "1"}} } );
+    add_shader(debug_texcoord          , CI{ .name = "standard_debug", .debug_label = "debug_texcoord",           .defines = {{"ERHE_DEBUG_TEXCOORD",           "1"}} } );
+    add_shader(debug_base_color_texture, CI{ .name = "standard_debug", .debug_label = "debug_base_color_texture", .defines = {{"ERHE_DEBUG_BASE_COLOR_TEXTURE", "1"}} } );
+    add_shader(debug_vertex_color_rgb  , CI{ .name = "standard_debug", .debug_label = "debug_vertex_color_rgb",   .defines = {{"ERHE_DEBUG_VERTEX_COLOR_RGB",   "1"}} } );
+    add_shader(debug_vertex_color_alpha, CI{ .name = "standard_debug", .debug_label = "debug_vertex_color_alpha", .defines = {{"ERHE_DEBUG_VERTEX_COLOR_ALPHA", "1"}} } );
+    add_shader(debug_aniso_strength    , CI{ .name = "standard_debug", .debug_label = "debug_aniso_strength",     .defines = {{"ERHE_DEBUG_ANISO_STRENGTH",     "1"}} } );
+    add_shader(debug_aniso_texcoord    , CI{ .name = "standard_debug", .debug_label = "debug_aniso_texcoord",     .defines = {{"ERHE_DEBUG_ANISO_TEXCOORD",     "1"}} } );
+    add_shader(debug_vdotn             , CI{ .name = "standard_debug", .debug_label = "debug_vdotn",              .defines = {{"ERHE_DEBUG_VDOTN",              "1"}} } );
+    add_shader(debug_ldotn             , CI{ .name = "standard_debug", .debug_label = "debug_ldotn",              .defines = {{"ERHE_DEBUG_LDOTN",              "1"}} } );
+    add_shader(debug_hdotv             , CI{ .name = "standard_debug", .debug_label = "debug_hdotv",              .defines = {{"ERHE_DEBUG_HDOTV",              "1"}} } );
+    add_shader(debug_joint_indices     , CI{ .name = "standard_debug", .debug_label = "debug_joint_indices",      .defines = {{"ERHE_DEBUG_JOINT_INDICES",      "1"}} } );
+    add_shader(debug_joint_weights     , CI{ .name = "standard_debug", .debug_label = "debug_joint_weights",      .defines = {{"ERHE_DEBUG_JOINT_WEIGHTS",      "1"}} } );
+    add_shader(debug_omega_o           , CI{ .name = "standard_debug", .debug_label = "debug_omega_o",            .defines = {{"ERHE_DEBUG_OMEGA_O",            "1"}} } );
+    add_shader(debug_omega_i           , CI{ .name = "standard_debug", .debug_label = "debug_omega_i",            .defines = {{"ERHE_DEBUG_OMEGA_I",            "1"}} } );
+    add_shader(debug_omega_g           , CI{ .name = "standard_debug", .debug_label = "debug_omega_g",            .defines = {{"ERHE_DEBUG_OMEGA_G",            "1"}} } );
+    add_shader(debug_vertex_valency    , CI{ .name = "standard_debug", .debug_label = "debug_vertex_valency",     .defines = {{"ERHE_DEBUG_VERTEX_VALENCY",     "1"}} } );
+    add_shader(debug_polygon_edge_count, CI{ .name = "standard_debug", .debug_label = "debug_polygon_edge_count", .defines = {{"ERHE_DEBUG_POLYGON_EDGE_COUNT", "1"}} } );
+    add_shader(debug_metallic          , CI{ .name = "standard_debug", .debug_label = "debug_metallic",           .defines = {{"ERHE_DEBUG_METALLIC",           "1"}} } );
+    add_shader(debug_roughness         , CI{ .name = "standard_debug", .debug_label = "debug_roughness",          .defines = {{"ERHE_DEBUG_ROUGHNESS",          "1"}} } );
+    add_shader(debug_occlusion         , CI{ .name = "standard_debug", .debug_label = "debug_occlusion",          .defines = {{"ERHE_DEBUG_OCCLUSION",          "1"}} } );
+    add_shader(debug_emissive          , CI{ .name = "standard_debug", .debug_label = "debug_emissive",           .defines = {{"ERHE_DEBUG_EMISSIVE",           "1"}} } );
+    add_shader(debug_shadowmap_texels  , CI{ .name = "standard_debug", .debug_label = "debug_shadowmap_texels",   .defines = {{"ERHE_DEBUG_SHADOWMAP_TEXELS",   "1"}} } );
+    add_shader(debug_shadow            , CI{ .name = "shadow_debug",   .debug_label = "debug_shadow" } );
+    add_shader(debug_misc              , CI{ .name = "standard_debug", .debug_label = "debug_misc",               .defines = {{"ERHE_DEBUG_MISC",               "1"}} } );
 
     // Compile shaders
 
@@ -155,7 +168,18 @@ void Programs::load_programs(
 
         /// tf::Taskflow compile_taskflow;
         for (auto& entry : prototypes) {
+            // if (init_message) {
+            //     init_message(
+            //         fmt::format(
+            //             "Compiling shader stages: {}",
+            //             entry.reloadable_shader_stages.create_info.debug_label.empty()
+            //                 ? entry.reloadable_shader_stages.create_info.name.c_str()
+            //                 : entry.reloadable_shader_stages.create_info.debug_label.data()
+            //         )
+            //     );
+            // }
             entry.prototype.compile_shaders();
+            // std::this_thread::sleep_for(std::chrono::milliseconds{100});
         }
         //// executor.run(compile_taskflow).wait();
     }
@@ -166,7 +190,18 @@ void Programs::load_programs(
 
         //// tf::Taskflow link_taskflow;
         for (auto& entry : prototypes) {
+            // if (init_message) {
+            //     init_message(
+            //         fmt::format(
+            //             "Compiling shader stages: {}",
+            //             entry.reloadable_shader_stages.create_info.debug_label.empty()
+            //                 ? entry.reloadable_shader_stages.create_info.name.c_str()
+            //                 : entry.reloadable_shader_stages.create_info.debug_label.data()
+            //         )
+            //     );
+            // }
             entry.prototype.link_program();
+            // std::this_thread::sleep_for(std::chrono::milliseconds{100});
         }
     }
 
@@ -177,6 +212,10 @@ void Programs::load_programs(
             entry.reloadable_shader_stages.shader_stages.reload(std::move(entry.prototype));
             graphics_device.get_shader_monitor().add(entry.reloadable_shader_stages);
         }
+    }
+
+    if (init_message) {
+        init_message("");
     }
 }
 

@@ -200,30 +200,30 @@ public:
 
     [[nodiscard]] auto get_sync_pool() -> Device_sync_pool&;
 
-    [[nodiscard]] auto get_device                     () -> Device&;
-    [[nodiscard]] auto get_surface                    () -> Surface*;
-    [[nodiscard]] auto get_native_handles             () const -> Native_device_handles;
-    [[nodiscard]] auto get_vulkan_instance            () -> VkInstance;
-    [[nodiscard]] auto get_vulkan_physical_device     () -> VkPhysicalDevice;
-    [[nodiscard]] auto get_vulkan_device              () -> VkDevice;
-    [[nodiscard]] auto get_graphics_queue_family_index() const -> uint32_t;
-    [[nodiscard]] auto get_present_queue_family_index () const -> uint32_t;
-    [[nodiscard]] auto get_graphics_queue             () const -> VkQueue;
-    [[nodiscard]] auto get_present_queue              () const -> VkQueue;
-    [[nodiscard]] auto get_capabilities               () const -> const Capabilities&;
-    [[nodiscard]] auto get_driver_properties          () const -> const VkPhysicalDeviceDriverProperties&;
+    [[nodiscard]] auto get_device                       () -> Device&;
+    [[nodiscard]] auto get_surface                      () -> Surface*;
+    [[nodiscard]] auto get_native_handles               () const -> Native_device_handles;
+    [[nodiscard]] auto get_vulkan_instance              () -> VkInstance;
+    [[nodiscard]] auto get_vulkan_physical_device       () -> VkPhysicalDevice;
+    [[nodiscard]] auto get_vulkan_device                () -> VkDevice;
+    [[nodiscard]] auto get_graphics_queue_family_index  () const -> uint32_t;
+    [[nodiscard]] auto get_present_queue_family_index   () const -> uint32_t;
+    [[nodiscard]] auto get_graphics_queue               () const -> VkQueue;
+    [[nodiscard]] auto get_present_queue                () const -> VkQueue;
+    [[nodiscard]] auto get_capabilities                 () const -> const Capabilities&;
+    [[nodiscard]] auto get_driver_properties            () const -> const VkPhysicalDeviceDriverProperties&;
     [[nodiscard]] auto get_portability_subset_features  () const -> const VkPhysicalDevicePortabilitySubsetFeaturesKHR&;
     [[nodiscard]] auto get_portability_subset_properties() const -> const VkPhysicalDevicePortabilitySubsetPropertiesKHR&;
-    [[nodiscard]] auto get_memory_type                (uint32_t memory_type_index) const -> const VkMemoryType&;
-    [[nodiscard]] auto get_memory_heap                (uint32_t memory_heap_index) const -> const VkMemoryHeap&;
-    [[nodiscard]] auto get_immediate_commands         () -> Vulkan_immediate_commands&;
-    [[nodiscard]] auto get_pipeline_cache             () const -> VkPipelineCache;
-    [[nodiscard]] auto get_descriptor_set_layout      () const -> VkDescriptorSetLayout;
-    [[nodiscard]] auto has_push_descriptor            () const -> bool;
-    [[nodiscard]] auto get_texture_set_layout         () const -> VkDescriptorSetLayout;
-    [[nodiscard]] auto get_cached_pipeline             (std::size_t hash) -> VkPipeline;
-    [[nodiscard]] auto create_graphics_pipeline       (const VkGraphicsPipelineCreateInfo& create_info, std::size_t hash) -> VkPipeline;
-    [[nodiscard]] auto get_or_create_graphics_pipeline(const VkGraphicsPipelineCreateInfo& create_info, std::size_t hash) -> VkPipeline;
+    [[nodiscard]] auto get_memory_type                  (uint32_t memory_type_index) const -> const VkMemoryType&;
+    [[nodiscard]] auto get_memory_heap                  (uint32_t memory_heap_index) const -> const VkMemoryHeap&;
+    [[nodiscard]] auto get_immediate_commands           () -> Vulkan_immediate_commands&;
+    [[nodiscard]] auto get_pipeline_cache               () const -> VkPipelineCache;
+    [[nodiscard]] auto get_descriptor_set_layout        () const -> VkDescriptorSetLayout;
+    [[nodiscard]] auto has_push_descriptor              () const -> bool;
+    [[nodiscard]] auto get_texture_set_layout           () const -> VkDescriptorSetLayout;
+    [[nodiscard]] auto get_cached_pipeline              (std::size_t hash) -> VkPipeline;
+    [[nodiscard]] auto create_graphics_pipeline         (const VkGraphicsPipelineCreateInfo& create_info, std::size_t hash) -> VkPipeline;
+    [[nodiscard]] auto get_or_create_graphics_pipeline  (const VkGraphicsPipelineCreateInfo& create_info, std::size_t hash) -> VkPipeline;
     [[nodiscard]] auto get_or_create_compatible_render_pass(
         unsigned int                                   color_attachment_count,
         const std::array<erhe::dataformat::Format, 4>& color_attachment_formats,
@@ -265,10 +265,10 @@ public:
     // Per-frame-in-flight submission resources used by Swapchain_impl. Device_impl
     // owns the command pools and their command buffers; the submit_fence slot is
     // filled/recycled by Swapchain_impl (it owns the fence pool).
-    [[nodiscard]] auto get_device_frame_in_flight      (size_t index) -> Device_frame_in_flight&;
+    [[nodiscard]] auto get_device_frame_in_flight        (size_t index) -> Device_frame_in_flight&;
     void               ensure_device_frame_command_buffer(size_t index);
     void               reset_device_frame_command_pool   (size_t index);
-    void               ensure_device_frame_slot         (size_t index);
+    void               ensure_device_frame_slot          (size_t index);
 
     // Per-frame descriptor operation counters (for trace logging).
     // Public so Render_command_encoder_impl and Texture_heap_impl

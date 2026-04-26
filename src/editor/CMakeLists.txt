@@ -166,6 +166,8 @@ erhe_target_sources_grouped(
     experiments/sheet_window.cpp
     experiments/sheet_window.hpp
     GenerateIconFontCppHeaders.py
+    init_status_display.cpp
+    init_status_display.hpp
     graph/add.cpp
     graph/add.hpp
     graph/constant.cpp
