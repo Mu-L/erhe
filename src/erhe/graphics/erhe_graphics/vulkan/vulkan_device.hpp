@@ -202,6 +202,7 @@ public:
 
     [[nodiscard]] auto get_device                     () -> Device&;
     [[nodiscard]] auto get_surface                    () -> Surface*;
+    [[nodiscard]] auto get_native_handles             () const -> Native_device_handles;
     [[nodiscard]] auto get_vulkan_instance            () -> VkInstance;
     [[nodiscard]] auto get_vulkan_physical_device     () -> VkPhysicalDevice;
     [[nodiscard]] auto get_vulkan_device              () -> VkDevice;

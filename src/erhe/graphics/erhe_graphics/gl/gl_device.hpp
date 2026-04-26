@@ -87,6 +87,7 @@ public:
     void on_thread_enter           ();
 
     [[nodiscard]] auto get_surface                        () -> Surface*;
+    [[nodiscard]] auto get_native_handles                 () const -> Native_device_handles;
     [[nodiscard]] auto get_handle                         (const Texture& texture, const Sampler& sampler) const -> uint64_t;
     [[nodiscard]] auto create_dummy_texture               (erhe::dataformat::Format format) -> std::shared_ptr<Texture>;
     [[nodiscard]] auto get_buffer_alignment               (Buffer_target target) -> std::size_t;

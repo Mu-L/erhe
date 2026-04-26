@@ -277,6 +277,10 @@ void Device::set_active_render_pass(Render_pass* render_pass)
 {
     m_active_render_pass = render_pass;
 }
+auto Device::get_native_handles() const -> Native_device_handles
+{
+    return m_impl->get_native_handles();
+}
 
 // // // // //
 

@@ -67,6 +67,36 @@ class Swapchain;
 class Texture;
 class Vulkan_external_creators;
 
+// Backend-neutral GPU and OS-platform handles needed by external integrations
+// (notably OpenXR) to fill XrGraphicsBinding*KHR structs. Each backend
+// populates only the fields relevant to it; the other fields stay zero.
+// All handles are integer-typed or void* so this header pulls in no Vulkan,
+// WGL or Wayland headers.
+class Native_device_handles
+{
+public:
+    // Vulkan backend
+    uint64_t vk_instance           {0}; // VkInstance
+    uint64_t vk_physical_device    {0}; // VkPhysicalDevice
+    uint64_t vk_device             {0}; // VkDevice
+    uint32_t vk_queue_family_index {0};
+    uint32_t vk_queue_index        {0};
+
+    // OpenGL Win32 backend
+    void*    gl_hdc                {nullptr}; // HDC
+    void*    gl_hglrc              {nullptr}; // HGLRC
+
+    // OpenGL Wayland backend
+    void*    gl_wl_display         {nullptr}; // struct wl_display*
+
+    // OpenGL Xlib backend (currently unused; reserved for future Linux X11 path)
+    void*    gl_xlib_display       {nullptr}; // Display*
+    uint32_t gl_xlib_visualid      {0};
+    void*    gl_glx_fb_config      {nullptr}; // GLXFBConfig
+    void*    gl_glx_drawable       {nullptr}; // GLXDrawable
+    void*    gl_glx_context        {nullptr}; // GLXContext
+};
+
 static constexpr unsigned int format_flag_require_depth     = 0x01u;
 static constexpr unsigned int format_flag_require_stencil   = 0x02u;
 static constexpr unsigned int format_flag_prefer_accuracy   = 0x04u;
@@ -339,6 +369,12 @@ public:
 
     [[nodiscard]] auto get_active_render_pass             () const -> Render_pass*;
     void               set_active_render_pass             (Render_pass* render_pass);
+
+    // Returns the underlying GPU and OS-platform handles needed to populate
+    // XrGraphicsBinding*KHR structs. Backend-neutral: Vulkan backend fills
+    // vk_*, OpenGL backend fills gl_* (HDC/HGLRC on Win32, wl_display on
+    // Wayland), other backends return zero-initialized.
+    [[nodiscard]] auto get_native_handles                 () const -> Native_device_handles;
 
 private:
     Device_message_callback      m_device_message_callback{};

@@ -807,6 +807,17 @@ auto Device_impl::get_surface() -> Surface*
     return m_surface.get();
 }
 
+auto Device_impl::get_native_handles() const -> Native_device_handles
+{
+    Native_device_handles handles{};
+    handles.vk_instance           = reinterpret_cast<uint64_t>(m_vulkan_instance);
+    handles.vk_physical_device    = reinterpret_cast<uint64_t>(m_vulkan_physical_device);
+    handles.vk_device             = reinterpret_cast<uint64_t>(m_vulkan_device);
+    handles.vk_queue_family_index = m_graphics_queue_family_index;
+    handles.vk_queue_index        = 0;
+    return handles;
+}
+
 auto Device_impl::get_vulkan_instance() -> VkInstance
 {
     return m_vulkan_instance;

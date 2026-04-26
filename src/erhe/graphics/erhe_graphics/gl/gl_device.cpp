@@ -1060,6 +1060,22 @@ auto Device_impl::get_surface() -> Surface*
     return m_surface.get();
 }
 
+auto Device_impl::get_native_handles() const -> Native_device_handles
+{
+    Native_device_handles handles{};
+    if (m_context_window != nullptr) {
+#if defined(ERHE_OS_WINDOWS)
+        const HWND hwnd = m_context_window->get_hwnd();
+        handles.gl_hdc   = reinterpret_cast<void*>(GetDC(hwnd));
+        handles.gl_hglrc = reinterpret_cast<void*>(m_context_window->get_hglrc());
+#endif
+#if defined(ERHE_OS_LINUX)
+        handles.gl_wl_display = reinterpret_cast<void*>(m_context_window->get_wl_display());
+#endif
+    }
+    return handles;
+}
+
 void Device_impl::resize_swapchain_to_window()
 {
     // NOP for GL backend

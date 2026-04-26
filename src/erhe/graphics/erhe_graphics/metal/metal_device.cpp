@@ -467,6 +467,11 @@ auto Device_impl::get_surface() -> Surface*
     return m_surface.get();
 }
 
+auto Device_impl::get_native_handles() const -> Native_device_handles
+{
+    return Native_device_handles{};
+}
+
 void Device_impl::resize_swapchain_to_window()
 {
     // TODO Implement Metal swapchain resize
