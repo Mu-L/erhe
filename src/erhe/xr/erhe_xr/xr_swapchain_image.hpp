@@ -1,9 +1,18 @@
 #pragma once
 
+#include "erhe_dataformat/dataformat.hpp"
+
 #include <openxr/openxr.h>
 
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
+
+namespace erhe::graphics {
+    class Device;
+    class Texture;
+}
 
 namespace erhe::xr {
 
@@ -20,12 +29,7 @@ public:
     void operator=  (Swapchain_image&& other) noexcept;
 
     [[nodiscard]] auto get_image_index() const -> unsigned int;
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-    [[nodiscard]] auto get_gl_texture () const -> unsigned int;
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    [[nodiscard]] auto get_vk_image    () const -> void*;
-#endif
+    [[nodiscard]] auto get_texture    () const -> erhe::graphics::Texture*;
 
 private:
     Swapchain* m_swapchain  {nullptr};
@@ -35,7 +39,16 @@ private:
 class Swapchain
 {
 public:
-    explicit Swapchain(XrSwapchain xr_swapchain);
+    Swapchain(
+        erhe::graphics::Device&        device,
+        XrSwapchain                    xr_swapchain,
+        erhe::dataformat::Format       pixelformat,
+        uint32_t                       width,
+        uint32_t                       height,
+        uint32_t                       sample_count,
+        uint64_t                       texture_usage_mask,
+        const std::string&             debug_label
+    );
     ~Swapchain() noexcept;
     Swapchain     (const Swapchain&) = delete;
     void operator=(const Swapchain&) = delete;
@@ -45,24 +58,22 @@ public:
     [[nodiscard]] auto acquire         () -> std::optional<Swapchain_image>;
                   auto release         () -> bool;
     [[nodiscard]] auto wait            () -> bool;
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-    [[nodiscard]] auto get_gl_texture  (const uint32_t image_index) const -> unsigned int;
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    [[nodiscard]] auto get_vk_image    (const uint32_t image_index) const -> void*;
-#endif
+    [[nodiscard]] auto get_texture     (const uint32_t image_index) const -> erhe::graphics::Texture*;
     [[nodiscard]] auto get_xr_swapchain() const -> XrSwapchain;
 
 private:
-    [[nodiscard]] auto enumerate_images() -> bool;
+    [[nodiscard]] auto enumerate_images(
+        erhe::graphics::Device&        device,
+        erhe::dataformat::Format       pixelformat,
+        uint32_t                       width,
+        uint32_t                       height,
+        uint32_t                       sample_count,
+        uint64_t                       texture_usage_mask,
+        const std::string&             debug_label
+    ) -> bool;
 
-    XrSwapchain               m_xr_swapchain{XR_NULL_HANDLE};
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-    std::vector<unsigned int> m_gl_textures;
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    std::vector<void*> m_vk_images;
-#endif
+    XrSwapchain                                                m_xr_swapchain{XR_NULL_HANDLE};
+    std::vector<std::shared_ptr<erhe::graphics::Texture>>      m_textures;
 };
 
 }

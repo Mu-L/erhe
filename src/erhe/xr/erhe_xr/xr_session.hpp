@@ -65,9 +65,9 @@ private:
     class Swapchains
     {
     public:
-        Swapchains(XrSwapchain color_swapchain, XrSwapchain depth_stencil_swapchain)
-            : color_swapchain{color_swapchain}
-            , depth_stencil_swapchain{depth_stencil_swapchain}
+        Swapchains(Swapchain&& color, Swapchain&& depth_stencil)
+            : color_swapchain        {std::move(color)}
+            , depth_stencil_swapchain{std::move(depth_stencil)}
         {
         }
 

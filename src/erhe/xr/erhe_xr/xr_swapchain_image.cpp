@@ -1,5 +1,9 @@
 #include "erhe_xr/xr_swapchain_image.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/enums.hpp"
+#include "erhe_graphics/texture.hpp"
 #include "erhe_profile/profile.hpp"
+#include "erhe_utility/debug_label.hpp"
 #include "erhe_verify/verify.hpp"
 #include "erhe_xr/xr.hpp"
 #include "erhe_xr/xr_log.hpp"
@@ -8,12 +12,18 @@
 #   include <unknwn.h>
 #endif
 
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+// volk.h must precede <openxr/openxr_platform.h> when XR_USE_GRAPHICS_API_VULKAN
+// is defined: openxr_platform.h references VkFormat / VkImage / etc. without
+// including <vulkan/vulkan.h> itself.
+#if defined(XR_USE_GRAPHICS_API_VULKAN)
 # include "volk.h"
 #endif
 
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
+
+#include <cstdint>
+#include <cstring>
 
 namespace erhe::xr {
 
@@ -51,28 +61,29 @@ auto Swapchain_image::get_image_index() const -> uint32_t
     return m_image_index;
 }
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-auto Swapchain_image::get_gl_texture() const -> uint32_t
+auto Swapchain_image::get_texture() const -> erhe::graphics::Texture*
 {
     ERHE_VERIFY(m_swapchain != nullptr);
 
-    return m_swapchain->get_gl_texture(m_image_index);
+    return m_swapchain->get_texture(m_image_index);
 }
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-auto Swapchain_image::get_vk_image() const -> void*
-{
-    return m_swapchain->get_vk_image(m_image_index);
-}
-#endif
 
-Swapchain::Swapchain(XrSwapchain xr_swapchain)
+Swapchain::Swapchain(
+    erhe::graphics::Device&        device,
+    XrSwapchain                    xr_swapchain,
+    erhe::dataformat::Format       pixelformat,
+    uint32_t                       width,
+    uint32_t                       height,
+    uint32_t                       sample_count,
+    uint64_t                       texture_usage_mask,
+    const std::string&             debug_label
+)
     : m_xr_swapchain{xr_swapchain}
 {
     ERHE_PROFILE_FUNCTION();
 
     if (xr_swapchain != XR_NULL_HANDLE) {
-        if (!enumerate_images()) {
+        if (!enumerate_images(device, pixelformat, width, height, sample_count, texture_usage_mask, debug_label)) {
             log_xr->warn("Swapchain::enumerate_images() failed");
         }
     }
@@ -90,12 +101,7 @@ Swapchain::~Swapchain() noexcept
 
 Swapchain::Swapchain(Swapchain&& other) noexcept
     : m_xr_swapchain{other.m_xr_swapchain}
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-    , m_gl_textures {std::move(other.m_gl_textures)}
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    , m_vk_images   {std::move(other.m_vk_images)}
-#endif
+    , m_textures    {std::move(other.m_textures)}
 {
     other.m_xr_swapchain = XR_NULL_HANDLE;
 }
@@ -104,18 +110,11 @@ void Swapchain::operator=(Swapchain&& other) noexcept
 {
     ERHE_VERIFY(other.m_xr_swapchain != XR_NULL_HANDLE);
     if (m_xr_swapchain != XR_NULL_HANDLE) {
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         check_gl_context_in_current_in_this_thread();
-#endif
         check(xrDestroySwapchain(m_xr_swapchain));
     }
-    m_xr_swapchain = other.m_xr_swapchain;
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-    m_gl_textures = std::move(other.m_gl_textures);
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    m_vk_images = std::move(other.m_vk_images);
-#endif
+    m_xr_swapchain       = other.m_xr_swapchain;
+    m_textures           = std::move(other.m_textures);
     other.m_xr_swapchain = XR_NULL_HANDLE;
 }
 
@@ -134,9 +133,7 @@ auto Swapchain::acquire() -> std::optional<Swapchain_image>
 
     uint32_t image_index = 0;
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     check_gl_context_in_current_in_this_thread();
-#endif
     if (!check(xrAcquireSwapchainImage(m_xr_swapchain, &swapchain_image_acquire_info, &image_index))) {
         return {};
     }
@@ -158,9 +155,7 @@ auto Swapchain::release() -> bool
         .next = nullptr,
     };
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     check_gl_context_in_current_in_this_thread();
-#endif
     return check(
         xrReleaseSwapchainImage(m_xr_swapchain, &swapchain_image_release_info)
     );
@@ -180,37 +175,62 @@ auto Swapchain::wait() -> bool
         .timeout = XR_INFINITE_DURATION
     };
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     check_gl_context_in_current_in_this_thread();
-#endif
     return check(
         xrWaitSwapchainImage(m_xr_swapchain, &swapchain_image_wait_info)
     );
 }
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-auto Swapchain::get_gl_texture(const uint32_t image_index) const -> unsigned int
+auto Swapchain::get_texture(const uint32_t image_index) const -> erhe::graphics::Texture*
 {
-    ERHE_VERIFY(image_index < m_gl_textures.size());
+    ERHE_VERIFY(image_index < m_textures.size());
 
-    return m_gl_textures[image_index];
+    return m_textures[image_index].get();
 }
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-auto Swapchain::get_vk_image(const uint32_t image_index) const -> void*
-{
-    ERHE_VERIFY(image_index < m_vk_images.size());
-
-    return m_vk_images[image_index];
-}
-#endif
 
 auto Swapchain::get_xr_swapchain() const -> XrSwapchain
 {
     return m_xr_swapchain;
 }
 
-auto Swapchain::enumerate_images() -> bool
+namespace {
+
+[[nodiscard]] auto wrap_swapchain_texture(
+    erhe::graphics::Device&        device,
+    uint64_t                       wrap_texture_name,
+    erhe::dataformat::Format       pixelformat,
+    uint32_t                       width,
+    uint32_t                       height,
+    uint32_t                       sample_count,
+    uint64_t                       texture_usage_mask,
+    const std::string&             debug_label
+) -> std::shared_ptr<erhe::graphics::Texture>
+{
+    erhe::graphics::Texture_create_info create_info{
+        .device            = device,
+        .usage_mask        = texture_usage_mask,
+        .type              = erhe::graphics::Texture_type::texture_2d,
+        .pixelformat       = pixelformat,
+        .sample_count      = static_cast<int>(sample_count),
+        .width             = static_cast<int>(width),
+        .height            = static_cast<int>(height),
+        .wrap_texture_name = wrap_texture_name,
+        .debug_label       = erhe::utility::Debug_label{debug_label}
+    };
+    return std::make_shared<erhe::graphics::Texture>(device, create_info);
+}
+
+} // namespace
+
+auto Swapchain::enumerate_images(
+    erhe::graphics::Device&        device,
+    erhe::dataformat::Format       pixelformat,
+    uint32_t                       width,
+    uint32_t                       height,
+    uint32_t                       sample_count,
+    uint64_t                       texture_usage_mask,
+    const std::string&             debug_label
+) -> bool
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -220,14 +240,12 @@ auto Swapchain::enumerate_images() -> bool
 
     uint32_t image_count{0};
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     check_gl_context_in_current_in_this_thread();
-#endif
     ERHE_XR_CHECK(xrEnumerateSwapchainImages(m_xr_swapchain, 0, &image_count, nullptr));
 
+    m_textures.resize(image_count);
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-    m_gl_textures.resize(image_count);
+#if defined(XR_USE_GRAPHICS_API_OPENGL)
     std::vector<XrSwapchainImageOpenGLKHR> swapchain_images(image_count);
     for (uint32_t i = 0; i < image_count; i++) {
         swapchain_images[i].type  = XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR;
@@ -245,11 +263,18 @@ auto Swapchain::enumerate_images() -> bool
     );
 
     for (uint32_t i = 0; i < image_count; i++) {
-        m_gl_textures[i] = swapchain_images[i].image;
+        m_textures[i] = wrap_swapchain_texture(
+            device,
+            static_cast<uint64_t>(swapchain_images[i].image),
+            pixelformat,
+            width,
+            height,
+            sample_count,
+            texture_usage_mask,
+            debug_label + " " + std::to_string(i)
+        );
     }
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    m_vk_images.resize(image_count);
+#elif defined(XR_USE_GRAPHICS_API_VULKAN)
     std::vector<XrSwapchainImageVulkanKHR> swapchain_images(image_count);
     for (uint32_t i = 0; i < image_count; i++) {
         swapchain_images[i].type  = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR;
@@ -266,8 +291,29 @@ auto Swapchain::enumerate_images() -> bool
     );
 
     for (uint32_t i = 0; i < image_count; i++) {
-        m_vk_images[i] = swapchain_images[i].image;
+        const VkImage vk_image = swapchain_images[i].image;
+        uint64_t wrap_handle = 0;
+        static_assert(sizeof(vk_image) <= sizeof(wrap_handle), "VkImage handle does not fit in uint64_t");
+        std::memcpy(&wrap_handle, &vk_image, sizeof(vk_image));
+        m_textures[i] = wrap_swapchain_texture(
+            device,
+            wrap_handle,
+            pixelformat,
+            width,
+            height,
+            sample_count,
+            texture_usage_mask,
+            debug_label + " " + std::to_string(i)
+        );
     }
+#else
+    static_cast<void>(device);
+    static_cast<void>(pixelformat);
+    static_cast<void>(width);
+    static_cast<void>(height);
+    static_cast<void>(sample_count);
+    static_cast<void>(texture_usage_mask);
+    static_cast<void>(debug_label);
 #endif
 
     return true;

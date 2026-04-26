@@ -7,7 +7,6 @@
 #endif
 
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-# include "volk.h"
 # include "erhe_graphics/vulkan_external_creators.hpp"
 #endif
 

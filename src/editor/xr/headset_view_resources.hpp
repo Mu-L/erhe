@@ -48,8 +48,8 @@ private:
     Headset_view&                                m_headset_view;
     int                                          m_width;
     int                                          m_height;
-    std::shared_ptr<erhe::graphics::Texture>     m_color_texture;
-    std::shared_ptr<erhe::graphics::Texture>     m_depth_stencil_texture;
+    erhe::graphics::Texture*                     m_color_texture        {nullptr};
+    erhe::graphics::Texture*                     m_depth_stencil_texture{nullptr};
     std::shared_ptr<erhe::graphics::Render_pass> m_render_pass;
     std::shared_ptr<erhe::scene::Node>           m_node;
     std::shared_ptr<erhe::scene::Camera>         m_camera;

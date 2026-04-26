@@ -1,27 +1,28 @@
 ﻿#include "erhe_xr/xr_session.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/enums.hpp"
+#include "erhe_graphics/native_format.hpp"
+#include "erhe_graphics/texture.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
 #include "erhe_window/window.hpp"
-
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-# include "erhe_gl/wrapper_functions.hpp"
-# include "erhe_gl/wrapper_enums.hpp"
-# include "erhe_gl/gl_helpers.hpp"
-# include "erhe_gl/enum_string_functions.hpp"
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-# include "erhe_graphics/vulkan/vulkan_device.hpp"
-# include "erhe_graphics/vulkan/vulkan_helpers.hpp"
-#endif
 
 #include "erhe_xr/xr.hpp"
 #include "erhe_xr/xr_instance.hpp"
 #include "erhe_xr/xr_log.hpp"
 #include "erhe_xr/xr_swapchain_image.hpp"
 
+#include <fmt/format.h>
+
 #if defined(ERHE_OS_WINDOWS)
 #   include <unknwn.h>
+#endif
+
+// volk.h must precede <openxr/openxr_platform.h> when XR_USE_GRAPHICS_API_VULKAN
+// is defined: openxr_platform.h references VkFormat / VkImage / etc. without
+// including <vulkan/vulkan.h> itself.
+#if defined(XR_USE_GRAPHICS_API_VULKAN)
+# include "volk.h"
 #endif
 
 //#if defined(_MSC_VER) && !defined(__clang__)
@@ -122,7 +123,7 @@ auto Xr_session::create_session() -> bool
     const auto xr_instance = m_instance.get_xr_instance();
     ERHE_VERIFY(xr_instance != XR_NULL_HANDLE);
 
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+#if defined(XR_USE_GRAPHICS_API_VULKAN)
     XrGraphicsRequirementsVulkan2KHR xr_graphics_requirements_vulkan{
         .type                   = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN2_KHR,
         .next                   = nullptr,
@@ -140,7 +141,7 @@ auto Xr_session::create_session() -> bool
     }
 #endif
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
+#if defined(XR_USE_GRAPHICS_API_OPENGL)
     XrGraphicsRequirementsOpenGLKHR xr_graphics_requirements_opengl{
         .type                   = XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR,
         .next                   = nullptr,
@@ -158,16 +159,17 @@ auto Xr_session::create_session() -> bool
     log_xr->info("OpenGL maxApiVersionSupported = {}.{}", max_major, max_minor);
 #endif
 
+    const erhe::graphics::Native_device_handles native_handles = m_graphics_device.get_native_handles();
+
 #if defined(XR_USE_GRAPHICS_API_VULKAN)
-    erhe::graphics::Device_impl& vulkan_device_impl = m_graphics_device.get_impl();
     const XrGraphicsBindingVulkan2KHR graphics_binding_vulkan2{
         .type             = XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR,
         .next             = nullptr,
-        .instance         = vulkan_device_impl.get_vulkan_instance(),
-        .physicalDevice   = vulkan_device_impl.get_vulkan_physical_device(),
-        .device           = vulkan_device_impl.get_vulkan_device(),
-        .queueFamilyIndex = vulkan_device_impl.get_graphics_queue_family_index(),
-        .queueIndex       = 0
+        .instance         = reinterpret_cast<VkInstance>(native_handles.vk_instance),
+        .physicalDevice   = reinterpret_cast<VkPhysicalDevice>(native_handles.vk_physical_device),
+        .device           = reinterpret_cast<VkDevice>(native_handles.vk_device),
+        .queueFamilyIndex = native_handles.vk_queue_family_index,
+        .queueIndex       = native_handles.vk_queue_index
     };
 
     const XrSessionCreateInfo session_create_info{
@@ -179,15 +181,11 @@ auto Xr_session::create_session() -> bool
     ERHE_XR_CHECK(xrCreateSession(xr_instance, &session_create_info, &m_xr_session));
 #elif defined(XR_USE_PLATFORM_WIN32)
 # if defined(XR_USE_GRAPHICS_API_OPENGL)
-    HWND  hwnd  = m_context_window.get_hwnd();
-    HDC   hdc   = GetDC(hwnd);
-    HGLRC hglrc = m_context_window.get_hglrc();
-
     const XrGraphicsBindingOpenGLWin32KHR graphics_binding_opengl_win32{
         .type  = XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR,
         .next  = nullptr,
-        .hDC   = hdc,
-        .hGLRC = hglrc
+        .hDC   = reinterpret_cast<HDC>(native_handles.gl_hdc),
+        .hGLRC = reinterpret_cast<HGLRC>(native_handles.gl_hglrc)
     };
 
     const XrSessionCreateInfo session_create_info{
@@ -202,11 +200,10 @@ auto Xr_session::create_session() -> bool
 # endif
 #elif defined(XR_USE_PLATFORM_LINUX)
 # if defined(XR_USE_GRAPHICS_API_OPENGL)
-    struct wl_display* wayland_display = m_context_window.get_wl_display();
     const XrGraphicsBindingOpenGLWaylandKHR graphics_binding_opengl_wayland{
         .type    = XR_TYPE_GRAPHICS_BINDING_OPENGL_WAYLAND_KHR,
         .next    = nullptr,
-        .display = wayland_display
+        .display = reinterpret_cast<struct wl_display*>(native_handles.gl_wl_display)
     };
 
     const XrSessionCreateInfo session_create_info{
@@ -220,6 +217,7 @@ auto Xr_session::create_session() -> bool
     ERHE_XR_CHECK(xrCreateSession(xr_instance, &session_create_info, &m_xr_session));
 # endif
 #else
+    static_cast<void>(native_handles);
     // TODO
     abort();
 #endif
@@ -391,82 +389,17 @@ auto Xr_session::enumerate_swapchain_formats() -> bool
     );
 
     log_xr->info("Swapchain formats:");
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     int best_color_format_score{0};
     int best_depth_stencil_score{0};
     std::vector<erhe::dataformat::Format> depth_candidates;
-    for (const auto swapchain_format : swapchain_formats) {
-        const gl::Internal_format      gl_internal_format = static_cast<gl::Internal_format>(swapchain_format);
-        const erhe::dataformat::Format pixelformat        = gl_helpers::convert_from_gl(gl_internal_format);
-        ERHE_VERIFY(pixelformat != erhe::dataformat::Format::format_undefined);
-        log_xr->info("    {} = {}", gl::c_str(gl_internal_format), erhe::dataformat::c_str(pixelformat));
-        const int color_score         = color_format_score(pixelformat);
-        const int depth_stencil_score = depth_stencil_format_score(pixelformat);
-        if (color_score > best_color_format_score) {
-            best_color_format_score = color_score;
-            m_swapchain_color_format = pixelformat;
-        }
-        if (depth_stencil_score > best_depth_stencil_score) {
-            best_depth_stencil_score = depth_stencil_score;
-            m_swapchain_depth_stencil_format = pixelformat;
-        }
-        if (depth_stencil_score > 0) {
-            depth_candidates.push_back(pixelformat);
-        }
-    }
-
-    // Diagnostic: parallel to the Vulkan probe section below so GL and
-    // Vulkan output can be compared side-by-side. GL texture creation has
-    // no per-usage-mask probe equivalent to vkGetPhysicalDeviceImageFormatProperties2,
-    // so Device::probe_image_format_support on the GL backend returns true
-    // unconditionally -- every format in this list will report PASS.
-    {
-        constexpr uint64_t full_usage_mask =
-            erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
-            erhe::graphics::Image_usage_flag_bit_mask::sampled                  |
-            erhe::graphics::Image_usage_flag_bit_mask::transfer_src             |
-            erhe::graphics::Image_usage_flag_bit_mask::transfer_dst             |
-            erhe::graphics::Image_usage_flag_bit_mask::storage;
-        constexpr uint64_t min_usage_mask =
-            erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
-            erhe::graphics::Image_usage_flag_bit_mask::sampled;
-
-        log_xr->info(
-            "Depth format probes (usage: full = DS+SAMPLED+TSRC+TDST+STORAGE, min = DS+SAMPLED):"
-        );
-        std::size_t full_pass_count = 0;
-        std::size_t min_pass_count  = 0;
-        for (const erhe::dataformat::Format candidate : depth_candidates) {
-            const bool full_ok = m_graphics_device.probe_image_format_support(candidate, full_usage_mask);
-            const bool min_ok  = m_graphics_device.probe_image_format_support(candidate, min_usage_mask);
-            if (full_ok) { ++full_pass_count; }
-            if (min_ok)  { ++min_pass_count; }
-            log_xr->info(
-                "    {} -> full={} min={}",
-                erhe::dataformat::c_str(candidate),
-                full_ok ? "PASS" : "FAIL",
-                min_ok  ? "PASS" : "FAIL"
-            );
-        }
-        log_xr->info(
-            "Depth probe summary: {}/{} pass full usage, {}/{} pass min usage",
-            full_pass_count, depth_candidates.size(),
-            min_pass_count,  depth_candidates.size()
-        );
-    }
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    int best_color_format_score{0};
-    int best_depth_stencil_score{0};
-    std::vector<erhe::dataformat::Format> depth_candidates;
-    for (const auto swapchain_format : swapchain_formats) {
-        const VkFormat                 vk_format   = static_cast<VkFormat>(swapchain_format);
-        const erhe::dataformat::Format pixelformat = erhe::graphics::to_erhe(vk_format);
+    for (const int64_t swapchain_format : swapchain_formats) {
+        const erhe::dataformat::Format pixelformat = erhe::graphics::native_swapchain_format_to_dataformat(swapchain_format);
+        const std::string              native_name = erhe::graphics::native_swapchain_format_c_str(swapchain_format);
         if (pixelformat == erhe::dataformat::Format::format_undefined) {
-            log_xr->info("    {} (unmapped)", erhe::graphics::c_str(vk_format));
+            log_xr->info("    {} (unmapped)", native_name);
             continue;
         }
-        log_xr->info("    {} = {}", erhe::graphics::c_str(vk_format), erhe::dataformat::c_str(pixelformat));
+        log_xr->info("    {} = {}", native_name, erhe::dataformat::c_str(pixelformat));
         const int color_score         = color_format_score(pixelformat);
         const int depth_stencil_score = depth_stencil_format_score(pixelformat);
         if (color_score > best_color_format_score) {
@@ -484,9 +417,9 @@ auto Xr_session::enumerate_swapchain_formats() -> bool
 
     // Diagnostic: probe each depth-capable format from the XR format list
     // against the usage-mask superset we have seen the runtime actually
-    // expand to internally. This does not change format selection; it only
-    // tells us which formats can survive the runtime's usage expansion on
-    // this device. See doc/vulkan_backend.md log for context.
+    // expand to internally on Vulkan. On GL, probe_image_format_support
+    // returns true unconditionally so every entry reports PASS. See
+    // doc/vulkan_backend.md log for context.
     {
         constexpr uint64_t full_usage_mask =
             erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
@@ -521,7 +454,6 @@ auto Xr_session::enumerate_swapchain_formats() -> bool
             min_pass_count,  depth_candidates.size()
         );
     }
-#endif
     log_xr->info("Selected swapchain color format {}{}", erhe::dataformat::c_str(m_swapchain_color_format), m_mirror_mode ? " (mirror mode enabled)" : "");
     log_xr->info("Selected swapchain depth stencil format {}", erhe::dataformat::c_str(m_swapchain_depth_stencil_format));
 
@@ -558,19 +490,37 @@ auto Xr_session::create_swapchains() -> bool
     }
 
     m_view_swapchains.clear();
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
+
+    const int64_t native_color_format         = erhe::graphics::dataformat_to_native_swapchain_format(m_swapchain_color_format);
+    const int64_t native_depth_stencil_format = erhe::graphics::dataformat_to_native_swapchain_format(m_swapchain_depth_stencil_format);
+    ERHE_VERIFY(native_color_format != 0);
+
+    constexpr uint64_t color_texture_usage =
+        erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
+        erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    constexpr uint64_t depth_stencil_texture_usage =
+        erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
+        erhe::graphics::Image_usage_flag_bit_mask::sampled;
+
+    // On Vulkan the depth swapchain creation is currently disabled (see
+    // doc/vulkan_backend.md). On GL the runtime accepts the depth format
+    // and the editor uses the resulting depth texture for the projection
+    // layer's depth info.
+#if defined(XR_USE_GRAPHICS_API_VULKAN)
+    constexpr bool create_depth_stencil_swapchain = false;
+#else
+    constexpr bool create_depth_stencil_swapchain = true;
+#endif
+
     const auto& views = m_instance.get_xr_view_configuration_views();
-    for (const auto& view : views) {
-        std::optional<gl::Internal_format> color_internal_format = gl_helpers::convert_to_gl(m_swapchain_color_format);
-        std::optional<gl::Internal_format> depth_stencil_format  = gl_helpers::convert_to_gl(m_swapchain_depth_stencil_format);
-        ERHE_VERIFY(color_internal_format.has_value());
-        ERHE_VERIFY(depth_stencil_format.has_value());
+    for (uint32_t view_index = 0; view_index < views.size(); ++view_index) {
+        const auto& view = views[view_index];
         const XrSwapchainCreateInfo color_swapchain_create_info{
             .type        = XR_TYPE_SWAPCHAIN_CREATE_INFO,
             .next        = nullptr,
             .createFlags = 0,
             .usageFlags  = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
-            .format      = static_cast<int64_t>(color_internal_format.value()),
+            .format      = native_color_format,
             .sampleCount = view.recommendedSwapchainSampleCount,
             .width       = view.recommendedImageRectWidth,
             .height      = view.recommendedImageRectHeight,
@@ -579,96 +529,60 @@ auto Xr_session::create_swapchains() -> bool
             .mipCount    = 1
         };
 
-        XrSwapchain color_swapchain{XR_NULL_HANDLE};
-
+        XrSwapchain color_xr_swapchain{XR_NULL_HANDLE};
         check_gl_context_in_current_in_this_thread();
-        XrResult color_result = xrCreateSwapchain(m_xr_session, &color_swapchain_create_info, &color_swapchain);
+        const XrResult color_result = xrCreateSwapchain(m_xr_session, &color_swapchain_create_info, &color_xr_swapchain);
         if (color_result != XR_SUCCESS) {
             log_xr->error("xrCreateSwapchain() failed with error {}", c_str(color_result));
             return false;
         }
 
-        const XrSwapchainCreateInfo depth_stencil_swapchain_create_info{
-            .type        = XR_TYPE_SWAPCHAIN_CREATE_INFO,
-            .next        = nullptr,
-            .createFlags = 0,
-            //.usageFlags  = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            .usageFlags  = XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            .format      = static_cast<int64_t>(depth_stencil_format.value()),
-            .sampleCount = view.recommendedSwapchainSampleCount,
-            .width       = view.recommendedImageRectWidth,
-            .height      = view.recommendedImageRectHeight,
-            .faceCount   = 1,
-            .arraySize   = 1,
-            .mipCount    = 1
-        };
-
-        XrSwapchain depth_stencil_swapchain{XR_NULL_HANDLE};
-
-        check_gl_context_in_current_in_this_thread();
-        XrResult depth_stencil_result = xrCreateSwapchain(m_xr_session, &depth_stencil_swapchain_create_info, &depth_stencil_swapchain);
-        if (depth_stencil_result != XR_SUCCESS) {
-            log_xr->error("xrCreateSwapchain() failed with error {}", c_str(depth_stencil_result));
-            return false;
+        XrSwapchain depth_stencil_xr_swapchain{XR_NULL_HANDLE};
+        if (create_depth_stencil_swapchain && (native_depth_stencil_format != 0)) {
+            const XrSwapchainCreateInfo depth_stencil_swapchain_create_info{
+                .type        = XR_TYPE_SWAPCHAIN_CREATE_INFO,
+                .next        = nullptr,
+                .createFlags = 0,
+                .usageFlags  = XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                .format      = native_depth_stencil_format,
+                .sampleCount = view.recommendedSwapchainSampleCount,
+                .width       = view.recommendedImageRectWidth,
+                .height      = view.recommendedImageRectHeight,
+                .faceCount   = 1,
+                .arraySize   = 1,
+                .mipCount    = 1
+            };
+            check_gl_context_in_current_in_this_thread();
+            const XrResult depth_stencil_result = xrCreateSwapchain(m_xr_session, &depth_stencil_swapchain_create_info, &depth_stencil_xr_swapchain);
+            if (depth_stencil_result != XR_SUCCESS) {
+                log_xr->error("xrCreateSwapchain() failed with error {}", c_str(depth_stencil_result));
+                return false;
+            }
         }
 
-        m_view_swapchains.emplace_back(color_swapchain, depth_stencil_swapchain);
+        m_view_swapchains.emplace_back(
+            Swapchain{
+                m_graphics_device,
+                color_xr_swapchain,
+                m_swapchain_color_format,
+                view.recommendedImageRectWidth,
+                view.recommendedImageRectHeight,
+                view.recommendedSwapchainSampleCount,
+                color_texture_usage,
+                fmt::format("XR color view {}", view_index)
+            },
+            Swapchain{
+                m_graphics_device,
+                depth_stencil_xr_swapchain,
+                m_swapchain_depth_stencil_format,
+                view.recommendedImageRectWidth,
+                view.recommendedImageRectHeight,
+                view.recommendedSwapchainSampleCount,
+                depth_stencil_texture_usage,
+                fmt::format("XR depth stencil view {}", view_index)
+            }
+        );
     }
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    const auto& views = m_instance.get_xr_view_configuration_views();
-    for (const auto& view : views) {
-        const VkFormat vk_color_format = erhe::graphics::to_vulkan(m_swapchain_color_format);
-        //const VkFormat vk_depth_stencil_format = erhe::graphics::to_vulkan(m_swapchain_depth_stencil_format);
-        ERHE_VERIFY(vk_color_format != VK_FORMAT_UNDEFINED);
-        //ERHE_VERIFY(vk_depth_stencil_format != VK_FORMAT_UNDEFINED);
-        const XrSwapchainCreateInfo color_swapchain_create_info{
-            .type        = XR_TYPE_SWAPCHAIN_CREATE_INFO,
-            .next        = nullptr,
-            .createFlags = 0,
-            .usageFlags  = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
-            .format      = static_cast<int64_t>(vk_color_format),
-            .sampleCount = view.recommendedSwapchainSampleCount,
-            .width       = view.recommendedImageRectWidth,
-            .height      = view.recommendedImageRectHeight,
-            .faceCount   = 1,
-            .arraySize   = 1,
-            .mipCount    = 1
-        };
-
-        XrSwapchain color_swapchain{XR_NULL_HANDLE};
-        XrResult color_result = xrCreateSwapchain(m_xr_session, &color_swapchain_create_info, &color_swapchain);
-        if (color_result != XR_SUCCESS) {
-            log_xr->error("xrCreateSwapchain() failed with error {}", c_str(color_result));
-            return false;
-        }
-
-        XrSwapchain depth_stencil_swapchain{XR_NULL_HANDLE};
-#if 0
-        const XrSwapchainCreateInfo depth_stencil_swapchain_create_info{
-            .type        = XR_TYPE_SWAPCHAIN_CREATE_INFO,
-            .next        = nullptr,
-            .createFlags = 0,
-            .usageFlags  = XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            .format      = static_cast<int64_t>(vk_depth_stencil_format),
-            .sampleCount = view.recommendedSwapchainSampleCount,
-            .width       = view.recommendedImageRectWidth,
-            .height      = view.recommendedImageRectHeight,
-            .faceCount   = 1,
-            .arraySize   = 1,
-            .mipCount    = 1
-        };
-
-        XrResult depth_stencil_result = xrCreateSwapchain(m_xr_session, &depth_stencil_swapchain_create_info, &depth_stencil_swapchain);
-        if (depth_stencil_result != XR_SUCCESS) {
-            log_xr->error("xrCreateSwapchain() failed with error {}", c_str(depth_stencil_result));
-            return false;
-        }
-#endif
-
-        m_view_swapchains.emplace_back(color_swapchain, depth_stencil_swapchain);
-    }
-#endif
 
     if (m_instance.extensions.FB_passthrough) {
         XrPassthroughCreateInfoFB passthrough_create_info{
@@ -1190,45 +1104,22 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
             log_xr->warn("no swapchain depth stencil image for view {}", i);
         }
 
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         const auto& acquired_color_swapchain_image = acquired_color_swapchain_image_opt.value();
-        const uint32_t color_texture = acquired_color_swapchain_image.get_gl_texture();
-        if (color_texture == 0) {
+        erhe::graphics::Texture* color_texture = acquired_color_swapchain_image.get_texture();
+        if (color_texture == nullptr) {
             log_xr->warn("invalid color image for view {}", i);
             return false;
         }
 
-        uint32_t depth_stencil_texture = 0;
+        erhe::graphics::Texture* depth_stencil_texture = nullptr;
         if (use_depth_image) {
             const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
-            depth_stencil_texture = acquired_depth_stencil_swapchain_image.get_gl_texture();
-            if (depth_stencil_texture == 0) {
+            depth_stencil_texture = acquired_depth_stencil_swapchain_image.get_texture();
+            if (depth_stencil_texture == nullptr) {
                 log_xr->warn("invalid depth image for view {}", i);
                 use_depth_image = false;
             }
         }
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-        const auto& acquired_color_swapchain_image = acquired_color_swapchain_image_opt.value();
-        void* color_vk_image_ptr = acquired_color_swapchain_image.get_vk_image();
-        if (color_vk_image_ptr == nullptr) {
-            log_xr->warn("invalid color VkImage for view {}", i);
-            return false;
-        }
-        const uint64_t vk_color_image = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(color_vk_image_ptr));
-
-        uint64_t vk_depth_stencil_image = 0;
-        if (use_depth_image) {
-            const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
-            void* depth_stencil_vk_image_ptr = acquired_depth_stencil_swapchain_image.get_vk_image();
-            if (depth_stencil_vk_image_ptr == nullptr) {
-                log_xr->warn("invalid color / depth VkImage for view {}", i);
-                use_depth_image = false;
-            }
-            vk_depth_stencil_image = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(depth_stencil_vk_image_ptr));
-        }
-
-#endif
 
         Render_view render_view{
             .slot      = i,
@@ -1240,14 +1131,8 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
             .fov_right             = m_xr_views[i].fov.angleRight,
             .fov_up                = m_xr_views[i].fov.angleUp,
             .fov_down              = m_xr_views[i].fov.angleDown,
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
             .color_texture         = color_texture,
             .depth_stencil_texture = depth_stencil_texture,
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-            .vk_color_image         = vk_color_image,
-            .vk_depth_stencil_image = vk_depth_stencil_image,
-#endif
             .color_format          = m_swapchain_color_format,
             .depth_stencil_format  = m_swapchain_depth_stencil_format,
             .width                 = view_configuration_views[i].recommendedImageRectWidth,

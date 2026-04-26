@@ -12,6 +12,8 @@
 
 #include <string>
 
+namespace erhe::graphics { class Texture; }
+
 namespace erhe::xr {
 
 class Pose
@@ -30,17 +32,10 @@ public:
     float                    fov_right;
     float                    fov_up;
     float                    fov_down;
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-    uint32_t                 color_texture;
-    uint32_t                 depth_stencil_texture;
-#endif
-#if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-    // VkImage handles reinterpreted as uint64_t. VkImage is a non-dispatchable
-    // 64-bit handle, so storing it as uint64_t keeps the public header free of
-    // <vulkan.h>.
-    uint64_t                 vk_color_image        {0};
-    uint64_t                 vk_depth_stencil_image{0};
-#endif
+    // Non-owning. Points into the per-view Swapchain's pre-built texture
+    // wrappers; valid for the lifetime of the Xr_session.
+    erhe::graphics::Texture* color_texture        {nullptr};
+    erhe::graphics::Texture* depth_stencil_texture{nullptr};
     erhe::dataformat::Format color_format;
     erhe::dataformat::Format depth_stencil_format;
     uint32_t                 width;

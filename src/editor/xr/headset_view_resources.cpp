@@ -6,6 +6,7 @@
 #include "erhe_graphics/texture.hpp"
 #include "erhe_scene/camera.hpp"
 #include "erhe_scene/node.hpp"
+#include "erhe_verify/verify.hpp"
 
 namespace editor {
 
@@ -38,66 +39,33 @@ Headset_view_resources::Headset_view_resources(
     m_width  = static_cast<int>(render_view.width);
     m_height = static_cast<int>(render_view.height);
 
-    m_color_texture = std::make_shared<Texture>(
-        graphics_device,
-        erhe::graphics::Texture_create_info{
-            .device            = graphics_device,
-            .usage_mask        =
-                erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
-                erhe::graphics::Image_usage_flag_bit_mask::sampled,
-            .type              = erhe::graphics::Texture_type::texture_2d,
-            .width             = m_width,
-            .height            = m_height,
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-            .wrap_texture_name = render_view.color_texture,
-#elif defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-            .wrap_texture_name = render_view.vk_color_image,
-#endif
-            .debug_label       = erhe::utility::Debug_label{fmt::format("XR color {}", slot)}
-        }
-    );
+    m_color_texture         = render_view.color_texture;
+    m_depth_stencil_texture = render_view.depth_stencil_texture;
+    ERHE_VERIFY(m_color_texture != nullptr);
 
-    m_depth_stencil_texture = std::make_shared<Texture>(
-        graphics_device,
-        erhe::graphics::Texture_create_info{
-            .device            = graphics_device,
-            .usage_mask        =
-                erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
-                erhe::graphics::Image_usage_flag_bit_mask::sampled,
-            .type              = erhe::graphics::Texture_type::texture_2d,
-            .width             = m_width,
-            .height            = m_height,
-#if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
-            .wrap_texture_name = render_view.depth_stencil_texture,
-#elif defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
-            .wrap_texture_name = render_view.vk_depth_stencil_image,
-#endif
-            .debug_label       = erhe::utility::Debug_label{fmt::format("XR depth stencil {}", slot)}
-        }
-    );
-
-    const erhe::dataformat::Format color_format         = m_color_texture->get_pixelformat();
-    const erhe::dataformat::Format depth_stencil_format = m_depth_stencil_texture->get_pixelformat();
+    const erhe::dataformat::Format color_format = m_color_texture->get_pixelformat();
     if (color_format != render_view.color_format) {
         log_xr->warn("swapchain color format = {}, expected format = {}", erhe::dataformat::c_str(color_format), erhe::dataformat::c_str(render_view.color_format));
         render_view.color_format = color_format;
     }
-    if (depth_stencil_format != render_view.depth_stencil_format) {
-        log_xr->warn("swapchain depth format = {}, expected format = {}", erhe::dataformat::c_str(depth_stencil_format), erhe::dataformat::c_str(render_view.depth_stencil_format));
-        render_view.depth_stencil_format = depth_stencil_format;
+    if (m_depth_stencil_texture != nullptr) {
+        const erhe::dataformat::Format depth_stencil_format = m_depth_stencil_texture->get_pixelformat();
+        if (depth_stencil_format != render_view.depth_stencil_format) {
+            log_xr->warn("swapchain depth format = {}, expected format = {}", erhe::dataformat::c_str(depth_stencil_format), erhe::dataformat::c_str(render_view.depth_stencil_format));
+            render_view.depth_stencil_format = depth_stencil_format;
+        }
     }
 
-
     erhe::graphics::Render_pass_descriptor render_pass_descriptor{};
-    render_pass_descriptor.color_attachments[0].texture      = m_color_texture.get();
+    render_pass_descriptor.color_attachments[0].texture      = m_color_texture;
     render_pass_descriptor.color_attachments[0].load_action  = erhe::graphics::Load_action::Clear;
     render_pass_descriptor.color_attachments[0].store_action = erhe::graphics::Store_action::Store;
     render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::sampled;
     render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::shader_read_only_optimal;
     render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::sampled;
     render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::shader_read_only_optimal;
-    if (erhe::dataformat::get_depth_size_bits(render_view.depth_stencil_format) > 0) {
-        render_pass_descriptor.depth_attachment.texture      = m_depth_stencil_texture.get();
+    if ((m_depth_stencil_texture != nullptr) && (erhe::dataformat::get_depth_size_bits(render_view.depth_stencil_format) > 0)) {
+        render_pass_descriptor.depth_attachment.texture      = m_depth_stencil_texture;
         render_pass_descriptor.depth_attachment.load_action  = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.depth_attachment.store_action = erhe::graphics::Store_action::Store;
         render_pass_descriptor.depth_attachment.usage_before  = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
@@ -105,8 +73,8 @@ Headset_view_resources::Headset_view_resources(
         render_pass_descriptor.depth_attachment.usage_after   = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
         render_pass_descriptor.depth_attachment.layout_after  = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
     }
-    if (erhe::dataformat::get_stencil_size_bits(render_view.depth_stencil_format) > 0) {
-        render_pass_descriptor.stencil_attachment.texture       = m_depth_stencil_texture.get();
+    if ((m_depth_stencil_texture != nullptr) && (erhe::dataformat::get_stencil_size_bits(render_view.depth_stencil_format) > 0)) {
+        render_pass_descriptor.stencil_attachment.texture       = m_depth_stencil_texture;
         render_pass_descriptor.stencil_attachment.load_action   = erhe::graphics::Load_action::Clear;
         render_pass_descriptor.stencil_attachment.store_action  = erhe::graphics::Store_action::Dont_care;
         render_pass_descriptor.stencil_attachment.usage_before  = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
@@ -160,12 +128,12 @@ auto Headset_view_resources::get_height() const -> int
 
 auto Headset_view_resources::get_color_texture() const -> erhe::graphics::Texture*
 {
-    return m_color_texture.get();
+    return m_color_texture;
 }
 
 auto Headset_view_resources::get_depth_stencil_texture() const -> erhe::graphics::Texture*
 {
-    return m_depth_stencil_texture.get();
+    return m_depth_stencil_texture;
 }
 
 void Headset_view_resources::update(erhe::xr::Render_view& render_view, erhe::scene::Projection::Fov_sides fov_sides)
