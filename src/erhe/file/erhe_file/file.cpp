@@ -372,25 +372,17 @@ auto ensure_directory_exists(std::filesystem::path path) -> bool
         return std::filesystem::is_directory(path);
     }
 
-    if (path == path.parent_path()) {
+    std::filesystem::create_directories(path, error_code);
+    if (error_code) {
+        if (log_file) log_file->warn(
+            "std::filesystem::create_directories('{}') returned error code {}: {}",
+            to_string(path),
+            error_code.value(),
+            error_code.message()
+        );
         return false;
-    } else {
-        if (!ensure_directory_exists(path.parent_path())) {
-            return false;
-        }
-        const bool create_ok = std::filesystem::create_directory(path, error_code);
-        if (error_code) {
-            if (log_file) log_file->warn(
-                "std::filesystem::create_directory('{}') returned error code {}: {}",
-                to_string(path),
-                error_code.value(),
-                error_code.message()
-            );
-            return false;
-        }
-        return create_ok;
-
     }
+    return std::filesystem::is_directory(path);
 }
 
 } // namespace erhe::file
