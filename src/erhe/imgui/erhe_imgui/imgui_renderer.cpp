@@ -935,7 +935,7 @@ void Imgui_renderer::update_texture(ImTextureData* tex)
         log_imgui->trace("created texture {}", fmt::ptr(texture.get()));
 
         // Upload pixel data
-#if defined(ERHE_OS_OSX) && defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
+#if defined(ERHE_OS_MACOS) && defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         // macOS GL driver has broken glCopyBufferSubData; use direct upload
         m_graphics_device.upload_to_texture(
             *texture.get(),
@@ -998,7 +998,7 @@ void Imgui_renderer::update_texture(ImTextureData* tex)
         ERHE_VERIFY(texture != nullptr);
         log_imgui->trace("updating texture {}", fmt::ptr(texture));
 
-#if defined(ERHE_OS_OSX) && defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
+#if defined(ERHE_OS_MACOS) && defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         auto update_rect = [this, texture, tex](ImTextureRect& r) -> void
         {
             const std::size_t  src_offset = r.x * tex->BytesPerPixel + r.y * tex->GetPitch();

@@ -54,7 +54,7 @@ void set_env(const char* key, const char* value)
 #if defined(ERHE_OS_WINDOWS)
     std::string assignment = fmt::format("{}={}", key, value);
     ret = _putenv(assignment.c_str());
-#elif defined(ERHE_OS_LINUX) || defined(ERHE_OS_OSX)
+#elif defined(ERHE_OS_LINUX) || defined(ERHE_OS_MACOS)
     ret = setenv(key, value, 1);
 #endif
     if (ret != 0) {
@@ -62,7 +62,7 @@ void set_env(const char* key, const char* value)
     }
 }
 
-#if defined(ERHE_OS_OSX)
+#if defined(ERHE_OS_MACOS)
 // Parse a dotted version string like "1.4.341.0" into integer components.
 // Returns an empty vector if any component is not a non-negative integer.
 auto parse_version_components(const std::string& name) -> std::vector<int>
@@ -231,7 +231,7 @@ Device_impl::Device_impl(
         set_env("DISABLE_LAYER_NV_GR2608_1", "1");
         set_env("DISABLE_VULKAN_OBS_CAPTURE", "1");
 #endif
-#if defined(ERHE_OS_OSX)
+#if defined(ERHE_OS_MACOS)
         //set_env("VK_LOADER_LAYERS_DISABLE", "~implicit~");
         if (graphics_config.vulkan.use_kosmickrisp) {
             // KosmicKrisp ICD lives at <vulkan_sdk>/share/vulkan/icd.d/libkosmickrisp_icd.json

@@ -22,13 +22,14 @@ project(
     LANGUAGES    C CXX
 )
 
-include(cmake/CPM.cmake)
-
 # Use a persistent source cache so CPM downloads survive --fresh rebuilds.
 # Override with -DCPM_SOURCE_CACHE=<path> or the CPM_SOURCE_CACHE env var.
+# Must be set before including CPM.cmake, which reads it at include time.
 if (NOT CPM_SOURCE_CACHE AND NOT DEFINED ENV{CPM_SOURCE_CACHE})
     set(CPM_SOURCE_CACHE "${PROJECT_SOURCE_DIR}/.cpm_cache" CACHE PATH "CPM source cache directory")
 endif()
+
+include(cmake/CPM.cmake)
 
 # Pass -DFETCHCONTENT_FULLY_DISCONNECTED=ON to skip all network access
 # when sources are already cached (fastest possible reconfigure).
@@ -91,7 +92,7 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     message("Detected Apple OSX")
     set(ERHE_TARGET_OS_OSX TRUE)
     set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_MACOS_MVK)
-    add_definitions(-DERHE_OS_OSX)
+    add_definitions(-DERHE_OS_MACOS)
     # Ad-hoc code signing so that all executables can run without manual codesign
     set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
     set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "")
@@ -185,7 +186,7 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME              spdlog
-    VERSION           1.16.0
+    VERSION           1.17.0
     GIT_SHALLOW       TRUE
     GITHUB_REPOSITORY gabime/spdlog
     OPTIONS "SPDLOG_FMT_EXTERNAL ON"
@@ -208,8 +209,8 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME              etl
-    VERSION           20.45.0
-    GIT_TAG           20.45.0
+    VERSION           20.47.1
+    GIT_TAG           20.47.1
     GIT_SHALLOW       TRUE
     GITHUB_REPOSITORY ETLCPP/etl
 )
@@ -264,7 +265,7 @@ elseif (${ERHE_GRAPHICS_LIBRARY} STREQUAL "vulkan")
     add_definitions(-DVK_NO_PROTOTYPES)
     CPMAddPackage(
         NAME              Vulkan-Headers
-        GIT_TAG           vulkan-sdk-1.4.335.0
+        GIT_TAG           vulkan-sdk-1.4.341.0
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY KhronosGroup/Vulkan-Headers
     )
@@ -277,7 +278,7 @@ elseif (${ERHE_GRAPHICS_LIBRARY} STREQUAL "vulkan")
     set(VOLK_STATIC_DEFINES VK_NO_PROTOTYPES CACHE STRING "" FORCE)
     CPMAddPackage(
         NAME              volk
-        GIT_TAG           vulkan-sdk-1.4.335.0
+        GIT_TAG           vulkan-sdk-1.4.341.0
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY zeux/volk
     )
@@ -297,7 +298,7 @@ elseif (${ERHE_GRAPHICS_LIBRARY} STREQUAL "metal")
     CPMAddPackage(
         NAME              SPIRV-Cross
         GITHUB_REPOSITORY KhronosGroup/SPIRV-Cross
-        GIT_TAG           vulkan-sdk-1.4.335.0
+        GIT_TAG           vulkan-sdk-1.4.341.0
         GIT_SHALLOW       TRUE
     )
 elseif (${ERHE_GRAPHICS_LIBRARY} STREQUAL "none")
@@ -315,7 +316,7 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME              httplib
-    VERSION           0.18.7
+    VERSION           0.43.1
     GIT_SHALLOW       TRUE
     GITHUB_REPOSITORY yhirose/cpp-httplib
 )
@@ -326,8 +327,8 @@ vscode_support()
 if (${ERHE_WINDOW_LIBRARY} STREQUAL "sdl")
     CPMAddPackage(
         NAME              sdl
-        VERSION           release-3.4.0
-        GIT_TAG           release-3.4.0
+        VERSION           release-3.4.4
+        GIT_TAG           release-3.4.4
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY libsdl-org/sdl
         OPTIONS
@@ -365,7 +366,7 @@ endif ()
 
 CPMAddPackage(
     NAME              simdjson
-    VERSION           4.2.4
+    VERSION           4.6.3
     GIT_SHALLOW       TRUE
     GITHUB_REPOSITORY simdjson/simdjson
 )
@@ -389,7 +390,8 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME              wuffs
-    VERSION           0.4.0-alpha.9
+    GIT_TAG           126a80a8f1dd62c40ca6391dc37094538dca795a
+    #VERSION           0.4.0-alpha.9
     GIT_SHALLOW       TRUE
     GITHUB_REPOSITORY google/wuffs
 )
@@ -414,7 +416,8 @@ endif ()
 if (${ERHE_SVG_LIBRARY} STREQUAL "plutosvg")
     CPMAddPackage(
         NAME              plutosvg
-        VERSION           0.0.7
+        GIT_TAG           cc385fd83ebf890507c8cae37e3fe96cf166fed1
+        #VERSION           0.0.7
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY sammycage/plutosvg
     )
@@ -428,12 +431,14 @@ endif ()
 if (${ERHE_GLTF_LIBRARY} STREQUAL "fastgltf")
     CPMAddPackage(
         NAME              fastgltf
-        GIT_TAG           v0.9.0
+        GIT_TAG           a31be255ff041fa1d6697e5040fef3c9b6405795
+        #GIT_TAG           v0.9.0
         GITHUB_REPOSITORY spnda/fastgltf
         OPTIONS
                   "FASTGLTF_ENABLE_DEPRECATED_EXT ON"
                        "FASTGLTF_COMPILE_AS_CPP20 ON"
         "FASTGLTF_ENABLE_KHR_PHYSICS_RIGID_BODIES ON"
+                         "FASTGLTF_ENABLE_INSTALL OFF"
     )
     message(STATUS "Erhe configured to use fastgltf for glTF.")
     add_definitions(-DERHE_GLTF_LIBRARY_FASTGLTF)
@@ -445,7 +450,7 @@ endif ()
 if (${ERHE_PROFILE_LIBRARY} STREQUAL "nvtx")
     CPMAddPackage(
         NAME              nvtx
-        VERSION           3.4.0
+        VERSION           3.5.0
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY NVIDIA/NVTX
     )
@@ -517,8 +522,8 @@ endif ()
 if (${ERHE_FONT_RASTERIZATION_LIBRARY} STREQUAL "freetype")
     CPMAddPackage(
         NAME              freetype
-        VERSION           2.14.1
-        GIT_TAG           VER-2-14-1
+        VERSION           2.14.3
+        GIT_TAG           VER-2-14-3
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY freetype/freetype
     )
@@ -532,7 +537,7 @@ endif ()
 if (${ERHE_TEXT_LAYOUT_LIBRARY} STREQUAL "harfbuzz")
     CPMAddPackage(
         NAME              harfbuzz
-        GIT_TAG           12.3.0
+        GIT_TAG           14.2.0
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY harfbuzz/harfbuzz
     )
@@ -546,7 +551,7 @@ endif ()
 if (${ERHE_RAYTRACE_LIBRARY} STREQUAL "embree")
     CPMAddPackage(
         NAME              embree
-        VERSION           4.4.0
+        VERSION           4.4.1
         GITHUB_REPOSITORY RenderKit/embree
         OPTIONS
             "EMBREE_ISPC_SUPPORT OFF"
@@ -637,8 +642,8 @@ endif ()
 if (${ERHE_XR_LIBRARY} STREQUAL "openxr")
     CPMAddPackage(
         NAME              OpenXR-SDK
-        VERSION           1.1.54
-        GIT_TAG           release-1.1.54
+        VERSION           1.1.58
+        GIT_TAG           release-1.1.58
         GIT_SHALLOW       TRUE
         GITHUB_REPOSITORY KhronosGroup/OpenXR-SDK-Source
         OPTIONS

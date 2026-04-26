@@ -3,10 +3,10 @@
 // macOS + Vulkan: small Objective-C++ bridge that reaches through an SDL
 // window into the underlying CAMetalLayer so we can pin drawableSize from
 // C++ without going through MoltenVK. The implementation lives in
-// vulkan_metal_layer_mac.mm and is compiled only when ERHE_OS_OSX +
+// vulkan_metal_layer_mac.mm and is compiled only when ERHE_OS_MACOS +
 // ERHE_GRAPHICS_LIBRARY_VULKAN are both defined.
 
-#if defined(ERHE_OS_OSX) && defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
+#if defined(ERHE_OS_MACOS) && defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
 
 namespace erhe::graphics {
 

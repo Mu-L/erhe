@@ -6,7 +6,7 @@
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
 #include "erhe_graphics/vulkan/vulkan_render_pass.hpp"
 #include "erhe_graphics/vulkan/vulkan_surface.hpp"
-#if defined(ERHE_OS_OSX)
+#if defined(ERHE_OS_MACOS)
 #   include "erhe_graphics/vulkan/vulkan_metal_layer_mac.hpp"
 #endif
 #include "erhe_graphics/graphics_log.hpp"
@@ -189,7 +189,7 @@ auto Swapchain_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bo
 
     VkResult result = VK_SUCCESS;
 
-#if defined(ERHE_OS_OSX)
+#if defined(ERHE_OS_MACOS)
     // Force CAMetalLayer.drawableSize to match the swapchain extent before
     // every acquire. AppKit's live-resize layout callbacks can reset the
     // layer's drawableSize to (bounds x contentsScale) transiently during
@@ -212,7 +212,7 @@ auto Swapchain_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bo
 #endif
 
     if (!frame_begin_info.request_resize) {
-#if defined(ERHE_OS_OSX)
+#if defined(ERHE_OS_MACOS)
         pin_drawable_size_to_swapchain_extent();
 #endif
         result = acquire_next_image(&m_acquired_image_index);
@@ -229,7 +229,7 @@ auto Swapchain_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bo
             m_state                = Swapchain_frame_state::idle;
             return false;
         }
-#if defined(ERHE_OS_OSX)
+#if defined(ERHE_OS_MACOS)
         pin_drawable_size_to_swapchain_extent();
 #endif
         result = acquire_next_image(&m_acquired_image_index);

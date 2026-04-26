@@ -25,7 +25,7 @@ public:
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     bool            use_finish              {false};
     int             gl_major                {4};
-# if defined(ERHE_OS_OSX)
+# if defined(ERHE_OS_MACOS)
     int             gl_minor                {1};
 # else
     int             gl_minor                {6};

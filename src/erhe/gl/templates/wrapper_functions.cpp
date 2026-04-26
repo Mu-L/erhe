@@ -16,7 +16,7 @@ namespace gl {{
 // To enable GL error checking after every GL call, define ERHE_GL_CHECK_ERRORS
 // before including this file, or pass it via CMake. Enabled by default on macOS
 // debug builds.
-#if !defined(ERHE_GL_CHECK_ERRORS) && defined(ERHE_OS_OSX) && !defined(NDEBUG)
+#if !defined(ERHE_GL_CHECK_ERRORS) && defined(ERHE_OS_MACOS) && !defined(NDEBUG)
 #   define ERHE_GL_CHECK_ERRORS
 #endif
 

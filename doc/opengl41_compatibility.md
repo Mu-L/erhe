@@ -233,7 +233,7 @@ The compute shader pipeline (CPU -> SSBO -> compute expand -> triangles) is only
 
 ## GL Error Checking
 
-The GL wrapper template (`templates/wrapper_functions.cpp`) supports per-call error checking via the `ERHE_CHECK_GL_ERRORS` macro. Enabled automatically on macOS debug builds (`ERHE_OS_OSX && !NDEBUG`). Can be forced on/off via `-DERHE_GL_CHECK_ERRORS` CMake define. Runtime toggle via `gl_helpers::set_error_checking(bool)`.
+The GL wrapper template (`templates/wrapper_functions.cpp`) supports per-call error checking via the `ERHE_CHECK_GL_ERRORS` macro. Enabled automatically on macOS debug builds (`ERHE_OS_MACOS && !NDEBUG`). Can be forced on/off via `-DERHE_GL_CHECK_ERRORS` CMake define. Runtime toggle via `gl_helpers::set_error_checking(bool)`.
 
 ## High-DPI (macOS Retina)
 
