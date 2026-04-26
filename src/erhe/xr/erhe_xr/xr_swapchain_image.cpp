@@ -206,12 +206,15 @@ namespace {
     const std::string&             debug_label
 ) -> std::shared_ptr<erhe::graphics::Texture>
 {
+    // The codebase convention is sample_count == 0 for non-MSAA textures;
+    // OpenXR's recommendedSwapchainSampleCount is 1 for non-MSAA, so map 1 to 0.
+    const int normalized_sample_count = (sample_count > 1) ? static_cast<int>(sample_count) : 0;
     erhe::graphics::Texture_create_info create_info{
         .device            = device,
         .usage_mask        = texture_usage_mask,
         .type              = erhe::graphics::Texture_type::texture_2d,
         .pixelformat       = pixelformat,
-        .sample_count      = static_cast<int>(sample_count),
+        .sample_count      = normalized_sample_count,
         .width             = static_cast<int>(width),
         .height            = static_cast<int>(height),
         .wrap_texture_name = wrap_texture_name,

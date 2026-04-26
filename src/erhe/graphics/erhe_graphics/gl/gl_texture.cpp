@@ -775,8 +775,37 @@ Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_inf
         ERHE_VERIFY(m_width == create_info.width);
         ERHE_VERIFY(m_height == create_info.height);
 
-        m_sample_count = samples;
-        m_pixelformat  = gl_helpers::convert_from_gl(internal_format);
+        // For externally-imported textures (e.g. OpenXR swapchain images backed
+        // by Vulkan-GL interop), GL_TEXTURE_SAMPLES and GL_TEXTURE_INTERNAL_FORMAT
+        // can report 0 because the level-0 record was never populated through the
+        // standard glTexStorage* path. Prefer the caller-supplied values (already
+        // assigned to m_sample_count and m_pixelformat above) and only adopt the
+        // GL-queried values when they look valid. When both are valid and disagree,
+        // trust the GL query and warn.
+        if (samples != 0) {
+            m_sample_count = samples;
+        }
+        if (internal_format_i != 0) {
+            const erhe::dataformat::Format queried_pixelformat = gl_helpers::convert_from_gl(internal_format);
+            if (queried_pixelformat != erhe::dataformat::Format::format_undefined) {
+                if (queried_pixelformat != m_pixelformat) {
+                    log_texture->warn(
+                        "wrap_texture '{}': GL reports {}, caller said {}; using GL-reported value",
+                        m_debug_label.string_view(),
+                        gl::c_str(internal_format),
+                        erhe::dataformat::c_str(m_pixelformat)
+                    );
+                    m_pixelformat = queried_pixelformat;
+                }
+            } else {
+                log_texture->warn(
+                    "wrap_texture '{}': GL reports unmapped internal format {}; keeping caller value {}",
+                    m_debug_label.string_view(),
+                    gl::c_str(internal_format),
+                    erhe::dataformat::c_str(m_pixelformat)
+                );
+            }
+        }
         GLint immutable_format_i{0};
         GLint immutable_levels  {0};
         if (use_dsa) {

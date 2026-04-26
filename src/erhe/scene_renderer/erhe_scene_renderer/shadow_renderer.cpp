@@ -33,7 +33,7 @@ static constexpr std::string_view c_shadow_renderer_initialize_component{"Shadow
 
 Shadow_renderer::Shadow_renderer(erhe::graphics::Device& graphics_device, Program_interface& program_interface)
     : m_graphics_device{graphics_device}
-    , m_empty_fragment_outputs{{}}
+    , m_empty_fragment_outputs{}
     , m_shader_stages{
         graphics_device,
         erhe::graphics::build_shader_stages(

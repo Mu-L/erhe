@@ -1101,7 +1101,7 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
         auto acquired_depth_stencil_swapchain_image_opt = swapchains.depth_stencil_swapchain.acquire();
         bool use_depth_image = acquired_depth_stencil_swapchain_image_opt.has_value() && swapchains.depth_stencil_swapchain.wait();
         if (!use_depth_image) {
-            log_xr->warn("no swapchain depth stencil image for view {}", i);
+            log_xr->debug("no swapchain depth stencil image for view {}", i);
         }
 
         const auto& acquired_color_swapchain_image = acquired_color_swapchain_image_opt.value();
