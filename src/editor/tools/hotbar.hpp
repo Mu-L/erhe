@@ -23,6 +23,7 @@ namespace erhe::imgui {
 }
 namespace erhe::rendergraph {
     class Rendergraph;
+    class Rendergraph_node;
 }
 namespace erhe::scene {
     class Camera;
@@ -175,6 +176,9 @@ private:
     erhe::commands::Xr_vector2f_click_command m_trackpad_click_command;
     Hotbar_thumbstick_command                 m_thumbstick_command;
 #endif
+
+    Headset_view*                                   m_headset_view{nullptr};
+    erhe::rendergraph::Rendergraph_node*            m_connected_consumer_node{nullptr};
 
     std::shared_ptr<erhe::scene::Node>              m_rendertarget_node;
     std::shared_ptr<Rendertarget_mesh>              m_rendertarget_mesh;

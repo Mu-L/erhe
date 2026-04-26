@@ -1085,6 +1085,16 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
     m_xr_composition_layer_projection_views.resize(view_count_output);
     m_xr_composition_layer_depth_infos     .resize(view_count_output);
 
+    // Acquired-image optionals live at function scope so their destructors
+    // (which call xrReleaseSwapchainImage) run AFTER m_graphics_device.end_frame()
+    // below, not at the end of each loop iteration. Submitting before
+    // release is required by XR_KHR_vulkan_enable2: the runtime tracks
+    // queue submissions to know when GPU work for a swapchain image is
+    // complete, so submission must precede release. On OpenGL the order
+    // is harmless.
+    std::vector<std::optional<Swapchain_image>> acquired_color_imgs(view_count_output);
+    std::vector<std::optional<Swapchain_image>> acquired_depth_imgs(view_count_output);
+
     static constexpr std::string_view c_id_views{"HS views"};
     static constexpr std::string_view c_id_view{"HS view"};
 
@@ -1092,20 +1102,19 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
         ERHE_PROFILE_SCOPE("view render");
 
         auto& swapchains = m_view_swapchains[i];
-        auto acquired_color_swapchain_image_opt = swapchains.color_swapchain.acquire();
-        if (!acquired_color_swapchain_image_opt.has_value() || !swapchains.color_swapchain.wait()) {
+        acquired_color_imgs[i] = swapchains.color_swapchain.acquire();
+        if (!acquired_color_imgs[i].has_value() || !swapchains.color_swapchain.wait()) {
             log_xr->warn("no swapchain color image for view {}", i);
             return false;
         }
 
-        auto acquired_depth_stencil_swapchain_image_opt = swapchains.depth_stencil_swapchain.acquire();
-        bool use_depth_image = acquired_depth_stencil_swapchain_image_opt.has_value() && swapchains.depth_stencil_swapchain.wait();
+        acquired_depth_imgs[i] = swapchains.depth_stencil_swapchain.acquire();
+        bool use_depth_image = acquired_depth_imgs[i].has_value() && swapchains.depth_stencil_swapchain.wait();
         if (!use_depth_image) {
             log_xr->debug("no swapchain depth stencil image for view {}", i);
         }
 
-        const auto& acquired_color_swapchain_image = acquired_color_swapchain_image_opt.value();
-        erhe::graphics::Texture* color_texture = acquired_color_swapchain_image.get_texture();
+        erhe::graphics::Texture* color_texture = acquired_color_imgs[i]->get_texture();
         if (color_texture == nullptr) {
             log_xr->warn("invalid color image for view {}", i);
             return false;
@@ -1113,8 +1122,7 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
 
         erhe::graphics::Texture* depth_stencil_texture = nullptr;
         if (use_depth_image) {
-            const auto& acquired_depth_stencil_swapchain_image = acquired_depth_stencil_swapchain_image_opt.value();
-            depth_stencil_texture = acquired_depth_stencil_swapchain_image.get_texture();
+            depth_stencil_texture = acquired_depth_imgs[i]->get_texture();
             if (depth_stencil_texture == nullptr) {
                 log_xr->warn("invalid depth image for view {}", i);
                 use_depth_image = false;
@@ -1186,6 +1194,14 @@ auto Xr_session::render_frame(std::function<bool(Render_view&)> render_view_call
                 .imageArrayIndex = 0 // TODO
             }
         };
+    }
+
+    // Submit Vulkan work BEFORE the acquired_*_imgs vectors destruct
+    // (which would call xrReleaseSwapchainImage). On Vulkan this runs
+    // vkEndCommandBuffer + vkQueueSubmit2 with the slot fence; on GL it
+    // is essentially a no-op.
+    if (!m_graphics_device.end_frame()) {
+        return false;
     }
 
     return true;

@@ -427,8 +427,15 @@ public:
                 m_graphics_device->end_swapchain_frame(frame_end_info);
             }
         }
-        const bool end_frame_ok = m_graphics_device->end_frame();
-        ERHE_VERIFY(end_frame_ok);
+        // Under OpenXR, Xr_session::render_frame already calls
+        // Device::end_frame so vkQueueSubmit2 lands BEFORE
+        // xrReleaseSwapchainImage and xrEndFrame. Skip the redundant
+        // call here in that case; still fire if render_frame did not
+        // run (e.g. shouldRender==false) so the slot fence stays paced.
+        if (m_graphics_device->is_in_device_frame()) {
+            const bool end_frame_ok = m_graphics_device->end_frame();
+            ERHE_VERIFY(end_frame_ok);
+        }
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         //if (!m_app_context.OpenXR) {

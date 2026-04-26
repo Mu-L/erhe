@@ -173,6 +173,25 @@ Hud::Hud(
         true
     );
 
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    // In OpenXR mode the Headset_view_node must be the rendergraph sink
+    // (everything before it, nothing after). Otherwise this orphan
+    // Rendertarget_imgui_host would be sorted after the headset node and
+    // try to record into the device cb after Xr_session::render_frame
+    // already submitted the frame, asserting in
+    // Device_impl::acquire_shared_command_buffer.
+    if (app_context.OpenXR) {
+        erhe::rendergraph::Rendergraph_node* headset_node = headset_view.get_rendergraph_node();
+        if (headset_node != nullptr) {
+            rendergraph.connect(
+                erhe::rendergraph::Rendergraph_node_key::rendertarget_texture,
+                m_rendertarget_imgui_viewport.get(),
+                headset_node
+            );
+        }
+    }
+#endif
+
     m_rendertarget_imgui_viewport->set_begin_callback(
         [&app_windows](erhe::imgui::Imgui_host& imgui_host) {
             app_windows.viewport_menu(imgui_host);

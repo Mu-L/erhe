@@ -60,10 +60,17 @@ Headset_view_resources::Headset_view_resources(
     render_pass_descriptor.color_attachments[0].texture      = m_color_texture;
     render_pass_descriptor.color_attachments[0].load_action  = erhe::graphics::Load_action::Clear;
     render_pass_descriptor.color_attachments[0].store_action = erhe::graphics::Store_action::Store;
-    render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::sampled;
-    render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::shader_read_only_optimal;
-    render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::sampled;
-    render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::shader_read_only_optimal;
+    // OpenXR Vulkan2 runtimes hand the color image to the application in
+    // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL and require it to be in
+    // that same layout at xrReleaseSwapchainImage. Leaving it in
+    // shader_read_only_optimal forces the runtime into an unexpected
+    // layout transition and shows up as visible head-motion judder /
+    // jitter on the WMR / Microsoft OpenXR runtime even when our
+    // submission ordering is correct.
+    render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::color_attachment;
+    render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::color_attachment_optimal;
+    render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::color_attachment;
+    render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::color_attachment_optimal;
     if ((m_depth_stencil_texture != nullptr) && (erhe::dataformat::get_depth_size_bits(render_view.depth_stencil_format) > 0)) {
         render_pass_descriptor.depth_attachment.texture      = m_depth_stencil_texture;
         render_pass_descriptor.depth_attachment.load_action  = erhe::graphics::Load_action::Clear;

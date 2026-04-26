@@ -222,6 +222,12 @@ Hotbar::Hotbar(
     m_window.on_begin_callback = [this]() { window_on_begin(); };
     m_window.on_end_callback   = [this]() { window_on_end(); };
 
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    m_headset_view = &headset_view;
+#else
+    static_cast<void>(headset_view);
+#endif
+
     m_enabled    = hotbar_config.enabled;
     m_show       = hotbar_config.show;
     m_use_radial = hotbar_config.use_radial;
@@ -354,6 +360,28 @@ void Hotbar::init_hotbar()
     m_rendertarget_mesh->enable_flag_bits(erhe::Item_flags::show_in_developer_ui);
     m_rendertarget_node->enable_flag_bits(erhe::Item_flags::show_in_developer_ui);
 
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    // In OpenXR mode the Headset_view_node must be the rendergraph sink
+    // (everything before it, nothing after). Without this connect, this
+    // Rendertarget_imgui_host would be sorted as an orphan after the
+    // headset node and try to record into the device cb after
+    // Xr_session::render_frame already submitted the frame, asserting in
+    // Device_impl::acquire_shared_command_buffer. The on_hover_scene_view
+    // handler tracks m_connected_consumer_node so it does not duplicate
+    // this edge when the headset's hover message arrives later.
+    if (m_context.OpenXR && (m_headset_view != nullptr)) {
+        erhe::rendergraph::Rendergraph_node* headset_node = m_headset_view->get_rendergraph_node();
+        if (headset_node != nullptr) {
+            m_context.rendergraph->connect(
+                erhe::rendergraph::Rendergraph_node_key::rendertarget_texture,
+                m_rendertarget_imgui_host.get(),
+                headset_node
+            );
+            m_connected_consumer_node = headset_node;
+        }
+    }
+#endif
+
     set_mesh_visibility(m_show);
 }
 
@@ -480,19 +508,23 @@ void Hotbar::on_hover_scene_view_message(Hover_scene_view_message& message)
         if (m_use_radial) {
             update_node_transform();
         } else {
-            using Rendergraph_node = erhe::rendergraph::Rendergraph_node;
-            auto old_node = (old_scene_view     != nullptr) ? old_scene_view    ->get_rendergraph_node() : nullptr;
-            auto new_node = (message.scene_view != nullptr) ? message.scene_view->get_rendergraph_node() : nullptr;
-
-            erhe::rendergraph::Rendergraph& rendergraph = *m_context.rendergraph;
-            if (old_node != new_node) {
-                if (old_node) {
-                    rendergraph.disconnect(erhe::rendergraph::Rendergraph_node_key::rendertarget_texture, m_rendertarget_imgui_host.get(), old_node);
+            erhe::rendergraph::Rendergraph_node* new_node =
+                (message.scene_view != nullptr) ? message.scene_view->get_rendergraph_node() : nullptr;
+            // Compare against what is actually connected, not against the
+            // hover-tracked old_scene_view -- init_hotbar may have already
+            // connected the rendertarget to the headset_view in OpenXR
+            // mode, in which case the first hover message would otherwise
+            // create a duplicate edge.
+            if (new_node != m_connected_consumer_node) {
+                erhe::rendergraph::Rendergraph& rendergraph = *m_context.rendergraph;
+                if (m_connected_consumer_node != nullptr) {
+                    rendergraph.disconnect(erhe::rendergraph::Rendergraph_node_key::rendertarget_texture, m_rendertarget_imgui_host.get(), m_connected_consumer_node);
                 }
                 set_mesh_visibility(static_cast<bool>(new_node));
-                if (new_node) {
+                if (new_node != nullptr) {
                     rendergraph.connect(erhe::rendergraph::Rendergraph_node_key::rendertarget_texture, m_rendertarget_imgui_host.get(), new_node);
                 }
+                m_connected_consumer_node = new_node;
             }
         }
     }
