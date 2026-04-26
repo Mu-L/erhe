@@ -276,6 +276,10 @@ elseif (${ERHE_GRAPHICS_LIBRARY} STREQUAL "vulkan")
         GITHUB_REPOSITORY GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
     )
     set(VOLK_STATIC_DEFINES VK_NO_PROTOTYPES CACHE STRING "" FORCE)
+    # Force volk to use the CPM-fetched Vulkan-Headers instead of an installed
+    # Vulkan SDK ($ENV{VULKAN_SDK}) or whatever find_package(Vulkan) locates.
+    # This is volk's highest-priority lookup (see VOLK_PULL_IN_VULKAN logic).
+    set(VULKAN_HEADERS_INSTALL_DIR "${Vulkan-Headers_SOURCE_DIR}" CACHE PATH "Use CPM Vulkan-Headers" FORCE)
     CPMAddPackage(
         NAME              volk
         GIT_TAG           vulkan-sdk-1.4.341.0
