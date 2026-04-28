@@ -139,13 +139,15 @@ auto Glsl_file_loader::read_shader_source_file(
 ) -> std::string
 {
     m_extra_include_paths = extra_include_paths;
-    auto i = std::find(m_include_stack.begin(), m_include_stack.end(), path);
-    if (i != m_include_stack.end()) {
-        log_glsl->warn("#include cycle for {}", path.string());
-        return {};
-    }
-    if (path.empty()) {
-        return {};
+    {
+        auto i = std::find(m_include_stack.begin(), m_include_stack.end(), path);
+        if (i != m_include_stack.end()) {
+            log_glsl->warn("#include cycle for {}", path.string());
+            return {};
+        }
+        if (path.empty()) {
+            return {};
+        }
     }
 
     std::filesystem::path resolved_path = path;
