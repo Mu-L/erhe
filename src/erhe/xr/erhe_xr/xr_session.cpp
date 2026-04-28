@@ -1126,25 +1126,24 @@ auto Xr_session::render_frame(erhe::graphics::Command_buffer& command_buffer, st
     // is a fan-out from setup -- no inter-view chain.
     //
     // Order:
-    //   1. Allocate per-view cbs and register signal_semaphore on setup cb
+    //   1. Allocate per-view cbs and register signal_gpu on setup cb
     //      for each one. After setup_cb's submit fires, every per-view
-    //      cb's implicit semaphore is signaled.
+    //      cb's implicit GPU primitive is signaled.
     //   2. End + submit setup_cb. The GPU starts consuming the pre-view
     //      work immediately.
     //   3. Per-view loop: wait on the swapchain image (CPU-blocking, but
     //      now overlapped with setup-cb GPU execution), begin the per-view
-    //      cb, register wait_for_semaphore on its own semaphore, run the
+    //      cb, register wait_for_gpu on its own GPU primitive, run the
     //      callback (which records the view's render passes into this cb),
     //      end + submit. View 0's submit kicks GPU view rendering ASAP --
     //      the CPU then records view 1 while GPU is consuming view 0, etc.
     std::vector<erhe::graphics::Command_buffer*> view_cbs(view_count_output, nullptr);
     for (uint32_t i = 0; i < view_count_output; ++i) {
         view_cbs[i] = &m_graphics_device.get_command_buffer(/*thread_slot*/ 0);
-        // Make setup_cb's submit signal view_cbs[i]'s implicit semaphore.
-        // Each view gets its own semaphore signal -- binary semaphores
-        // can only be waited on once, so a single-signal/N-wait scheme
-        // would not work.
-        command_buffer.signal_semaphore(*view_cbs[i]);
+        // Make setup_cb's submit signal view_cbs[i]'s implicit GPU primitive.
+        // Each view gets its own signal -- binary semaphores can only be
+        // waited on once, so a single-signal/N-wait scheme would not work.
+        command_buffer.signal_gpu(*view_cbs[i]);
     }
     command_buffer.end();
     {
@@ -1185,11 +1184,11 @@ auto Xr_session::render_frame(erhe::graphics::Command_buffer& command_buffer, st
 
         erhe::graphics::Command_buffer& view_cb = *view_cbs[i];
         view_cb.begin();
-        // Wait on own semaphore (signaled by setup's submit registration
+        // Wait on own GPU primitive (signaled by setup's submit registration
         // above). Pairing: the matching signal target was view_cb itself,
-        // so the wait target is also view_cb -- "wait on the semaphore
+        // so the wait target is also view_cb -- "wait on the GPU primitive
         // setup arranged for me".
-        view_cb.wait_for_semaphore(view_cb);
+        view_cb.wait_for_gpu(view_cb);
 
         Render_view render_view{
             .slot      = i,

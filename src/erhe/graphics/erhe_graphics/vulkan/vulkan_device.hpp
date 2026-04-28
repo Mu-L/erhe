@@ -1,5 +1,6 @@
 #pragma once
 
+#include "erhe_graphics/command_buffer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/shader_monitor.hpp"
 #include "erhe_dataformat/dataformat.hpp"

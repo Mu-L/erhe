@@ -1015,7 +1015,7 @@ void Device_impl::submit_command_buffers(std::span<Command_buffer* const> comman
         return;
     }
 
-    // CPU-side wait phase: any wait_for_fence(other) registered on the
+    // CPU-side wait phase: any wait_for_cpu(other) registered on the
     // cbs in this batch is converted into a vkWaitForFences before the
     // submit is enqueued. Done up front so a batched submit never
     // partially blocks.

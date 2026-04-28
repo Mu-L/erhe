@@ -93,23 +93,23 @@ void Command_buffer_impl::end_swapchain(const Frame_end_info& /*frame_end_info*/
     // Swapchain_impl::end_frame.
 }
 
-void Command_buffer_impl::wait_for_fence(Command_buffer& /*other*/)
+void Command_buffer_impl::wait_for_cpu(Command_buffer& /*other*/)
 {
     // GL serializes through the driver-managed command stream; explicit
-    // cross-cb fence waits are a no-op for now.
+    // cross-cb CPU waits are a no-op for now.
 }
 
-void Command_buffer_impl::wait_for_semaphore(Command_buffer& /*other*/)
+void Command_buffer_impl::wait_for_gpu(Command_buffer& /*other*/)
 {
     // GL has no equivalent of Vulkan binary semaphores in this layer.
 }
 
-void Command_buffer_impl::signal_semaphore(Command_buffer& /*other*/)
+void Command_buffer_impl::signal_gpu(Command_buffer& /*other*/)
 {
     // GL has no equivalent of Vulkan binary semaphores in this layer.
 }
 
-void Command_buffer_impl::signal_fence(Command_buffer& /*other*/)
+void Command_buffer_impl::signal_cpu(Command_buffer& /*other*/)
 {
     // GL has no implicit per-cb fence; iteration target if needed.
 }

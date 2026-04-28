@@ -50,19 +50,19 @@ void Command_buffer_impl::end_swapchain(const Frame_end_info& frame_end_info)
     static_cast<void>(frame_end_info);
 }
 
-void Command_buffer_impl::wait_for_fence(Command_buffer& /*other*/)
+void Command_buffer_impl::wait_for_cpu(Command_buffer& /*other*/)
 {
 }
 
-void Command_buffer_impl::wait_for_semaphore(Command_buffer& /*other*/)
+void Command_buffer_impl::wait_for_gpu(Command_buffer& /*other*/)
 {
 }
 
-void Command_buffer_impl::signal_semaphore(Command_buffer& /*other*/)
+void Command_buffer_impl::signal_gpu(Command_buffer& /*other*/)
 {
 }
 
-void Command_buffer_impl::signal_fence(Command_buffer& /*other*/)
+void Command_buffer_impl::signal_cpu(Command_buffer& /*other*/)
 {
 }
 

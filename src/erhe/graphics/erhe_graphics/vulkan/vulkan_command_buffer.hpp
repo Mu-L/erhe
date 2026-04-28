@@ -18,6 +18,7 @@ namespace erhe::graphics {
 class Buffer;
 class Command_buffer;
 class Device;
+class Device_impl;
 class Frame_begin_info;
 class Frame_end_info;
 class Frame_state;
@@ -44,7 +45,7 @@ public:
     // when a cb engaged a swapchain via begin_swapchain.
     std::vector<Swapchain_impl*>           swapchains_to_present;
     // Single fence the submit signals on completion, if any.
-    // Populated from a Command_buffer_impl whose signal_fence(...) was
+    // Populated from a Command_buffer_impl whose signal_cpu(...) was
     // called; Vulkan's vkQueueSubmit2 only takes one fence per submit
     // so collect_synchronization() asserts no other cb already set it.
     VkFence                                fence{VK_NULL_HANDLE};
@@ -73,10 +74,10 @@ public:
     [[nodiscard]] auto begin_swapchain   (const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool;
     void               end_swapchain     (const Frame_end_info& frame_end_info);
 
-    void wait_for_fence    (Command_buffer& other);
-    void wait_for_semaphore(Command_buffer& other);
-    void signal_semaphore  (Command_buffer& other);
-    void signal_fence      (Command_buffer& other);
+    void wait_for_cpu(Command_buffer& other);
+    void wait_for_gpu(Command_buffer& other);
+    void signal_gpu  (Command_buffer& other);
+    void signal_cpu  (Command_buffer& other);
 
     // GPU-work primitives that record into m_vk_command_buffer.
     // upload_* allocate a staging buffer, vkCmdCopyBuffer[ToImage]
@@ -117,7 +118,7 @@ public:
     [[nodiscard]] auto get_implicit_fence    () const noexcept -> VkFence;
 
     // CPU-side wait phase of submit. Performs vkWaitForFences on every
-    // fence registered via wait_for_fence(other) before the cb's submit
+    // fence registered via wait_for_cpu(other) before the cb's submit
     // is enqueued. Called by Device_impl::submit_command_buffers prior
     // to building VkSubmitInfo2.
     void pre_submit_wait();
@@ -125,27 +126,32 @@ public:
     // Append this cb's wait/signal/command-buffer submit-info entries to
     // the supplied aggregate. Adds:
     //  - this cb's VkCommandBufferSubmitInfo,
-    //  - other's implicit_semaphore for each wait_for_semaphore(other),
-    //  - other's implicit_semaphore for each signal_semaphore(other),
+    //  - other's implicit_semaphore for each wait_for_gpu(other),
+    //  - other's implicit_semaphore for each signal_gpu(other),
     //  - the swapchain acquire-semaphore (wait) and present-semaphore
     //    (signal) when this cb engaged a swapchain via begin_swapchain,
     //  - other's implicit_fence as submit_info.fence when
-    //    signal_fence(other) was called (asserting no other cb already
+    //    signal_cpu(other) was called (asserting no other cb already
     //    set it; vkQueueSubmit2 takes only one fence per submit).
     void collect_synchronization(Vulkan_submit_info& submit_info);
 
 private:
-    Device*                    m_device{nullptr};
+    // Held as Device_impl* (not Device*) so that a Command_buffer_impl
+    // destroyed during Device_impl::~Device_impl can still reach its
+    // Device_impl. unique_ptr::reset() zeroes its raw pointer before
+    // running the deleter, so going through Device::get_impl() (which
+    // dereferences Device::m_impl) at that point would dereference null.
+    Device_impl*               m_device_impl{nullptr};
     erhe::utility::Debug_label m_debug_label;
     VkCommandBuffer            m_vk_command_buffer{VK_NULL_HANDLE};
 
     VkSemaphore                m_implicit_semaphore{VK_NULL_HANDLE};
     VkFence                    m_implicit_fence    {VK_NULL_HANDLE};
 
-    std::vector<Command_buffer*> m_wait_for_fence_list;
-    std::vector<Command_buffer*> m_wait_for_semaphore_list;
-    std::vector<Command_buffer*> m_signal_semaphore_list;
-    std::vector<Command_buffer*> m_signal_fence_list;
+    std::vector<Command_buffer*> m_wait_for_cpu_list;
+    std::vector<Command_buffer*> m_wait_for_gpu_list;
+    std::vector<Command_buffer*> m_signal_gpu_list;
+    std::vector<Command_buffer*> m_signal_cpu_list;
 
     // Set by begin_swapchain when the per-frame swapchain lookup
     // succeeds. Cleared after collect_synchronization spliced the

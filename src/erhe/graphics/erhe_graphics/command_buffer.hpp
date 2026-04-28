@@ -61,30 +61,36 @@ public:
     void               end_swapchain     (const Frame_end_info& frame_end_info);
 
     // Cross-Command_buffer synchronization. Each Command_buffer carries
-    // an implicit fence + binary semaphore allocated by Device_impl when
-    // the cb is handed out by get_command_buffer(). The four methods
-    // below register dependency edges that the backend collects at
-    // submit time:
+    // an implicit pair of GPU-side and CPU-side wait/signal primitives
+    // allocated by Device_impl when the cb is handed out by
+    // get_command_buffer(). The four methods below register dependency
+    // edges that the backend collects at submit time:
     //
-    //   wait_for_semaphore(other)  -- this cb's submit waits on other's
-    //                                 implicit semaphore (GPU->GPU).
-    //   signal_semaphore  (other)  -- this cb's submit signals other's
-    //                                 implicit semaphore (GPU->GPU).
-    //   wait_for_fence    (other)  -- CPU-side vkWaitForFences on other's
-    //                                 implicit fence before this cb's
-    //                                 submit is enqueued.
-    //   signal_fence      (other)  -- this cb's vkQueueSubmit2 will use
-    //                                 other's implicit fence as its
-    //                                 signal fence (only one signal_fence
-    //                                 per cb).
+    //   wait_for_gpu(other)  -- this cb's GPU work waits on other's
+    //                           GPU-completion (no CPU stall).
+    //                           Vulkan: VkSemaphore wait. Metal:
+    //                           encodeWaitForEvent on MTL::Event.
+    //   signal_gpu  (other)  -- this cb signals other's GPU-side
+    //                           primitive when its GPU work completes.
+    //                           Vulkan: VkSemaphore signal. Metal:
+    //                           encodeSignalEvent on MTL::Event.
+    //   wait_for_cpu(other)  -- CPU-side block before this cb's submit
+    //                           is enqueued, until other's GPU work has
+    //                           completed. Vulkan: vkWaitForFences.
+    //                           Metal: MTL::SharedEvent::waitUntilSignaledValue.
+    //   signal_cpu  (other)  -- this cb's submit signals other's
+    //                           CPU-observable primitive on completion
+    //                           (only one signal_cpu per cb on Vulkan).
+    //                           Vulkan: VkFence on vkQueueSubmit2.
+    //                           Metal: MTL::SharedEvent encodeSignalEvent.
     //
-    // The fences/semaphores themselves are deliberately not exposed
+    // The underlying primitives themselves are deliberately not exposed
     // through the public API; callers only ever name another
     // Command_buffer as the wait/signal target.
-    void wait_for_fence    (Command_buffer& other);
-    void wait_for_semaphore(Command_buffer& other);
-    void signal_semaphore  (Command_buffer& other);
-    void signal_fence      (Command_buffer& other);
+    void wait_for_cpu(Command_buffer& other);
+    void wait_for_gpu(Command_buffer& other);
+    void signal_gpu  (Command_buffer& other);
+    void signal_cpu  (Command_buffer& other);
 
     // GPU-work primitives. These record commands into the cb's
     // backend command buffer. Each one used to live on Device and

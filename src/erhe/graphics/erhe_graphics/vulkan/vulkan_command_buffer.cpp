@@ -24,7 +24,7 @@
 namespace erhe::graphics {
 
 Command_buffer_impl::Command_buffer_impl(Device& device, erhe::utility::Debug_label debug_label)
-    : m_device     {&device}
+    : m_device_impl{&device.get_impl()}
     , m_debug_label{std::move(debug_label)}
 {
 }
@@ -37,8 +37,8 @@ Command_buffer_impl::~Command_buffer_impl() noexcept
     // cycle, or at Device_impl teardown). We only own these handles
     // when set_implicit_sync was called -- e.g. moved-from instances or
     // device-less stubs leave both fields null.
-    if (m_device != nullptr) {
-        Device_sync_pool& sync_pool = m_device->get_impl().get_sync_pool();
+    if (m_device_impl != nullptr) {
+        Device_sync_pool& sync_pool = m_device_impl->get_sync_pool();
         if (m_implicit_semaphore != VK_NULL_HANDLE) {
             sync_pool.recycle_semaphore(m_implicit_semaphore);
             m_implicit_semaphore = VK_NULL_HANDLE;
@@ -51,18 +51,18 @@ Command_buffer_impl::~Command_buffer_impl() noexcept
 }
 
 Command_buffer_impl::Command_buffer_impl(Command_buffer_impl&& other) noexcept
-    : m_device                   {other.m_device}
+    : m_device_impl              {other.m_device_impl}
     , m_debug_label              {std::move(other.m_debug_label)}
     , m_vk_command_buffer        {other.m_vk_command_buffer}
     , m_implicit_semaphore       {other.m_implicit_semaphore}
     , m_implicit_fence           {other.m_implicit_fence}
-    , m_wait_for_fence_list      {std::move(other.m_wait_for_fence_list)}
-    , m_wait_for_semaphore_list  {std::move(other.m_wait_for_semaphore_list)}
-    , m_signal_semaphore_list    {std::move(other.m_signal_semaphore_list)}
-    , m_signal_fence_list        {std::move(other.m_signal_fence_list)}
+    , m_wait_for_cpu_list      {std::move(other.m_wait_for_cpu_list)}
+    , m_wait_for_gpu_list  {std::move(other.m_wait_for_gpu_list)}
+    , m_signal_gpu_list    {std::move(other.m_signal_gpu_list)}
+    , m_signal_cpu_list        {std::move(other.m_signal_cpu_list)}
     , m_swapchain_used           {other.m_swapchain_used}
 {
-    other.m_device              = nullptr;
+    other.m_device_impl         = nullptr;
     other.m_vk_command_buffer   = VK_NULL_HANDLE;
     other.m_implicit_semaphore  = VK_NULL_HANDLE;
     other.m_implicit_fence      = VK_NULL_HANDLE;
@@ -76,8 +76,8 @@ auto Command_buffer_impl::operator=(Command_buffer_impl&& other) noexcept -> Com
     }
 
     // Recycle anything we currently hold before adopting other's state.
-    if (m_device != nullptr) {
-        Device_sync_pool& sync_pool = m_device->get_impl().get_sync_pool();
+    if (m_device_impl != nullptr) {
+        Device_sync_pool& sync_pool = m_device_impl->get_sync_pool();
         if (m_implicit_semaphore != VK_NULL_HANDLE) {
             sync_pool.recycle_semaphore(m_implicit_semaphore);
         }
@@ -86,18 +86,18 @@ auto Command_buffer_impl::operator=(Command_buffer_impl&& other) noexcept -> Com
         }
     }
 
-    m_device                  = other.m_device;
+    m_device_impl             = other.m_device_impl;
     m_debug_label             = std::move(other.m_debug_label);
     m_vk_command_buffer       = other.m_vk_command_buffer;
     m_implicit_semaphore      = other.m_implicit_semaphore;
     m_implicit_fence          = other.m_implicit_fence;
-    m_wait_for_fence_list     = std::move(other.m_wait_for_fence_list);
-    m_wait_for_semaphore_list = std::move(other.m_wait_for_semaphore_list);
-    m_signal_semaphore_list   = std::move(other.m_signal_semaphore_list);
-    m_signal_fence_list       = std::move(other.m_signal_fence_list);
+    m_wait_for_cpu_list     = std::move(other.m_wait_for_cpu_list);
+    m_wait_for_gpu_list = std::move(other.m_wait_for_gpu_list);
+    m_signal_gpu_list   = std::move(other.m_signal_gpu_list);
+    m_signal_cpu_list       = std::move(other.m_signal_cpu_list);
     m_swapchain_used          = other.m_swapchain_used;
 
-    other.m_device              = nullptr;
+    other.m_device_impl         = nullptr;
     other.m_vk_command_buffer   = VK_NULL_HANDLE;
     other.m_implicit_semaphore  = VK_NULL_HANDLE;
     other.m_implicit_fence      = VK_NULL_HANDLE;
@@ -184,34 +184,34 @@ auto Command_buffer_impl::get_implicit_fence() const noexcept -> VkFence
     return m_implicit_fence;
 }
 
-void Command_buffer_impl::wait_for_fence(Command_buffer& other)
+void Command_buffer_impl::wait_for_cpu(Command_buffer& other)
 {
-    m_wait_for_fence_list.push_back(&other);
+    m_wait_for_cpu_list.push_back(&other);
 }
 
-void Command_buffer_impl::wait_for_semaphore(Command_buffer& other)
+void Command_buffer_impl::wait_for_gpu(Command_buffer& other)
 {
-    m_wait_for_semaphore_list.push_back(&other);
+    m_wait_for_gpu_list.push_back(&other);
 }
 
-void Command_buffer_impl::signal_semaphore(Command_buffer& other)
+void Command_buffer_impl::signal_gpu(Command_buffer& other)
 {
-    m_signal_semaphore_list.push_back(&other);
+    m_signal_gpu_list.push_back(&other);
 }
 
-void Command_buffer_impl::signal_fence(Command_buffer& other)
+void Command_buffer_impl::signal_cpu(Command_buffer& other)
 {
-    m_signal_fence_list.push_back(&other);
+    m_signal_cpu_list.push_back(&other);
 }
 
 void Command_buffer_impl::pre_submit_wait()
 {
-    if (m_wait_for_fence_list.empty()) {
+    if (m_wait_for_cpu_list.empty()) {
         return;
     }
-    ERHE_VERIFY(m_device != nullptr);
-    const VkDevice vulkan_device = m_device->get_impl().get_vulkan_device();
-    for (Command_buffer* other : m_wait_for_fence_list) {
+    ERHE_VERIFY(m_device_impl != nullptr);
+    const VkDevice vulkan_device = m_device_impl->get_vulkan_device();
+    for (Command_buffer* other : m_wait_for_cpu_list) {
         ERHE_VERIFY(other != nullptr);
         const VkFence fence = other->get_impl().get_implicit_fence();
         if (fence == VK_NULL_HANDLE) {
@@ -226,12 +226,12 @@ void Command_buffer_impl::pre_submit_wait()
             std::abort();
         }
     }
-    m_wait_for_fence_list.clear();
+    m_wait_for_cpu_list.clear();
 }
 
 void Command_buffer_impl::upload_to_buffer(const Buffer& buffer, const std::size_t offset, const void* data, const std::size_t length)
 {
-    ERHE_VERIFY(m_device != nullptr);
+    ERHE_VERIFY(m_device_impl != nullptr);
     ERHE_VERIFY(m_vk_command_buffer != VK_NULL_HANDLE);
 
     Buffer_impl& impl = const_cast<Buffer_impl&>(buffer.get_impl());
@@ -247,7 +247,7 @@ void Command_buffer_impl::upload_to_buffer(const Buffer& buffer, const std::size
         }
     }
 
-    Device_impl& device_impl = m_device->get_impl();
+    Device_impl& device_impl = *m_device_impl;
     VmaAllocator allocator   = device_impl.get_allocator();
 
     const VkBufferCreateInfo staging_buffer_create_info{
@@ -340,7 +340,7 @@ void Command_buffer_impl::upload_to_texture(
     int                      row_stride
 )
 {
-    ERHE_VERIFY(m_device != nullptr);
+    ERHE_VERIFY(m_device_impl != nullptr);
     ERHE_VERIFY(m_vk_command_buffer != VK_NULL_HANDLE);
 
     if ((data == nullptr) || (width <= 0) || (height <= 0)) {
@@ -353,7 +353,7 @@ void Command_buffer_impl::upload_to_texture(
         : (static_cast<std::size_t>(width) * pixel_size);
     const std::size_t data_size  = src_stride * static_cast<std::size_t>(height);
 
-    Device_impl& device_impl = m_device->get_impl();
+    Device_impl& device_impl = *m_device_impl;
     VmaAllocator allocator   = device_impl.get_allocator();
 
     VmaAllocationCreateInfo staging_alloc_info{};
@@ -419,7 +419,7 @@ void Command_buffer_impl::upload_to_texture(
 
 void Command_buffer_impl::clear_texture(const Texture& texture, std::array<double, 4> value)
 {
-    ERHE_VERIFY(m_device != nullptr);
+    ERHE_VERIFY(m_device_impl != nullptr);
     ERHE_VERIFY(m_vk_command_buffer != VK_NULL_HANDLE);
 
     const Texture_impl& tex_impl = texture.get_impl();
@@ -464,7 +464,7 @@ void Command_buffer_impl::clear_texture(const Texture& texture, std::array<doubl
 
 void Command_buffer_impl::transition_texture_layout(const Texture& texture, Image_layout new_layout)
 {
-    ERHE_VERIFY(m_device != nullptr);
+    ERHE_VERIFY(m_device_impl != nullptr);
     ERHE_VERIFY(m_vk_command_buffer != VK_NULL_HANDLE);
 
     const Texture_impl& tex_impl = texture.get_impl();
@@ -652,7 +652,7 @@ void Command_buffer_impl::collect_synchronization(Vulkan_submit_info& submit_inf
         .deviceMask    = 0,
     });
 
-    for (Command_buffer* other : m_wait_for_semaphore_list) {
+    for (Command_buffer* other : m_wait_for_gpu_list) {
         ERHE_VERIFY(other != nullptr);
         const VkSemaphore semaphore = other->get_impl().get_implicit_semaphore();
         ERHE_VERIFY(semaphore != VK_NULL_HANDLE);
@@ -665,9 +665,9 @@ void Command_buffer_impl::collect_synchronization(Vulkan_submit_info& submit_inf
             .deviceIndex = 0,
         });
     }
-    m_wait_for_semaphore_list.clear();
+    m_wait_for_gpu_list.clear();
 
-    for (Command_buffer* other : m_signal_semaphore_list) {
+    for (Command_buffer* other : m_signal_gpu_list) {
         ERHE_VERIFY(other != nullptr);
         const VkSemaphore semaphore = other->get_impl().get_implicit_semaphore();
         ERHE_VERIFY(semaphore != VK_NULL_HANDLE);
@@ -680,17 +680,17 @@ void Command_buffer_impl::collect_synchronization(Vulkan_submit_info& submit_inf
             .deviceIndex = 0,
         });
     }
-    m_signal_semaphore_list.clear();
+    m_signal_gpu_list.clear();
 
-    if (!m_signal_fence_list.empty()) {
+    if (!m_signal_cpu_list.empty()) {
         // VkSubmitInfo2 carries a single VkFence. Multiple cbs in the
         // same submit cannot each pin a different one.
-        ERHE_VERIFY(m_signal_fence_list.size() == 1);
+        ERHE_VERIFY(m_signal_cpu_list.size() == 1);
         ERHE_VERIFY(submit_info.fence == VK_NULL_HANDLE);
-        const VkFence fence = m_signal_fence_list.front()->get_impl().get_implicit_fence();
+        const VkFence fence = m_signal_cpu_list.front()->get_impl().get_implicit_fence();
         ERHE_VERIFY(fence != VK_NULL_HANDLE);
         submit_info.fence = fence;
-        m_signal_fence_list.clear();
+        m_signal_cpu_list.clear();
     }
 
     if (m_swapchain_used != nullptr) {
@@ -737,8 +737,8 @@ auto Command_buffer_impl::wait_for_swapchain(Frame_state& out_frame_state) -> bo
     // the Vulkan swapchain owns its own per-frame-in-flight pacing
     // (vkAcquireNextImageKHR + acquire/present semaphore setup) which
     // also drives ensure_device_frame_slot for per-thread pool resets.
-    ERHE_VERIFY(m_device != nullptr);
-    Surface* surface = m_device->get_surface();
+    ERHE_VERIFY(m_device_impl != nullptr);
+    Surface* surface = m_device_impl->get_surface();
     if (surface != nullptr) {
         Swapchain* swapchain = surface->get_swapchain();
         if (swapchain != nullptr) {
@@ -761,8 +761,8 @@ auto Command_buffer_impl::wait_for_swapchain(Frame_state& out_frame_state) -> bo
 
 auto Command_buffer_impl::begin_swapchain(const Frame_begin_info& frame_begin_info, Frame_state& out_frame_state) -> bool
 {
-    ERHE_VERIFY(m_device != nullptr);
-    Surface* surface = m_device->get_surface();
+    ERHE_VERIFY(m_device_impl != nullptr);
+    Surface* surface = m_device_impl->get_surface();
     if (surface == nullptr) {
         out_frame_state.should_render = false;
         log_swapchain->warn("Command_buffer_impl::begin_swapchain() no surface");
@@ -793,7 +793,7 @@ auto Command_buffer_impl::begin_swapchain(const Frame_begin_info& frame_begin_in
         // branch that this frame engaged the swapchain, so it picks the
         // Swapchain_impl::end_frame path (acquire-wait + present-signal +
         // vkQueuePresentKHR). Goes away with the legacy single-cb path.
-        m_device->get_impl().m_had_swapchain_frame = true;
+        m_device_impl->m_had_swapchain_frame = true;
     }
     return ok;
 }

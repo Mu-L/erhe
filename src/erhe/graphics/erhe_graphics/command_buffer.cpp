@@ -61,24 +61,24 @@ void Command_buffer::end_swapchain(const Frame_end_info& frame_end_info)
     m_impl->end_swapchain(frame_end_info);
 }
 
-void Command_buffer::wait_for_fence(Command_buffer& other)
+void Command_buffer::wait_for_cpu(Command_buffer& other)
 {
-    m_impl->wait_for_fence(other);
+    m_impl->wait_for_cpu(other);
 }
 
-void Command_buffer::wait_for_semaphore(Command_buffer& other)
+void Command_buffer::wait_for_gpu(Command_buffer& other)
 {
-    m_impl->wait_for_semaphore(other);
+    m_impl->wait_for_gpu(other);
 }
 
-void Command_buffer::signal_semaphore(Command_buffer& other)
+void Command_buffer::signal_gpu(Command_buffer& other)
 {
-    m_impl->signal_semaphore(other);
+    m_impl->signal_gpu(other);
 }
 
-void Command_buffer::signal_fence(Command_buffer& other)
+void Command_buffer::signal_cpu(Command_buffer& other)
 {
-    m_impl->signal_fence(other);
+    m_impl->signal_cpu(other);
 }
 
 void Command_buffer::upload_to_buffer(const Buffer& buffer, std::size_t offset, const void* data, std::size_t length)
