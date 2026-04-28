@@ -26,8 +26,6 @@ erhe_target_sources_grouped(
     res/editor/shaders/downsample_lowpass.frag
     res/editor/shaders/downsample_x.frag
     res/editor/shaders/downsample_y.frag
-    res/editor/shaders/debug_line.geom
-    res/editor/shaders/debug_line.vert
     res/editor/shaders/post_processing.vert
     res/editor/shaders/shadow_debug.frag
     res/editor/shaders/shadow_debug.vert
@@ -67,6 +65,8 @@ erhe_target_sources_grouped(
     res/shaders/line_after_compute.frag
     res/shaders/line_after_compute.vert
     res/shaders/content_line_after_compute.frag
+    res/shaders/debug_line.geom
+    res/shaders/debug_line.vert
     res/shaders/points.frag
     res/shaders/points.vert
     res/shaders/standard.frag

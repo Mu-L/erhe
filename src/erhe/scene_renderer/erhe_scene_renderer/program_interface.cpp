@@ -147,13 +147,25 @@ auto Program_interface::make_prototype(
         }
     };
 
+    const bool device_supports_compute = graphics_device.get_info().use_compute_shader;
+
     for (const std::filesystem::path& shader_path : config.shader_paths) {
         const std::filesystem::path cs_path = shader_path / std::filesystem::path(create_info.name + ".comp");
         const std::filesystem::path fs_path = shader_path / std::filesystem::path(create_info.name + ".frag");
         const std::filesystem::path gs_path = shader_path / std::filesystem::path(create_info.name + ".geom");
         const std::filesystem::path vs_path = shader_path / std::filesystem::path(create_info.name + ".vert");
 
-        process_shader(erhe::graphics::Shader_type::compute_shader,  cs_path);
+        // Only emit a compute stage when the device supports compute
+        // (GL 4.3+, Vulkan, Metal). On contexts without compute support
+        // (e.g. macOS GL 4.1) feeding a Shader_type::compute_shader
+        // through the build pipeline triggers downstream errors:
+        // glCreateShader(GL_COMPUTE_SHADER) returns 0, the subsequent
+        // glCompileShader / glGetShaderiv calls raise GL_INVALID_VALUE,
+        // and the prototype ends in state_fail with a confusing log
+        // trail. Skip the .comp probe entirely on those contexts.
+        if (device_supports_compute) {
+            process_shader(erhe::graphics::Shader_type::compute_shader,  cs_path);
+        }
         process_shader(erhe::graphics::Shader_type::fragment_shader, fs_path);
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
         process_shader(erhe::graphics::Shader_type::geometry_shader, gs_path);

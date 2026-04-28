@@ -201,7 +201,11 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
         }
     }
 
-    // Geometry shader path: wide lines without compute (GL_LINES -> geometry shader -> triangle strip)
+    // Geometry shader path: wide lines without compute (GL_LINES -> geometry shader -> triangle strip).
+    // !use_compute is reached on OpenGL 4.1 (macOS) where compute is not available;
+    // geometry shaders are part of GL 3.2 core, so this path is the deterministic
+    // correct choice there. A load failure here is a real configuration error and
+    // is surfaced through the device_message callback by Glsl_file_loader.
     if (!use_compute) {
         using namespace erhe::graphics;
 
@@ -222,15 +226,9 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(erhe::graphic
         };
 
         Shader_stages_prototype prototype = build_shader_stages(graphics_device, create_info);
-        if (prototype.is_valid()) {
-            geometry_shader_stages = std::make_unique<Shader_stages>(graphics_device, std::move(prototype));
-            graphics_device.get_shader_monitor().add(create_info, geometry_shader_stages.get());
-            use_geometry_shader = true;
-            log_startup->info("Geometry shader wide lines enabled");
-        } else {
-            log_startup->warn("Unable to load debug_line geometry shader, falling back to simple lines");
-            use_geometry_shader = false;
-        }
+        geometry_shader_stages = std::make_unique<Shader_stages>(graphics_device, std::move(prototype));
+        graphics_device.get_shader_monitor().add(create_info, geometry_shader_stages.get());
+        use_geometry_shader = true;
     }
 }
 

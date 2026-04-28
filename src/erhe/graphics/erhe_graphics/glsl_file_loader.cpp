@@ -1,14 +1,23 @@
 #include "erhe_graphics/glsl_file_loader.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/enums.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_file/file.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
+
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <cctype>
 #include <sstream>
 
 namespace erhe::graphics {
+
+Glsl_file_loader::Glsl_file_loader(Device& device)
+    : m_device{device}
+{
+}
 
 auto Glsl_file_loader::process_includes(std::size_t source_string_index, const std::string& source) -> std::string
 {
@@ -153,7 +162,32 @@ auto Glsl_file_loader::read_shader_source_file(
 
     auto source = erhe::file::read("Shader_stages_create_info::final_source", resolved_path);
     if (!source.has_value()) {
-        return fmt::format("// Source load failed from: {}", resolved_path.string());
+        // Loud failure: previously this returned a "// Source load
+        // failed from: ..." comment string, which downstream code
+        // appended to the engine preamble and then handed to
+        // glCompileShader. The compile / link then failed far away
+        // with a confusing "No definition of main" linker error and
+        // no obvious pointer to the missing file. Surface a clear
+        // error through the device message callback (so the editor
+        // can copy it to the clipboard / show it to the user) and
+        // return an empty string so the caller can short-circuit.
+        std::stringstream extras;
+        for (std::size_t i = 0; i < m_extra_include_paths.size(); ++i) {
+            if (i != 0) {
+                extras << ", ";
+            }
+            extras << m_extra_include_paths[i].string();
+        }
+        m_device.device_message(
+            Message_severity::error,
+            fmt::format(
+                "Could not load shader source: requested '{}', resolved to '{}', extra include paths searched: [{}]",
+                path.string(),
+                resolved_path.string(),
+                extras.str()
+            )
+        );
+        return std::string{};
     }
 
     m_include_stack.push_back(resolved_path);

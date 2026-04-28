@@ -346,13 +346,21 @@ auto Shader_stages_create_info::final_source(
         }
     }
     if (!shader.paths.empty()) {
-        Glsl_file_loader loader;
+        Glsl_file_loader loader{graphics_device};
         ERHE_VERIFY(shader.paths.size() == 1);
         std::string source = loader.read_shader_source_file(shader.paths.front(), extra_include_paths);
         if (paths != nullptr) {
             for (const std::filesystem::path& path : loader.get_file_paths()) {
                 paths->push_back(path);
             }
+        }
+        // If the loader could not read the source file it returns "".
+        // Don't append the engine preamble alone -- propagate empty so
+        // Shader_stages_prototype_impl::compile sees source.empty() and
+        // short-circuits to state_fail before glCompileShader runs and
+        // produces a misleading "No definition of main" linker error.
+        if (source.empty()) {
+            return std::string{};
         }
         sb << source;
     }
