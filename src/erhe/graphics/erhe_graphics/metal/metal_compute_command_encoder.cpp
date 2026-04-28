@@ -1,8 +1,10 @@
 #include "erhe_graphics/metal/metal_compute_command_encoder.hpp"
+#include "erhe_graphics/metal/metal_command_buffer.hpp"
 #include "erhe_graphics/metal/metal_compute_pipeline.hpp"
 #include "erhe_graphics/metal/metal_device.hpp"
 #include "erhe_graphics/metal/metal_buffer.hpp"
 #include "erhe_graphics/metal/metal_shader_stages.hpp"
+#include "erhe_graphics/command_buffer.hpp"
 #include "erhe_graphics/compute_pipeline_state.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/shader_stages.hpp"
@@ -16,62 +18,39 @@ namespace erhe::graphics {
 Compute_command_encoder_impl::Compute_command_encoder_impl(Device& device, Command_buffer& command_buffer)
     : Command_encoder_impl{device, command_buffer}
 {
-    // Create command buffer and compute encoder up front so that
-    // set_buffer() can be called before set_compute_pipeline_state().
-    //
-    // Prefer the device-frame cb when one is active so compute work
-    // lands in the single per-frame commit. In that case we hold the
-    // Device_impl::m_recording_mutex for the lifetime of this encoder
-    // so other encoders (render pass, blit) can't interleave with
-    // our MTLComputeCommandEncoder - Metal only allows one encoder
-    // open on a cb at a time.
-    Device_impl& device_impl = m_device.get_impl();
-    MTL::CommandBuffer* active = device_impl.get_device_frame_command_buffer();
-    if (active != nullptr) {
-        m_recording_lock = std::unique_lock<std::mutex>{device_impl.m_recording_mutex};
-        m_command_buffer = active;
-        m_owns_command_buffer = false;
-    } else {
-        MTL::CommandQueue* queue = device_impl.get_mtl_command_queue();
-        ERHE_VERIFY(queue != nullptr);
-        m_command_buffer = queue->commandBuffer();
-        ERHE_VERIFY(m_command_buffer != nullptr);
-        m_owns_command_buffer = true;
-    }
+    // Record into the MTL::CommandBuffer that the caller's
+    // Command_buffer owns. Metal only allows one encoder open on a cb
+    // at a time; the API contract is that the caller does not interleave
+    // encoders on the same cb.
+    Command_buffer_impl& cb_impl = m_command_buffer.get_impl();
+    m_mtl_command_buffer  = cb_impl.get_mtl_command_buffer();
+    m_inter_encoder_fence = cb_impl.get_inter_encoder_fence();
+    ERHE_VERIFY(m_mtl_command_buffer != nullptr);
 
-    m_encoder = m_command_buffer->computeCommandEncoder();
+    m_encoder = m_mtl_command_buffer->computeCommandEncoder();
     ERHE_VERIFY(m_encoder != nullptr);
 
-    // When recording into the device cb, serialize against prior
-    // encoders via the per-device-frame fence. See Device_impl header
-    // for the rationale (Metal does not track aliased newTextureView
-    // hazards within one cb).
-    if (!m_owns_command_buffer) {
-        MTL::Fence* fence = device_impl.get_device_frame_fence();
-        if (fence != nullptr) {
-            m_encoder->waitForFence(fence);
-        }
+    // Serialize against prior encoders on this cb via the cb's
+    // inter-encoder fence. Metal does not track aliased newTextureView
+    // hazards within one cb; the fence catches those.
+    if (m_inter_encoder_fence != nullptr) {
+        m_encoder->waitForFence(m_inter_encoder_fence);
     }
 }
 
 Compute_command_encoder_impl::~Compute_command_encoder_impl() noexcept
 {
     if (m_encoder != nullptr) {
-        if (!m_owns_command_buffer) {
-            MTL::Fence* fence = m_device.get_impl().get_device_frame_fence();
-            if (fence != nullptr) {
-                m_encoder->updateFence(fence);
-            }
+        if (m_inter_encoder_fence != nullptr) {
+            m_encoder->updateFence(m_inter_encoder_fence);
         }
         m_encoder->endEncoding();
         m_encoder = nullptr;
     }
-    if (m_command_buffer != nullptr) {
-        if (m_owns_command_buffer) {
-            m_command_buffer->commit();
-        }
-        m_command_buffer = nullptr;
-    }
+    // The cb is owned by Command_buffer, not by this encoder; nothing
+    // to commit here. submit_command_buffers takes care of commit.
+    m_mtl_command_buffer  = nullptr;
+    m_inter_encoder_fence = nullptr;
     if (m_pipeline_state != nullptr) {
         if (m_owns_pipeline_state) {
             // Only release pipeline states we created via newComputePipelineState
@@ -165,7 +144,7 @@ void Compute_command_encoder_impl::set_compute_pipeline_state(const Compute_pipe
             data.name,
             NS::UTF8StringEncoding
         );
-        m_command_buffer->setLabel(label);
+        m_mtl_command_buffer->setLabel(label);
         m_encoder->setLabel(label);
         label->release();
     }

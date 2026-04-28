@@ -3,11 +3,10 @@
 #include "erhe_graphics/compute_command_encoder.hpp"
 #include "erhe_graphics/metal/metal_command_encoder.hpp"
 
-#include <mutex>
-
+namespace MTL { class CommandBuffer; }
 namespace MTL { class ComputeCommandEncoder; }
 namespace MTL { class ComputePipelineState; }
-namespace MTL { class CommandBuffer; }
+namespace MTL { class Fence; }
 
 namespace erhe::graphics {
 
@@ -33,15 +32,11 @@ private:
     MTL::ComputeCommandEncoder*  m_encoder             {nullptr};
     MTL::ComputePipelineState*   m_pipeline_state      {nullptr};
     bool                         m_owns_pipeline_state {false};
-    MTL::CommandBuffer*          m_command_buffer      {nullptr};
-    // True when m_command_buffer was allocated by this encoder (no
-    // device frame was active). In that case the destructor commits it.
-    // False when it's the device frame cb borrowed from Device_impl;
-    // Device_impl::end_frame commits.
-    bool                         m_owns_command_buffer {false};
-    // Held while recording into the device frame cb so other encoders
-    // don't interleave with us. Released after endEncoding in the dtor.
-    std::unique_lock<std::mutex> m_recording_lock      {};
+    // Non-owning borrow of the cb's MTL::CommandBuffer (for setting the
+    // debug label) and inter-encoder fence (for ordering against other
+    // encoders on the same cb).
+    MTL::CommandBuffer*          m_mtl_command_buffer  {nullptr};
+    MTL::Fence*                  m_inter_encoder_fence {nullptr};
 };
 
 } // namespace erhe::graphics

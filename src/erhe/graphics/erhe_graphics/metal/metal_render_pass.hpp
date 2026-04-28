@@ -5,11 +5,11 @@
 
 #include <array>
 #include <cstdint>
-#include <mutex>
 #include <vector>
 
-namespace MTL { class RenderCommandEncoder; }
 namespace MTL { class CommandBuffer; }
+namespace MTL { class Fence; }
+namespace MTL { class RenderCommandEncoder; }
 
 namespace erhe::graphics {
 
@@ -61,17 +61,14 @@ private:
     int                                              m_render_target_width{0};
     int                                              m_render_target_height{0};
     erhe::utility::Debug_label                       m_debug_label;
+    // Non-owning borrow: the MTL::CommandBuffer owned by the
+    // Command_buffer that start_render_pass was given. Cleared in
+    // end_render_pass.
     MTL::CommandBuffer*                              m_command_buffer{nullptr};
     MTL::RenderCommandEncoder*                       m_mtl_encoder{nullptr};
-    // True when m_command_buffer was allocated directly from the queue
-    // (no device frame active). In that case end_render_pass commits
-    // it. False when we borrowed the device-frame cb from Device_impl;
-    // Device_impl::end_frame commits.
-    bool                                             m_owns_command_buffer{false};
-    // Held while recording into the device-frame cb, released in
-    // end_render_pass. Prevents other encoders from interleaving with
-    // this render pass.
-    std::unique_lock<std::mutex>                     m_recording_lock{};
+    // Non-owning borrow of the cb's per-frame fence, used to serialize
+    // this render encoder against other encoders on the same cb.
+    MTL::Fence*                                      m_inter_encoder_fence{nullptr};
     std::array<unsigned long, 4>                     m_color_pixel_formats{};
     unsigned long                                    m_depth_pixel_format{0};
     unsigned long                                    m_stencil_pixel_format{0};

@@ -1,86 +1,59 @@
 #include "erhe_graphics/metal/metal_blit_command_encoder.hpp"
 #include "erhe_graphics/metal/metal_buffer.hpp"
-#include "erhe_graphics/metal/metal_texture.hpp"
+#include "erhe_graphics/metal/metal_command_buffer.hpp"
 #include "erhe_graphics/metal/metal_device.hpp"
+#include "erhe_graphics/metal/metal_texture.hpp"
 #include "erhe_graphics/buffer.hpp"
+#include "erhe_graphics/command_buffer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <Metal/Metal.hpp>
 
-#include <mutex>
-
 namespace erhe::graphics {
 
 namespace {
 
-// RAII helper used by each blit method. Prefers recording into the
-// active device-frame cb (so the blit lands in the single per-frame
-// commit). Falls back to a one-shot cb when no device frame is active
-// (init-time callers). The destructor commits + waits only in the
-// fallback case; device-frame recordings are committed by end_frame().
+// RAII helper used by each blit method. Records into the cb's
+// MTL::CommandBuffer and applies waitForFence/updateFence on the cb's
+// inter-encoder fence so successive encoders on the same cb stay
+// ordered against the blit (Metal does not always track aliased view
+// hazards automatically). The cb is owned by the caller's
+// Command_buffer; this scope never commits.
 class Recording_scope final
 {
 public:
-    explicit Recording_scope(Device_impl& device_impl)
-        : m_device_impl{device_impl}
+    explicit Recording_scope(Command_buffer& command_buffer)
     {
-        MTL::CommandBuffer* active = device_impl.get_device_frame_command_buffer();
-        if (active != nullptr) {
-            m_device_lock = std::unique_lock<std::mutex>{device_impl.m_recording_mutex};
-            m_command_buffer = active;
-            return;
-        }
-        MTL::CommandQueue* queue = device_impl.get_mtl_command_queue();
-        ERHE_VERIFY(queue != nullptr);
-        m_command_buffer = queue->commandBuffer();
+        Command_buffer_impl& cb_impl = command_buffer.get_impl();
+        m_command_buffer       = cb_impl.get_mtl_command_buffer();
+        m_inter_encoder_fence  = cb_impl.get_inter_encoder_fence();
         ERHE_VERIFY(m_command_buffer != nullptr);
-        m_owns_command_buffer = true;
     }
-    ~Recording_scope() noexcept
-    {
-        if (m_owns_command_buffer && (m_command_buffer != nullptr)) {
-            m_command_buffer->commit();
-            m_command_buffer->waitUntilCompleted();
-        }
-    }
-
-    // Apply waitForFence/updateFence on a blit encoder when recording
-    // into the device cb. No-ops for the one-shot cb fallback -- that
-    // cb is independently committed+waited by the destructor and does
-    // not need to sync against device-cb encoders.
-    void wait_frame_fence(MTL::BlitCommandEncoder* encoder) const
-    {
-        if (m_owns_command_buffer || (encoder == nullptr)) {
-            return;
-        }
-        MTL::Fence* fence = m_device_impl.get_device_frame_fence();
-        if (fence != nullptr) {
-            encoder->waitForFence(fence);
-        }
-    }
-    void update_frame_fence(MTL::BlitCommandEncoder* encoder) const
-    {
-        if (m_owns_command_buffer || (encoder == nullptr)) {
-            return;
-        }
-        MTL::Fence* fence = m_device_impl.get_device_frame_fence();
-        if (fence != nullptr) {
-            encoder->updateFence(fence);
-        }
-    }
+    ~Recording_scope() noexcept = default;
     Recording_scope(const Recording_scope&)            = delete;
     Recording_scope& operator=(const Recording_scope&) = delete;
     Recording_scope(Recording_scope&&)                 = delete;
     Recording_scope& operator=(Recording_scope&&)      = delete;
 
-    MTL::CommandBuffer*          m_command_buffer{nullptr};
+    void wait_inter_encoder_fence(MTL::BlitCommandEncoder* encoder) const
+    {
+        if ((encoder != nullptr) && (m_inter_encoder_fence != nullptr)) {
+            encoder->waitForFence(m_inter_encoder_fence);
+        }
+    }
+    void update_inter_encoder_fence(MTL::BlitCommandEncoder* encoder) const
+    {
+        if ((encoder != nullptr) && (m_inter_encoder_fence != nullptr)) {
+            encoder->updateFence(m_inter_encoder_fence);
+        }
+    }
+
+    MTL::CommandBuffer* m_command_buffer{nullptr};
 
 private:
-    Device_impl&                 m_device_impl;
-    std::unique_lock<std::mutex> m_device_lock{};
-    bool                         m_owns_command_buffer{false};
+    MTL::Fence*         m_inter_encoder_fence{nullptr};
 };
 
 } // namespace
@@ -118,10 +91,10 @@ void Blit_command_encoder_impl::copy_from_texture(
         return;
     }
 
-    Recording_scope scope{m_device.get_impl()};
+    Recording_scope scope{m_command_buffer};
     MTL::BlitCommandEncoder* blit_encoder = scope.m_command_buffer->blitCommandEncoder();
     ERHE_VERIFY(blit_encoder != nullptr);
-    scope.wait_frame_fence(blit_encoder);
+    scope.wait_inter_encoder_fence(blit_encoder);
 
     blit_encoder->copyFromTexture(
         src_mtl_texture,
@@ -147,7 +120,7 @@ void Blit_command_encoder_impl::copy_from_texture(
         )
     );
 
-    scope.update_frame_fence(blit_encoder);
+    scope.update_inter_encoder_fence(blit_encoder);
     blit_encoder->endEncoding();
 }
 
@@ -172,10 +145,10 @@ void Blit_command_encoder_impl::copy_from_buffer(
         return;
     }
 
-    Recording_scope scope{m_device.get_impl()};
+    Recording_scope scope{m_command_buffer};
     MTL::BlitCommandEncoder* blit_encoder = scope.m_command_buffer->blitCommandEncoder();
     ERHE_VERIFY(blit_encoder != nullptr);
-    scope.wait_frame_fence(blit_encoder);
+    scope.wait_inter_encoder_fence(blit_encoder);
 
     blit_encoder->copyFromBuffer(
         mtl_buffer,
@@ -197,7 +170,7 @@ void Blit_command_encoder_impl::copy_from_buffer(
         )
     );
 
-    scope.update_frame_fence(blit_encoder);
+    scope.update_inter_encoder_fence(blit_encoder);
     blit_encoder->endEncoding();
 }
 
@@ -222,10 +195,10 @@ void Blit_command_encoder_impl::copy_from_texture(
         return;
     }
 
-    Recording_scope scope{m_device.get_impl()};
+    Recording_scope scope{m_command_buffer};
     MTL::BlitCommandEncoder* blit_encoder = scope.m_command_buffer->blitCommandEncoder();
     ERHE_VERIFY(blit_encoder != nullptr);
-    scope.wait_frame_fence(blit_encoder);
+    scope.wait_inter_encoder_fence(blit_encoder);
 
     blit_encoder->copyFromTexture(
         mtl_texture,
@@ -247,7 +220,7 @@ void Blit_command_encoder_impl::copy_from_texture(
         static_cast<NS::UInteger>(destination_bytes_per_image)
     );
 
-    scope.update_frame_fence(blit_encoder);
+    scope.update_inter_encoder_fence(blit_encoder);
     blit_encoder->endEncoding();
 }
 
@@ -261,13 +234,13 @@ void Blit_command_encoder_impl::generate_mipmaps(const Texture* texture)
         return;
     }
 
-    Recording_scope scope{m_device.get_impl()};
+    Recording_scope scope{m_command_buffer};
     MTL::BlitCommandEncoder* blit_encoder = scope.m_command_buffer->blitCommandEncoder();
     ERHE_VERIFY(blit_encoder != nullptr);
-    scope.wait_frame_fence(blit_encoder);
+    scope.wait_inter_encoder_fence(blit_encoder);
 
     blit_encoder->generateMipmaps(mtl_texture);
-    scope.update_frame_fence(blit_encoder);
+    scope.update_inter_encoder_fence(blit_encoder);
     blit_encoder->endEncoding();
 }
 
@@ -286,10 +259,10 @@ void Blit_command_encoder_impl::fill_buffer(
         return;
     }
 
-    Recording_scope scope{m_device.get_impl()};
+    Recording_scope scope{m_command_buffer};
     MTL::BlitCommandEncoder* blit_encoder = scope.m_command_buffer->blitCommandEncoder();
     ERHE_VERIFY(blit_encoder != nullptr);
-    scope.wait_frame_fence(blit_encoder);
+    scope.wait_inter_encoder_fence(blit_encoder);
 
     blit_encoder->fillBuffer(
         mtl_buffer,
@@ -297,7 +270,7 @@ void Blit_command_encoder_impl::fill_buffer(
         value
     );
 
-    scope.update_frame_fence(blit_encoder);
+    scope.update_inter_encoder_fence(blit_encoder);
     blit_encoder->endEncoding();
 }
 
@@ -378,10 +351,10 @@ void Blit_command_encoder_impl::copy_from_buffer(
         return;
     }
 
-    Recording_scope scope{m_device.get_impl()};
+    Recording_scope scope{m_command_buffer};
     MTL::BlitCommandEncoder* blit_encoder = scope.m_command_buffer->blitCommandEncoder();
     ERHE_VERIFY(blit_encoder != nullptr);
-    scope.wait_frame_fence(blit_encoder);
+    scope.wait_inter_encoder_fence(blit_encoder);
 
     blit_encoder->copyFromBuffer(
         src_mtl_buffer,
@@ -391,7 +364,7 @@ void Blit_command_encoder_impl::copy_from_buffer(
         static_cast<NS::UInteger>(size)
     );
 
-    scope.update_frame_fence(blit_encoder);
+    scope.update_inter_encoder_fence(blit_encoder);
     blit_encoder->endEncoding();
 }
 

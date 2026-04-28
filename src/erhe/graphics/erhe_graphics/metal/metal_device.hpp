@@ -4,6 +4,7 @@
 #include "erhe_graphics/ring_buffer.hpp"
 #include "erhe_graphics/shader_monitor.hpp"
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -12,13 +13,12 @@
 typedef int GLint;
 
 namespace MTL { class ArgumentEncoder; }
-namespace MTL { class CommandBuffer; }
 namespace MTL { class Device; }
 namespace MTL { class CommandQueue; }
-namespace MTL { class Fence; }
+namespace MTL { class Event; }
 namespace MTL { class LogState; }
 namespace MTL { class SamplerState; }
-namespace CA  { class MetalDrawable; }
+namespace MTL { class SharedEvent; }
 
 namespace erhe::dataformat {
     enum class Format : unsigned int;
@@ -64,11 +64,12 @@ public:
     void               wait_idle            ();
     [[nodiscard]] auto is_in_swapchain_frame() const -> bool;
 
-    // Transitional: see Vulkan Device_impl. Command_buffer_impl took
-    // over the swapchain-frame entry points and still needs to flip
-    // m_had_swapchain_frame / m_pending_drawable for the legacy
-    // end_frame path.
-    friend class Command_buffer_impl;
+    // Called from MTL::CommandBuffer addCompletedHandler lambdas (which
+    // run on an arbitrary Metal dispatch thread) to enqueue a frame
+    // index for completion processing. begin_frame() drains the queue
+    // under m_completion_mutex on the next frame and recycles ring
+    // buffer ranges pinned to those frames.
+    void notify_command_buffer_completed(uint64_t frame_index);
 
     void resize_swapchain_to_window();
     void start_frame_capture       ();
@@ -76,14 +77,8 @@ public:
 
     // Active render pass tracking
     static Render_pass_impl* s_active_render_pass;
-    void memory_barrier            (Memory_barrier_mask barriers);
-    void clear_texture             (const Texture& texture, std::array<double, 4> clear_value);
-    void transition_texture_layout (const Texture& texture, Image_layout new_layout);
-    void cmd_texture_barrier       (uint64_t usage_before, uint64_t usage_after);
     [[nodiscard]] auto get_command_buffer(unsigned int thread_slot) -> Command_buffer&;
     void submit_command_buffers    (std::span<Command_buffer* const> command_buffers);
-    void upload_to_buffer          (const Buffer& buffer, size_t offset, const void* data, size_t length);
-    void upload_to_texture         (const Texture& texture, int level, int x, int y, int width, int height, erhe::dataformat::Format pixelformat, const void* data, int row_stride);
     void add_completion_handler    (std::function<void(Device_impl&)> callback);
     void on_thread_enter           ();
 
@@ -114,31 +109,6 @@ public:
     [[nodiscard]] auto get_mtl_command_queue       () const -> MTL::CommandQueue*;
     [[nodiscard]] auto get_default_sampler_state   () const -> MTL::SamplerState*;
 
-    // Returns the command buffer opened by begin_frame() and committed
-    // by end_frame(). nullptr if no device frame is active. All in-frame
-    // recording (render pass, blit, compute, upload_to_*, clear_texture)
-    // should route through this so the frame lands in a single commit.
-    // Unlike Vulkan there is no render-pass-active veto: multiple Metal
-    // encoders (render / blit / compute) can be created sequentially
-    // against the same cb, they just have to end before the next one begins.
-    [[nodiscard]] auto get_device_frame_command_buffer() const -> MTL::CommandBuffer*;
-
-    // Per-device-frame MTL::Fence used to serialize encoders against each
-    // other. Each encoder on the device cb should waitForFence(fence) at
-    // start and updateFence(fence) at end. Metal's automatic hazard
-    // tracking within a single cb is per-MTLTexture-identity and does
-    // NOT track aliased newTextureView pairs, so a render pass writing
-    // to a parent texture at level K does not synchronize automatically
-    // with a later render pass that samples from a view of that same
-    // mip. This fence restores the pass-to-pass ordering the old
-    // per-pass-cb model got implicitly from queue submission order.
-    [[nodiscard]] auto get_device_frame_fence() const -> MTL::Fence*;
-
-    // Serializes recording against the active device-frame cb across
-    // worker threads (init taskflow etc.). Matches the Vulkan backend's
-    // m_recording_mutex.
-    std::mutex m_recording_mutex;
-
     // Texture argument buffer support
     [[nodiscard]] auto get_texture_argument_encoder() const -> MTL::ArgumentEncoder*;
                   void set_texture_argument_encoder(MTL::ArgumentEncoder* encoder);
@@ -168,6 +138,25 @@ private:
         std::function<void(Device_impl&)> callback;
     };
 
+    // Per-(thread_slot) bag of cbs allocated this frame. Each entry is
+    // tagged with the frame index of allocation so frame_completed() can
+    // drop entries whose frame's GPU work has retired. Mirrors Vulkan's
+    // Per_thread_command_pool except there is no MTLCommandPool to reset
+    // -- MTL::CommandBuffer allocation goes straight through the queue.
+    class Per_thread_command_buffers
+    {
+    public:
+        class Allocated_command_buffer
+        {
+        public:
+            uint64_t                        frame_index{0};
+            std::unique_ptr<Command_buffer> command_buffer;
+        };
+        std::vector<Allocated_command_buffer> allocated;
+    };
+
+    static constexpr unsigned int s_number_of_thread_slots = 8;
+
     Device&                          m_device;
     std::unique_ptr<Surface>         m_surface;
     Shader_monitor                   m_shader_monitor;
@@ -175,7 +164,6 @@ private:
     Graphics_config                  m_graphics_config;
     uint64_t                         m_frame_index{1};
     Device_frame_state               m_state{Device_frame_state::idle};
-    bool                             m_had_swapchain_frame{false};
     std::vector<Completion_handler>  m_completion_handlers;
     // GPU-completion tracking driven by MTL::CommandBuffer
     // addCompletedHandler callbacks (which run on an arbitrary Metal
@@ -191,19 +179,15 @@ private:
     MTL::SamplerState*       m_default_sampler_state{nullptr};
     MTL::LogState*           m_mtl_log_state        {nullptr};
     MTL::ArgumentEncoder*    m_texture_argument_encoder{nullptr};
-    // Active device-frame command buffer. Opened in begin_frame(),
-    // committed in end_frame(). nullptr outside of a device frame;
-    // callers must route through get_device_frame_command_buffer()
-    // which returns nullptr in that case and expects the caller to
-    // fall back to a per-op cb.
-    MTL::CommandBuffer*      m_active_command_buffer{nullptr};
-    // Drawable latched at begin_swapchain_frame for end_frame to present.
-    CA::MetalDrawable*       m_pending_drawable     {nullptr};
-    // Device-frame fence. Created in begin_frame, released in end_frame.
-    MTL::Fence*              m_frame_fence          {nullptr};
     Texture_arg_buffer_layout m_texture_arg_buffer_layout;
     std::vector<std::unique_ptr<Ring_buffer>> m_ring_buffers;
     static constexpr std::size_t m_min_buffer_size{4 * 1024 * 1024};
+
+    // Per-thread Command_buffer storage. get_command_buffer(slot)
+    // allocates a Command_buffer here; frame_completed sweeps entries
+    // whose frame_index has retired. Guarded by m_per_thread_mutex.
+    std::array<Per_thread_command_buffers, s_number_of_thread_slots> m_per_thread_command_buffers;
+    std::mutex m_per_thread_mutex;
 };
 
 void install_metal_error_handler(Device& device);

@@ -1,9 +1,11 @@
 #include "erhe_graphics/metal/metal_render_pass.hpp"
+#include "erhe_graphics/metal/metal_command_buffer.hpp"
 #include "erhe_graphics/metal/metal_device.hpp"
 #include "erhe_graphics/metal/metal_surface.hpp"
 #include "erhe_graphics/metal/metal_swapchain.hpp"
 #include "erhe_graphics/metal/metal_texture.hpp"
 #include "erhe_graphics/metal/metal_helpers.hpp"
+#include "erhe_graphics/command_buffer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/surface.hpp"
 #include "erhe_graphics/swapchain.hpp"
@@ -166,33 +168,22 @@ void configure_color_attachment(
 
 void Render_pass_impl::start_render_pass(Command_buffer& command_buffer, Render_pass* const render_pass_before, Render_pass* const render_pass_after)
 {
-    // Metal handles cross-pass synchronization automatically via MTLFences /
-    // MTLHazardTracking, so these hints are ignored here. command_buffer
-    // is unused on Metal until we wire MTLCommandBuffer through it.
-    static_cast<void>(command_buffer);
+    // Metal handles most cross-pass synchronization automatically via
+    // its hazard tracking, so these hints are ignored. The per-cb
+    // inter-encoder fence (set up in begin()) handles the cases hazard
+    // tracking misses (aliased mip-view reads of parent-texture writes).
     static_cast<void>(render_pass_before);
     static_cast<void>(render_pass_after);
 
     Device_impl::s_active_render_pass = this;
 
-    Device_impl& device_impl = m_device.get_impl();
-
-    // Prefer the device-frame cb so render pass encoding lands in the
-    // single per-frame commit. Hold m_recording_mutex for the lifetime
-    // of this render pass so no other encoder (blit, compute, other
-    // render pass) can interleave with our MTLRenderCommandEncoder.
-    MTL::CommandBuffer* active_device_cb = device_impl.get_device_frame_command_buffer();
-    if (active_device_cb != nullptr) {
-        m_recording_lock = std::unique_lock<std::mutex>{device_impl.m_recording_mutex};
-        m_command_buffer = active_device_cb;
-        m_owns_command_buffer = false;
-    } else {
-        MTL::CommandQueue* queue = device_impl.get_mtl_command_queue();
-        ERHE_VERIFY(queue != nullptr);
-        m_command_buffer = queue->commandBuffer();
-        ERHE_VERIFY(m_command_buffer != nullptr);
-        m_owns_command_buffer = true;
-    }
+    // Record into the MTL::CommandBuffer that the caller's
+    // Command_buffer owns. The cb must already have begin() called on it
+    // by the user.
+    Command_buffer_impl& cb_impl = command_buffer.get_impl();
+    m_command_buffer       = cb_impl.get_mtl_command_buffer();
+    m_inter_encoder_fence  = cb_impl.get_inter_encoder_fence();
+    ERHE_VERIFY(m_command_buffer != nullptr);
 
     MTL::RenderPassDescriptor* render_pass_desc = MTL::RenderPassDescriptor::alloc()->init();
 
@@ -207,14 +198,12 @@ void Render_pass_impl::start_render_pass(Command_buffer& command_buffer, Render_
         Swapchain_impl& swapchain_impl = m_swapchain->get_impl();
         CA::MetalDrawable* drawable = swapchain_impl.get_current_drawable();
         if (drawable == nullptr) {
-            // No drawable available (e.g. tick called from SDL event before begin_frame)
+            // No drawable available (e.g. tick called from SDL event
+            // before begin_frame). Bail out cleanly; the caller's cb
+            // will be committed empty by submit_command_buffers.
             render_pass_desc->release();
-            if (m_owns_command_buffer) {
-                m_command_buffer->commit();
-            }
             m_command_buffer      = nullptr;
-            m_owns_command_buffer = false;
-            m_recording_lock      = std::unique_lock<std::mutex>{};
+            m_inter_encoder_fence = nullptr;
             return;
         }
         configure_color_attachment(render_pass_desc, 0, drawable->texture(), m_color_attachments[0]);
@@ -310,18 +299,15 @@ void Render_pass_impl::start_render_pass(Command_buffer& command_buffer, Render_
     m_mtl_encoder = m_command_buffer->renderCommandEncoder(render_pass_desc);
     render_pass_desc->release();
 
-    // Serialize against prior encoders on the device cb. Metal's
-    // automatic hazard tracking doesn't catch aliased-view reads of
-    // parent-texture writes (post-processing's mip-view pattern), so
-    // we use an explicit per-device-frame MTL::Fence.
-    if (!m_owns_command_buffer && (m_mtl_encoder != nullptr)) {
-        MTL::Fence* fence = device_impl.get_device_frame_fence();
-        if (fence != nullptr) {
-            m_mtl_encoder->waitForFence(
-                fence,
-                MTL::RenderStageVertex | MTL::RenderStageFragment
-            );
-        }
+    // Serialize against prior encoders on this cb. Metal's automatic
+    // hazard tracking does not catch aliased-view reads of parent-
+    // texture writes (post-processing's mip-view pattern), so we use
+    // the cb's per-frame inter-encoder fence.
+    if ((m_mtl_encoder != nullptr) && (m_inter_encoder_fence != nullptr)) {
+        m_mtl_encoder->waitForFence(
+            m_inter_encoder_fence,
+            MTL::RenderStageVertex | MTL::RenderStageFragment
+        );
     }
 
     ERHE_VERIFY(m_mtl_encoder != nullptr);
@@ -343,42 +329,22 @@ void Render_pass_impl::end_render_pass(Render_pass* const render_pass_after)
     static_cast<void>(render_pass_after);
 
     if (m_mtl_encoder != nullptr) {
-        // Signal the per-device-frame fence so subsequent encoders on
-        // the device cb can wait for our render-pass writes.
-        if (!m_owns_command_buffer) {
-            Device_impl& device_impl = m_device.get_impl();
-            MTL::Fence* fence = device_impl.get_device_frame_fence();
-            if (fence != nullptr) {
-                m_mtl_encoder->updateFence(
-                    fence,
-                    MTL::RenderStageFragment
-                );
-            }
+        // Signal the cb's inter-encoder fence so subsequent encoders on
+        // this cb can wait for our render-pass writes.
+        if (m_inter_encoder_fence != nullptr) {
+            m_mtl_encoder->updateFence(
+                m_inter_encoder_fence,
+                MTL::RenderStageFragment
+            );
         }
         m_mtl_encoder->endEncoding();
         m_mtl_encoder = nullptr;
     }
 
-    if (m_command_buffer != nullptr) {
-        if (m_owns_command_buffer) {
-            // Standalone cb path (no device frame active). Present and
-            // commit here, as before.
-            if (m_swapchain != nullptr) {
-                Swapchain_impl& swapchain_impl = m_swapchain->get_impl();
-                CA::MetalDrawable* drawable = swapchain_impl.get_current_drawable();
-                if (drawable != nullptr) {
-                    m_command_buffer->presentDrawable(drawable);
-                }
-            }
-            m_command_buffer->commit();
-        }
-        // If we borrowed the device-frame cb, Device_impl::end_frame
-        // will commit it (and, for the swapchain render pass, call
-        // presentDrawable on the latched m_pending_drawable).
-        m_command_buffer      = nullptr;
-        m_owns_command_buffer = false;
-        m_recording_lock      = std::unique_lock<std::mutex>{};
-    }
+    // The MTL::CommandBuffer is owned by the user's Command_buffer; we
+    // never commit it here. submit_command_buffers handles commit.
+    m_command_buffer      = nullptr;
+    m_inter_encoder_fence = nullptr;
 
     Device_impl::s_active_render_pass = nullptr;
 }
