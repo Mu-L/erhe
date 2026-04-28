@@ -144,6 +144,10 @@ See [`doc/editor_improvements.md`](doc/editor_improvements.md) for the prioritiz
 
 **Use only ASCII characters** in all source files (.cpp, .hpp) and documentation files (.md). Never use Unicode dashes, quotes, or other non-ASCII characters. Use `-` or `--` instead of em-dash, `'` instead of curly quotes, etc.
 
+## No Band-Aid Fixes
+
+Every proposed solution must be evaluated with the question: "is this just a band-aid?" If the answer is yes, the solution must be rejected. A band-aid is any change that masks, works around, or tolerates the symptom of a bug without addressing the root cause - for example, a defensive null check that lets shutdown proceed when an object should not have been null in the first place, a try/catch that swallows an unexpected error, or a "tolerant" code path that accommodates state the system was not supposed to enter. Find and fix the actual cause; do not paper over it.
+
 ## C++ Coding Style
 
 - **Always use `class`, never `struct`** - this makes forward declarations trivial (always `class Foo;`).
