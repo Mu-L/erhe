@@ -124,4 +124,37 @@ auto Shader_stages_tracker::get_draw_id_uniform_location() const -> int
     return m_last != 0 ? gl::get_uniform_location(m_last, "ERHE_DRAW_ID") : -1;
 }
 
+auto Shader_stages_tracker::push_program(const unsigned int program) -> Program_binding_guard
+{
+    return Program_binding_guard{*this, program};
+}
+
+Program_binding_guard::Program_binding_guard(Shader_stages_tracker& tracker, const unsigned int program)
+    : m_tracker       {&tracker}
+    , m_saved_program {tracker.m_last}
+{
+    if (tracker.m_last != program) {
+        gl::use_program(program);
+        tracker.m_last = program;
+    }
+}
+
+Program_binding_guard::~Program_binding_guard() noexcept
+{
+    if (m_tracker == nullptr) {
+        return;
+    }
+    if (m_tracker->m_last != m_saved_program) {
+        gl::use_program(m_saved_program);
+        m_tracker->m_last = m_saved_program;
+    }
+}
+
+Program_binding_guard::Program_binding_guard(Program_binding_guard&& other) noexcept
+    : m_tracker       {other.m_tracker}
+    , m_saved_program {other.m_saved_program}
+{
+    other.m_tracker = nullptr;
+}
+
 } // namespace erhe::graphics

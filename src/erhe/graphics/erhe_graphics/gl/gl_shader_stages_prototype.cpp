@@ -617,7 +617,14 @@ void Shader_stages_prototype_impl::post_link()
         if (m_device.get_info().glsl_version < 430) {
             if (m_create_info.bind_group_layout != nullptr) {
                 const Shader_resource& default_uniform_block = m_create_info.bind_group_layout->get_default_uniform_block();
-                gl::use_program(gl_name);
+                // Bind the program for the duration of this block via a
+                // Program_binding_guard so the cache that backs
+                // Render_command_encoder::set_render_pipeline stays in sync
+                // with real GL state. A bare gl::use_program(...) would
+                // bypass Shader_stages_tracker, leaving its m_last stale and
+                // making the next render_pipeline skip glUseProgram on a
+                // cache hit -- glDrawArrays then runs with no program bound.
+                auto program_guard = m_device.get_impl().push_program(gl_name);
                 for (const auto& member : default_uniform_block.get_members()) {
                     if (member->get_type() == Shader_resource::Type::sampler) {
                         const GLint location = gl::get_uniform_location(gl_name, member->get_name().c_str());
@@ -639,7 +646,8 @@ void Shader_stages_prototype_impl::post_link()
                         }
                     }
                 }
-                gl::use_program(0);
+                // program_guard restores the previously-bound program (and
+                // updates the tracker) on scope exit.
             }
         }
 

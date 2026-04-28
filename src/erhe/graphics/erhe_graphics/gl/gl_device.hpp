@@ -111,6 +111,15 @@ public:
 
     void reset_shader_stages_state_tracker();
     [[nodiscard]] auto get_draw_id_uniform_location() const -> GLint;
+
+    // Temporarily binds `program` and returns an RAII guard that
+    // restores the previously-bound program (and updates the cache that
+    // backs Render_command_encoder::set_render_pipeline) on destruction.
+    // Intended for setup code that must glUseProgram a program for
+    // non-render purposes -- e.g. setting sampler uniforms after
+    // glLinkProgram on GLSL < 4.30 -- without leaving
+    // Shader_stages_tracker desynchronized from real GL state.
+    [[nodiscard]] auto push_program(unsigned int program) -> Program_binding_guard;
     [[nodiscard]] auto get_binding_state() -> Gl_binding_state&;
 
     // GL object creation

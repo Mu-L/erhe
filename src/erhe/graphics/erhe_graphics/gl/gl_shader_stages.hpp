@@ -102,12 +102,48 @@ public:
 [[nodiscard]] auto operator==(const Shader_stages_impl& lhs, const Shader_stages_impl& rhs) noexcept -> bool;
 [[nodiscard]] auto operator!=(const Shader_stages_impl& lhs, const Shader_stages_impl& rhs) noexcept -> bool;
 
+class Shader_stages_tracker;
+
+// RAII guard that temporarily binds a program and restores the
+// previously-bound program on destruction, keeping the
+// Shader_stages_tracker cache in sync with real GL state. Use this
+// for setup code that needs to glUseProgram a program for non-render
+// purposes (e.g. setting sampler uniforms after link_program on
+// GLSL < 4.30) so the cache that backs
+// Render_command_encoder::set_render_pipeline does not desynchronize
+// from GL.
+class Program_binding_guard final
+{
+public:
+    Program_binding_guard(Shader_stages_tracker& tracker, unsigned int program);
+    ~Program_binding_guard() noexcept;
+    Program_binding_guard(const Program_binding_guard&)            = delete;
+    Program_binding_guard& operator=(const Program_binding_guard&) = delete;
+    Program_binding_guard(Program_binding_guard&& other) noexcept;
+    void operator=(Program_binding_guard&&)                        = delete;
+
+private:
+    Shader_stages_tracker* m_tracker;
+    unsigned int           m_saved_program;
+};
+
 class Shader_stages_tracker
 {
 public:
     void reset  ();
     void execute(const Shader_stages* state);
     [[nodiscard]] auto get_draw_id_uniform_location() const -> int;
+
+    // Save the currently-bound program, glUseProgram(program), and
+    // return a guard that restores the saved program on destruction.
+    [[nodiscard]] auto push_program(unsigned int program) -> Program_binding_guard;
+
+    // Diagnostic accessor for the cached "currently-bound program"
+    // value. Lets debug code compare the tracker's belief against
+    // glGet(GL_CURRENT_PROGRAM) without exposing the raw member.
+    [[nodiscard]] auto cached_program_for_diagnostic() const -> unsigned int { return m_last; }
+
+    friend class Program_binding_guard;
 
 private:
     unsigned int m_last{0};

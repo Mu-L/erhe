@@ -1016,6 +1016,26 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         ? erhe::math::Depth_range::zero_to_one
         : erhe::math::Depth_range::negative_one_to_one;
 
+    // Hardware-capability clamp: reverse-Z requires native_depth_range =
+    // zero_to_one, which on OpenGL needs glClipControl (GL 4.5 core or
+    // GL_ARB_clip_control). macOS exposes GL 4.1 with neither, so the depth
+    // range is locked at negative_one_to_one and the user's reverse_depth
+    // preference cannot be honored. Force m_graphics_config.reverse_depth
+    // to false here so every downstream reader (Light_interface's immutable
+    // shadow comparison sampler, depth_compare_op selection, projection
+    // matrices) sees the same effective value. Without this clamp the
+    // shadow sampler is baked with greater_or_equal while the shadow map
+    // is rendered/cleared for less_or_equal -- shadows render inverted.
+    if ((m_info.coordinate_conventions.native_depth_range != erhe::math::Depth_range::zero_to_one) && m_graphics_config.reverse_depth) {
+        log_startup->warn(
+            "reverse_depth requested but hardware does not support glClipControl "
+            "(GL {}.{}, ARB_clip_control={}); forcing reverse_depth=false",
+            m_info.gl_version / 100, (m_info.gl_version / 10) % 10,
+            gl::is_extension_supported(gl::Extension::Extension_GL_ARB_clip_control)
+        );
+        m_graphics_config.reverse_depth = false;
+    }
+
     // OpenGL only supports the equivalent of "sample 0" for depth/stencil
     // multisample resolves: glBlitFramebuffer requires GL_NEAREST when the
     // mask includes depth or stencil, and there is no filter selection.
@@ -1892,6 +1912,11 @@ auto Device_impl::make_render_command_encoder(Command_buffer& command_buffer) ->
 void Device_impl::reset_shader_stages_state_tracker()
 {
     m_gl_state_tracker.shader_stages.reset();
+}
+
+auto Device_impl::push_program(const unsigned int program) -> Program_binding_guard
+{
+    return m_gl_state_tracker.shader_stages.push_program(program);
 }
 
 auto Device_impl::get_draw_id_uniform_location() const -> GLint
