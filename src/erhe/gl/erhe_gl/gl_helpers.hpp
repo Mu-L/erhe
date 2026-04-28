@@ -4,7 +4,9 @@
 #include "erhe_dataformat/dataformat.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <optional>
+#include <string>
 
 namespace gl_helpers {
 
@@ -23,8 +25,13 @@ namespace gl_helpers {
 [[nodiscard]] auto convert_to_gl(erhe::dataformat::Format format) -> std::optional<gl::Internal_format>;
 [[nodiscard]] auto convert_from_gl(gl::Internal_format format) -> erhe::dataformat::Format;
 
+using Error_callback = std::function<void(const std::string& message)>;
+
 void set_error_checking(bool enable);
+void set_error_callback(Error_callback callback);
 void check_error       ();
+[[nodiscard]] auto peek_error    () -> unsigned int;
+[[nodiscard]] auto format_gl_state() -> std::string;
 void initialize_logging();
 
 } // namespace gl_helpers

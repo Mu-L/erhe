@@ -1,8 +1,11 @@
 #include "erhe_gl/gl_helpers.hpp"
 #include "erhe_gl/enum_string_functions.hpp"
 #include "erhe_gl/dynamic_load.hpp"
+#include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_log/log.hpp"
 #include "erhe_verify/verify.hpp"
+
+#include <fmt/format.h>
 
 #include <cassert>
 #include <cctype>
@@ -18,7 +21,8 @@ namespace gl_helpers {
 
 std::shared_ptr<spdlog::logger> log_gl_debug;
 
-static bool enable_error_checking = true;
+static bool           enable_error_checking = true;
+static Error_callback error_callback;
 
 void initialize_logging()
 {
@@ -30,25 +34,86 @@ void set_error_checking(const bool enable)
     enable_error_checking = enable;
 }
 
+void set_error_callback(Error_callback callback)
+{
+    error_callback = std::move(callback);
+}
+
+auto peek_error() -> unsigned int
+{
+#if defined(ERHE_DLOAD_ALL_GL_SYMBOLS)
+    return static_cast<unsigned int>(gl::glGetError());
+#else
+    return static_cast<unsigned int>(glGetError());
+#endif
+}
+
+auto format_gl_state() -> std::string
+{
+    // Suspend wrapper-level error checking around the state queries so
+    // the get_*-call wrappers do not invoke check_error recursively, and
+    // any errors produced by unsupported state queries on this GL
+    // version do not leak into subsequent error attribution.
+    const bool prev_enable = enable_error_checking;
+    enable_error_checking = false;
+
+    GLint cur_program             {0};
+    GLint cur_vao                 {0};
+    GLint cur_draw_fbo            {0};
+    GLint cur_array_buf           {0};
+    GLint cur_elem_buf            {0};
+    GLint cur_uniform_buf         {0};
+    GLint cur_active_texture      {0};
+    GLint program_link_status     {0};
+    GLint program_validate_status {0};
+    GLint program_active_attribs  {0};
+    gl::get_integer_v(gl::Get_p_name::current_program,              &cur_program);
+    gl::get_integer_v(gl::Get_p_name::vertex_array_binding,         &cur_vao);
+    gl::get_integer_v(gl::Get_p_name::draw_framebuffer_binding,     &cur_draw_fbo);
+    gl::get_integer_v(gl::Get_p_name::array_buffer_binding,         &cur_array_buf);
+    gl::get_integer_v(gl::Get_p_name::element_array_buffer_binding, &cur_elem_buf);
+    gl::get_integer_v(gl::Get_p_name::uniform_buffer_binding,       &cur_uniform_buf);
+    gl::get_integer_v(gl::Get_p_name::active_texture,               &cur_active_texture);
+    if (cur_program != 0) {
+        gl::get_program_iv(static_cast<GLuint>(cur_program), gl::Program_property::link_status,       &program_link_status);
+        gl::get_program_iv(static_cast<GLuint>(cur_program), gl::Program_property::validate_status,   &program_validate_status);
+        gl::get_program_iv(static_cast<GLuint>(cur_program), gl::Program_property::active_attributes, &program_active_attribs);
+    }
+
+    // Drain any errors the queries themselves produced so the next
+    // wrapper-level check_error attributes errors to a fresh GL call.
+    while (peek_error() != static_cast<unsigned int>(gl::Error_code::no_error)) {}
+
+    enable_error_checking = prev_enable;
+
+    return fmt::format(
+        "program={} (link_status={} validate_status={} active_attribs={}) "
+        "vao={} draw_fbo={} array_buf={} elem_buf={} ubo={} active_tex_unit=0x{:x}",
+        cur_program, program_link_status, program_validate_status, program_active_attribs,
+        cur_vao, cur_draw_fbo, cur_array_buf, cur_elem_buf,
+        cur_uniform_buf,
+        static_cast<unsigned int>(cur_active_texture)
+    );
+}
+
 void check_error()
 {
     if (!enable_error_checking) {
         return;
     }
 
-#if defined(ERHE_DLOAD_ALL_GL_SYMBOLS)
-    auto error_code = static_cast<gl::Error_code>(gl::glGetError());
-#else
-    auto error_code = static_cast<gl::Error_code>(glGetError());
-#endif
+    const auto error_code = static_cast<gl::Error_code>(peek_error());
 
     if (error_code != gl::Error_code::no_error) {
+        if (error_callback) {
+            const std::string state   = format_gl_state();
+            const std::string message = fmt::format("GL error: {}\n{}", gl::c_str(error_code), state);
+            error_callback(message);
+            return;
+        }
         log_gl_debug->error("{}", gl::c_str(error_code));
-        //error_fmt(log_gl, "{}", gl::c_str(error_code));
 #if defined(WIN32)
         DebugBreak();
-#else
-        //raise(SIGTRAP);
 #endif
     }
 }

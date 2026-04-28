@@ -118,6 +118,12 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
 {
     ERHE_PROFILE_FUNCTION();
 
+    gl_helpers::set_error_callback(
+        [&device](const std::string& message) {
+            device.device_message(Message_severity::error, message);
+        }
+    );
+
     if (surface_create_info.context_window != nullptr) {
         m_surface = std::make_unique<Surface>(
             std::make_unique<Surface_impl>(*this, surface_create_info)
@@ -696,6 +702,13 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         // GL < 4.3 fallback: probe formats by creating textures/renderbuffers
         // and checking for GL errors and framebuffer completeness.
 
+        // Suspend wrapper-level error checking: the probe pattern intentionally
+        // invokes failing GL calls and reads the result via gl::get_error().
+        // With ERHE_GL_CHECK_ERRORS active (macOS debug), the wrapper would
+        // consume the error before the probe can observe it, and the device
+        // error callback would fire on every probed-but-unsupported format.
+        gl_helpers::set_error_checking(false);
+
         // Helper: drain any pending GL errors
         auto drain_gl_errors = []() {
             while (gl::get_error() != gl::Error_code::no_error) {}
@@ -990,6 +1003,8 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
             properties.texture_2d_array_max_layers = global_max_array_texture_layers;
             format_properties.insert({format, properties});
         }
+
+        gl_helpers::set_error_checking(true);
     }
 
     {
@@ -1075,7 +1090,10 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     );
 }
 
-Device_impl::~Device_impl() noexcept = default;
+Device_impl::~Device_impl() noexcept
+{
+    gl_helpers::set_error_callback({});
+}
 
 auto Device_impl::get_surface() -> Surface*
 {
