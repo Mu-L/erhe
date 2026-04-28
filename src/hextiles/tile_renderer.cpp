@@ -745,7 +745,13 @@ void Tile_renderer::render(erhe::graphics::Render_command_encoder& render_encode
         return;
     }
 
-    const auto handle = m_graphics_device.get_handle(*m_tileset_texture.get(), m_nearest_sampler);
+    erhe::graphics::Texture_heap texture_heap{
+        m_graphics_device,
+        *m_tileset_texture.get(),
+        m_nearest_sampler,
+        &m_bind_group_layout
+    };
+    const uint64_t handle = texture_heap.allocate(m_tileset_texture.get(), &m_nearest_sampler);
 
     erhe::graphics::Ring_buffer_range& vertex_buffer_range     = m_vertex_buffer_range.value();
     erhe::graphics::Ring_buffer_range  projection_buffer_range = m_projection_buffer.acquire(erhe::graphics::Ring_buffer_usage::CPU_write, m_projection_block.get_size_bytes());
@@ -795,13 +801,6 @@ void Tile_renderer::render(erhe::graphics::Render_command_encoder& render_encode
 
     m_projection_buffer.bind(render_encoder, projection_buffer_range);
 
-    erhe::graphics::Texture_heap texture_heap{
-        m_graphics_device,
-        *m_tileset_texture.get(),
-        m_nearest_sampler,
-        &m_bind_group_layout
-    };
-    texture_heap.allocate(m_tileset_texture.get(), &m_nearest_sampler);
     texture_heap.bind(render_encoder);
 
     render_encoder.draw_indexed_primitives(
