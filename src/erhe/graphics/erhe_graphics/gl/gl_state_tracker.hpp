@@ -99,13 +99,15 @@ public:
     void set_index_buffer (const Buffer* buffer) const;
     void set_vertex_buffer(std::uintptr_t binding, const Buffer* buffer, std::uintptr_t offset);
 
-    void set_use_dsa(bool use_dsa);
+    void set_use_dsa      (bool use_dsa);
+    void set_binding_state(Gl_binding_state* binding_state);
 
 private:
     std::vector<Vertex_input_attribute> m_attributes;
     std::vector<Vertex_input_binding>   m_bindings;
-    unsigned int                        m_last{0};
-    bool                                m_use_dsa{true};
+    const Vertex_input_state*           m_last_state    {nullptr};
+    Gl_binding_state*                   m_binding_state {nullptr};
+    bool                                m_use_dsa       {true};
 };
 
 class Viewport_rect_state_tracker
@@ -137,12 +139,13 @@ public:
     OpenGL_state_tracker(const OpenGL_state_tracker&) = delete;
     void operator=      (const OpenGL_state_tracker&) = delete;
 
-    void on_thread_exit ();
-    void on_thread_enter();
-    void reset          ();
-    void execute_       (const Render_pipeline_state& pipeline, bool skip_shader_stages = false);
-    void execute_       (const Compute_pipeline_state& pipeline);
-    auto dump_state     (const char* label, const Gl_binding_state& binding_state) const -> std::string;
+    void on_thread_exit   ();
+    void on_thread_enter  ();
+    void reset            ();
+    void execute_         (const Render_pipeline_state& pipeline, bool skip_shader_stages = false);
+    void execute_         (const Compute_pipeline_state& pipeline);
+    void set_binding_state(Gl_binding_state* binding_state);
+    auto dump_state       (const char* label, const Gl_binding_state& binding_state) const -> std::string;
 
     Shader_stages_tracker              shader_stages;
     Vertex_input_state_tracker         vertex_input;

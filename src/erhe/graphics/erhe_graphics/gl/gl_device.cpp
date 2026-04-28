@@ -118,6 +118,11 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
 {
     ERHE_PROFILE_FUNCTION();
 
+    // Single source of truth for the bound VAO. The per-draw tracker and the
+    // VAO-setup push/pop guards in Vertex_input_state_impl must share state,
+    // or the per-draw cache can skip a needed bind after a guard restores 0.
+    m_gl_state_tracker.set_binding_state(&m_gl_binding_state);
+
     gl_helpers::set_error_callback(
         [&device](const std::string& message) {
             device.device_message(Message_severity::error, message);

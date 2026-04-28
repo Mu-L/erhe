@@ -462,20 +462,27 @@ void Scissor_state_tracker::execute(Scissor_state const& state)
 
 void Vertex_input_state_tracker::reset()
 {
-    gl::bind_vertex_array(0);
-    m_last = 0;
+    ERHE_VERIFY(m_binding_state != nullptr);
+    m_binding_state->bind_vertex_array(0);
+    m_last_state = nullptr;
+    m_attributes.clear();
+    m_bindings.clear();
 }
 
 void Vertex_input_state_tracker::execute(const Vertex_input_state* const state)
 {
+    ERHE_VERIFY(m_binding_state != nullptr);
     const unsigned int name = (state != nullptr) ? state->get_impl().gl_name() : 0;
-    if (m_last == name) {
+    m_binding_state->bind_vertex_array(name);
+
+    // For set_vertex_buffer() and set_index_buffer().
+    // Update only when the logical state changes; the cached attribute /
+    // binding vectors are tied to the Vertex_input_state instance, not to
+    // the GL VAO name.
+    if (m_last_state == state) {
         return;
     }
-    gl::bind_vertex_array(name);
-    m_last = name;
-
-    // For set_vertex_buffer()
+    m_last_state = state;
     if (state != nullptr) {
         m_attributes = state->get_data().attributes;
         m_bindings   = state->get_data().bindings;
@@ -487,10 +494,12 @@ void Vertex_input_state_tracker::execute(const Vertex_input_state* const state)
 
 void Vertex_input_state_tracker::set_index_buffer(const Buffer* buffer) const
 {
-    ERHE_VERIFY(m_last != 0); // Must have VAO bound
+    ERHE_VERIFY(m_binding_state != nullptr);
+    const GLuint vao = m_binding_state->get_bound_vertex_array();
+    ERHE_VERIFY(vao != 0); // Must have VAO bound
     const unsigned int buffer_name = (buffer != nullptr) ? buffer->get_impl().gl_name() : 0;
     if (m_use_dsa) {
-        gl::vertex_array_element_buffer(m_last, buffer_name);
+        gl::vertex_array_element_buffer(vao, buffer_name);
     } else {
         // VAO is already bound by execute(), element_array_buffer is part of VAO state
         gl::bind_buffer(gl::Buffer_target::element_array_buffer, buffer_name);
@@ -503,7 +512,9 @@ void Vertex_input_state_tracker::set_vertex_buffer(
     const std::uintptr_t offset
 )
 {
-    ERHE_VERIFY(m_last != 0); // Must have VAO bound
+    ERHE_VERIFY(m_binding_state != nullptr);
+    const GLuint vao = m_binding_state->get_bound_vertex_array();
+    ERHE_VERIFY(vao != 0); // Must have VAO bound
     ERHE_VERIFY((binding_index != 0) || (buffer != nullptr));
     const unsigned int buffer_name = (buffer != nullptr) ? buffer->get_impl().gl_name() : 0;
 
@@ -511,7 +522,7 @@ void Vertex_input_state_tracker::set_vertex_buffer(
         for (const Vertex_input_binding& binding : m_bindings) {
             if (binding.binding == binding_index) {
                 gl::vertex_array_vertex_buffer(
-                    m_last,
+                    vao,
                     static_cast<GLuint>(binding_index),
                     buffer_name,
                     static_cast<GLintptr>(offset),
@@ -626,6 +637,11 @@ void Vertex_input_state_tracker::set_use_dsa(const bool use_dsa)
     m_use_dsa = use_dsa;
 }
 
+void Vertex_input_state_tracker::set_binding_state(Gl_binding_state* const binding_state)
+{
+    m_binding_state = binding_state;
+}
+
 void Viewport_rect_state_tracker::reset()
 {
     gl::viewport_indexed_f(0, 0.0f, 0.0f, 0.0f, 0.0f);
@@ -674,6 +690,11 @@ void Viewport_depth_range_state_tracker::execute(const Viewport_depth_range_stat
 }
 
 OpenGL_state_tracker::OpenGL_state_tracker() = default;
+
+void OpenGL_state_tracker::set_binding_state(Gl_binding_state* const binding_state)
+{
+    vertex_input.set_binding_state(binding_state);
+}
 
 void OpenGL_state_tracker::on_thread_exit()
 {
