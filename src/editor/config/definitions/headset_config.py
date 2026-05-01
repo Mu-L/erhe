@@ -1,7 +1,7 @@
 from erhe_codegen import *
 
 struct("Headset_config",
-    version=2,
+    version=3,
     short_desc="Virtual Reality Headset",
     long_desc="",
     developer=False,
@@ -125,6 +125,36 @@ struct("Headset_config",
             long_desc="",
             visible=True,
             developer=True
+        ),
+        field(
+            "cpu_performance_level",
+            EnumRef("Perf_settings_level"),
+            added_in=3,
+            default="Perf_settings_level::e_unset",
+            short_desc="CPU Performance Level",
+            long_desc="Suggested CPU clock level via XR_EXT_performance_settings. e_unset keeps the runtime default.",
+            visible=True,
+            developer=False
+        ),
+        field(
+            "gpu_performance_level",
+            EnumRef("Perf_settings_level"),
+            added_in=3,
+            default="Perf_settings_level::e_unset",
+            short_desc="GPU Performance Level",
+            long_desc="Suggested GPU clock level via XR_EXT_performance_settings. e_unset keeps the runtime default.",
+            visible=True,
+            developer=False
+        ),
+        field(
+            "boost_on_thermal_warning",
+            Bool,
+            added_in=3,
+            default="false",
+            short_desc="Step Down Level on Thermal Warning",
+            long_desc="When the runtime sends a thermal warning event, automatically step the affected domain's level down by one notch.",
+            visible=True,
+            developer=False
         ),
     ],
 )

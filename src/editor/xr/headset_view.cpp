@@ -1,7 +1,12 @@
 #include "xr/headset_view.hpp"
 
+#include "config/generated/editor_settings_config.hpp"
+#include "config/generated/headset_config.hpp"
+#include "config/generated/perf_settings_level.hpp"
 #include "config/generated/viewport_config_data.hpp"
 #include "app_context.hpp"
+#include "erhe_imgui/windows/performance_window.hpp"
+#include "xr/xr_perf_metric_plot.hpp"
 #include "app_message_bus.hpp"
 #include "app_rendering.hpp"
 #include "app_scenes.hpp"
@@ -37,6 +42,41 @@
 namespace editor {
 
 using erhe::graphics::Color_blend_state;
+
+namespace {
+
+// Map the user-facing Perf_settings_level enum to the OpenXR
+// XR_PERF_SETTINGS_LEVEL_*_EXT integer value, or -1 for "skip the call".
+auto perf_settings_level_to_xr(Perf_settings_level level) -> int
+{
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    switch (level) {
+        case Perf_settings_level::e_unset:          return -1;
+        case Perf_settings_level::e_power_savings:  return XR_PERF_SETTINGS_LEVEL_POWER_SAVINGS_EXT;
+        case Perf_settings_level::e_sustained_low:  return XR_PERF_SETTINGS_LEVEL_SUSTAINED_LOW_EXT;
+        case Perf_settings_level::e_sustained_high: return XR_PERF_SETTINGS_LEVEL_SUSTAINED_HIGH_EXT;
+        case Perf_settings_level::e_boost:          return XR_PERF_SETTINGS_LEVEL_BOOST_EXT;
+    }
+#else
+    static_cast<void>(level);
+#endif
+    return -1;
+}
+
+// Step a current XR_PERF_SETTINGS_LEVEL_*_EXT down by one notch
+// (BOOST -> SUSTAINED_HIGH -> SUSTAINED_LOW -> POWER_SAVINGS). If the level
+// is already at the bottom or unset, returns the same value unchanged.
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+auto step_down_perf_level(int level) -> int
+{
+    if (level == XR_PERF_SETTINGS_LEVEL_BOOST_EXT)          return XR_PERF_SETTINGS_LEVEL_SUSTAINED_HIGH_EXT;
+    if (level == XR_PERF_SETTINGS_LEVEL_SUSTAINED_HIGH_EXT) return XR_PERF_SETTINGS_LEVEL_SUSTAINED_LOW_EXT;
+    if (level == XR_PERF_SETTINGS_LEVEL_SUSTAINED_LOW_EXT)  return XR_PERF_SETTINGS_LEVEL_POWER_SAVINGS_EXT;
+    return level;
+}
+#endif
+
+} // anonymous namespace
 
 #pragma region Headset_camera_offset_move_command
 Headset_camera_offset_move_command::Headset_camera_offset_move_command(erhe::commands::Commands& commands, erhe::math::Input_axis& variable, char axis)
@@ -137,6 +177,19 @@ Headset_view::Headset_view(
         render_pass_descriptor.debug_label          = "OpenXR mirror window Render_pass";
         m_mirror_mode_window_render_pass = std::make_unique<erhe::graphics::Render_pass>(graphics_device, render_pass_descriptor);
     }
+}
+
+Headset_view::~Headset_view()
+{
+    // Unregister and destroy any XR perf-metric plots before the
+    // unique_ptrs are released. The Performance window is owned by the
+    // editor and outlives Headset_view in normal shutdown order.
+    if ((m_app_context.performance_window != nullptr) && m_xr_perf_plots_registered) {
+        for (std::unique_ptr<Xr_perf_metric_plot>& plot : m_xr_perf_metric_plots) {
+            m_app_context.performance_window->unregister_plot(plot.get());
+        }
+    }
+    m_xr_perf_metric_plots.clear();
 }
 
 void Headset_view::attach_to_scene(std::shared_ptr<Scene_root> scene_root, erhe::scene_renderer::Mesh_memory& mesh_memory)
@@ -734,6 +787,58 @@ auto Headset_view::update_actions() -> bool
         return false;
     }
     const XrSession xr_session = session->get_xr_session();
+
+    // Lazy: once the session has enumerated XR_FB_performance_metrics
+    // counters, build one Plot per counter and hand them to the
+    // Performance window. Done once per Headset_view lifetime.
+    if (!m_xr_perf_plots_registered &&
+        (m_app_context.performance_window != nullptr) &&
+        instance->extensions.META_performance_metrics)
+    {
+        const std::vector<erhe::xr::Xr_perf_counter>& counters = session->get_perf_counters();
+        if (!counters.empty()) {
+            m_xr_perf_metric_plots.reserve(counters.size());
+            for (const erhe::xr::Xr_perf_counter& c : counters) {
+                auto plot = std::make_unique<Xr_perf_metric_plot>(&c);
+                m_app_context.performance_window->register_plot(plot.get());
+                m_xr_perf_metric_plots.push_back(std::move(plot));
+            }
+            m_xr_perf_plots_registered = true;
+        }
+    }
+
+    // Apply the user-configured CPU/GPU performance level (idempotent: only
+    // re-issues the call when the configured level differs from the last
+    // applied one). Then drain any thermal-warning event the runtime sent
+    // since the last tick and step the level down if requested.
+    if (m_app_context.editor_settings != nullptr) {
+        const Headset_config& cfg = m_app_context.editor_settings->headset;
+        int cpu_level = perf_settings_level_to_xr(cfg.cpu_performance_level);
+        int gpu_level = perf_settings_level_to_xr(cfg.gpu_performance_level);
+
+        if ((cpu_level != m_applied_cpu_level) || (gpu_level != m_applied_gpu_level)) {
+            instance->apply_performance_level(xr_session, cpu_level, gpu_level);
+            m_applied_cpu_level = cpu_level;
+            m_applied_gpu_level = gpu_level;
+        }
+
+        std::optional<XrEventDataPerfSettingsEXT> warning = instance->take_latest_thermal_warning();
+        if (warning.has_value() && cfg.boost_on_thermal_warning) {
+            // Step down the affected domain only.
+            int new_cpu = m_applied_cpu_level;
+            int new_gpu = m_applied_gpu_level;
+            if (warning->domain == XR_PERF_SETTINGS_DOMAIN_CPU_EXT && (m_applied_cpu_level >= 0)) {
+                new_cpu = step_down_perf_level(m_applied_cpu_level);
+            } else if (warning->domain == XR_PERF_SETTINGS_DOMAIN_GPU_EXT && (m_applied_gpu_level >= 0)) {
+                new_gpu = step_down_perf_level(m_applied_gpu_level);
+            }
+            if ((new_cpu != m_applied_cpu_level) || (new_gpu != m_applied_gpu_level)) {
+                instance->apply_performance_level(xr_session, new_cpu, new_gpu);
+                m_applied_cpu_level = new_cpu;
+                m_applied_gpu_level = new_gpu;
+            }
+        }
+    }
 
     // Inject XR input events
     std::vector<erhe::window::Input_event>& input_events = m_context.context_window->get_input_events();

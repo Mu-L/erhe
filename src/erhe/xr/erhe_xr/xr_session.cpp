@@ -119,6 +119,7 @@ Xr_session::Xr_session(
     if (!create_hand_tracking()) {
         return;
     }
+    enable_performance_metrics();
 }
 
 auto Xr_session::create_session() -> bool
@@ -826,6 +827,115 @@ auto Xr_session::create_hand_tracking() -> bool
 
     update_hand_tracking();
     return true;
+}
+
+void Xr_session::enable_performance_metrics()
+{
+    if (!m_instance.extensions.META_performance_metrics) {
+        return;
+    }
+    if (m_xr_session == XR_NULL_HANDLE) {
+        return;
+    }
+    if (m_instance.xrSetPerformanceMetricsStateMETA == nullptr) {
+        return;
+    }
+    if (m_instance.xrEnumeratePerformanceMetricsCounterPathsMETA == nullptr) {
+        return;
+    }
+    if (m_instance.xrQueryPerformanceMetricsCounterMETA == nullptr) {
+        return;
+    }
+
+    XrPerformanceMetricsStateMETA state{
+        .type    = XR_TYPE_PERFORMANCE_METRICS_STATE_META,
+        .next    = nullptr,
+        .enabled = XR_TRUE
+    };
+    XrResult result = m_instance.xrSetPerformanceMetricsStateMETA(m_xr_session, &state);
+    if (result != XR_SUCCESS) {
+        log_xr->warn("xrSetPerformanceMetricsStateMETA() failed with {}", c_str(result));
+        return;
+    }
+
+    uint32_t path_count_output = 0;
+    result = m_instance.xrEnumeratePerformanceMetricsCounterPathsMETA(
+        m_instance.get_xr_instance(), 0, &path_count_output, nullptr
+    );
+    if (result != XR_SUCCESS) {
+        log_xr->warn("xrEnumeratePerformanceMetricsCounterPathsMETA(size) failed with {}", c_str(result));
+        return;
+    }
+    if (path_count_output == 0) {
+        log_xr->info("XR_META_performance_metrics: runtime exposes 0 counters");
+        m_perf_metrics_enabled = true;
+        return;
+    }
+
+    std::vector<XrPath> paths(path_count_output);
+    uint32_t filled = 0;
+    result = m_instance.xrEnumeratePerformanceMetricsCounterPathsMETA(
+        m_instance.get_xr_instance(), path_count_output, &filled, paths.data()
+    );
+    if (result != XR_SUCCESS) {
+        log_xr->warn("xrEnumeratePerformanceMetricsCounterPathsMETA(fill) failed with {}", c_str(result));
+        return;
+    }
+
+    m_perf_counters.clear();
+    m_perf_counters.reserve(filled);
+    for (uint32_t i = 0; i < filled; ++i) {
+        const std::string full = m_instance.get_path_string(paths[i]);
+        // Strip the "/perfmetrics_meta/" prefix if present so the plot label
+        // is short and human-readable.
+        std::string display = full;
+        const std::string_view prefix{"/perfmetrics_meta/"};
+        if (display.size() > prefix.size() &&
+            std::string_view{display}.substr(0, prefix.size()) == prefix)
+        {
+            display.erase(0, prefix.size());
+        }
+        Xr_perf_counter counter{};
+        counter.path = paths[i];
+        counter.display_name = std::move(display);
+        counter.last.type = XR_TYPE_PERFORMANCE_METRICS_COUNTER_META;
+        counter.last.next = nullptr;
+        m_perf_counters.push_back(std::move(counter));
+        log_xr->info("XR_META_performance_metrics counter: {}", full);
+    }
+
+    m_perf_metrics_enabled = true;
+}
+
+void Xr_session::query_performance_metrics()
+{
+    if (!m_perf_metrics_enabled) {
+        return;
+    }
+    if (m_instance.xrQueryPerformanceMetricsCounterMETA == nullptr) {
+        return;
+    }
+    if (m_xr_session == XR_NULL_HANDLE) {
+        return;
+    }
+
+    for (Xr_perf_counter& counter : m_perf_counters) {
+        counter.last.type = XR_TYPE_PERFORMANCE_METRICS_COUNTER_META;
+        counter.last.next = nullptr;
+        const XrResult result = m_instance.xrQueryPerformanceMetricsCounterMETA(
+            m_xr_session, counter.path, &counter.last
+        );
+        if (result != XR_SUCCESS) {
+            // Counter unavailable this frame: leave the cached value as-is
+            // and continue. Don't spam the log; many counters are
+            // intermittently unsupported on different runtimes.
+        }
+    }
+}
+
+auto Xr_session::get_perf_counters() const -> const std::vector<Xr_perf_counter>&
+{
+    return m_perf_counters;
 }
 
 void Xr_session::update_view_pose()

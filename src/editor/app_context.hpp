@@ -10,6 +10,7 @@ namespace erhe::graphics {
 namespace erhe::imgui {
     class Imgui_renderer;
     class Imgui_windows;
+    class Performance_window;
 }
 namespace erhe::renderer {
     class Debug_renderer;
@@ -124,6 +125,7 @@ public:
     erhe::graphics::Device*                 graphics_device       {nullptr};
     erhe::imgui::Imgui_renderer*            imgui_renderer        {nullptr};
     erhe::imgui::Imgui_windows*             imgui_windows         {nullptr};
+    erhe::imgui::Performance_window*        performance_window    {nullptr};
 #if defined(ERHE_PHYSICS_LIBRARY_JOLT)
     erhe::renderer::Jolt_debug_renderer*    jolt_debug_renderer   {nullptr};
 #endif

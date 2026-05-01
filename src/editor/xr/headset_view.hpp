@@ -45,6 +45,7 @@ struct Viewport_config_data;
 namespace editor {
 
 class App_context;
+class Xr_perf_metric_plot;
 class App_message_bus;
 class App_rendering;
 class App_settings;
@@ -110,6 +111,10 @@ public:
         App_rendering&                  app_rendering,
         App_settings&                   app_settings
     );
+    // Defined out-of-line so the unique_ptr<Xr_perf_metric_plot> deleter
+    // can see the full plot definition (instead of forcing every TU that
+    // includes this header to also include xr_perf_metric_plot.hpp).
+    ~Headset_view() override;
 
     void attach_to_scene(std::shared_ptr<Scene_root> scene_root, erhe::scene_renderer::Mesh_memory& mesh_memory);
 
@@ -182,6 +187,18 @@ private:
     bool                                                 m_renderdoc_capture_started{false};
     erhe::xr::Frame_timing                               m_frame_timing{};
     uint64_t                                             m_frame_number{0};
+
+    // Last XR_PERF_SETTINGS_LEVEL_*_EXT value (or -1 for unset) actually
+    // sent to xrPerfSettingsSetPerformanceLevelEXT. Tracked here so the
+    // editor only re-applies when the configured level changes.
+    int                                                  m_applied_cpu_level{-2};
+    int                                                  m_applied_gpu_level{-2};
+
+    // One Plot per XR_FB_performance_metrics counter the runtime exposed.
+    // Allocated lazily after the session is up; registered with the
+    // Performance window. Unregistered + destroyed in ~Headset_view.
+    std::vector<std::unique_ptr<Xr_perf_metric_plot>>    m_xr_perf_metric_plots;
+    bool                                                 m_xr_perf_plots_registered{false};
 };
 
 }

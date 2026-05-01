@@ -21,6 +21,7 @@
 
 #include "etl/vector.h"
 
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -94,6 +95,17 @@ public:
                   auto get_current_interaction_profile(Xr_session& session) -> bool;
     [[nodiscard]] auto get_configuration              () const -> const Xr_configuration&;
 
+    // XR_EXT_performance_settings: apply CPU/GPU performance level. Either
+    // value may be XR_PERF_SETTINGS_LEVEL_*_EXT, or -1 to skip the call for
+    // that domain (= keep runtime default). No-ops when the extension is
+    // not enabled.
+    void apply_performance_level(XrSession session, int cpu_level, int gpu_level);
+
+    // Drain the most recent XR_TYPE_EVENT_DATA_PERF_SETTINGS_EXT received
+    // since the last call. The editor polls this each tick to decide
+    // whether to step the CPU/GPU level down per Headset_config::boost_on_thermal_warning.
+    [[nodiscard]] auto take_latest_thermal_warning() -> std::optional<XrEventDataPerfSettingsEXT>;
+
     //void set_environment_depth_estimation(XrSession xr_session, bool enabled);
 
     auto initialize_actions             () -> bool;
@@ -144,9 +156,11 @@ public:
         bool KHR_visibility_mask               {false};
         bool EXT_debug_utils                   {false};
         bool EXT_hand_tracking                 {false};
+        bool EXT_performance_settings          {false};
         bool FB_passthrough                    {false};
         bool FB_color_space                    {false};
         bool FB_display_refresh_rate           {false};
+        bool META_performance_metrics            {false};
         bool VARJO_quad_views                  {false};
         bool VARJO_environment_depth_estimation{false};
     };
@@ -183,6 +197,15 @@ public:
     PFN_xrCreateGeometryInstanceFB         xrCreateGeometryInstanceFB        {nullptr};
     PFN_xrDestroyGeometryInstanceFB        xrDestroyGeometryInstanceFB       {nullptr};
     PFN_xrGeometryInstanceSetTransformFB   xrGeometryInstanceSetTransformFB  {nullptr};
+
+    // XR_EXT_performance_settings
+    PFN_xrPerfSettingsSetPerformanceLevelEXT xrPerfSettingsSetPerformanceLevelEXT{nullptr};
+
+    // XR_META_performance_metrics
+    PFN_xrEnumeratePerformanceMetricsCounterPathsMETA xrEnumeratePerformanceMetricsCounterPathsMETA{nullptr};
+    PFN_xrSetPerformanceMetricsStateMETA              xrSetPerformanceMetricsStateMETA             {nullptr};
+    PFN_xrGetPerformanceMetricsStateMETA              xrGetPerformanceMetricsStateMETA             {nullptr};
+    PFN_xrQueryPerformanceMetricsCounterMETA          xrQueryPerformanceMetricsCounterMETA         {nullptr};
 
     [[nodiscard]] auto debug_utils_messenger_callback(
         XrDebugUtilsMessageSeverityFlagsEXT         message_severity,
@@ -240,6 +263,8 @@ private:
 
     Message_callback m_message_callback{};
     //PFN_xrSetEnvironmentDepthEstimationVARJO m_xrSetEnvironmentDepthEstimationVARJO{nullptr};
+
+    std::optional<XrEventDataPerfSettingsEXT> m_latest_thermal_warning;
 };
 
 } // namespace erhe::xr

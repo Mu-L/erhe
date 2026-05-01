@@ -395,6 +395,8 @@ if (${ERHE_XR_LIBRARY} STREQUAL "openxr")
         xr/headset_view.hpp
         xr/headset_view_resources.cpp
         xr/headset_view_resources.hpp
+        xr/xr_perf_metric_plot.cpp
+        xr/xr_perf_metric_plot.hpp
         xr/theremin.cpp
         xr/theremin.hpp
     )
@@ -508,6 +510,7 @@ erhe_codegen_generate(
         "${_config_defs}/editor_settings_config.py"
         "${_config_defs}/grid_config.py"
         "${_config_defs}/headset_config.py"
+        "${_config_defs}/perf_settings_level.py"
         "${_config_defs}/hotbar_config.py"
         "${_config_defs}/inventory_config.py"
         "${_config_defs}/hud_config.py"
@@ -546,6 +549,8 @@ set(_config_sources
     ${_config_out}/headset_config.hpp
     ${_config_out}/headset_config_serialization.hpp
     ${_config_out}/headset_config.cpp
+    ${_config_out}/perf_settings_level.hpp
+    ${_config_out}/perf_settings_level.cpp
     ${_config_out}/hotbar_config.hpp
     ${_config_out}/hotbar_config_serialization.hpp
     ${_config_out}/hotbar_config.cpp

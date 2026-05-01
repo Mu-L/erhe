@@ -183,6 +183,10 @@ auto Headset::begin_frame_() -> Frame_timing
         return result;
     }
 
+    // Refresh XR_FB_performance_metrics counters once per frame. No-op when
+    // the extension is not enabled.
+    m_xr_session->query_performance_metrics();
+
     result.predicted_display_time   = xr_frame_state->predictedDisplayTime;
     result.predicted_display_pediod = xr_frame_state->predictedDisplayPeriod;
     result.begin_ok                 = true;

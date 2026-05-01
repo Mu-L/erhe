@@ -382,6 +382,14 @@ auto Xr_instance::create_instance() -> bool
         extensions.FB_display_refresh_rate = true;
         enabled_extensions.push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
     }
+    if (has_extension(XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME)) {
+        extensions.EXT_performance_settings = true;
+        enabled_extensions.push_back(XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME);
+    }
+    if (has_extension(XR_META_PERFORMANCE_METRICS_EXTENSION_NAME)) {
+        extensions.META_performance_metrics = true;
+        enabled_extensions.push_back(XR_META_PERFORMANCE_METRICS_EXTENSION_NAME);
+    }
 
     // XR_META_passthrough_layer_resumed_event
     // XR_META_passthrough_color_lut
@@ -552,6 +560,17 @@ auto Xr_instance::create_instance() -> bool
     if (extensions.FB_color_space) {
         xrEnumerateColorSpacesFB         = get_proc_addr<PFN_xrEnumerateColorSpacesFB>("xrEnumerateColorSpacesFB");
         xrSetColorSpaceFB                = get_proc_addr<PFN_xrSetColorSpaceFB       >("xrSetColorSpaceFB");
+    }
+
+    if (extensions.EXT_performance_settings) {
+        xrPerfSettingsSetPerformanceLevelEXT = get_proc_addr<PFN_xrPerfSettingsSetPerformanceLevelEXT>("xrPerfSettingsSetPerformanceLevelEXT");
+    }
+
+    if (extensions.META_performance_metrics) {
+        xrEnumeratePerformanceMetricsCounterPathsMETA = get_proc_addr<PFN_xrEnumeratePerformanceMetricsCounterPathsMETA>("xrEnumeratePerformanceMetricsCounterPathsMETA");
+        xrSetPerformanceMetricsStateMETA              = get_proc_addr<PFN_xrSetPerformanceMetricsStateMETA             >("xrSetPerformanceMetricsStateMETA");
+        xrGetPerformanceMetricsStateMETA              = get_proc_addr<PFN_xrGetPerformanceMetricsStateMETA             >("xrGetPerformanceMetricsStateMETA");
+        xrQueryPerformanceMetricsCounterMETA          = get_proc_addr<PFN_xrQueryPerformanceMetricsCounterMETA         >("xrQueryPerformanceMetricsCounterMETA");
     }
 
     return true;
@@ -1495,6 +1514,45 @@ auto Xr_instance::get_configuration() const -> const Xr_configuration&
     return m_configuration;
 }
 
+void Xr_instance::apply_performance_level(XrSession session, int cpu_level, int gpu_level)
+{
+    if (!extensions.EXT_performance_settings || (xrPerfSettingsSetPerformanceLevelEXT == nullptr)) {
+        return;
+    }
+    if (session == XR_NULL_HANDLE) {
+        return;
+    }
+
+    auto apply = [&](XrPerfSettingsDomainEXT domain, int level) {
+        if (level < 0) {
+            return;
+        }
+        const auto level_enum = static_cast<XrPerfSettingsLevelEXT>(level);
+        const XrResult result = xrPerfSettingsSetPerformanceLevelEXT(session, domain, level_enum);
+        if (result != XR_SUCCESS) {
+            log_xr->warn(
+                "xrPerfSettingsSetPerformanceLevelEXT(domain={}, level={}) failed with {}",
+                static_cast<int>(domain), level, c_str(result)
+            );
+        } else {
+            log_xr->info(
+                "xrPerfSettingsSetPerformanceLevelEXT(domain={}, level={}) ok",
+                static_cast<int>(domain), level
+            );
+        }
+    };
+
+    apply(XR_PERF_SETTINGS_DOMAIN_CPU_EXT, cpu_level);
+    apply(XR_PERF_SETTINGS_DOMAIN_GPU_EXT, gpu_level);
+}
+
+auto Xr_instance::take_latest_thermal_warning() -> std::optional<XrEventDataPerfSettingsEXT>
+{
+    auto out = m_latest_thermal_warning;
+    m_latest_thermal_warning.reset();
+    return out;
+}
+
 auto Xr_instance::get_current_interaction_profile(Xr_session& session) -> bool
 {
     ERHE_PROFILE_FUNCTION();
@@ -1544,6 +1602,19 @@ auto Xr_instance::poll_xr_events(Xr_session& session) -> bool
             if (base_header->type == XR_TYPE_EVENT_DATA_EVENTS_LOST) {
                 auto data_events_lost = *reinterpret_cast<const XrEventDataEventsLost*>(base_header);
                 log_xr->warn("XrEventDataEventsLost::lostEventCount = {}", data_events_lost.lostEventCount);
+                continue;
+            }
+
+            if (base_header->type == XR_TYPE_EVENT_DATA_PERF_SETTINGS_EXT) {
+                const auto& perf_event = *reinterpret_cast<const XrEventDataPerfSettingsEXT*>(base_header);
+                log_xr->warn(
+                    "XR_EXT_performance_settings: domain={} subDomain={} fromLevel={} toLevel={}",
+                    static_cast<int>(perf_event.domain),
+                    static_cast<int>(perf_event.subDomain),
+                    static_cast<int>(perf_event.fromLevel),
+                    static_cast<int>(perf_event.toLevel)
+                );
+                m_latest_thermal_warning = perf_event;
                 continue;
             }
 

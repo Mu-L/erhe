@@ -5,6 +5,7 @@
 #include <openxr/openxr.h>
 
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace erhe::graphics { class Command_buffer; class Device; }
@@ -13,6 +14,18 @@ namespace erhe::window   { class Context_window; }
 namespace erhe::xr {
 
 class Xr_instance;
+
+// One XR_FB_performance_metrics counter the runtime exposes (e.g.
+// app_cpu_time_ms, compositor_dropped_frame_count, gpu_utilization). The
+// Performance window auto-builds one plot per entry of this list when the
+// extension is enabled.
+class Xr_perf_counter
+{
+public:
+    XrPath                       path        {XR_NULL_PATH};
+    std::string                  display_name;
+    XrPerformanceMetricsCounterMETA last       {.type = XR_TYPE_PERFORMANCE_METRICS_COUNTER_META, .next = nullptr};
+};
 
 class Xr_session
 {
@@ -50,6 +63,11 @@ public:
     [[nodiscard]] auto get_view_space_location () const -> const XrSpaceLocation&;
     [[nodiscard]] auto get_state               () const -> XrSessionState;
 
+    // XR_FB_performance_metrics: refresh the cached counter values once. Call
+    // each tick from Headset::begin_frame_; cheap (runtime-cached lookup).
+    void query_performance_metrics();
+    [[nodiscard]] auto get_perf_counters() const -> const std::vector<Xr_perf_counter>&;
+
 private:
     [[nodiscard]] auto color_space_score          (const XrColorSpaceFB color_space) const -> int;
     [[nodiscard]] auto color_format_score         (const erhe::dataformat::Format pixelformat) const -> int;
@@ -61,6 +79,7 @@ private:
     [[nodiscard]] auto create_reference_space     () -> bool;
     [[nodiscard]] auto attach_actions             () -> bool;
     [[nodiscard]] auto create_hand_tracking       () -> bool;
+    void               enable_performance_metrics ();
 
     class Swapchains
     {
@@ -108,6 +127,8 @@ private:
     XrPassthroughFB                               m_passthrough_fb      {XR_NULL_HANDLE};
     XrPassthroughLayerFB                          m_passthrough_layer_fb{XR_NULL_HANDLE};
     bool                                          m_session_running     {false};
+    std::vector<Xr_perf_counter>                  m_perf_counters;
+    bool                                          m_perf_metrics_enabled{false};
 };
 
 } // namespace erhe::xr
