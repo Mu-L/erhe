@@ -139,14 +139,28 @@ yet - that is fine. Phase 5 brings the immersive path.
 - The SDL Java shim under `app/src/main/java/org/libsdl/app/` is
   shared by both flavors.
 
-## Phase 5 - OpenXR runtime on Quest (landed; immersive display pending)
+## Phase 5 - OpenXR runtime on Quest (landed)
 
-Status: build + bring-up working. `xrInitializeLoaderKHR()`,
-`xrCreateInstance()`, `xrCreateSession()`, eye swapchain allocation,
-reference-space creation, and `xrAttachSessionActionSets()` all succeed
-on Quest 3 (verified via logcat). The headset still shows a black 2D
-panel rather than an immersive view -- the frame loop is not yet
-producing visible eye output. Investigation in progress.
+Status: editor renders immersively on Quest 3.
+
+The activity launches into Horizon's immersive composition path,
+`xrCreateSession` succeeds, eye swapchains are allocated, and the
+editor's per-frame xrLocateViews / xrEndFrame loop drives the headset
+display.
+
+Subtle gotcha worth recording: Horizon only treats an app as
+immersive-VR when `android.intent.action.MAIN`,
+`android.intent.category.LAUNCHER`,
+`com.oculus.intent.category.VR`, and (optionally for forward
+compatibility) `org.khronos.openxr.intent.category.IMMERSIVE_HMD` all
+appear on the *same* `<intent-filter>` element. Adding the VR /
+IMMERSIVE_HMD categories to a separate intent-filter from the
+LAUNCHER one is silently a no-op -- the activity launches as a 2D
+panel, OpenXR session still reaches VISIBLE, and `VrApi` even reports
+~35 fps frame submissions, but the user sees a flat black window in
+the Horizon shell rather than an immersive scene. The quest flavor
+manifest replaces the activity element wholesale via
+`tools:node="replace"` so that LAUNCHER and VR end up on one filter.
 
 ### 5.1 Loader source
 
