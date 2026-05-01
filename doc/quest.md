@@ -96,27 +96,45 @@ is actually needed.
 ### 4.3 Build / install commands
 
 ```bat
-:: Build a Mobile APK
+:: Build a Mobile APK (debug)
 scripts\build_android.bat mobile
 
-:: Build a Quest APK
+:: Build a Quest APK (debug)
 scripts\build_android.bat quest
 
 :: Install onto a connected device (passes through to adb install -r -g -d)
 scripts\install_android.bat mobile debug
 scripts\install_android.bat quest  debug
 
-:: Install + launch
+:: Install + launch with the LAUNCHER+VR intent
 scripts\install_android.bat quest debug run
 scripts\install_android.bat quest debug run -s <quest-adb-serial>
+
+:: Build + install + launch in one shot (debug or release)
+scripts\run_android.bat quest
+scripts\run_android.bat quest release
+scripts\run_android.bat quest release -s <quest-adb-serial>
 ```
 
-Both scripts now require the flavor as their first positional argument;
-omitting it prints a usage error rather than picking a default. The
-APK output paths are:
+Both `build_android.bat` and `install_android.bat` require the flavor as
+their first positional argument; omitting it prints a usage error
+rather than picking a default. `run_android.bat` is a convenience
+wrapper that invokes Gradle's `install<Flavor><BuildType>` task
+(compile + package + adb install in one step) and then launches the
+activity via the `MAIN+LAUNCHER+VR` intent so Horizon recognizes the
+quest flavor as immersive-VR.
+
+The APK output paths are:
 
 - `android-project/app/build/outputs/apk/mobile/debug/app-mobile-debug.apk`
 - `android-project/app/build/outputs/apk/quest/debug/app-quest-debug.apk`
+- `android-project/app/build/outputs/apk/quest/release/app-quest-release.apk`
+
+Release APKs are signed with the auto-generated debug keystore so they
+can be `adb install`-ed locally for performance testing. This is
+declared in `android-project/app/build.gradle` and is **not** suitable
+for store submission - replace with a real `signingConfig` before
+publishing.
 
 When both a phone and a Quest are attached at the same time, pass
 `-s <serial>` so adb knows which device to talk to.

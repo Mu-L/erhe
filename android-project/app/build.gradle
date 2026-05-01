@@ -67,6 +67,11 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Sign release APKs with the auto-generated debug keystore so
+            // local performance testing can `adb install` without a custom
+            // keystore. NOT suitable for store submission - replace with a
+            // real signingConfig before publishing.
+            signingConfig signingConfigs.debug
         }
     }
     // The editor reads via paths like "config/editor/editor_settings.json"
