@@ -4,9 +4,11 @@
 #include "erhe_utility/debug_label.hpp"
 
 #include <memory>
+#include <string>
 
 namespace erhe::graphics {
     class Device;
+    class Gpu_timer;
     class Render_pass;
     class Swapchain;
     class Texture;
@@ -52,6 +54,8 @@ private:
     std::shared_ptr<erhe::graphics::Texture>     m_multisampled_color_texture;
     std::unique_ptr<erhe::graphics::Texture>     m_depth_stencil_texture;
     std::unique_ptr<erhe::graphics::Render_pass> m_render_pass;
+    std::string                                  m_gpu_timer_label;
+    std::unique_ptr<erhe::graphics::Gpu_timer>   m_gpu_timer;
 };
 
 } // namespace erhe::rendergraph

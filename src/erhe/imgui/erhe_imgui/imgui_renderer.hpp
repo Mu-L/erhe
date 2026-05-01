@@ -3,7 +3,6 @@
 #include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
-#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
@@ -217,7 +216,8 @@ private:
     // on GL 4.1 where ARB_texture_view is unavailable).
     mutable std::unordered_map<uint64_t, std::unique_ptr<erhe::graphics::Sampler>> m_lod_clamped_samplers;
 
-    erhe::graphics::Gpu_timer                m_gpu_timer;
+    // TODO Re-add a per-render-pass GPU timer; the imgui draw render pass
+    // is owned by the caller (passed in to render_draw_data), not here.
 
     std::recursive_mutex                     m_mutex;
     std::vector<Imgui_host*>                 m_imgui_hosts;

@@ -133,11 +133,11 @@ private:
     std::unique_ptr<erhe::graphics::Texture>     m_color_texture;
     std::unique_ptr<erhe::graphics::Texture>     m_depth_texture;
     std::unique_ptr<erhe::graphics::Render_pass> m_render_pass;
+    std::unique_ptr<erhe::graphics::Gpu_timer>   m_gpu_timer;
     erhe::graphics::Ring_buffer_client           m_texture_read_buffer;
 
     std::array<Transfer_entry, s_transfer_entry_count> m_transfer_entries;
     int                                                m_current_transfer_entry_slot{0};
-    erhe::graphics::Gpu_timer                          m_gpu_timer;
 
     class Range
     {

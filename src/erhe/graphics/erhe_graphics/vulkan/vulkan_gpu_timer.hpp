@@ -1,23 +1,26 @@
 #pragma once
 
-#include "erhe_profile/profile.hpp"
-
 #include "volk.h"
 
-#include <array>
-#include <mutex>
-#include <optional>
-#include <thread>
-#include <vector>
+#include <cstddef>
+#include <cstdint>
 
 namespace erhe::graphics {
 
-class Device;
+class Command_buffer;
+class Device_impl;
+class Render_pass;
 
+// Vulkan GPU timer backend. Each timer is allocated a slot (begin+end query
+// pair, replicated per frame in flight) from the Device-owned VkQueryPool.
+// vkCmdWriteTimestamp is recorded from write_begin_timestamp /
+// write_end_timestamp at render-pass start/end. Results are read in
+// Device_impl::wait_frame after the timeline-semaphore fence wait, then
+// stored back here via store_last_result_ns.
 class Gpu_timer_impl
 {
 public:
-    Gpu_timer_impl(Device& device, const char* label);
+    Gpu_timer_impl(Render_pass& render_pass, const char* label);
     ~Gpu_timer_impl() noexcept;
 
     Gpu_timer_impl(const Gpu_timer_impl&) = delete;
@@ -27,24 +30,20 @@ public:
 
     [[nodiscard]] auto last_result() -> uint64_t;
     [[nodiscard]] auto label      () const -> const char*;
-    void begin ();
-    void end   ();
-    void read  ();
-    void create();
-    void reset ();
 
-    static void on_thread_enter();
-    static void on_thread_exit ();
-    static void end_frame      ();
-    static auto all_gpu_timers () -> std::vector<Gpu_timer_impl*>;
+    void write_begin_timestamp(Command_buffer& command_buffer);
+    void write_end_timestamp  (Command_buffer& command_buffer);
+
+    // Called from Device_impl::wait_frame after results are read from the
+    // VkQueryPool slice for this timer's slot.
+    void store_last_result_ns(uint64_t nanoseconds);
 
 private:
-    Device*     m_device       {nullptr};
-    const char* m_label        {""};
-    uint64_t    m_last_result  {0};
-    VkQueryPool m_query_pool   {VK_NULL_HANDLE};
-    bool        m_query_started{false};
-    bool        m_query_ended  {false};
+    Render_pass* m_render_pass{nullptr};
+    Device_impl* m_device_impl{nullptr};
+    const char*  m_label      {nullptr};
+    int          m_slot       {-1};
+    uint64_t     m_last_result{0};
 };
 
 } // namespace erhe::graphics

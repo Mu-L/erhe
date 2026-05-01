@@ -6,6 +6,7 @@
 #include "erhe_imgui/scoped_imgui_context.hpp"
 #include "erhe_graphics/command_buffer.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_profile/profile.hpp"
@@ -75,6 +76,8 @@ void Window_imgui_host::update_render_pass(int width, int height)
         return;
     }
 
+    // Tear down the timer before its render pass.
+    m_gpu_timer.reset();
     m_render_pass.reset();
     erhe::graphics::Render_pass_descriptor render_pass_descriptor;
     render_pass_descriptor.swapchain = m_graphics_device.get_surface()->get_swapchain();
@@ -97,6 +100,7 @@ void Window_imgui_host::update_render_pass(int width, int height)
     render_pass_descriptor.render_target_height = height;
     render_pass_descriptor.debug_label          = erhe::utility::Debug_label{"Window_imgui_host Render_pass"};
     m_render_pass = std::make_unique<erhe::graphics::Render_pass>(m_graphics_device, render_pass_descriptor);
+    m_gpu_timer   = std::make_unique<erhe::graphics::Gpu_timer>(*m_render_pass.get(), "Window ImGui");
 }
 
 Window_imgui_host::~Window_imgui_host() noexcept

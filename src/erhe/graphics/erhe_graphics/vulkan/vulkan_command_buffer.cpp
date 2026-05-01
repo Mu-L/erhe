@@ -132,6 +132,12 @@ void Command_buffer_impl::begin()
         );
         std::abort();
     }
+    // Reset the GPU timer query pool slice for the current frame in flight,
+    // if pending. Must happen here (after vkBeginCommandBuffer, before any
+    // render pass) because vkCmdResetQueryPool is forbidden inside a render
+    // pass. Subsequent cbs in the same frame find the flag already cleared
+    // and skip the reset. See Device_impl::maybe_reset_gpu_timer_slice.
+    m_device_impl->maybe_reset_gpu_timer_slice(m_vk_command_buffer);
     log_swapchain->trace(
         "Command_buffer_impl::begin() vk_cb=0x{:x} label='{}'",
         reinterpret_cast<std::uintptr_t>(m_vk_command_buffer),

@@ -3,6 +3,7 @@
 #include "erhe_graphics/vulkan/vulkan_buffer.hpp"
 #include "erhe_graphics/vulkan/vulkan_command_buffer.hpp"
 #include "erhe_graphics/vulkan/vulkan_device_sync_pool.hpp"
+#include "erhe_graphics/vulkan/vulkan_gpu_timer.hpp"
 #include "erhe_graphics/vulkan/vulkan_helpers.hpp"
 #include "erhe_graphics/vulkan/vulkan_render_pass.hpp"
 #include "erhe_graphics/vulkan/vulkan_sampler.hpp"
@@ -172,6 +173,11 @@ void Device_impl::reset_device_frame_command_pool(size_t index)
 Device_impl::~Device_impl() noexcept
 {
     vkDeviceWaitIdle(m_vulkan_device);
+
+    if (m_gpu_timer_query_pool != VK_NULL_HANDLE) {
+        vkDestroyQueryPool(m_vulkan_device, m_gpu_timer_query_pool, nullptr);
+        m_gpu_timer_query_pool = VK_NULL_HANDLE;
+    }
 
     for (auto& [hash, pipeline] : m_pipeline_map) {
         if (pipeline != VK_NULL_HANDLE) {
@@ -1167,6 +1173,82 @@ auto Device_impl::wait_frame() -> bool
         }
     }
 
+    // Read GPU timer results from the slice we are about to reuse. The
+    // timeline-semaphore wait above has already guaranteed that this
+    // slice's previous frame has finished on the GPU, so query results
+    // are available. After reading, mark this slice for reset by the
+    // first cb of the new frame; the slice is then refilled with this
+    // frame's begin/end timestamps.
+    if (m_gpu_timers_supported && (m_gpu_timer_query_pool != VK_NULL_HANDLE)) {
+        // Snapshot the fired bitmap and check whether any timer wrote in
+        // this slice the previous time it was used. If none, skip the
+        // vkGetQueryPoolResults call entirely -- not just for performance
+        // but because the slice may still be in the "never reset" state on
+        // the first frame, where reading is undefined.
+        std::array<bool, s_max_gpu_timers> fired_snapshot{};
+        bool any_fired = false;
+        {
+            const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+            std::array<bool, s_max_gpu_timers>& fired = m_gpu_timer_fired[slot];
+            for (std::size_t i = 0; i < s_max_gpu_timers; ++i) {
+                fired_snapshot[i] = fired[i];
+                if (fired[i]) {
+                    any_fired  = true;
+                    fired[i]   = false;
+                }
+            }
+        }
+
+        if (any_fired) {
+            const std::size_t slice_size = s_max_gpu_timers * 2;
+            const std::size_t slice_base = slot * slice_size;
+
+            // Two uint64_t per query: timestamp + availability. Reuses a
+            // single buffer, sized for the whole slice.
+            std::array<uint64_t, s_max_gpu_timers * 2 * 2> results{};
+            const VkResult get_result = vkGetQueryPoolResults(
+                m_vulkan_device,
+                m_gpu_timer_query_pool,
+                static_cast<uint32_t>(slice_base),
+                static_cast<uint32_t>(slice_size),
+                sizeof(uint64_t) * 2 * slice_size,
+                results.data(),
+                sizeof(uint64_t) * 2,
+                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
+            );
+            if ((get_result == VK_SUCCESS) || (get_result == VK_NOT_READY)) {
+                for (std::size_t i = 0; i < s_max_gpu_timers; ++i) {
+                    if (!fired_snapshot[i]) {
+                        continue;
+                    }
+                    const uint64_t begin_ts    = results[(2 * i + 0) * 2 + 0];
+                    const uint64_t begin_avail = results[(2 * i + 0) * 2 + 1];
+                    const uint64_t end_ts      = results[(2 * i + 1) * 2 + 0];
+                    const uint64_t end_avail   = results[(2 * i + 1) * 2 + 1];
+                    if ((begin_avail == 0) || (end_avail == 0)) {
+                        continue;
+                    }
+                    Gpu_timer_impl* timer = nullptr;
+                    {
+                        const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+                        timer = m_gpu_timer_by_index[i];
+                    }
+                    if (timer == nullptr) {
+                        continue;
+                    }
+                    const uint64_t delta_ticks =
+                        ((end_ts & m_gpu_timer_valid_mask) - (begin_ts & m_gpu_timer_valid_mask))
+                        & m_gpu_timer_valid_mask;
+                    const double   delta_ns    = static_cast<double>(delta_ticks) * m_gpu_timer_timestamp_period;
+                    timer->store_last_result_ns(static_cast<uint64_t>(delta_ns));
+                }
+            }
+        }
+
+        const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+        m_gpu_timer_reset_pending[slot] = true;
+    }
+
     set_state(Device_frame_state::waited, "wait_frame");
     return true;
 }
@@ -1760,6 +1842,115 @@ auto Device_impl::get_frame_index() const -> uint64_t
 auto Device_impl::get_frame_in_flight_index() const -> uint64_t
 {
     return m_frame_index % get_number_of_frames_in_flight();
+}
+
+auto Device_impl::are_gpu_timers_supported() const -> bool
+{
+    return m_gpu_timers_supported;
+}
+
+auto Device_impl::get_gpu_timer_timestamp_period() const -> double
+{
+    return m_gpu_timer_timestamp_period;
+}
+
+auto Device_impl::allocate_gpu_timer_slot(Gpu_timer_impl* timer) -> int
+{
+    const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+    for (std::size_t i = 0; i < s_max_gpu_timers; ++i) {
+        if (!m_gpu_timer_slot_used[i]) {
+            m_gpu_timer_slot_used[i] = true;
+            m_gpu_timer_by_index[i]  = timer;
+            return static_cast<int>(i);
+        }
+    }
+    log_context->warn(
+        "GPU timer slot pool exhausted (limit {}); subsequent timer is inert",
+        s_max_gpu_timers
+    );
+    return -1;
+}
+
+void Device_impl::release_gpu_timer_slot(int slot)
+{
+    if (slot < 0) {
+        return;
+    }
+    const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+    const std::size_t index = static_cast<std::size_t>(slot);
+    if (index >= s_max_gpu_timers) {
+        return;
+    }
+    m_gpu_timer_slot_used[index] = false;
+    m_gpu_timer_by_index[index]  = nullptr;
+    for (std::array<bool, s_max_gpu_timers>& fired : m_gpu_timer_fired) {
+        fired[index] = false;
+    }
+}
+
+void Device_impl::record_gpu_timer_begin_query(VkCommandBuffer cb, int slot)
+{
+    if ((slot < 0) || !m_gpu_timers_supported || (m_gpu_timer_query_pool == VK_NULL_HANDLE)) {
+        return;
+    }
+    const std::size_t in_flight = static_cast<std::size_t>(get_frame_in_flight_index());
+    const std::size_t index     = static_cast<std::size_t>(slot);
+    const std::size_t slice_size = s_max_gpu_timers * 2;
+    const std::size_t query_idx  = in_flight * slice_size + index * 2;
+    {
+        const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+        m_gpu_timer_fired[in_flight][index] = true;
+    }
+    vkCmdWriteTimestamp(
+        cb,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        m_gpu_timer_query_pool,
+        static_cast<uint32_t>(query_idx)
+    );
+}
+
+void Device_impl::record_gpu_timer_end_query(VkCommandBuffer cb, int slot)
+{
+    if ((slot < 0) || !m_gpu_timers_supported || (m_gpu_timer_query_pool == VK_NULL_HANDLE)) {
+        return;
+    }
+    const std::size_t in_flight = static_cast<std::size_t>(get_frame_in_flight_index());
+    const std::size_t index     = static_cast<std::size_t>(slot);
+    const std::size_t slice_size = s_max_gpu_timers * 2;
+    const std::size_t query_idx  = in_flight * slice_size + index * 2 + 1;
+    vkCmdWriteTimestamp(
+        cb,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        m_gpu_timer_query_pool,
+        static_cast<uint32_t>(query_idx)
+    );
+}
+
+void Device_impl::maybe_reset_gpu_timer_slice(VkCommandBuffer cb)
+{
+    if (!m_gpu_timers_supported || (m_gpu_timer_query_pool == VK_NULL_HANDLE)) {
+        return;
+    }
+    const std::size_t in_flight = static_cast<std::size_t>(get_frame_in_flight_index());
+    bool need_reset = false;
+    {
+        const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+        if (m_gpu_timer_reset_pending[in_flight]) {
+            m_gpu_timer_reset_pending[in_flight] = false;
+            need_reset = true;
+        }
+    }
+    if (!need_reset) {
+        return;
+    }
+    const std::size_t slice_size = s_max_gpu_timers * 2;
+    const std::size_t slice_base = in_flight * slice_size;
+    vkCmdResetQueryPool(
+        cb,
+        m_gpu_timer_query_pool,
+        static_cast<uint32_t>(slice_base),
+        static_cast<uint32_t>(slice_size)
+    );
 }
 
 } // namespace erhe::graphics

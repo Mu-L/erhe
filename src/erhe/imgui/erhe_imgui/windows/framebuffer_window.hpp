@@ -11,6 +11,7 @@
 
 namespace erhe::graphics {
     class Device;
+    class Gpu_timer;
     class Texture;
     class Render_command_encoder;
 }
@@ -55,6 +56,7 @@ protected:
     erhe::graphics::Vertex_input_state           m_vertex_input;
     std::shared_ptr<erhe::graphics::Texture>     m_texture;
     std::unique_ptr<erhe::graphics::Render_pass> m_render_pass;
+    std::unique_ptr<erhe::graphics::Gpu_timer>   m_gpu_timer;
 };
 
 } // namespace erhe::imgui

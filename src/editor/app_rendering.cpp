@@ -28,7 +28,6 @@
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_math/math_util.hpp"
-#include "erhe_graphics/gpu_timer.hpp"
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
 #   include "erhe_gl/wrapper_functions.hpp"
 #   include "erhe_gl/enum_bit_mask_operators.hpp"
@@ -77,11 +76,6 @@ App_rendering::App_rendering(
     , m_capture_frame_command{commands, app_context}
     , m_pipeline_passes      {graphics_device, mesh_memory, programs}
     , m_composer             {"Main Composer"}
-    , m_content_timer        {graphics_device, "content"}
-    , m_selection_timer      {graphics_device, "selection"}
-    , m_gui_timer            {graphics_device, "gui"}
-    , m_brush_timer          {graphics_device, "brush"}
-    , m_tools_timer          {graphics_device, "tools"}
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -1022,7 +1016,6 @@ void App_rendering::render_composer(const Render_context& context)
 
     static constexpr std::string_view c_id_main{"Main"};
     //ERHE_PROFILE_GPU_SCOPE(c_id_main);
-    erhe::graphics::Scoped_gpu_timer timer{m_content_timer};
     erhe::graphics::Scoped_debug_group pass_scope{"App_rendering::render_composer()"};
 
     m_composer.render(context);

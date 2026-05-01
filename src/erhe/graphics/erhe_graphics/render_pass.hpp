@@ -7,10 +7,12 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace erhe::graphics {
 
 class Device;
+class Gpu_timer;
 class Render_command_encoder;
 class Renderbuffer;
 class Texture;
@@ -87,8 +89,15 @@ public:
     [[nodiscard]] auto get_swapchain           () const -> Swapchain*;
     [[nodiscard]] auto get_debug_label         () const -> erhe::utility::Debug_label;
     [[nodiscard]] auto get_descriptor          () const -> const Render_pass_descriptor&;
+    [[nodiscard]] auto get_device              () -> Device&;
+    [[nodiscard]] auto get_device              () const -> const Device&;
     [[nodiscard]] auto get_impl                () -> Render_pass_impl&;
     [[nodiscard]] auto get_impl                () const -> const Render_pass_impl&;
+
+    // Timer registry: a Gpu_timer registers itself here at construction so
+    // that its begin/end timestamps fire automatically on each pass scope.
+    void register_gpu_timer  (Gpu_timer* timer);
+    void unregister_gpu_timer(Gpu_timer* timer);
 
 private:
     friend class Scoped_render_pass;
@@ -112,6 +121,8 @@ private:
     Device&                           m_device;
     Render_pass_descriptor            m_descriptor;
     std::unique_ptr<Render_pass_impl> m_impl;
+    std::vector<Gpu_timer*>           m_gpu_timers;
+    Command_buffer*                   m_active_command_buffer{nullptr};
 };
 
 class Scoped_render_pass final

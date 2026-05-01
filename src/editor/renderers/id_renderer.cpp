@@ -82,7 +82,6 @@ Id_renderer::Id_renderer(
         erhe::graphics::Buffer_target::transfer_dst,
         "Id_renderer::m_texture_read_buffer"
     }
-    , m_gpu_timer{graphics_device, "Id_renderer"}
 {
     enabled = id_renderer_config.enabled;
 }
@@ -123,6 +122,9 @@ void Id_renderer::update_framebuffer(const erhe::math::Viewport viewport)
         (m_color_texture->get_width()  != viewport.width) ||
         (m_color_texture->get_height() != viewport.height)
     ) {
+        // Order matters: the timer is registered with the render pass; it
+        // must be destroyed before the render pass it points at.
+        m_gpu_timer.reset();
         m_color_texture.reset();
         m_depth_texture.reset();
         m_render_pass.reset();
@@ -175,6 +177,7 @@ void Id_renderer::update_framebuffer(const erhe::math::Viewport viewport)
         render_pass_descriptor.render_target_height              = viewport.height;
         render_pass_descriptor.debug_label                       = "ID";
         m_render_pass = std::make_unique<Render_pass>(m_graphics_device, render_pass_descriptor);
+        m_gpu_timer   = std::make_unique<erhe::graphics::Gpu_timer>(*m_render_pass.get(), "Id_renderer");
         constexpr float clear_value[4] = {1.0f, 0.0f, 0.0f, 1.0f };
 
         const std::size_t color_image_size = s_extent * s_extent * erhe::dataformat::get_format_size_bytes(m_color_texture->get_pixelformat());
@@ -254,7 +257,6 @@ void Id_renderer::render(const Render_parameters& parameters)
     const std::size_t depth_image_size_bytes = s_extent * s_extent * erhe::dataformat::get_format_size_bytes(m_depth_texture->get_pixelformat());
 
     Scoped_debug_group debug_group{"Id_renderer::render()"};
-    Scoped_gpu_timer   timer      {m_gpu_timer};
 
     const auto projection_transforms = camera.projection_transforms(viewport, parameters.reverse_depth, parameters.depth_range, parameters.conventions);
     const mat4 clip_from_world       = projection_transforms.clip_from_world.get_matrix();

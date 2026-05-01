@@ -8,6 +8,7 @@
 
 namespace erhe::graphics {
     class Device;
+    class Gpu_timer;
     class Render_pass;
     class Swapchain;
 }
@@ -58,6 +59,7 @@ private:
     erhe::window::Context_window&                m_context_window;
     erhe::graphics::Device&                      m_graphics_device;
     std::unique_ptr<erhe::graphics::Render_pass> m_render_pass;
+    std::unique_ptr<erhe::graphics::Gpu_timer>   m_gpu_timer;
     bool                                         m_is_visible         {false};
     float                                        m_this_frame_dt_s    {0.0f};
     std::function<void(Window_imgui_host& host)> m_status_bar_callback{};

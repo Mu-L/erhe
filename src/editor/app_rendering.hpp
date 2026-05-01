@@ -5,7 +5,6 @@
 #include "erhe_commands/command.hpp"
 #include "app_message.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
-#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
 #include "erhe_message_bus/message_bus.hpp"
 #include "erhe_profile/profile.hpp"
@@ -150,11 +149,8 @@ private:
     // Compute wide line pipeline states (created when Content_wide_line_renderer is ready)
     std::vector<std::unique_ptr<erhe::graphics::Lazy_render_pipeline>> m_compute_wide_line_pipeline_states;
 
-    erhe::graphics::Gpu_timer m_content_timer;
-    erhe::graphics::Gpu_timer m_selection_timer;
-    erhe::graphics::Gpu_timer m_gui_timer;
-    erhe::graphics::Gpu_timer m_brush_timer;
-    erhe::graphics::Gpu_timer m_tools_timer;
+    // TODO Re-add per-render-pass GPU timers when the composer's pipeline
+    // passes own their own Render_pass objects.
 
     bool                      m_trigger_capture{false};
     std::vector<std::shared_ptr<Shadow_render_node>> m_all_shadow_render_nodes;

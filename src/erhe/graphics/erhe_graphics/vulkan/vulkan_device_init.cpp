@@ -1419,6 +1419,84 @@ Device_impl::Device_impl(
             m_device_extensions.m_VK_KHR_push_descriptor ? "yes" : "no"
         );
     }
+
+    // GPU timer infrastructure: a single VkQueryPool of
+    // s_max_gpu_timers * 2 timestamps per frame in flight. Each
+    // Gpu_timer_impl is assigned a slot index (0..s_max_gpu_timers-1)
+    // when constructed. Per-slice reset is recorded by the first
+    // Command_buffer::begin of each frame (driven by m_gpu_timer_reset_pending,
+    // see Command_buffer_impl::begin). Results are read from the slice
+    // we are about to reuse in Device_impl::wait_frame, AFTER the
+    // timeline-semaphore wait that guarantees the slice has completed.
+    {
+        // Re-query the graphics queue family's properties to read
+        // timestampValidBits. query_device_queue_family_indices already
+        // ran during physical-device selection but threw the properties
+        // away.
+        uint32_t qf_count{0};
+        vkGetPhysicalDeviceQueueFamilyProperties(m_vulkan_physical_device, &qf_count, nullptr);
+        std::vector<VkQueueFamilyProperties> qf_properties(qf_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(m_vulkan_physical_device, &qf_count, qf_properties.data());
+
+        const uint32_t timestamp_valid_bits =
+            (m_graphics_queue_family_index < qf_count)
+                ? qf_properties[m_graphics_queue_family_index].timestampValidBits
+                : 0u;
+
+        m_gpu_timer_timestamp_period = static_cast<double>(limits.timestampPeriod);
+        m_gpu_timers_supported       = (timestamp_valid_bits > 0) && (m_gpu_timer_timestamp_period > 0.0);
+        m_gpu_timer_valid_mask       = (timestamp_valid_bits >= 64u)
+            ? ~static_cast<uint64_t>(0)
+            : ((static_cast<uint64_t>(1) << timestamp_valid_bits) - 1u);
+
+        if (!m_gpu_timers_supported) {
+            log_startup->info(
+                "GPU timers disabled: timestampValidBits={} timestampPeriod={}",
+                timestamp_valid_bits, m_gpu_timer_timestamp_period
+            );
+        } else {
+            const uint32_t total_queries = static_cast<uint32_t>(
+                s_max_gpu_timers * 2u * s_number_of_frames_in_flight
+            );
+            const VkQueryPoolCreateInfo query_pool_create_info{
+                .sType              = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+                .pNext              = nullptr,
+                .flags              = 0,
+                .queryType          = VK_QUERY_TYPE_TIMESTAMP,
+                .queryCount         = total_queries,
+                .pipelineStatistics = 0
+            };
+            const VkResult qp_result = vkCreateQueryPool(
+                m_vulkan_device, &query_pool_create_info, nullptr, &m_gpu_timer_query_pool
+            );
+            if (qp_result != VK_SUCCESS) {
+                log_context->warn(
+                    "vkCreateQueryPool() for GPU timers failed with {} {}; GPU timers disabled",
+                    static_cast<int32_t>(qp_result), c_str(qp_result)
+                );
+                m_gpu_timer_query_pool = VK_NULL_HANDLE;
+                m_gpu_timers_supported = false;
+            } else {
+                set_debug_label(
+                    VK_OBJECT_TYPE_QUERY_POOL,
+                    reinterpret_cast<uint64_t>(m_gpu_timer_query_pool),
+                    "GPU timer query pool"
+                );
+                // Vulkan requires queries to be reset before first use.
+                // We don't have a CB here, so prime the per-slice reset
+                // flag for every frame slot; the first cb of each frame
+                // will record vkCmdResetQueryPool for its slice before
+                // any timer fires.
+                for (bool& pending : m_gpu_timer_reset_pending) {
+                    pending = true;
+                }
+                log_startup->info(
+                    "GPU timers enabled: timestampValidBits={} timestampPeriod={} max_timers={}",
+                    timestamp_valid_bits, m_gpu_timer_timestamp_period, s_max_gpu_timers
+                );
+            }
+        }
+    }
 }
 
 }

@@ -352,7 +352,6 @@ void Performance_window::imgui()
 {
     ERHE_PROFILE_FUNCTION();
 
-#if 0 // TODO
     const auto all_gpu_timers = erhe::graphics::Gpu_timer::all_gpu_timers();
     for (auto* timer : all_gpu_timers) {
         bool found{false};
@@ -468,7 +467,6 @@ void Performance_window::imgui()
     for (auto* plot : m_generic_plots) {
         plot->imgui();
     }
-#endif
 }
 
 void Performance_window::register_plot(Plot* plot)

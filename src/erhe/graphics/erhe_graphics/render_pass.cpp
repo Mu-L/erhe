@@ -14,7 +14,10 @@
 #endif
 
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/texture.hpp"
+
+#include <algorithm>
 
 #include <fmt/format.h>
 
@@ -157,6 +160,12 @@ Render_pass::Render_pass(Device& device, const Render_pass_descriptor& descripto
 }
 Render_pass::~Render_pass() noexcept
 {
+    // Notify any Gpu_timers still bound to this pass that the pass is
+    // gone. Their dtor would otherwise call unregister_gpu_timer on a
+    // destroyed Render_pass.
+    for (Gpu_timer* timer : m_gpu_timers) {
+        timer->on_render_pass_destroyed();
+    }
 }
 auto Render_pass::get_sample_count() const -> unsigned int
 {
@@ -183,6 +192,16 @@ auto Render_pass::get_descriptor() const -> const Render_pass_descriptor&
     return m_descriptor;
 }
 
+auto Render_pass::get_device() -> Device&
+{
+    return m_device;
+}
+
+auto Render_pass::get_device() const -> const Device&
+{
+    return m_device;
+}
+
 auto Render_pass::get_impl() -> Render_pass_impl&
 {
     return *m_impl.get();
@@ -190,6 +209,22 @@ auto Render_pass::get_impl() -> Render_pass_impl&
 auto Render_pass::get_impl() const -> const Render_pass_impl&
 {
     return *m_impl.get();
+}
+
+void Render_pass::register_gpu_timer(Gpu_timer* timer)
+{
+    if (timer == nullptr) {
+        return;
+    }
+    m_gpu_timers.push_back(timer);
+}
+
+void Render_pass::unregister_gpu_timer(Gpu_timer* timer)
+{
+    m_gpu_timers.erase(
+        std::remove(m_gpu_timers.begin(), m_gpu_timers.end(), timer),
+        m_gpu_timers.end()
+    );
 }
 
 //
@@ -208,10 +243,20 @@ void Render_pass::start_render_pass(Command_buffer& command_buffer, Render_pass*
     }
     m_device.set_active_render_pass(this);
     m_impl->start_render_pass(command_buffer, render_pass_before, render_pass_after);
+    m_active_command_buffer = &command_buffer;
+    for (Gpu_timer* timer : m_gpu_timers) {
+        timer->write_begin_timestamp(command_buffer);
+    }
 }
 
 void Render_pass::end_render_pass(Render_pass* const render_pass_after)
 {
+    if (m_active_command_buffer != nullptr) {
+        for (Gpu_timer* timer : m_gpu_timers) {
+            timer->write_end_timestamp(*m_active_command_buffer);
+        }
+    }
+    m_active_command_buffer = nullptr;
     m_impl->end_render_pass(render_pass_after);
     m_device.set_active_render_pass(nullptr);
 }

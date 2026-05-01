@@ -5,6 +5,7 @@
 
 #include "erhe_rendergraph/rendergraph.hpp"
 #include "erhe_graphics/buffer.hpp"
+#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
@@ -106,18 +107,29 @@ auto Post_processing_node::update_size() -> bool
     class Old_resources
     {
     public:
-        // Destruction order is reverse of declaration: render passes first
-        // (they hold raw Texture* to parent textures), then textures.
+        // Destruction order is reverse of declaration. GPU timers are
+        // declared LAST so they destruct FIRST -- each timer is registered
+        // with its render pass and must die before the pass it points at.
+        // (Render_pass::~Render_pass would otherwise null out the timer's
+        // back-pointer, which works but is not the intended ownership.)
         std::vector<std::shared_ptr<erhe::graphics::Texture>>     downsample_textures;
         std::vector<std::shared_ptr<erhe::graphics::Texture>>     upsample_textures;
         std::vector<std::unique_ptr<erhe::graphics::Render_pass>> downsample_render_passes;
         std::vector<std::unique_ptr<erhe::graphics::Render_pass>> upsample_render_passes;
+        std::vector<std::string>                                  downsample_gpu_timer_labels;
+        std::vector<std::string>                                  upsample_gpu_timer_labels;
+        std::vector<std::unique_ptr<erhe::graphics::Gpu_timer>>   downsample_gpu_timers;
+        std::vector<std::unique_ptr<erhe::graphics::Gpu_timer>>   upsample_gpu_timers;
     };
     auto old = std::make_shared<Old_resources>();
-    old->downsample_textures      = std::move(downsample_textures);
-    old->upsample_textures        = std::move(upsample_textures);
-    old->downsample_render_passes = std::move(downsample_render_passes);
-    old->upsample_render_passes   = std::move(upsample_render_passes);
+    old->downsample_textures         = std::move(downsample_textures);
+    old->upsample_textures           = std::move(upsample_textures);
+    old->downsample_render_passes    = std::move(downsample_render_passes);
+    old->upsample_render_passes      = std::move(upsample_render_passes);
+    old->downsample_gpu_timer_labels = std::move(downsample_gpu_timer_labels);
+    old->upsample_gpu_timer_labels   = std::move(upsample_gpu_timer_labels);
+    old->downsample_gpu_timers       = std::move(downsample_gpu_timers);
+    old->upsample_gpu_timers         = std::move(upsample_gpu_timers);
     get_rendergraph().defer_resource(std::move(old));
 
     level0_width  = width;
@@ -186,6 +198,10 @@ auto Post_processing_node::update_size() -> bool
             render_pass_descriptor.debug_label                        = erhe::utility::Debug_label{fmt::format("{} downsample level {}", get_name(), level)};
 
             std::unique_ptr<erhe::graphics::Render_pass> render_pass = std::make_unique<erhe::graphics::Render_pass>(m_graphics_device, render_pass_descriptor);
+            downsample_gpu_timer_labels.emplace_back(fmt::format("{} downsample {}", get_name(), level));
+            downsample_gpu_timers.emplace_back(
+                std::make_unique<erhe::graphics::Gpu_timer>(*render_pass.get(), downsample_gpu_timer_labels.back().c_str())
+            );
             downsample_render_passes.push_back(std::move(render_pass));
             downsample_textures.push_back(std::move(downsample_level_texture));
         }
@@ -224,6 +240,10 @@ auto Post_processing_node::update_size() -> bool
             render_pass_descriptor.debug_label                        = erhe::utility::Debug_label{fmt::format("{} upsample level {}", get_name(), level)};
 
             std::unique_ptr<erhe::graphics::Render_pass> render_pass = std::make_unique<erhe::graphics::Render_pass>(m_graphics_device, render_pass_descriptor);
+            upsample_gpu_timer_labels.emplace_back(fmt::format("{} upsample {}", get_name(), level));
+            upsample_gpu_timers.emplace_back(
+                std::make_unique<erhe::graphics::Gpu_timer>(*render_pass.get(), upsample_gpu_timer_labels.back().c_str())
+            );
             upsample_render_passes.push_back(std::move(render_pass));
             upsample_textures.push_back(std::move(upsample_level_texture));
         }
@@ -597,7 +617,6 @@ Post_processing::Post_processing(erhe::graphics::Device& d, erhe::graphics::Comm
             }
         }
     }
-    , m_gpu_timer{d, "Post_processing"}
 {
     d.get_shader_monitor().add(m_shader_stages.downsample_with_lowpass_input);
     d.get_shader_monitor().add(m_shader_stages.downsample_with_lowpass      );

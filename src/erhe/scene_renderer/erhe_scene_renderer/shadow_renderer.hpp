@@ -5,7 +5,6 @@
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
-#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_dataformat/dataformat.hpp"
 #include "erhe_renderer/draw_indirect_buffer.hpp"
 #include "erhe_math/viewport.hpp"
@@ -19,7 +18,6 @@
 namespace erhe::graphics {
     class Command_buffer;
     class Render_pass;
-    class Gpu_timer;
     class Device;
     class Sampler;
     class Texture;
@@ -116,7 +114,8 @@ private:
     Light_buffer                                  m_light_buffer;
     Primitive_buffer                              m_primitive_buffer;
     Material_buffer                               m_material_buffer;
-    erhe::graphics::Gpu_timer                     m_gpu_timer;
+    // TODO Re-add per-cascade GPU timers; the cascade Render_pass objects
+    // are owned by Shadow_render_node, so the timers should live there.
     std::unique_ptr<erhe::graphics::Texture_heap> m_texture_heap;
 };
 

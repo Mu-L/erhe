@@ -2,17 +2,16 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <mutex>
-#include <vector>
 
 namespace erhe::graphics {
 
-class Device;
+class Command_buffer;
+class Render_pass;
 
 class Gpu_timer_impl
 {
 public:
-    Gpu_timer_impl(Device& device, const char* label);
+    Gpu_timer_impl(Render_pass& render_pass, const char* label);
     ~Gpu_timer_impl() noexcept;
 
     Gpu_timer_impl(const Gpu_timer_impl&) = delete;
@@ -22,26 +21,13 @@ public:
 
     [[nodiscard]] auto last_result() -> uint64_t;
     [[nodiscard]] auto label      () const -> const char*;
-    void begin ();
-    void end   ();
-    void read  ();
-    void create();
-    void reset ();
 
-    static void on_thread_enter();
-    static void on_thread_exit ();
-    static void end_frame      ();
-    static auto all_gpu_timers () -> std::vector<Gpu_timer_impl*>;
+    void write_begin_timestamp(Command_buffer& command_buffer);
+    void write_end_timestamp  (Command_buffer& command_buffer);
 
 private:
-    static std::mutex                     s_mutex;
-    static std::vector<Gpu_timer_impl*>   s_all_gpu_timers;
-    static Gpu_timer_impl*                s_active_timer;
-    static std::size_t                    s_index;
-
-    Device&     m_device;
-    uint64_t    m_last_result{0};
-    const char* m_label{nullptr};
+    Render_pass* m_render_pass{nullptr};
+    const char*  m_label      {nullptr};
 };
 
 } // namespace erhe::graphics

@@ -396,7 +396,6 @@ Imgui_renderer::Imgui_renderer(
             .debug_label = "Imgui_renderer linear mipmap linear"
         }
     }
-    , m_gpu_timer{graphics_device, "Imgui_renderer"}
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -1161,7 +1160,6 @@ void Imgui_renderer::render_draw_data(
     }
 
     erhe::graphics::Scoped_debug_group pass_scope{"Imgui_renderer::render_draw_data()"};
-    erhe::graphics::Scoped_gpu_timer   timer     {m_gpu_timer};
 
     auto&       program                       = m_imgui_program_interface;
     const auto& draw_parameter_struct_offsets = program.draw_parameter_struct_offsets;

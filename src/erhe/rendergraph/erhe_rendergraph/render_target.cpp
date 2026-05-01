@@ -1,6 +1,7 @@
 #include "erhe_rendergraph/render_target.hpp"
 #include "erhe_rendergraph/rendergraph_log.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/texture.hpp"
 
@@ -58,6 +59,7 @@ void Render_target::update(int width, int height, erhe::graphics::Swapchain* swa
     using erhe::graphics::Texture;
 
     if (swapchain != nullptr) {
+        m_gpu_timer.reset();
         erhe::graphics::Render_pass_descriptor render_pass_descriptor{};
         render_pass_descriptor.swapchain                         = swapchain;
         render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::present;
@@ -68,10 +70,13 @@ void Render_target::update(int width, int height, erhe::graphics::Swapchain* swa
         render_pass_descriptor.render_target_height              = height;
         render_pass_descriptor.debug_label                       = m_debug_label;
         m_render_pass = std::make_unique<Render_pass>(m_graphics_device, render_pass_descriptor);
+        m_gpu_timer_label = std::string{m_debug_label.string_view()};
+        m_gpu_timer = std::make_unique<erhe::graphics::Gpu_timer>(*m_render_pass.get(), m_gpu_timer_label.c_str());
     }
 
     if ((width < 1) || (height < 1)) {
         if (m_render_pass) {
+            m_gpu_timer.reset();
             m_color_texture.reset();
             m_multisampled_color_texture.reset();
             m_depth_stencil_texture.reset();
@@ -209,7 +214,10 @@ void Render_target::update(int width, int height, erhe::graphics::Swapchain* swa
             render_pass_descriptor.debug_label          = erhe::utility::Debug_label{
                 fmt::format("{} renderpass", m_debug_label.string_view())
             };
+            m_gpu_timer.reset();
             m_render_pass = std::make_unique<Render_pass>(m_graphics_device, render_pass_descriptor);
+            m_gpu_timer_label = std::string{m_debug_label.string_view()};
+            m_gpu_timer = std::make_unique<erhe::graphics::Gpu_timer>(*m_render_pass.get(), m_gpu_timer_label.c_str());
         }
     }
 }

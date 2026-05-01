@@ -3,7 +3,6 @@
 #include "erhe_graphics/bind_group_layout.hpp"
 #include "erhe_graphics/enums.hpp"
 #include "erhe_graphics/fragment_outputs.hpp"
-#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
@@ -19,7 +18,7 @@
 #include <string>
 #include <string_view>
 
-namespace erhe::graphics       { class Command_buffer; class Texture; class Texture_heap; }
+namespace erhe::graphics       { class Command_buffer; class Gpu_timer; class Texture; class Texture_heap; }
 namespace erhe::scene_renderer { class Program_interface; }
 
 namespace editor {
@@ -80,6 +79,10 @@ public:
     std::vector<std::shared_ptr<erhe::graphics::Texture>>     upsample_textures;
     std::vector<std::unique_ptr<erhe::graphics::Render_pass>> downsample_render_passes;
     std::vector<std::unique_ptr<erhe::graphics::Render_pass>> upsample_render_passes;
+    std::vector<std::string>                                  downsample_gpu_timer_labels;
+    std::vector<std::string>                                  upsample_gpu_timer_labels;
+    std::vector<std::unique_ptr<erhe::graphics::Gpu_timer>>   downsample_gpu_timers;
+    std::vector<std::unique_ptr<erhe::graphics::Gpu_timer>>   upsample_gpu_timers;
     std::vector<int>                                          level_widths;
     std::vector<int>                                          level_heights;
     std::vector<size_t>                                       downsample_source_levels;
@@ -193,7 +196,8 @@ private:
     std::filesystem::path                              m_shader_path;
     Shader_stages                                      m_shader_stages;
     Pipelines                                          m_pipelines;
-    erhe::graphics::Gpu_timer                          m_gpu_timer;
+    // TODO Re-add per-pass GPU timers; downsample/upsample render passes
+    // are stored on Bloom_node and could each carry their own Gpu_timer.
 };
 
 }

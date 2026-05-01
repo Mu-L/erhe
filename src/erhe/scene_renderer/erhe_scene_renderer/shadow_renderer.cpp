@@ -3,7 +3,6 @@
 #include "erhe_scene_renderer/shadow_renderer.hpp"
 
 #include "erhe_graphics/render_pass.hpp"
-#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/draw_indirect.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
@@ -69,7 +68,6 @@ Shadow_renderer::Shadow_renderer(
     , m_light_buffer        {graphics_device, init_command_buffer, program_interface.light_interface}
     , m_primitive_buffer    {graphics_device, program_interface.primitive_interface}
     , m_material_buffer     {graphics_device, program_interface.material_interface}
-    , m_gpu_timer           {graphics_device, "Shadow_renderer"}
     // NOTE m_dummy_texture is NOT used for shadow map texture
     , m_texture_heap{
         std::make_unique<erhe::graphics::Texture_heap>(
@@ -145,7 +143,6 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
     );
 
     erhe::graphics::Scoped_debug_group debug_group{"Shadow_renderer::render()"};
-    erhe::graphics::Scoped_gpu_timer   timer      {m_gpu_timer};
 
     const auto& mesh_spans = parameters.mesh_spans;
     const auto& lights     = parameters.lights;

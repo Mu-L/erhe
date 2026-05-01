@@ -11,6 +11,7 @@
 #include "erhe_rendergraph/rendergraph.hpp"
 #include "erhe_graphics/command_buffer.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_scene_renderer/shadow_renderer.hpp"
@@ -143,7 +144,13 @@ void Shadow_render_node::reconfigure(erhe::graphics::Device& graphics_device, er
     }
 
     log_render->debug("updating render passes, light_count = {}", light_count);
+    // Order matters: each Gpu_timer is registered with its Render_pass and
+    // must be destroyed before that Render_pass.
+    m_gpu_timers.clear();
+    m_gpu_timer_labels.clear();
     m_render_passes.clear();
+    m_gpu_timer_labels.reserve(static_cast<std::size_t>(light_count));
+    m_gpu_timers      .reserve(static_cast<std::size_t>(light_count));
     for (int i = 0; i < light_count; ++i) {
         erhe::graphics::Render_pass_descriptor render_pass_descriptor;
         render_pass_descriptor.depth_attachment.texture        = m_texture.get();
@@ -160,6 +167,10 @@ void Shadow_render_node::reconfigure(erhe::graphics::Device& graphics_device, er
         render_pass_descriptor.render_target_height            = resolution;
         render_pass_descriptor.debug_label                     = erhe::utility::Debug_label{fmt::format("Shadow {}", i)};
         std::unique_ptr<erhe::graphics::Render_pass> render_pass = std::make_unique<Render_pass>(graphics_device, render_pass_descriptor);
+        m_gpu_timer_labels.emplace_back(fmt::format("Shadow {}", i));
+        m_gpu_timers.emplace_back(
+            std::make_unique<erhe::graphics::Gpu_timer>(*render_pass.get(), m_gpu_timer_labels.back().c_str())
+        );
         m_render_passes.emplace_back(std::move(render_pass));
     }
 

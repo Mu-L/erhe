@@ -4,8 +4,9 @@
 #include "erhe_scene_renderer/light_buffer.hpp"
 
 #include <memory>
+#include <string>
 
-namespace erhe::graphics       { class Command_buffer; class Device; }
+namespace erhe::graphics       { class Command_buffer; class Device; class Gpu_timer; }
 namespace erhe::scene_renderer { class Light_projections; }
 
 namespace editor {
@@ -56,6 +57,8 @@ private:
     bool                                                      m_reverse_depth{true};
     std::shared_ptr<erhe::graphics::Texture>                  m_texture;
     std::vector<std::unique_ptr<erhe::graphics::Render_pass>> m_render_passes;
+    std::vector<std::string>                                  m_gpu_timer_labels;
+    std::vector<std::unique_ptr<erhe::graphics::Gpu_timer>>   m_gpu_timers;
     erhe::math::Viewport                                      m_viewport{0, 0, 0, 0};
     erhe::scene_renderer::Light_projections                   m_light_projections;
 };

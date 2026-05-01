@@ -2,6 +2,7 @@
 
 #include "erhe_imgui/imgui_windows.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/texture.hpp"
@@ -88,6 +89,8 @@ void Framebuffer_window::update_render_pass()
     m_viewport.width  = size.x;
     m_viewport.height = size.y;
 
+    m_gpu_timer.reset();
+    m_render_pass.reset();
     m_texture.reset();
     m_texture = std::make_shared<Texture>(
         m_graphics_device,
@@ -119,6 +122,7 @@ void Framebuffer_window::update_render_pass()
     render_pass_descriptor.render_target_height              = m_viewport.height;
     render_pass_descriptor.debug_label                       = m_debug_label;
     m_render_pass = std::make_unique<Render_pass>(m_graphics_device, render_pass_descriptor);
+    m_gpu_timer   = std::make_unique<erhe::graphics::Gpu_timer>(*m_render_pass.get(), m_debug_label.data());
 }
 
 void Framebuffer_window::imgui()

@@ -19,6 +19,7 @@ namespace erhe::graphics {
 
 class Command_buffer;
 class Command_buffer_impl;
+class Gpu_timer_impl;
 
 class Instance_layers
 {
@@ -203,6 +204,20 @@ public:
     void set_debug_label(VkObjectType object_type, uint64_t object_handle, const std::string& label);
 
     [[nodiscard]] auto get_sync_pool() -> Device_sync_pool&;
+
+    // GPU timer infrastructure. Backed by a single shared VkQueryPool sized
+    // for s_max_gpu_timers timestamps per frame in flight. Slots are
+    // allocated by Gpu_timer_impl and freed in its dtor; results are
+    // retrieved in wait_frame after the fence wait guarantees the slice has
+    // completed on the GPU. See vulkan_gpu_timer.cpp for details.
+    static constexpr std::size_t s_max_gpu_timers = 128;
+    [[nodiscard]] auto allocate_gpu_timer_slot       (Gpu_timer_impl* timer) -> int;
+                  void release_gpu_timer_slot       (int slot);
+                  void record_gpu_timer_begin_query (VkCommandBuffer cb, int slot);
+                  void record_gpu_timer_end_query   (VkCommandBuffer cb, int slot);
+                  void maybe_reset_gpu_timer_slice  (VkCommandBuffer cb);
+    [[nodiscard]] auto get_gpu_timer_timestamp_period() const -> double;
+    [[nodiscard]] auto are_gpu_timers_supported      () const -> bool;
 
     [[nodiscard]] auto get_device                       () -> Device&;
     [[nodiscard]] auto get_surface                      () -> Surface*;
@@ -415,6 +430,22 @@ private:
     bool                                      m_need_sync{false};
     std::vector<std::unique_ptr<Ring_buffer>> m_ring_buffers;
     std::size_t                               m_min_buffer_size = 2 * 1024 * 1024; // TODO
+
+    // GPU timers. m_gpu_timer_query_pool is sized for
+    // s_max_gpu_timers * 2 * s_number_of_frames_in_flight queries, laid out
+    // as [slice 0 | slice 1] where each slice has 2 queries per timer
+    // (begin, end). m_gpu_timer_mutex serializes free-list and
+    // fired-bitmap mutations from any thread that touches a Gpu_timer
+    // (ctor/dtor, write_begin/write_end, wait_frame result-read).
+    VkQueryPool m_gpu_timer_query_pool      {VK_NULL_HANDLE};
+    double      m_gpu_timer_timestamp_period{0.0};
+    uint64_t    m_gpu_timer_valid_mask      {0};
+    bool        m_gpu_timers_supported      {false};
+    std::mutex  m_gpu_timer_mutex;
+    std::array<Gpu_timer_impl*,       s_max_gpu_timers> m_gpu_timer_by_index{};
+    std::array<bool,                  s_max_gpu_timers> m_gpu_timer_slot_used{};
+    std::array<std::array<bool, s_max_gpu_timers>, s_number_of_frames_in_flight> m_gpu_timer_fired{};
+    std::array<bool, s_number_of_frames_in_flight>                              m_gpu_timer_reset_pending{};
 
     // Active render pass tracking
     static Device_impl*  s_device_impl;

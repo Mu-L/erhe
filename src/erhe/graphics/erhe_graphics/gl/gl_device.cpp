@@ -3,6 +3,7 @@
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_buffer.hpp"
 #include "erhe_graphics/gl/gl_command_buffer.hpp"
+#include "erhe_graphics/gl/gl_gpu_timer.hpp"
 #include "erhe_graphics/gl/gl_sampler.hpp"
 #include "erhe_graphics/gl/gl_surface.hpp"
 #include "erhe_graphics/gl/gl_swapchain.hpp"
@@ -1528,6 +1529,10 @@ auto Device_impl::end_frame() -> bool
         (m_state == Device_frame_state::recording) ||
         (m_state == Device_frame_state::waited)
     );
+
+    // Poll any GPU timer query results that became available during this
+    // frame, and advance the timer ring-buffer index for the next one.
+    Gpu_timer_impl::end_frame();
 
     m_had_swapchain_frame = false;
 
