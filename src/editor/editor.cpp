@@ -614,7 +614,7 @@ public:
             m_commands          = std::make_unique<erhe::commands::Commands      >();
             m_app_message_bus   = std::make_unique<App_message_bus               >();
             m_app_settings      = std::make_unique<App_settings                  >();
-            m_app_settings->read(m_editor_settings);
+            m_app_settings->read(m_editor_settings, m_editor_settings.headset.openxr);
             m_input_state       = std::make_unique<Input_state                   >();
             m_time              = std::make_unique<Time                          >();
             auto& commands        = *m_commands       .get();
@@ -756,6 +756,26 @@ public:
                 app_message_bus,
                 m_window->get_scale_factor()
             );
+
+            // Clamp Scene_config::directional_light_count to the active graphics
+            // preset's shadow_light_count, so the default scene cannot request
+            // more directional lights than the shadow-map array can hold. This
+            // runs once at startup, before Scene_builder consumes the value;
+            // changing the preset at runtime requires a restart for the scene
+            // to be rebuilt.
+            {
+                const Graphics_preset_entry& preset = m_app_settings->graphics.current_graphics_preset;
+                if (preset.shadow_enable) {
+                    const int requested = m_editor_settings.scene.directional_light_count;
+                    if (requested > preset.shadow_light_count) {
+                        log_startup->info(
+                            "Clamping Scene_config::directional_light_count from {} to {} (graphics preset '{}' shadow_light_count)",
+                            requested, preset.shadow_light_count, preset.name
+                        );
+                        m_editor_settings.scene.directional_light_count = preset.shadow_light_count;
+                    }
+                }
+            }
 
 #if defined(ERHE_XR_LIBRARY_OPENXR)
             // Second-phase OpenXR initialization: build the Xr_session now that

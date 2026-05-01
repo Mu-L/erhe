@@ -13,7 +13,8 @@ namespace erhe::window { class Context_window; }
 
 namespace editor {
 
-static const char* const c_graphics_presets_file_path = "config/editor/graphics_presets.json";
+static const char* const c_graphics_presets_file_path        = "config/editor/graphics_presets.json";
+static const char* const c_graphics_presets_openxr_file_path = "config/editor/graphics_presets_openxr.json";
 
 class App_message_bus;
 
@@ -21,8 +22,8 @@ class Graphics_settings
 {
 public:
     void get_limits                   (const erhe::graphics::Device& instance, erhe::dataformat::Format format);
-    void read_presets                 ();
-    void write_presets                ();
+    void read_presets                 (bool openxr);
+    void write_presets                (bool openxr);
     void apply_limits                 (Graphics_preset_entry& graphics_preset);
     void select_active_graphics_preset(App_message_bus& app_message_bus);
 
@@ -41,8 +42,8 @@ public:
     explicit App_settings();
 
     void apply_limits(erhe::graphics::Device& instance, App_message_bus& message_bus, float window_scale_factor);
-    void read        (const Editor_settings_config& editor_settings);
-    void write       (Editor_settings_config& editor_settings);
+    void read        (const Editor_settings_config& editor_settings, bool openxr);
+    void write       (Editor_settings_config& editor_settings, bool openxr);
 
     [[nodiscard]] auto get_ui_scale() const -> float;
 

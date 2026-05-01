@@ -57,21 +57,36 @@ void Graphics_settings::get_limits(const erhe::graphics::Device& instance, erhe:
     max_depth_layers = std::min(32, format_properties.texture_2d_array_max_layers);
 }
 
-void Graphics_settings::read_presets()
+void Graphics_settings::read_presets(const bool openxr)
 {
-    Graphics_presets_config presets_config = erhe::codegen::load_config<Graphics_presets_config>(c_graphics_presets_file_path);
+    const char* const path = openxr
+        ? c_graphics_presets_openxr_file_path
+        : c_graphics_presets_file_path;
+    log_startup->info("Loading graphics presets from {} (openxr = {})", path, openxr);
+    Graphics_presets_config presets_config = erhe::codegen::load_config<Graphics_presets_config>(path);
     graphics_presets = std::move(presets_config.presets);
     if (graphics_presets.empty()) {
-        log_startup->warn("Could not read graphics presets from {}", c_graphics_presets_file_path);
+        log_startup->warn("Could not read graphics presets from {}", path);
+    } else {
+        log_startup->info("Loaded {} graphics preset(s):", graphics_presets.size());
+        for (const Graphics_preset_entry& entry : graphics_presets) {
+            log_startup->info(
+                "  '{}': shadow_enable={} shadow_light_count={} shadow_resolution={}",
+                entry.name, entry.shadow_enable, entry.shadow_light_count, entry.shadow_resolution
+            );
+        }
     }
 }
 
-void Graphics_settings::write_presets()
+void Graphics_settings::write_presets(const bool openxr)
 {
     log_startup->debug("Graphics_settings::write_presets()");
+    const char* const path = openxr
+        ? c_graphics_presets_openxr_file_path
+        : c_graphics_presets_file_path;
     Graphics_presets_config presets_config;
     presets_config.presets = graphics_presets;
-    erhe::codegen::save_config(presets_config, c_graphics_presets_file_path);
+    erhe::codegen::save_config(presets_config, path);
 }
 
 void Graphics_settings::apply_limits(Graphics_preset_entry& graphics_preset)
@@ -92,28 +107,51 @@ void Graphics_settings::select_active_graphics_preset(App_message_bus& app_messa
     }
 
     // Override configuration
+    bool matched = false;
     for (std::size_t i = 0, end = graphics_presets.size(); i < end; ++i) {
         const Graphics_preset_entry& graphics_preset = graphics_presets.at(i);
         if (graphics_preset.name == current_graphics_preset.name) {
             current_graphics_preset = graphics_preset;
-            log_startup->info("Using graphics preset {}", graphics_preset.name);
+            log_startup->info(
+                "Using graphics preset '{}': shadow_enable={} shadow_light_count={} shadow_resolution={} msaa_sample_count={}",
+                current_graphics_preset.name,
+                current_graphics_preset.shadow_enable,
+                current_graphics_preset.shadow_light_count,
+                current_graphics_preset.shadow_resolution,
+                current_graphics_preset.msaa_sample_count
+            );
             // Queue instead of instant send
             app_message_bus.graphics_settings.queue_message(
                 Graphics_settings_message{
                     .graphics_preset = &current_graphics_preset
                 }
             );
+            matched = true;
             break;
         }
     }
+    if (!matched) {
+        log_startup->warn(
+            "Graphics preset '{}' not found in loaded preset list (active settings unchanged)",
+            current_graphics_preset.name
+        );
+    }
 }
 
-void App_settings::read(const Editor_settings_config& editor_settings)
+void App_settings::read(const Editor_settings_config& editor_settings, const bool openxr)
 {
     log_startup->debug("App_settings::read()");
 
-    graphics.read_presets();
-    graphics.current_graphics_preset.name = editor_settings.graphics_preset_name;
+    graphics.read_presets(openxr);
+    if (openxr && !graphics.graphics_presets.empty()) {
+        // OpenXR mode uses the dedicated XR preset list. Override
+        // editor_settings.graphics_preset_name -- which targets the desktop
+        // preset list -- with the first entry from the XR file so the active
+        // preset matches one we actually loaded.
+        graphics.current_graphics_preset.name = graphics.graphics_presets.front().name;
+    } else {
+        graphics.current_graphics_preset.name = editor_settings.graphics_preset_name;
+    }
 
     imgui.primary_font              = editor_settings.imgui.primary_font;
     imgui.mono_font                 = editor_settings.imgui.mono_font;
@@ -125,12 +163,16 @@ void App_settings::read(const Editor_settings_config& editor_settings)
     icon_settings = editor_settings.icons;
 }
 
-void App_settings::write(Editor_settings_config& editor_settings)
+void App_settings::write(Editor_settings_config& editor_settings, const bool openxr)
 {
     log_startup->debug("App_settings::write()");
 
-    graphics.write_presets();
-    editor_settings.graphics_preset_name = graphics.current_graphics_preset.name;
+    graphics.write_presets(openxr);
+    if (!openxr) {
+        // editor_settings.graphics_preset_name only references the desktop
+        // preset list; do not write the XR preset name back to it.
+        editor_settings.graphics_preset_name = graphics.current_graphics_preset.name;
+    }
 
     editor_settings.imgui.primary_font              = imgui.primary_font;
     editor_settings.imgui.mono_font                 = imgui.mono_font;

@@ -338,6 +338,10 @@ auto App_rendering::create_shadow_node_for_scene_view(
     const int   resolution    = preset.shadow_enable ? preset.shadow_resolution  : 1;
     const int   light_count   = preset.shadow_enable ? preset.shadow_light_count : 1;
     const bool  reverse_depth = preset.reverse_depth && can_reverse;
+    log_startup->info(
+        "Creating shadow render node from preset '{}': shadow_enable={} -> light_count={} resolution={} depth_bits={} reverse_depth={}",
+        preset.name, preset.shadow_enable, light_count, resolution, preset.shadow_depth_bits, reverse_depth
+    );
     ERHE_VERIFY(m_context.current_command_buffer != nullptr);
     auto shadow_render_node = std::make_shared<Shadow_render_node>(
         graphics_device,
@@ -361,6 +365,14 @@ void App_rendering::handle_graphics_settings_changed(Graphics_preset_entry* grap
     const int   resolution    = (graphics_preset != nullptr) && graphics_preset->shadow_enable ? graphics_preset->shadow_resolution  : 1;
     const int   light_count   = (graphics_preset != nullptr) && graphics_preset->shadow_enable ? graphics_preset->shadow_light_count : 1;
     const bool  reverse_depth = (graphics_preset != nullptr) && (graphics_preset->reverse_depth && can_reverse);
+
+    if (graphics_preset != nullptr) {
+        log_startup->info(
+            "Reconfiguring {} shadow render node(s) from preset '{}': shadow_enable={} -> light_count={} resolution={} depth_bits={} reverse_depth={}",
+            m_all_shadow_render_nodes.size(),
+            graphics_preset->name, graphics_preset->shadow_enable, light_count, resolution, graphics_preset->shadow_depth_bits, reverse_depth
+        );
+    }
 
     ERHE_VERIFY(m_context.current_command_buffer != nullptr);
     for (const auto& node : m_all_shadow_render_nodes) {

@@ -440,13 +440,13 @@ void Settings_window::imgui()
     add_entry("", [this, button_size](){
         if (ImGui::Button("Load", button_size)) {
             if (m_context.editor_settings != nullptr) {
-                m_context.app_settings->read(*m_context.editor_settings);
+                m_context.app_settings->read(*m_context.editor_settings, m_context.OpenXR);
             }
         }
         ImGui::SameLine();
         if (ImGui::Button("Save", button_size)) {
             if (m_context.editor_settings != nullptr) {
-                m_context.app_settings->write(*m_context.editor_settings);
+                m_context.app_settings->write(*m_context.editor_settings, m_context.OpenXR);
             }
         }
     });
