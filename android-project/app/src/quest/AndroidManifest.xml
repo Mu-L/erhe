@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Quest devices report headtracking. Declaring it required marks the
          APK as VR for the Horizon Store. -->
@@ -7,10 +8,38 @@
                   android:version="1"
                   android:required="true" />
 
+    <!-- OpenXR loader broker permissions. Source of truth: the merge
+         manifest shipped by KhronosGroup/OpenXR-SDK-Source at
+         src/loader/AndroidManifest.xml.in (CPM-fetched). We are not
+         consuming the prebuilt Khronos AAR, so these entries are inlined
+         here by hand. -->
+    <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />
+    <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
+
+    <!-- Android 11+ package visibility: the loader queries for the
+         OpenXR runtime broker and any installed runtimes / api layers. -->
+    <queries>
+        <provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" />
+        <intent>
+            <action android:name="org.khronos.openxr.OpenXRRuntimeService" />
+        </intent>
+        <intent>
+            <action android:name="org.khronos.openxr.OpenXRApiLayerService" />
+        </intent>
+    </queries>
+
     <application>
         <!-- Whitelist Meta hardware models eligible to install this APK. -->
         <meta-data android:name="com.oculus.supportedDevices"
                    android:value="quest3|quest3s|quest2|questpro" />
+
+        <!-- IMMERSIVE_HMD: tells the Quest runtime to launch the activity
+             into the immersive XR session instead of the Horizon 2D shell. -->
+        <activity android:name="org.libsdl.app.SDLActivity" tools:node="merge">
+            <intent-filter>
+                <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

@@ -582,6 +582,14 @@ public:
         , m_window_config       {erhe::codegen::load_config<Window_config>         ("config/editor/window.json")}
         , m_editor_settings     {erhe::codegen::load_config<Editor_settings_config>("config/editor/editor_settings.json")}
     {
+#if defined(ERHE_OS_ANDROID) && defined(ERHE_XR_LIBRARY_OPENXR)
+        // On Android the only flavor that links OpenXR is `quest` (Meta Quest 3).
+        // The flat 2D Horizon panel path is not a supported runtime target;
+        // force-enable OpenXR regardless of the JSON config so the editor always
+        // brings up an immersive session on the headset.
+        m_editor_settings.headset.openxr = true;
+#endif
+
         if (m_editor_settings.headset.openxr) {
             m_editor_settings.hud.enabled = true;
         }

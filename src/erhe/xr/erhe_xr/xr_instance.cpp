@@ -16,6 +16,11 @@
 #   include <unknwn.h>
 #endif
 
+#if defined(XR_USE_PLATFORM_ANDROID)
+#   include <SDL3/SDL_system.h>
+#   include <jni.h>
+#endif
+
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
@@ -23,6 +28,65 @@
 #include <thread>
 
 namespace erhe::xr {
+
+#if defined(XR_USE_PLATFORM_ANDROID)
+namespace {
+
+// XR_KHR_loader_init_android requires xrInitializeLoaderKHR to be called before
+// any other OpenXR call on Android. Returns true on success or if loader-init
+// has already been performed once this process; false on hard failure.
+auto initialize_android_loader() -> bool
+{
+    static bool initialized = false;
+    if (initialized) {
+        return true;
+    }
+
+    JNIEnv* const jni_env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+    jobject const activity = static_cast<jobject>(SDL_GetAndroidActivity());
+    if ((jni_env == nullptr) || (activity == nullptr)) {
+        log_xr->error("SDL_GetAndroidJNIEnv() / SDL_GetAndroidActivity() returned null; cannot init OpenXR loader.");
+        return false;
+    }
+
+    JavaVM* java_vm = nullptr;
+    if (jni_env->GetJavaVM(&java_vm) != JNI_OK || (java_vm == nullptr)) {
+        log_xr->error("JNIEnv::GetJavaVM() failed; cannot init OpenXR loader.");
+        return false;
+    }
+
+    PFN_xrInitializeLoaderKHR xrInitializeLoaderKHR_fn = nullptr;
+    const XrResult get_proc_result = xrGetInstanceProcAddr(
+        XR_NULL_HANDLE,
+        "xrInitializeLoaderKHR",
+        reinterpret_cast<PFN_xrVoidFunction*>(&xrInitializeLoaderKHR_fn)
+    );
+    if ((get_proc_result != XR_SUCCESS) || (xrInitializeLoaderKHR_fn == nullptr)) {
+        log_xr->error("xrGetInstanceProcAddr(xrInitializeLoaderKHR) failed: {}", static_cast<int>(get_proc_result));
+        return false;
+    }
+
+    const XrLoaderInitInfoAndroidKHR loader_init_info{
+        .type               = XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR,
+        .next               = nullptr,
+        .applicationVM      = java_vm,
+        .applicationContext = activity,
+    };
+    const XrResult init_result = xrInitializeLoaderKHR_fn(
+        reinterpret_cast<const XrLoaderInitInfoBaseHeaderKHR*>(&loader_init_info)
+    );
+    if (init_result != XR_SUCCESS) {
+        log_xr->error("xrInitializeLoaderKHR() failed: {}", static_cast<int>(init_result));
+        return false;
+    }
+
+    log_xr->info("xrInitializeLoaderKHR() succeeded.");
+    initialized = true;
+    return true;
+}
+
+} // namespace
+#endif // XR_USE_PLATFORM_ANDROID
 
 Xr_instance::Xr_instance(
     const Xr_configuration& configuration,
@@ -32,6 +96,12 @@ Xr_instance::Xr_instance(
     , m_message_callback{message_callback}
 {
     ERHE_PROFILE_FUNCTION();
+
+#if defined(XR_USE_PLATFORM_ANDROID)
+    if (!initialize_android_loader()) {
+        return;
+    }
+#endif
 
     if (configuration.validation) {
 #if defined(ERHE_OS_WINDOWS)
@@ -260,6 +330,17 @@ auto Xr_instance::create_instance() -> bool
     enabled_extensions.push_back(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
 #endif
 
+#if defined(XR_USE_PLATFORM_ANDROID)
+    if (!has_extension(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME)) {
+        log_xr->error(
+            XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME
+            " not supported by OpenXR runtime. This is a fatal error on Android."
+        );
+        abort();
+    }
+    enabled_extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+#endif
+
     if (m_configuration.debug && has_extension(XR_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
         extensions.EXT_debug_utils = true;
         enabled_extensions.push_back(XR_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -322,9 +403,29 @@ auto Xr_instance::create_instance() -> bool
 
 
     {
+        const void* create_info_next = nullptr;
+
+#if defined(XR_USE_PLATFORM_ANDROID)
+        // XR_KHR_android_create_instance: bind the OpenXR instance to the
+        // hosting Activity so the runtime broker can find this client app.
+        JNIEnv* const android_jni_env  = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+        jobject const android_activity = static_cast<jobject>(SDL_GetAndroidActivity());
+        JavaVM* android_java_vm = nullptr;
+        if (android_jni_env != nullptr) {
+            android_jni_env->GetJavaVM(&android_java_vm);
+        }
+        const XrInstanceCreateInfoAndroidKHR android_create_info {
+            .type                = XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR,
+            .next                = nullptr,
+            .applicationVM       = android_java_vm,
+            .applicationActivity = android_activity,
+        };
+        create_info_next = &android_create_info;
+#endif
+
         const XrInstanceCreateInfo create_info {
             .type                   = XR_TYPE_INSTANCE_CREATE_INFO,
-            .next                   = nullptr,
+            .next                   = create_info_next,
             .createFlags            = 0,
             .applicationInfo = {
                 .applicationName    = { 'e', 'r', 'h', 'e', '\0' },

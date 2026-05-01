@@ -46,6 +46,14 @@ if (ERHE_TARGET_OS_LINUX)
     )
 endif ()
 
+if (ERHE_TARGET_OS_ANDROID)
+    target_compile_definitions(
+        ${_target}
+        PUBLIC
+        XR_USE_PLATFORM_ANDROID=1
+    )
+endif ()
+
 # TODO ERHE_TARGET_OS_OSX?
 
 if (ERHE_GRAPHICS_API_OPENGL)

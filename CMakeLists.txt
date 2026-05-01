@@ -105,13 +105,21 @@ else ()
     message(FATAL_ERROR "OS not supported ${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 endif ()
 
-# On Android, force a known-good subset of options for Phase 1 (build-only).
-# OpenXR, Embree, mimalloc, and Tracy are not Phase 1 targets; OpenGL is
-# desktop-only here.
+# On Android, force a known-good subset of options. OpenGL is desktop-only,
+# Embree is x86-only, and mimalloc / Tracy are not yet ported.
+#
+# OpenXR is enabled only for the `quest` Gradle product flavor (Meta Quest 3),
+# selected via -DERHE_ANDROID_FLAVOR=quest forwarded by Gradle. The Khronos
+# OpenXR-SDK loader (already CPM-fetched for desktop) builds cleanly on the
+# NDK toolchain and produces a libopenxr_loader.so packaged into the APK.
 if (ERHE_TARGET_OS_ANDROID)
     set(ERHE_GRAPHICS_LIBRARY "vulkan"  CACHE STRING "" FORCE)
     set(ERHE_WINDOW_LIBRARY   "sdl"     CACHE STRING "" FORCE)
-    set(ERHE_XR_LIBRARY       "none"    CACHE STRING "" FORCE)
+    if (ERHE_ANDROID_FLAVOR STREQUAL "quest")
+        set(ERHE_XR_LIBRARY "openxr" CACHE STRING "" FORCE)
+    else ()
+        set(ERHE_XR_LIBRARY "none"   CACHE STRING "" FORCE)
+    endif ()
     set(ERHE_RAYTRACE_LIBRARY "bvh"     CACHE STRING "" FORCE)
     set(ERHE_PROFILE_LIBRARY  "none"    CACHE STRING "" FORCE)
     set(ERHE_USE_MIMALLOC     OFF       CACHE BOOL   "" FORCE)

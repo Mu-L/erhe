@@ -10,6 +10,9 @@
 # if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
 #  include "volk.h"
 # endif
+# if defined(XR_USE_PLATFORM_ANDROID)
+#  include <jni.h>
+# endif
 # include <openxr/openxr.h>
 # include <openxr/openxr_platform.h>
 #endif

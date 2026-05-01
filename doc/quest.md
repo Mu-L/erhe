@@ -139,10 +139,14 @@ yet - that is fine. Phase 5 brings the immersive path.
 - The SDL Java shim under `app/src/main/java/org/libsdl/app/` is
   shared by both flavors.
 
-## Phase 5 - OpenXR runtime on Quest (sketch)
+## Phase 5 - OpenXR runtime on Quest (landed; immersive display pending)
 
-Detailed plan deferred. This section captures the shape so the choices
-are written down.
+Status: build + bring-up working. `xrInitializeLoaderKHR()`,
+`xrCreateInstance()`, `xrCreateSession()`, eye swapchain allocation,
+reference-space creation, and `xrAttachSessionActionSets()` all succeed
+on Quest 3 (verified via logcat). The headset still shows a black 2D
+panel rather than an immersive view -- the frame loop is not yet
+producing visible eye output. Investigation in progress.
 
 ### 5.1 Loader source
 

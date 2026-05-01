@@ -10,6 +10,12 @@
 # include "erhe_graphics/vulkan_external_creators.hpp"
 #endif
 
+// jni.h must precede <openxr/openxr_platform.h> on Android: the platform
+// header references jobject (XrLoaderInitInfoAndroidKHR, XrInstanceCreateInfoAndroidKHR).
+#if defined(XR_USE_PLATFORM_ANDROID)
+# include <jni.h>
+#endif
+
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 

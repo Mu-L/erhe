@@ -26,6 +26,12 @@
 # include "volk.h"
 #endif
 
+// jni.h must precede openxr_platform.h on Android: the platform header
+// references jobject (XrInstanceCreateInfoAndroidKHR, XrLoaderInitInfoAndroidKHR).
+#if defined(XR_USE_PLATFORM_ANDROID)
+# include <jni.h>
+#endif
+
 //#if defined(_MSC_VER) && !defined(__clang__)
 //#   pragma warning(push)
 //#   pragma warning(disable : 26812) // The enum type is unscoped. Prefer ‘enum class’ over ‘enum’ (Enum.3).

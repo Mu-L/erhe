@@ -19,6 +19,11 @@
 # include "volk.h"
 #endif
 
+// jni.h must precede openxr_platform.h on Android.
+#if defined(XR_USE_PLATFORM_ANDROID)
+# include <jni.h>
+#endif
+
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
