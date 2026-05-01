@@ -81,6 +81,7 @@ target_link_libraries(${_target}
     PRIVATE
         erhe::log
         erhe::profile
+        erhe::utility
         erhe::verify
         etl::etl
         fmt::fmt

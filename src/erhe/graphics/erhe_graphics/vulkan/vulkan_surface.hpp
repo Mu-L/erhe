@@ -36,6 +36,21 @@ public:
     [[nodiscard]] auto get_swapchain          () -> Swapchain*;
     [[nodiscard]] auto can_use_physical_device(VkPhysicalDevice physical_device) -> bool;
     [[nodiscard]] auto use_physical_device    (VkPhysicalDevice physical_device) -> bool;
+
+    // Tear the existing VkSwapchainKHR + VkSurfaceKHR down and rebuild
+    // over the current Context_window's freshly-bound native window.
+    // The owning Swapchain (and its Swapchain_impl) C++ object stays
+    // alive: only the Vulkan handles inside it are dropped, so cached
+    // raw Swapchain* pointers (e.g. in Render_pass_impl, in
+    // Window_imgui_host::m_render_pass) remain valid across the call.
+    // The next Swapchain_impl::wait_frame() rebuilds the
+    // VkSwapchainKHR against the new VkSurfaceKHR.
+    //
+    // Used on Android when DID_ENTER_FOREGROUND delivers a new
+    // ANativeWindow and the previous VkSurfaceKHR has been invalidated
+    // (the editor observed VK_ERROR_SURFACE_LOST_KHR or
+    // m_swapchain_dirty was set by the lifecycle event watch).
+    [[nodiscard]] auto recreate_for_new_window() -> bool;
     [[nodiscard]] auto get_surface_format     () -> VkSurfaceFormatKHR const;
     [[nodiscard]] auto get_present_mode       () -> VkPresentModeKHR const;
     [[nodiscard]] auto get_image_count        () -> uint32_t const;

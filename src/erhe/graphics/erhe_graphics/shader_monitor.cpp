@@ -27,6 +27,15 @@ using std::string;
 
 void Shader_monitor::begin(const bool enabled)
 {
+#if defined(ERHE_OS_ANDROID)
+    // Shader hot-reload watches files on disk; APK assets are not real
+    // filesystem entries and any rebuild would require a full APK
+    // reinstall anyway. Disable the whole feature on Android.
+    (void)enabled;
+    m_run = false;
+    log_shader_monitor->info("Shader monitor disabled on Android");
+    return;
+#else
     m_run = enabled;
 
     if (!m_run) {
@@ -35,6 +44,7 @@ void Shader_monitor::begin(const bool enabled)
     }
 
     m_poll_filesystem_thread = std::thread(&Shader_monitor::poll_thread, this);
+#endif
 }
 
 Shader_monitor::Shader_monitor(Device& device)
@@ -63,6 +73,11 @@ void Shader_monitor::set_enabled(const bool enabled)
 void Shader_monitor::add(Shader_stages_create_info create_info, erhe::graphics::Shader_stages* shader_stages)
 {
     ERHE_VERIFY(shader_stages != nullptr);
+#if defined(ERHE_OS_ANDROID)
+    // Disabled on Android - see Shader_monitor::begin().
+    (void)create_info;
+    return;
+#else
     for (const auto& shader : create_info.shaders) {
         for (const std::filesystem::path& path : shader.paths) {
             if (erhe::file::check_is_existing_non_empty_regular_file("Shader_monitor::add", path)) {
@@ -76,6 +91,7 @@ void Shader_monitor::add(Shader_stages_create_info create_info, erhe::graphics::
             }
         }
     }
+#endif
 }
 
 void Shader_monitor::add(Reloadable_shader_stages& reloadable_shader_stages)

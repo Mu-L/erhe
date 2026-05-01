@@ -29,10 +29,9 @@
 #include "erhe_scene_renderer/generated/mesh_memory_config_serialization.hpp"
 #include "erhe_scene_renderer/scene_renderer_log.hpp"
 #include "erhe_ui/ui_log.hpp"
+#include "erhe_utility/clipboard.hpp"
 #include "erhe_verify/verify.hpp"
 #include "erhe_window/window_log.hpp"
-
-#include <SDL3/SDL.h>
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
 # include "erhe_gl/gl_log.hpp"
@@ -65,7 +64,7 @@ Rendering_test::Rendering_test(std::string_view config_path)
             )
             {
                 std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
-                SDL_SetClipboardText(clipboard_text.c_str());
+                erhe::utility::copy_to_clipboard(clipboard_text);
                 ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
             }
         }
@@ -74,7 +73,7 @@ Rendering_test::Rendering_test(std::string_view config_path)
         m_graphics_device.set_shader_error_callback(
             [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {
                 std::string clipboard_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
-                SDL_SetClipboardText(clipboard_text.c_str());
+                erhe::utility::copy_to_clipboard(clipboard_text);
                 ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
             }
         ),

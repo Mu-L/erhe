@@ -44,6 +44,11 @@ auto Swapchain_impl::current_slot() const -> size_t
 Swapchain_impl::~Swapchain_impl() noexcept
 {
     log_swapchain->debug("Swapchain_impl::~Swapchain_impl()");
+    release_resources();
+}
+
+void Swapchain_impl::release_resources()
+{
     if (m_vulkan_swapchain == VK_NULL_HANDLE) {
         return;
     }
@@ -52,7 +57,7 @@ Swapchain_impl::~Swapchain_impl() noexcept
     VkResult result = VK_SUCCESS;
 
     // TODO Queue thread safety
-	result = vkDeviceWaitIdle(vulkan_device);
+    result = vkDeviceWaitIdle(vulkan_device);
     if (result != VK_SUCCESS) {
         m_device_impl.get_device().device_message(
             Message_severity::error,
@@ -75,7 +80,18 @@ Swapchain_impl::~Swapchain_impl() noexcept
             cleanup_swapchain_objects(garbage);
         }
         frame.swapchain_garbage.clear();
-        ERHE_VERIFY(frame.present_semaphore == VK_NULL_HANDLE);
+        // Normally present_semaphore is moved into the present-history
+        // entry by add_present_to_history(), and the assert below would
+        // hold. The SURFACE_LOST / DEVICE_LOST early return in
+        // present_image() skips that step (no history entry is created
+        // since the present did not happen), leaving the semaphore on
+        // the frame slot. The vkDeviceWaitIdle above guarantees the GPU
+        // is no longer signaling or waiting on it, so recycle it here
+        // instead of asserting.
+        if (frame.present_semaphore != VK_NULL_HANDLE) {
+            recycle_semaphore(frame.present_semaphore);
+            frame.present_semaphore = VK_NULL_HANDLE;
+        }
     }
 
     for (Present_history_entry& present_history_entry : m_present_history) {
@@ -90,18 +106,47 @@ Swapchain_impl::~Swapchain_impl() noexcept
         }
         cleanup_present_info(present_history_entry);
     }
+    m_present_history.clear();
 
     //log_swapchain->trace("During the lifetime, {} swapchains were created", m_swapchain_creation_count);
-    log_swapchain->debug("Old swapchain count at destruction: {}", m_old_swapchains.size());
+    log_swapchain->debug("Old swapchain count at release: {}", m_old_swapchains.size());
 
     for (Swapchain_cleanup_data& old_swapchain : m_old_swapchains) {
         cleanup_old_swapchain(old_swapchain);
     }
+    m_old_swapchains.clear();
 
     cleanup_swapchain_objects(m_swapchain_objects);
     if (m_vulkan_swapchain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(vulkan_device, m_vulkan_swapchain, nullptr);
+        m_vulkan_swapchain = VK_NULL_HANDLE;
     }
+}
+
+void Swapchain_impl::reset_for_new_surface()
+{
+    log_swapchain->debug("Swapchain_impl::reset_for_new_surface()");
+
+    // Drop every Vulkan handle owned by this Swapchain_impl. After this
+    // call m_vulkan_swapchain is VK_NULL_HANDLE and the per-frame slots
+    // hold no live semaphores or framebuffers; the next wait_frame()
+    // will see m_vulkan_swapchain == VK_NULL_HANDLE and run
+    // init_swapchain() against the (now updated) VkSurfaceKHR in
+    // Surface_impl.
+    release_resources();
+
+    // Restore higher-level state to the post-construction defaults so
+    // wait_frame()'s state precondition holds and init_swapchain() does
+    // not see a cached extent that would early-out the rebuild. The
+    // device frame-in-flight index is owned by Device_impl and keeps
+    // advancing across the reset; current_slot() therefore stays
+    // consistent with the device timeline.
+    m_swapchain_extent     = VkExtent2D{0, 0};
+    m_swapchain_format     = VK_FORMAT_UNDEFINED;
+    m_depth_format         = VK_FORMAT_UNDEFINED;
+    m_is_valid             = false;
+    m_acquired_image_index = 0;
+    m_state                = Swapchain_frame_state::idle;
 }
 
 auto Swapchain_impl::submit_command_buffer() -> bool
@@ -171,16 +216,32 @@ auto Swapchain_impl::wait_frame(Frame_state& out_frame_state) -> bool
         (m_state == Swapchain_frame_state::image_present)
     );
 
-    if (m_vulkan_swapchain == VK_NULL_HANDLE) {
+    out_frame_state = Frame_state{};
+
+    // (Re)build the swapchain when we have no handle, or the previous
+    // present / acquire marked it invalid (e.g. SURFACE_LOST after the
+    // OS detached our window during background). init_swapchain will
+    // also fail with SURFACE_LOST until the underlying VkSurfaceKHR is
+    // recreated by the foreground lifecycle path; in that case we just
+    // keep returning false from here, leaving m_state at idle.
+    if ((m_vulkan_swapchain == VK_NULL_HANDLE) || !m_is_valid) {
         init_swapchain();
     }
 
-    out_frame_state = Frame_state{};
+    if (!m_is_valid) {
+        // Skip the frame without consuming any per-slot resources.
+        // Leaving m_state at idle keeps this method's entry assertion
+        // happy on subsequent calls while the swapchain remains down.
+        m_state = Swapchain_frame_state::idle;
+        out_frame_state.should_render = false;
+        return false;
+    }
+
     setup_frame();
 
     m_state = Swapchain_frame_state::command_buffer_ready;
 
-    return is_valid();
+    return true;
 }
 
 auto Swapchain_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bool
@@ -361,14 +422,24 @@ auto Swapchain_impl::present() -> bool
 
     if ((result == VK_SUBOPTIMAL_KHR) || (result == VK_ERROR_OUT_OF_DATE_KHR)) {
         init_swapchain();
+        m_state = Swapchain_frame_state::image_present;
+    } else if ((result == VK_ERROR_SURFACE_LOST_KHR) || (result == VK_ERROR_DEVICE_LOST)) {
+        // Already logged by present_image, which also marked the
+        // swapchain invalid. Do NOT route through device_message:
+        // the editor's error callback turns these into ERHE_FATAL,
+        // and lifecycle-driven surface loss is recoverable. Leave
+        // m_state at idle so wait_frame can pick the rebuild path
+        // when the surface comes back.
+        m_state = Swapchain_frame_state::idle;
     } else if (result != VK_SUCCESS) {
         m_device_impl.get_device().device_message(
             Message_severity::error,
             fmt::format("presenting frame failed with {} {}", static_cast<int32_t>(result), c_str(result))
         );
         m_state = Swapchain_frame_state::idle;
+    } else {
+        m_state = Swapchain_frame_state::image_present;
     }
-    m_state = Swapchain_frame_state::image_present;
     ERHE_VULKAN_SYNC_TRACE(
         "[SWAPCHAIN_END] frame_index={} acquired_image_index={} present_result={}",
         m_device_impl.get_frame_index(), m_acquired_image_index, static_cast<int32_t>(result)
@@ -465,6 +536,20 @@ void Swapchain_impl::cleanup_present_history()
         const VkResult result = vkGetFenceStatus(vulkan_device, entry.cleanup_fence);
         if (result == VK_NOT_READY) {
             // Not yet
+            break;
+        } else if (result == VK_ERROR_DEVICE_LOST) {
+            // Device-lost is expected on Android when the OS reclaims the
+            // GPU during background, and on any platform if the driver
+            // resets. The fence will never signal; drop the entry,
+            // invalidate the swapchain, and let the lifecycle path
+            // rebuild it on resume.
+            log_swapchain->warn(
+                "vkGetFenceStatus() returned {} {}; abandoning present-history entry",
+                static_cast<int32_t>(result), c_str(result)
+            );
+            m_is_valid = false;
+            cleanup_present_info(entry);
+            m_present_history.pop_front();
             break;
         } else if (result != VK_SUCCESS) {
             log_swapchain->critical("vkGetFenceStatus() failed with {} {}", static_cast<int32_t>(result), c_str(result));
@@ -1067,6 +1152,22 @@ auto Swapchain_impl::present_image(uint32_t index) -> VkResult
     );
     VkResult result = vkQueuePresentKHR(vulkan_present_queue, &present_info);
     log_swapchain->trace("vkQueuePresentKHR returned {}", static_cast<int32_t>(result));
+    if ((result == VK_ERROR_SURFACE_LOST_KHR) || (result == VK_ERROR_DEVICE_LOST)) {
+        // SURFACE_LOST: the underlying ANativeWindow / NSWindow / HWND
+        // backing the VkSurfaceKHR is gone. On Android this is the
+        // background-event path (the OS detached our window) when the
+        // SDL_AddEventWatch handler did not stop submission in time.
+        // DEVICE_LOST: GPU reset / TDR. In both cases we mark the
+        // swapchain invalid; the editor's lifecycle / resume logic is
+        // responsible for rebuilding surface + swapchain when the
+        // window is interactive again.
+        log_swapchain->warn(
+            "vkQueuePresentKHR() returned {} {}; marking swapchain invalid and skipping present",
+            static_cast<int32_t>(result), c_str(result)
+        );
+        m_is_valid = false;
+        return result;
+    }
     if ((result != VK_SUCCESS) && (result != VK_ERROR_OUT_OF_DATE_KHR) && (result != VK_SUBOPTIMAL_KHR)) {
         log_swapchain->critical("vkQueuePresentKHR() failed with {} {}", static_cast<int32_t>(result), c_str(result));
         abort();

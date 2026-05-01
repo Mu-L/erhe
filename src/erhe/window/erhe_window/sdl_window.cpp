@@ -268,12 +268,43 @@ auto Context_window_SDL_EventFilter(void* userdata, SDL_Event* event) -> bool
 auto Context_window::sdl_event_filter(void* event_) -> bool
 {
     SDL_Event* event = static_cast<SDL_Event*>(event_);
-    if (event->type == SDL_EVENT_WINDOW_EXPOSED) {
-        if (m_redraw_callback) {
-            m_redraw_callback();
-        }
+    switch (event->type) {
+        case SDL_EVENT_WINDOW_EXPOSED:
+            if (m_redraw_callback) {
+                m_redraw_callback();
+            }
+            break;
+#if defined(ERHE_OS_ANDROID)
+        // Lifecycle events arrive on the SDL event-watch thread and must
+        // be observed before the OS suspends us; that is why we handle
+        // them here, not in poll_events().
+        case SDL_EVENT_WILL_ENTER_BACKGROUND:
+        case SDL_EVENT_DID_ENTER_BACKGROUND:
+            m_paused.store(true, std::memory_order_release);
+            break;
+        case SDL_EVENT_WILL_ENTER_FOREGROUND:
+        case SDL_EVENT_DID_ENTER_FOREGROUND:
+            m_paused.store(false, std::memory_order_release);
+            m_swapchain_dirty.store(true, std::memory_order_release);
+            break;
+        case SDL_EVENT_RENDER_DEVICE_RESET:
+            m_swapchain_dirty.store(true, std::memory_order_release);
+            break;
+#endif
+        default:
+            break;
     }
     return true; // allow event to be added
+}
+
+auto Context_window::is_paused() const -> bool
+{
+    return m_paused.load(std::memory_order_acquire);
+}
+
+auto Context_window::consume_swapchain_dirty() -> bool
+{
+    return m_swapchain_dirty.exchange(false, std::memory_order_acq_rel);
 }
 
 void Context_window::register_redraw_callback(std::function<void()> callback)

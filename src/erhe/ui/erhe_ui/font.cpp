@@ -2,6 +2,7 @@
 #include "erhe_ui/glyph.hpp"
 #include "erhe_ui/ui_log.hpp"
 #include "erhe_dataformat/dataformat.hpp"
+#include "erhe_file/file.hpp"
 #include "erhe_graphics/blit_command_encoder.hpp"
 #include "erhe_graphics/command_buffer.hpp"
 #include "erhe_graphics/device.hpp"
@@ -115,11 +116,32 @@ auto Font::render(erhe::graphics::Command_buffer& init_command_buffer) -> bool
         log_font->trace("Freetype version {}.{}.{}", major, minor, patch);
     }
 
-    res = FT_New_Face(m_freetype_library, m_path.string().c_str(), 0, &m_freetype_face);
+    // Read the font into memory via erhe::file::read so the same code path
+    // works for filesystem assets on desktop and APK assets on Android
+    // (where SDL_IOFromFile transparently routes to AAssetManager).
+    {
+        std::optional<std::string> data = erhe::file::read("Font::render", m_path);
+        if (!data.has_value()) {
+            log_font->error(
+                "erhe::file::read('{}') failed - cannot load font",
+                m_path.string()
+            );
+            return false;
+        }
+        m_font_data = std::move(data.value());
+    }
+    res = FT_New_Memory_Face(
+        m_freetype_library,
+        reinterpret_cast<const FT_Byte*>(m_font_data.data()),
+        static_cast<FT_Long>(m_font_data.size()),
+        0,
+        &m_freetype_face
+    );
     if (res != FT_Err_Ok) {
         log_font->error(
-            "FT_New_Face(pathname = '{}') returned error code {}",
+            "FT_New_Memory_Face('{}', size={}) returned error code {}",
             m_path.string(),
+            m_font_data.size(),
             res
         );
         return false;

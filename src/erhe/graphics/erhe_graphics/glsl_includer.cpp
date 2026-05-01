@@ -3,7 +3,6 @@
 #include "erhe_file/file.hpp"
 
 #include <algorithm>
-#include <system_error>
 
 namespace erhe::graphics {
 
@@ -75,19 +74,23 @@ auto Glsl_includer::resolve(const char* header_name) -> IncludeResult*
         };
     }
 
-    // Resolve against primary_dir, then each extra include path.
+    // Resolve against primary_dir, then each extra include path. Use the
+    // erhe::file existence helper rather than std::filesystem::exists: on
+    // Android the helper probes via SDL_IOFromFile so APK-asset includes
+    // are visible (std::filesystem::exists cannot see them).
     std::filesystem::path resolved;
-    std::error_code       error_code;
     {
         const std::filesystem::path candidate = m_primary_dir / header_name;
-        if (std::filesystem::exists(candidate, error_code)) {
+        if (erhe::file::check_is_existing_non_empty_regular_file(
+                "Glsl_includer::resolve", candidate, /*silent_if_not_exists=*/true)) {
             resolved = candidate;
         }
     }
     if (resolved.empty()) {
         for (const std::filesystem::path& extra : m_extra_include_paths) {
             const std::filesystem::path candidate = extra / header_name;
-            if (std::filesystem::exists(candidate, error_code)) {
+            if (erhe::file::check_is_existing_non_empty_regular_file(
+                    "Glsl_includer::resolve", candidate, /*silent_if_not_exists=*/true)) {
                 resolved = candidate;
                 break;
             }

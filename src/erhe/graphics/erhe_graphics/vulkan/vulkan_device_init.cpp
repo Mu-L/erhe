@@ -845,6 +845,19 @@ Device_impl::Device_impl(
 
     // Validate required features
     const VkPhysicalDeviceFeatures& qf = query_device_features.features;
+#if defined(ERHE_OS_ANDROID)
+    // Mobile Vulkan drivers (e.g. Mali-G715) commonly lack
+    // shaderClipDistance and vertexPipelineStoresAndAtomics. Phase 2 of the
+    // Android port keeps these soft so device init completes; downstream
+    // pipelines that depend on them (the ImGui vertex shader uses
+    // gl_ClipDistance) will need their own fallback path.
+    if (qf.shaderClipDistance == VK_FALSE) {
+        log_startup->warn("Vulkan feature shaderClipDistance is not supported - ImGui clipping will be disabled");
+    }
+    if (qf.vertexPipelineStoresAndAtomics == VK_FALSE) {
+        log_startup->warn("Vulkan feature vertexPipelineStoresAndAtomics is not supported");
+    }
+#else
     if (qf.shaderClipDistance == VK_FALSE) {
         log_startup->critical("Required Vulkan feature shaderClipDistance is not supported");
         abort();
@@ -853,6 +866,7 @@ Device_impl::Device_impl(
         log_startup->critical("Required Vulkan feature vertexPipelineStoresAndAtomics is not supported");
         abort();
     }
+#endif
     if (query_vulkan_13_features.synchronization2 == VK_FALSE) {
         log_startup->critical("Required Vulkan 1.3 feature synchronization2 is not supported");
         abort();
@@ -1184,6 +1198,7 @@ Device_impl::Device_impl(
     m_info.use_clear_texture           = true;
     m_info.use_texture_view            = true;
     m_info.use_persistent_buffers      = true;
+    m_info.use_clip_distance           = (qf.shaderClipDistance == VK_TRUE);
 
     // Vulkan coordinate conventions
     m_info.coordinate_conventions.native_depth_range = erhe::math::Depth_range::zero_to_one;

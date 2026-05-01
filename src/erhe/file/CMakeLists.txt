@@ -19,4 +19,9 @@ target_link_libraries(${_target}
         erhe::verify
 )
 
+if (ERHE_TARGET_OS_ANDROID)
+    # SDL_IOFromFile routes asset paths through AAssetManager on Android.
+    target_link_libraries(${_target} PRIVATE SDL3::SDL3-static)
+endif ()
+
 erhe_target_settings(${_target} "erhe")

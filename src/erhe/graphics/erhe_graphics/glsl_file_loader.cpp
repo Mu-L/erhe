@@ -150,12 +150,18 @@ auto Glsl_file_loader::read_shader_source_file(
         }
     }
 
+    // Use erhe::file's existence helper rather than std::filesystem::exists
+    // directly: on Android the helper probes via SDL_IOFromFile so APK
+    // assets are visible (std::filesystem cannot see them).
     std::filesystem::path resolved_path = path;
-    std::error_code error_code{};
-    if (!std::filesystem::exists(resolved_path, error_code)) {
+    if (!erhe::file::check_is_existing_non_empty_regular_file(
+            "Glsl_file_loader::read_shader_source_file", resolved_path,
+            /*silent_if_not_exists=*/true)) {
         for (const std::filesystem::path& extra : m_extra_include_paths) {
             const std::filesystem::path candidate = extra / path.filename();
-            if (std::filesystem::exists(candidate, error_code)) {
+            if (erhe::file::check_is_existing_non_empty_regular_file(
+                    "Glsl_file_loader::read_shader_source_file", candidate,
+                    /*silent_if_not_exists=*/true)) {
                 resolved_path = candidate;
                 break;
             }

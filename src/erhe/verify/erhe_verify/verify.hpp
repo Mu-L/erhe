@@ -27,6 +27,19 @@
 #define ERHE_FATAL(format, ...) do { printf("%s:%u " format "\n", std::source_location::current().file_name(), std::source_location::current().line(), ##__VA_ARGS__); erhe_dump_callstack(); DebugBreak(); abort(); } while (1)
 #define ERHE_VERIFY(expression) do { if (!(expression)) { ERHE_FATAL("assert %s failed in %s", #expression, __func__); } } while (0)
 
+#elif defined(__ANDROID__)
+
+#include <android/log.h>
+#include <cstdlib>
+#include <string>
+
+// On Android, app processes have stdout/stderr connected to /dev/null, so
+// printf/fprintf messages are silently lost. Route the fatal message
+// through liblog so it appears in `adb logcat` under tag "erhe" before the
+// trap/abort.
+#define ERHE_FATAL(format, ...) do { __android_log_print(ANDROID_LOG_FATAL, "erhe", "%s:%d " format, __FILE__, __LINE__, ##__VA_ARGS__); erhe_dump_callstack(); __builtin_trap(); __builtin_unreachable(); abort(); } while (1)
+#define ERHE_VERIFY(expression) do { if (!(expression)) { ERHE_FATAL("assert %s failed in %s", #expression, __func__); } } while (0)
+
 #else
 
 #include <cstdio>

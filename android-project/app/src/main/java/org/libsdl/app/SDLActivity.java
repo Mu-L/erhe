@@ -293,8 +293,12 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
      * @return names of shared libraries to be loaded (e.g. "SDL3", "main").
      */
     protected String[] getLibraries() {
+        // erhe links SDL3 statically into libmain.so. Loading "SDL3" first
+        // would fail with "library libSDL3.so not found"; load "main"
+        // directly. getMainSharedObject() also picks the last entry as the
+        // SDL_main host, which is what we want.
         return new String[] {
-            "SDL3",
+            "main",
             // "SDL3_image",
             // "SDL3_mixer",
             // "SDL3_net",

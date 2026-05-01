@@ -12,6 +12,10 @@
 #   include <spdlog/sinks/msvc_sink.h>
 #endif
 
+#if defined(ERHE_OS_ANDROID)
+#   include <spdlog/sinks/android_sink.h>
+#endif
+
 #if defined _WIN32
 #   include <windows.h>
 #else
@@ -176,7 +180,7 @@ public:
     auto get_msvc_sink       () -> spdlog::sinks::msvc_sink_mt& { return *m_sink_msvc.get(); }
 #endif
     auto get_console_sink    () -> spdlog::sinks::stdout_color_sink_mt& { return *m_sink_console.get(); }
-    auto get_file_sink       () -> spdlog::sinks::basic_file_sink_mt& { return *m_sink_log_file.get(); }
+    auto get_file_sink       () -> spdlog::sinks::sink&                 { return *m_sink_log_file.get(); }
     auto get_tail_store_sink () -> Store_log_sink& { return *m_tail_store_log.get(); }
     auto get_frame_store_sink() -> Store_log_sink& { return *m_frame_store_log.get(); }
     auto get_log_to_console  () const -> bool { return m_log_to_console; }
@@ -235,7 +239,13 @@ public:
 
     void create_sinks()
     {
+#if defined(ERHE_OS_ANDROID)
+        // No file I/O on Android; route through __android_log_print under
+        // the "erhe" tag so output shows up in `adb logcat`.
+        m_sink_log_file = std::make_shared<spdlog::sinks::android_sink_mt>("erhe");
+#else
         m_sink_log_file = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/log.txt", true);
+#endif
 
         // If you get a crash here:
         // - Install / repair latest VC redistributable from
@@ -263,7 +273,9 @@ private:
     std::shared_ptr<spdlog::sinks::msvc_sink_mt>         m_sink_msvc      {};
 #endif
     std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> m_sink_console   {};
-    std::shared_ptr<spdlog::sinks::basic_file_sink_mt>   m_sink_log_file  {};
+    // Holds basic_file_sink_mt on desktop, android_sink_mt on Android. Both
+    // inherit from spdlog::sinks::sink so the rest of the wiring is shared.
+    spdlog::sink_ptr                                     m_sink_log_file  {};
     std::shared_ptr<Store_log_sink>                      m_tail_store_log {};
     std::shared_ptr<Store_log_sink>                      m_frame_store_log{};
     bool                                                 m_log_to_console {false};

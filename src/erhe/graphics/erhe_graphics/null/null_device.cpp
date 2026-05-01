@@ -111,6 +111,11 @@ auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
 }
 
 
+auto Device_impl::recreate_surface_for_new_window() -> bool
+{
+    return false;
+}
+
 void Device_impl::wait_idle()
 {
     // No-op for null backend

@@ -25,6 +25,7 @@ target_link_libraries(
         glm::glm-header-only
         erhe::window
     PRIVATE
+        erhe::file
         erhe::log
         erhe::profile
         RectangleBinPack::RectangleBinPack

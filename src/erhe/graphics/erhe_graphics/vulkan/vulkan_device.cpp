@@ -1273,6 +1273,15 @@ auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
 }
 
 
+auto Device_impl::recreate_surface_for_new_window() -> bool
+{
+    if (!m_surface) {
+        log_context->warn("Device_impl::recreate_surface_for_new_window(): no surface");
+        return false;
+    }
+    return m_surface->get_impl().recreate_for_new_window();
+}
+
 void Device_impl::wait_idle()
 {
     const VkResult result = vkDeviceWaitIdle(m_vulkan_device);

@@ -11,8 +11,8 @@
 #endif
 #include "erhe_verify/verify.hpp"
 #include "erhe_gltf/gltf.hpp"
+#include "erhe_utility/clipboard.hpp"
 
-#include <SDL3/SDL.h>
 #include "erhe_gltf/gltf_log.hpp"
 #include "erhe_gltf/image_transfer.hpp"
 #include "erhe_codegen/config_io.hpp"
@@ -79,7 +79,7 @@ public:
             m_graphics_config,
             [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
                 std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
-                SDL_SetClipboardText(clipboard_text.c_str());
+                erhe::utility::copy_to_clipboard(clipboard_text);
                 if (severity == erhe::graphics::Message_severity::error) {
                     ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
                 } else {
@@ -94,13 +94,13 @@ public:
                 m_graphics_device.set_shader_error_callback(
                     [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {
                         std::string clipboard_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
-                        SDL_SetClipboardText(clipboard_text.c_str());
+                        erhe::utility::copy_to_clipboard(clipboard_text);
                         ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
                     }
                 ),
                 m_graphics_device.set_trace_callback(
                     [](const std::string& message) {
-                        SDL_SetClipboardText(message.c_str());
+                        erhe::utility::copy_to_clipboard(message);
                     }
                 ),
                 true

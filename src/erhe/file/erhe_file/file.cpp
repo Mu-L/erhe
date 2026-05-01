@@ -9,6 +9,11 @@
 #   include <shobjidl.h>
 #endif
 
+#if defined(ERHE_OS_ANDROID)
+#   include <SDL3/SDL_iostream.h>
+#   include <SDL3/SDL_error.h>
+#endif
+
 namespace erhe::file {
 
 auto to_string(const std::filesystem::path& path) -> std::string
@@ -40,6 +45,25 @@ auto from_string(const std::string& path) -> std::filesystem::path
     const bool                   silent_if_not_exists
 ) -> bool
 {
+#if defined(ERHE_OS_ANDROID)
+    // On Android assets live inside the APK and are not visible to
+    // std::filesystem. Probe via SDL3's IO layer, which routes relative
+    // paths to AAssetManager and absolute paths to the filesystem.
+    SDL_IOStream* io = SDL_IOFromFile(to_string(path).c_str(), "rb");
+    if (io == nullptr) {
+        if (!silent_if_not_exists && log_file) {
+            log_file->warn("{}: SDL_IOFromFile('{}') failed: {}", description, to_string(path), SDL_GetError());
+        }
+        return false;
+    }
+    const Sint64 size = SDL_GetIOSize(io);
+    SDL_CloseIO(io);
+    if (size <= 0) {
+        if (log_file) log_file->warn("{}: '{}' is empty or size unknown", description, to_string(path));
+        return false;
+    }
+    return true;
+#else
     try {
         std::error_code error_code;
         const bool exists = std::filesystem::exists(path, error_code);
@@ -92,10 +116,33 @@ auto from_string(const std::string& path) -> std::filesystem::path
         if (log_file) log_file->error("Exception was thrown in erhe::file::check_is_existing_non_empty_regular_file()");
         return false;
     }
+#endif
 }
 
 auto read(const std::string_view description, const std::filesystem::path& path) -> std::optional<std::string>
 {
+#if defined(ERHE_OS_ANDROID)
+    // Android: route through SDL_IO so relative paths reach AAssetManager.
+    SDL_IOStream* io = SDL_IOFromFile(to_string(path).c_str(), "rb");
+    if (io == nullptr) {
+        if (log_file) log_file->error("{}: SDL_IOFromFile('{}') failed: {}", description, to_string(path), SDL_GetError());
+        return {};
+    }
+    const Sint64 size = SDL_GetIOSize(io);
+    if (size <= 0) {
+        SDL_CloseIO(io);
+        if (log_file) log_file->error("{}: SDL_GetIOSize('{}') returned {}", description, to_string(path), static_cast<long long>(size));
+        return {};
+    }
+    std::string result(static_cast<std::size_t>(size), '\0');
+    const std::size_t got = SDL_ReadIO(io, result.data(), static_cast<std::size_t>(size));
+    SDL_CloseIO(io);
+    if (got != static_cast<std::size_t>(size)) {
+        if (log_file) log_file->error("{}: SDL_ReadIO('{}') got {} of {} bytes", description, to_string(path), static_cast<long long>(got), static_cast<long long>(size));
+        return {};
+    }
+    return result;
+#else
     try {
         const bool file_is_ok = check_is_existing_non_empty_regular_file(description, path);
         if (!file_is_ok) {
@@ -134,6 +181,7 @@ auto read(const std::string_view description, const std::filesystem::path& path)
         if (log_file) log_file->error("Exception was thrown in erhe::file::read()");
         return {};
     }
+#endif
 }
 
 #if defined(ERHE_OS_WINDOWS)
@@ -312,6 +360,12 @@ auto select_file_for_write() -> std::optional<std::filesystem::path>
 
 void ensure_working_directory_contains(const char* target)
 {
+#if defined(ERHE_OS_ANDROID)
+    // On Android the working directory is internal storage and the target
+    // lives inside the APK; the parent-directory walk does not apply.
+    (void)target;
+    return;
+#else
     // Workaround for
     // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
     std::string path_string{};
@@ -353,6 +407,7 @@ void ensure_working_directory_contains(const char* target)
     path = std::filesystem::current_path();
     path_string = path.string();
     fprintf(stdout, "Current working directory is %s\n", path_string.c_str());
+#endif
 }
 
 auto ensure_directory_exists(std::filesystem::path path) -> bool

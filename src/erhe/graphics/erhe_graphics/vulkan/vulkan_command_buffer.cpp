@@ -755,7 +755,10 @@ auto Command_buffer_impl::wait_for_swapchain(Frame_state& out_frame_state) -> bo
     out_frame_state.predicted_display_time   = 0;
     out_frame_state.predicted_display_period = 0;
     out_frame_state.should_render            = false;
-    log_swapchain->warn("Command_buffer_impl::wait_for_swapchain() returning false (no surface or swapchain wait_frame failed)");
+    // Demoted to debug: the editor calls this every frame and a
+    // not-yet-ready surface (Android background / pre-foreground
+    // launch race) is a normal state, not a warning condition.
+    log_swapchain->debug("Command_buffer_impl::wait_for_swapchain() returning false (no surface or swapchain wait_frame failed)");
     return false;
 }
 

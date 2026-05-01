@@ -124,6 +124,11 @@ public:
 
     [[nodiscard]] auto sdl_event_filter(void* event) -> bool;
 
+    // Lifecycle state set from the SDL event-watch thread on Android
+    // (suspend/resume, render-device-reset). Read by the main render loop.
+    [[nodiscard]] auto is_paused              () const -> bool;
+    [[nodiscard]] auto consume_swapchain_dirty() -> bool;
+
 private:
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     void get_extensions();
@@ -157,6 +162,12 @@ private:
     std::thread                m_joystick_scan_task;
     std::function<void(Context_window& context_window)> m_input_event_synthesizer_callback;
     std::function<void()>      m_redraw_callback;
+
+    // Set by sdl_event_filter from the watch thread; read on the main
+    // thread between frames. Atomic primitives only, not lock-free
+    // structures, so this stays within the project's mutex-only rule.
+    std::atomic<bool>          m_paused           {false};
+    std::atomic<bool>          m_swapchain_dirty  {false};
 
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     SDL_FunctionPointer m_NV_delay_before_swap{nullptr};

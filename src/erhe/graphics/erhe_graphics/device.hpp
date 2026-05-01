@@ -136,6 +136,7 @@ public:
 #endif
 
     bool use_clip_control            {false};
+    bool use_clip_distance           {true};  // shaderClipDistance / gl_ClipDistance
     erhe::math::Coordinate_conventions coordinate_conventions;
     bool use_direct_state_access     {false};
     bool use_binary_shaders          {false};
@@ -282,6 +283,16 @@ public:
     // Blocks until all in-flight device frames complete; flushes pending
     // completion handlers. For init boundaries, not the steady-state loop.
     void wait_idle();
+
+    // Tear down and rebuild the platform surface and its swapchain. Used
+    // on Android when the activity returns from background with a new
+    // ANativeWindow: the existing VkSurfaceKHR is destroyed, a fresh one
+    // is created over the Context_window's current native window, and a
+    // new Swapchain is constructed (its actual VkSwapchainKHR is
+    // initialised lazily on the next wait_frame/init_swapchain pass).
+    // No-op + returns false if there is no surface today or if any step
+    // fails. Caller is expected to be in idle device-frame state.
+    [[nodiscard]] auto recreate_surface_for_new_window() -> bool;
 
     [[nodiscard]] auto is_in_swapchain_frame() const -> bool;
 

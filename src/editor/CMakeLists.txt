@@ -1,7 +1,16 @@
 message(STATUS "Configuring executable 'editor'.")
 
 set(_target "editor")
-add_executable(${_target})
+if (ERHE_TARGET_OS_ANDROID)
+    # SDL3's Java shim dlopen()s a shared library named "main" (see
+    # android.app.lib_name in AndroidManifest.xml). Compile the editor as
+    # libmain.so on Android.
+    add_library(${_target} SHARED)
+    set_target_properties(${_target} PROPERTIES OUTPUT_NAME "main")
+    target_link_libraries(${_target} PRIVATE log android)
+else ()
+    add_executable(${_target})
+endif ()
 
 erhe_target_sources_grouped(
     ${_target} TREE "${PROJECT_SOURCE_DIR}" FILES
@@ -744,33 +753,35 @@ erhe_target_settings(${_target} "erhe-executables")
 
 ########
 
-set(_target "net-test")
-add_executable(${_target})
-erhe_target_sources_grouped(
-    ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    net_test.cpp
-)
+if (NOT ERHE_TARGET_OS_ANDROID)
+    set(_target "net-test")
+    add_executable(${_target})
+    erhe_target_sources_grouped(
+        ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        net_test.cpp
+    )
 
-if (ERHE_USE_MIMALLOC)
-    target_link_libraries(${_target} PUBLIC mimalloc-static)
+    if (ERHE_USE_MIMALLOC)
+        target_link_libraries(${_target} PUBLIC mimalloc-static)
+    endif ()
+
+    target_link_libraries(
+        ${_target}
+        PRIVATE
+            geogram
+            erhe::log
+            erhe::net
+            cxxopts
+            RectangleBinPack
+            rapidjson
+    )
+    if (${ERHE_TERMINAL_LIBRARY} STREQUAL "cpp-terminal")
+        target_link_libraries(${_target} PRIVATE cpp-terminal)
+    endif ()
+
+    target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # MSVC only target_link_options(${_target} PRIVATE "/MAP:${CMAKE_CURRENT_SOURCE_DIR}/editor.map")
+
+    erhe_target_settings(${_target} "erhe-executables")
 endif ()
-
-target_link_libraries(
-    ${_target}
-    PRIVATE
-        geogram
-        erhe::log
-        erhe::net
-        cxxopts
-        RectangleBinPack
-        rapidjson
-)
-if (${ERHE_TERMINAL_LIBRARY} STREQUAL "cpp-terminal")
-    target_link_libraries(${_target} PRIVATE cpp-terminal)
-endif ()
-
-target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-
-# MSVC only target_link_options(${_target} PRIVATE "/MAP:${CMAKE_CURRENT_SOURCE_DIR}/editor.map")
-
-erhe_target_settings(${_target} "erhe-executables")

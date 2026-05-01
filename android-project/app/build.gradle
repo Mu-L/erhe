@@ -2,8 +2,6 @@ plugins {
      id 'com.android.application'
 }
 
-def buildWithCMake = project.hasProperty('BUILD_WITH_CMAKE');
-
 android {
     namespace = "org.libsdl.app"
     compileSdkVersion 35
@@ -14,14 +12,33 @@ android {
         versionCode 1
         versionName "1.0"
         externalNativeBuild {
-            ndkBuild {
-                arguments "APP_PLATFORM=android-21"
-                // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-                abiFilters 'arm64-v8a'
-            }
             cmake {
-                arguments "-DANDROID_PLATFORM=android-21", "-DANDROID_STL=c++_static"
-                // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+                // Python3_EXECUTABLE pins the host Python used by
+                // erhe_codegen and other build-time scripts. Gradle does
+                // not inherit the user PATH and CMake's find_package can
+                // pick up the Microsoft Store stub on Windows; resolve via
+                // `py -3` instead. Override with -PpythonExecutable=...
+                // on the gradle command line if needed.
+                def pythonExe = project.findProperty("pythonExecutable")
+                if (pythonExe == null) {
+                    def stdout = new ByteArrayOutputStream()
+                    try {
+                        exec {
+                            commandLine "py", "-3", "-c",
+                                "import sys; print(sys.executable)"
+                            standardOutput = stdout
+                        }
+                        pythonExe = stdout.toString().trim()
+                    } catch (ignored) {
+                        pythonExe = ""
+                    }
+                }
+                def cmakeArgs = ["-DANDROID_PLATFORM=android-21",
+                                 "-DANDROID_STL=c++_static"]
+                if (pythonExe) {
+                    cmakeArgs << "-DPython3_EXECUTABLE=${pythonExe}"
+                }
+                arguments cmakeArgs as String[]
                 abiFilters 'arm64-v8a'
             }
         }
@@ -32,27 +49,38 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    // The editor reads via paths like "config/editor/editor_settings.json"
+    // and "res/shaders/standard.vert"; SDL_IOFromFile on Android resolves
+    // those against the APK's assets/ root. Stage res/ and config/ into a
+    // single directory under build/ with their parent prefix preserved so
+    // assets/res/... and assets/config/... line up with the C++ paths.
+    def stagedAssets = layout.buildDirectory.dir('staged-assets')
+    def stageErheAssetsTask = tasks.register('stageErheAssets', Copy) {
+        into stagedAssets
+        from(file('../../res'))    { into 'res' }
+        from(file('../../config')) { into 'config' }
+    }
     applicationVariants.all { variant ->
-        tasks["merge${variant.name.capitalize()}Assets"]
-            .dependsOn("externalNativeBuild${variant.name.capitalize()}")
+        def variantName = variant.name.capitalize()
+        tasks["merge${variantName}Assets"]
+            .dependsOn("externalNativeBuild${variantName}")
+        tasks["merge${variantName}Assets"]
+            .dependsOn(stageErheAssetsTask)
     }
     if (!project.hasProperty('EXCLUDE_NATIVE_LIBS')) {
         sourceSets.main {
             jniLibs.srcDir 'libs'
-            assets.srcDirs = ['../../res']
+            assets.srcDirs = [stagedAssets]
+            // SDL3's Java shim (SDLActivity.java and friends) lives at
+            // src/main/java/org/libsdl/app/ and is committed alongside
+            // the rest of the android-project. The default Java srcDir
+            // already covers it; nothing extra to wire up here.
         }
         externalNativeBuild {
-            if (buildWithCMake) {
-                cmake {
-                    path 'jni/CMakeLists.txt'
-                }
-            } else {
-                ndkBuild {
-                    path 'jni/Android.mk'
-                }
+            cmake {
+                path '../../CMakeLists.txt'
             }
         }
-
     }
     lint {
         abortOnError = false

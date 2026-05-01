@@ -112,6 +112,10 @@ void Device::wait_idle()
 {
     m_impl->wait_idle();
 }
+auto Device::recreate_surface_for_new_window() -> bool
+{
+    return m_impl->recreate_surface_for_new_window();
+}
 auto Device::is_in_swapchain_frame() const -> bool
 {
     return m_impl->is_in_swapchain_frame();

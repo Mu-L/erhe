@@ -149,6 +149,7 @@
 #include "erhe_window/window.hpp"
 #include "erhe_window/window_event_handler.hpp"
 #include "erhe_ui/ui_log.hpp"
+#include "erhe_utility/clipboard.hpp"
 
 #include <SDL3/SDL.h>
 #include <taskflow/taskflow.hpp>
@@ -274,6 +275,18 @@ public:
         if (!m_app_context.OpenXR) {
             const bool wait_swap_ok = command_buffer.wait_for_swapchain(frame_state);
             should_render = wait_swap_ok;
+            if (!wait_swap_ok) {
+                // No swapchain image is available -- typical on Android
+                // while the surface is between background and foreground.
+                // Close the device-side frame cleanly so the next tick's
+                // wait_frame entry assertion (state == idle) holds, then
+                // sleep a short interval so the loop above does not burn
+                // CPU spinning on a not-yet-ready surface.
+                static_cast<void>(m_graphics_device->end_frame());
+                m_in_tick.store(false);
+                std::this_thread::sleep_for(std::chrono::milliseconds{50});
+                return;
+            }
         }
 
         if (should_render) {
@@ -675,7 +688,7 @@ public:
                 m_graphics_config,
                 [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
                     std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
-                    SDL_SetClipboardText(clipboard_text.c_str());
+                    erhe::utility::copy_to_clipboard(clipboard_text);
                     if (severity == erhe::graphics::Message_severity::error) {
                         ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
                     } else {
@@ -692,18 +705,18 @@ public:
             m_graphics_device->set_shader_error_callback(
                 [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {
                     std::string clipboard_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
-                    SDL_SetClipboardText(clipboard_text.c_str());
+                    erhe::utility::copy_to_clipboard(clipboard_text);
                     ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
                 }
             );
             m_graphics_device->set_trace_callback(
                 [](const std::string& message) {
-                    SDL_SetClipboardText(message.c_str());
+                    erhe::utility::copy_to_clipboard(message);
                 }
             );
             m_graphics_device->set_state_dump_callback(
                 [](const std::string& state_dump) {
-                    SDL_SetClipboardText(state_dump.c_str());
+                    erhe::utility::copy_to_clipboard(state_dump);
                     log_render->info("{}", state_dump);
                 }
             );
@@ -1837,6 +1850,16 @@ public:
         //  - Wait to avoid presenting frames faster than display refreshrate
         while (!m_close_requested) {
             m_window->poll_events(wait_time);
+#if defined(ERHE_OS_ANDROID)
+            // Skip render while the activity is in the background. SDL's
+            // Java side blocks the event loop on pause via
+            // SDL_HINT_ANDROID_BLOCK_ON_PAUSE, but we still need to avoid
+            // submitting Vulkan work after WILL_ENTER_BACKGROUND.
+            if (m_window->is_paused()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds{50});
+                continue;
+            }
+#endif
             {
                 ERHE_PROFILE_SCOPE("dispatch events");
                 auto& input_events = m_window->get_input_events();
@@ -1849,6 +1872,32 @@ public:
                     m_last_window_width  = m_window->get_width();
                     m_last_window_height = m_window->get_height();
                 }
+#if defined(ERHE_OS_ANDROID)
+                // Foreground / device-reset arrived while we were
+                // suspended. The previous VkSurfaceKHR is bound to a
+                // now-detached ANativeWindow; rebuild the surface and
+                // swapchain over the freshly-bound ANativeWindow that
+                // SDL has wired into Context_window. Surface_impl::
+                // recreate_for_new_window keeps the Swapchain C++
+                // object identity stable so cached raw Swapchain*
+                // pointers in Render_pass_impl (and therefore in
+                // Window_imgui_host::m_render_pass) stay valid; the
+                // pipeline cache and bindless texture heap are keyed
+                // on format / hold no swapchain-derived handles, so
+                // they survive the rebuild without an explicit
+                // invalidation pass. m_request_resize_pending is also
+                // set so update_swapchain re-queries the new surface
+                // extent and rebuilds the underlying VkSwapchainKHR
+                // on the next frame.
+                if (m_window->consume_swapchain_dirty()) {
+                    if (!m_graphics_device->recreate_surface_for_new_window()) {
+                        log_startup->warn("Surface recreate failed; retrying next frame");
+                    }
+                    m_request_resize_pending.store(true);
+                    m_last_window_width  = m_window->get_width();
+                    m_last_window_height = m_window->get_height();
+                }
+#endif
             }
             tick();
 

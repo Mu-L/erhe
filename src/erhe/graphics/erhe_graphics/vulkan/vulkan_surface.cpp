@@ -602,6 +602,101 @@ Surface_impl::~Surface_impl() noexcept
     }
 }
 
+auto Surface_impl::recreate_for_new_window() -> bool
+{
+    log_context->info("Surface_impl::recreate_for_new_window()");
+
+    if (m_surface_create_info.context_window == nullptr) {
+        log_context->error("Surface_impl::recreate_for_new_window() with no Context_window");
+        return false;
+    }
+
+    const VkInstance       instance         = m_device_impl.get_vulkan_instance();
+    const VkPhysicalDevice cached_phys_dev  = m_physical_device;
+
+    // 1. Make sure the GPU is done touching the old swapchain images so it
+    //    is safe to destroy them. Block here, not via completion handler:
+    //    we are about to throw away the swapchain handle the device-frame
+    //    submit history references.
+    m_device_impl.wait_idle();
+
+    // 2. Tear down the swapchain's Vulkan-side state but keep the
+    //    Swapchain (and Swapchain_impl) C++ object alive. Render_pass
+    //    objects created against this swapchain (most importantly
+    //    Window_imgui_host::m_render_pass and any cached swapchain-
+    //    targeted Render_pass elsewhere) hold raw Swapchain* pointers
+    //    inside Render_pass_impl::m_swapchain that they dereference
+    //    every frame to acquire a framebuffer; destroying the Swapchain
+    //    object underneath them leaves those pointers dangling and the
+    //    next render pass crashes inside the driver. reset_for_new_surface
+    //    recycles per-slot fences/semaphores, drains the present
+    //    history, frees old swapchain garbage, and finally calls
+    //    vkDestroySwapchainKHR -- per Vulkan spec, all VkSwapchainKHRs
+    //    derived from a VkSurfaceKHR must be destroyed before
+    //    vkDestroySurfaceKHR.
+    if (m_swapchain != nullptr) {
+        m_swapchain->get_impl().reset_for_new_surface();
+    }
+
+    // 3. Destroy the old VkSurfaceKHR. The native window it wraps has
+    //    been detached by the OS already; this just releases the Vulkan
+    //    handle synchronously (no completion-handler defer -- we want
+    //    the new VkSurfaceKHR slot available before SDL hands us one).
+    if (m_surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(instance, m_surface, nullptr);
+        m_surface = VK_NULL_HANDLE;
+    }
+
+    // Reset cached state so the next use_physical_device pass refills
+    // it from the new VkSurfaceKHR. m_swapchain_extent must be cleared
+    // too: update_swapchain compares the queried extent against this
+    // cached value and skips swapchain creation when they match. After
+    // reset_for_new_surface the Swapchain_impl has m_vulkan_swapchain
+    // == VK_NULL_HANDLE; without clearing the extent the next
+    // init_swapchain() returns early and leaves the swapchain handle
+    // null, which the driver dereferences on the next
+    // vkAcquireNextImageKHR.
+    m_surface_formats.clear();
+    m_present_modes.clear();
+    m_surface_format   = {.format = VK_FORMAT_UNDEFINED, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+    m_present_mode     = VK_PRESENT_MODE_FIFO_KHR;
+    m_image_count      = 0;
+    m_swapchain_extent = {.width = 0, .height = 0};
+    m_vulkan_swapchain = VK_NULL_HANDLE;
+    m_is_valid         = false;
+    m_is_empty         = true;
+
+    // 4. Create a fresh VkSurfaceKHR over the (new) ANativeWindow that
+    //    SDL has wired into the Context_window during foregrounding.
+    void* new_surface = m_surface_create_info.context_window->create_vulkan_surface(static_cast<void*>(instance));
+    if (new_surface == nullptr) {
+        log_context->error("Surface_impl::recreate_for_new_window() create_vulkan_surface failed");
+        return false;
+    }
+    m_surface = static_cast<VkSurfaceKHR>(new_surface);
+
+    // 5. Re-run physical-device suitability + capability/format/present-mode
+    //    queries on the new surface. The device chose this physical device
+    //    at startup; we do not re-pick it here.
+    if (cached_phys_dev != VK_NULL_HANDLE) {
+        if (!use_physical_device(cached_phys_dev)) {
+            log_context->error("Surface_impl::recreate_for_new_window() use_physical_device failed");
+            return false;
+        }
+    }
+
+    // 6. The Swapchain object stays the same instance; its
+    //    Swapchain_impl is in a freshly-reset state. The next
+    //    Swapchain_impl::wait_frame / init_swapchain pass creates the
+    //    actual VkSwapchainKHR against the new VkSurfaceKHR. No frames
+    //    are dropped here, and any Render_pass_impl::m_swapchain raw
+    //    pointer that was cached before this call still points at the
+    //    same valid Swapchain.
+
+    log_context->info("Surface_impl::recreate_for_new_window() OK");
+    return true;
+}
+
 auto Surface_impl::is_empty() -> bool
 {
     return m_is_empty;
@@ -620,7 +715,12 @@ auto Surface_impl::update_swapchain(Vulkan_swapchain_create_info& out_swapchain_
     VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_physical_device, m_surface, &surface_capabilities);
     m_is_valid = result == VK_SUCCESS;
     if (result != VK_SUCCESS) {
-        log_context->warn("vkGetPhysicalDeviceSurfaceCapabilitiesKHR() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+        // Demoted to debug: on Android the surface frequently goes into
+        // a transient "lost" state during background / launch races,
+        // and the editor's main loop retries every frame while the
+        // window is not interactive. The first occurrence is logged
+        // by the path that triggered it (e.g. vkQueuePresentKHR).
+        log_context->debug("vkGetPhysicalDeviceSurfaceCapabilitiesKHR() failed with {} {}", static_cast<int32_t>(result), c_str(result));
         return false;
     }
 

@@ -197,6 +197,15 @@ auto Shader_stages_create_info::final_source(
 
     sb << "#define ERHE_GLSL_VERSION " << graphics_device.get_info().glsl_version << "\n";
 
+    // Gate shader code that uses gl_ClipDistance / user clip planes. On
+    // Vulkan this corresponds to the shaderClipDistance device feature
+    // (e.g. Mali-G715 does not expose it). On GL this is universally
+    // available at the versions erhe targets, but the gate is still
+    // emitted so shader sources have a single conditional.
+    if (graphics_device.get_info().use_clip_distance) {
+        sb << "#define ERHE_HAS_CLIP_DISTANCE 1\n";
+    }
+
 #if defined(ERHE_GRAPHICS_LIBRARY_OPENGL)
     if (graphics_device.get_info().use_shader_storage_buffers && (graphics_device.get_info().gl_version < 430)) {
         ERHE_VERIFY(gl::is_extension_supported(gl::Extension::Extension_GL_ARB_shader_storage_buffer_object));

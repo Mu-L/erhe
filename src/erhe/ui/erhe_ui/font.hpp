@@ -195,6 +195,10 @@ private:
 #if defined(ERHE_FONT_RASTERIZATION_LIBRARY_FREETYPE)
     struct FT_LibraryRec_*                   m_freetype_library{nullptr};
     struct FT_FaceRec_*                      m_freetype_face{nullptr};
+    // FT_New_Memory_Face does not copy the buffer; it must outlive the
+    // face. Used so font assets can come from AAssetManager (Android) or
+    // any other source that erhe::file::read can open.
+    std::string                              m_font_data;
 #endif
 #if defined(ERHE_TEXT_LAYOUT_LIBRARY_HARFBUZZ)
     hb_font_t*                               m_harfbuzz_font{nullptr};

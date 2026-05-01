@@ -1608,6 +1608,13 @@ auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
 }
 
 
+auto Device_impl::recreate_surface_for_new_window() -> bool
+{
+    // Not applicable to OpenGL: the window-system context owns the
+    // drawable, no surface object to recreate. Vulkan-only path.
+    return false;
+}
+
 void Device_impl::wait_idle()
 {
     // Block CPU until all submitted GL commands have completed on the GPU.

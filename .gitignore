@@ -60,3 +60,10 @@ src/hextiles/logs/
 src/hextiles/spirv_cache/
 src/rendering_test/logs/
 src/rendering_test/spirv_cache/
+
+# Android (Gradle + CMake externalNativeBuild) artifacts
+android-project/.gradle/
+android-project/build/
+android-project/app/build/
+android-project/app/.cxx/
+android-project/local.properties

@@ -96,8 +96,26 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     # Ad-hoc code signing so that all executables can run without manual codesign
     set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
     set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "")
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Android")
+    message("Detected Android platform")
+    set(ERHE_TARGET_OS_ANDROID TRUE)
+    add_definitions(-DERHE_OS_ANDROID)
+    set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_ANDROID_KHR)
 else ()
     message(FATAL_ERROR "OS not supported ${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+endif ()
+
+# On Android, force a known-good subset of options for Phase 1 (build-only).
+# OpenXR, Embree, mimalloc, and Tracy are not Phase 1 targets; OpenGL is
+# desktop-only here.
+if (ERHE_TARGET_OS_ANDROID)
+    set(ERHE_GRAPHICS_LIBRARY "vulkan"  CACHE STRING "" FORCE)
+    set(ERHE_WINDOW_LIBRARY   "sdl"     CACHE STRING "" FORCE)
+    set(ERHE_XR_LIBRARY       "none"    CACHE STRING "" FORCE)
+    set(ERHE_RAYTRACE_LIBRARY "bvh"     CACHE STRING "" FORCE)
+    set(ERHE_PROFILE_LIBRARY  "none"    CACHE STRING "" FORCE)
+    set(ERHE_USE_MIMALLOC     OFF       CACHE BOOL   "" FORCE)
+    set(ERHE_USE_ASAN         OFF       CACHE BOOL   "" FORCE)
 endif ()
 
 if (${ERHE_PHYSICS_LIBRARY} STREQUAL "jolt")
@@ -130,7 +148,9 @@ elseif(CMAKE_SYSTEM_NAME MATCHES Windows)
         set(VORPALINE_PLATFORM "Win-vs-generic" CACHE STRING "")
     endif()
 elseif(CMAKE_SYSTEM_NAME MATCHES Android)
-    set(VORPALINE_PLATFORM "Android-aarch64-gcc-dynamic")
+    # The geogram fork ships an "Android-generic" platform definition. The
+    # arm64/gcc/dynamic variants are not present; use the generic profile.
+    set(VORPALINE_PLATFORM "Android-generic")
 endif()
 
 CPMAddPackage(
@@ -331,9 +351,12 @@ vscode_support()
 if (${ERHE_WINDOW_LIBRARY} STREQUAL "sdl")
     CPMAddPackage(
         NAME              sdl
-        VERSION           release-3.4.4
-        GIT_TAG           release-3.4.4
-        GIT_SHALLOW       TRUE
+        # Pinned to the commit android-project/ was copied from. The Java
+        # shim (SDLActivity.java etc.) under android-project/app/src/main/
+        # java/org/libsdl/app/ must match the SDL3 C library version - any
+        # drift triggers a "SDL version mismatch" dialog at app launch.
+        GIT_TAG           03ceaca19
+        GIT_SHALLOW       FALSE
         GITHUB_REPOSITORY libsdl-org/sdl
         OPTIONS
                     "SDL_STATIC ON"

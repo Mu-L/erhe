@@ -11,6 +11,7 @@
 #endif
 
 #include "erhe_defer/defer.hpp"
+#include "erhe_file/file.hpp"
 
 #include "erhe_graphics/blit_command_encoder.hpp"
 #include "erhe_graphics/buffer.hpp"
@@ -33,6 +34,8 @@
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
+
+#include <cstring>
 
 #include <string>
 
@@ -63,7 +66,9 @@ layout(location = 3) flat out uint v_array_layer;
 
 out gl_PerVertex {
     vec4  gl_Position;
+#if defined(ERHE_HAS_CLIP_DISTANCE)
     float gl_ClipDistance[4];
+#endif
 };
 
 float srgb_to_linear(float x)
@@ -90,10 +95,12 @@ void main()
     vec2 translate     = draw.translate.xy;
     vec4 clip_rect     = draw.draw_parameters[ERHE_DRAW_ID].clip_rect;
     gl_Position        = vec4(a_position * scale + translate, 0, 1);
+#if defined(ERHE_HAS_CLIP_DISTANCE)
     gl_ClipDistance[0] = a_position.x - clip_rect[0];
     gl_ClipDistance[1] = a_position.y - clip_rect[1];
     gl_ClipDistance[2] = clip_rect[2] - a_position.x;
     gl_ClipDistance[3] = clip_rect[3] - a_position.y;
+#endif
     v_texcoord         = a_texcoord_0;
 #if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
     v_texture          = draw.draw_parameters[ERHE_DRAW_ID].texture;
@@ -394,10 +401,33 @@ Imgui_renderer::Imgui_renderer(
     ERHE_PROFILE_FUNCTION();
 
     m_font_atlas.RefCount = 1; // This should never be deleted due to refcount going to zero
-    m_primary_font    = m_font_atlas.AddFontFromFileTTF(settings.primary_font.c_str(), settings.scale_factor * settings.font_size);
-    m_mono_font       = m_font_atlas.AddFontFromFileTTF(settings.mono_font   .c_str(), settings.scale_factor * settings.font_size);
-    m_vr_primary_font = m_font_atlas.AddFontFromFileTTF(settings.primary_font.c_str(), settings.scale_factor * settings.vr_font_size);
-    m_vr_mono_font    = m_font_atlas.AddFontFromFileTTF(settings.mono_font   .c_str(), settings.scale_factor * settings.vr_font_size);
+
+    // Read fonts via erhe::file so APK assets work on Android (where
+    // ImGui's AddFontFromFileTTF would call fopen and miss AAssetManager).
+    // The atlas takes ownership of an IM_ALLOCed buffer.
+    auto add_font = [this](const std::string& path, float size_pixels,
+                           const ImFontConfig* font_cfg = nullptr,
+                           const ImWchar* glyph_ranges = nullptr) -> ImFont*
+    {
+        if (path.empty() || size_pixels <= 0.0f) {
+            return nullptr;
+        }
+        std::optional<std::string> data = erhe::file::read("Imgui_renderer font", path);
+        if (!data.has_value()) {
+            return nullptr;
+        }
+        const size_t size = data->size();
+        void* buf = IM_ALLOC(size);
+        std::memcpy(buf, data->data(), size);
+        return m_font_atlas.AddFontFromMemoryTTF(
+            buf, static_cast<int>(size), size_pixels, font_cfg, glyph_ranges
+        );
+    };
+
+    m_primary_font    = add_font(settings.primary_font, settings.scale_factor * settings.font_size);
+    m_mono_font       = add_font(settings.mono_font,    settings.scale_factor * settings.font_size);
+    m_vr_primary_font = add_font(settings.primary_font, settings.scale_factor * settings.vr_font_size);
+    m_vr_mono_font    = add_font(settings.mono_font,    settings.scale_factor * settings.vr_font_size);
 
     if (settings.material_design_font_size > 0.0f) {
     // TODO Something nicer
@@ -409,15 +439,15 @@ Imgui_renderer::Imgui_renderer(
         builder.AddRanges(ranges);
         ImVector<ImWchar> range;
         builder.BuildRanges(&range);
-        m_material_design_font = m_font_atlas.AddFontFromFileTTF(
-            settings.material_design_font.c_str(),
+        m_material_design_font = add_font(
+            settings.material_design_font,
             settings.scale_factor * settings.material_design_font_size,
             nullptr, range.Data
         );
     }
     if (settings.icon_font_size > 0.0f) {
-        m_icon_font = m_font_atlas.AddFontFromFileTTF(
-            settings.icon_font.c_str(),
+        m_icon_font = add_font(
+            settings.icon_font,
             settings.scale_factor * settings.icon_font_size
         );
     }

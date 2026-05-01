@@ -132,6 +132,7 @@ target_link_libraries(
         erhe::renderer
         erhe::rendergraph
         erhe::ui
+        erhe::utility
         erhe::verify
         erhe::window
         imgui

@@ -153,6 +153,18 @@ if (CMAKE_THREAD_LIBS_INIT)
     target_link_libraries(mango "${CMAKE_THREAD_LIBS_INIT}")
 endif ()
 
+# Android: cpuinfo.cpp uses NDK's cpu-features helper. The NDK ships the
+# implementation as plain C source in sources/android/cpufeatures/.
+if (ANDROID)
+    set(_cpufeatures_dir "${ANDROID_NDK}/sources/android/cpufeatures")
+    if (EXISTS "${_cpufeatures_dir}/cpu-features.c")
+        target_sources(mango PRIVATE "${_cpufeatures_dir}/cpu-features.c")
+        target_include_directories(mango PRIVATE "${_cpufeatures_dir}")
+    else ()
+        message(WARNING "Android cpu-features source not found at ${_cpufeatures_dir}")
+    endif ()
+endif ()
+
 # ------------------------------------------------------------------------------
 # configuration
 # ------------------------------------------------------------------------------

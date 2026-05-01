@@ -101,6 +101,16 @@ public:
     Swapchain_impl(Device_impl& device_impl, Surface_impl& surface_impl);
     ~Swapchain_impl() noexcept;
 
+    // Drop the VkSwapchainKHR + per-image / per-frame Vulkan handles, drain
+    // the GPU and recycle synchronization primitives, but leave this
+    // Swapchain_impl object alive in a state equivalent to a freshly
+    // constructed one. Used by Surface_impl::recreate_for_new_window when
+    // the underlying VkSurfaceKHR is being replaced: the C++ Swapchain
+    // identity stays stable, so cached raw Swapchain* pointers in
+    // Render_pass_impl etc. remain valid. The next wait_frame() rebuilds
+    // the VkSwapchainKHR against the new VkSurfaceKHR.
+    void reset_for_new_surface();
+
     [[nodiscard]] auto wait_frame           (Frame_state& out_frame_state) -> bool;
     [[nodiscard]] auto begin_frame          (const Frame_begin_info& frame_begin_info) -> bool;
     [[nodiscard]] auto begin_render_pass    (VkRenderPassBeginInfo& render_pass_begin_info) -> VkCommandBuffer;
@@ -140,6 +150,15 @@ public:
 
 private:
     static constexpr uint32_t INVALID_IMAGE_INDEX = std::numeric_limits<uint32_t>::max();
+
+    // Body of the destructor / reset_for_new_surface(): drain the GPU,
+    // recycle per-frame semaphores and fences, free swapchain garbage,
+    // drain present history, destroy any pending old swapchains, and
+    // finally destroy m_vulkan_swapchain. Leaves m_vulkan_swapchain at
+    // VK_NULL_HANDLE on return; does NOT reset the higher-level state
+    // fields (extent / format / m_is_valid / m_state) because the
+    // destructor does not need to.
+    void release_resources();
 
     void setup_frame();
     [[nodiscard]] auto acquire_next_image(uint32_t* index) -> VkResult;

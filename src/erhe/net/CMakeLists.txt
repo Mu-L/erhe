@@ -27,7 +27,7 @@ if (ERHE_TARGET_OS_WINDOWS)
     )
 endif ()
 
-if (ERHE_TARGET_OS_LINUX OR ERHE_TARGET_OS_OSX)
+if (ERHE_TARGET_OS_LINUX OR ERHE_TARGET_OS_OSX OR ERHE_TARGET_OS_ANDROID)
     erhe_target_sources_grouped(
         ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
         erhe_net/net_unix.cpp

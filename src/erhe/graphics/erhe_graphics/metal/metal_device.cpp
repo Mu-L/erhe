@@ -446,6 +446,13 @@ void Device_impl::notify_command_buffer_completed(const uint64_t frame_index)
     m_pending_completed_frames.push_back(frame_index);
 }
 
+auto Device_impl::recreate_surface_for_new_window() -> bool
+{
+    // Not applicable on Metal -- CAMetalLayer is recreated by the
+    // platform layer; erhe's Surface wrapper is one-shot. Vulkan-only.
+    return false;
+}
+
 void Device_impl::wait_idle()
 {
     // Metal has no vkDeviceWaitIdle equivalent. The standard idiom is to

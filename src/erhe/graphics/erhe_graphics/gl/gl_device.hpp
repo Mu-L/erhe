@@ -65,6 +65,7 @@ public:
     [[nodiscard]] auto end_frame  (const Frame_end_info& frame_end_info) -> bool;
 
     void               wait_idle            ();
+    [[nodiscard]] auto recreate_surface_for_new_window() -> bool;
     [[nodiscard]] auto is_in_swapchain_frame() const -> bool;
 
     // Transitional: see Vulkan Device_impl. Command_buffer_impl took
