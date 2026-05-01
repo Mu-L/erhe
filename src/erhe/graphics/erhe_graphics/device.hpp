@@ -133,6 +133,20 @@ public:
 #if defined(ERHE_GRAPHICS_LIBRARY_VULKAN)
     uint32_t vulkan_api_version {0};
     uint32_t vulkan_driver_id   {0};
+
+    // Reflect VkPhysicalDeviceShaderFloat16Int8Features. Set when
+    // the corresponding feature was advertised by the physical
+    // device and enabled on VkDevice creation.
+    bool     shader_float16     {false};
+    bool     shader_int8        {false};
+
+    // Reflect VkPhysicalDevice16BitStorageFeatures (VK_KHR_16bit_storage,
+    // promoted to Vulkan 1.1). Each bit gates 16-bit types in a particular
+    // SPIR-V storage class.
+    bool     storage_buffer_16bit_access            {false};
+    bool     uniform_and_storage_buffer_16bit_access{false};
+    bool     storage_push_constant_16               {false};
+    bool     storage_input_output_16                {false};
 #endif
 
     bool use_clip_control            {false};

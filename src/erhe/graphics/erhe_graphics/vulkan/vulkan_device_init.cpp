@@ -720,6 +720,36 @@ Device_impl::Device_impl(
         query_features_chain_last        = query_features_chain_last->pNext;
     }
 
+    // Promoted to core in Vulkan 1.2; the extension struct is still a
+    // valid alias of VkPhysicalDeviceVulkan12Features::shaderFloat16 /
+    // shaderInt8 on 1.2+ devices, so we can chain it unconditionally.
+    VkPhysicalDeviceShaderFloat16Int8Features query_shader_float16_int8_features{
+        .sType         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES,
+        .pNext         = nullptr,
+        .shaderFloat16 = VK_FALSE,
+        .shaderInt8    = VK_FALSE,
+    };
+    {
+        query_features_chain_last->pNext = reinterpret_cast<VkBaseOutStructure*>(&query_shader_float16_int8_features);
+        query_features_chain_last        = query_features_chain_last->pNext;
+    }
+
+    // VK_KHR_16bit_storage, promoted to Vulkan 1.1 core. Aliases
+    // VkPhysicalDeviceVulkan11Features bits of the same name; safe to
+    // chain unconditionally on a 1.1+ device.
+    VkPhysicalDevice16BitStorageFeatures query_16bit_storage_features{
+        .sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES,
+        .pNext                              = nullptr,
+        .storageBuffer16BitAccess           = VK_FALSE,
+        .uniformAndStorageBuffer16BitAccess = VK_FALSE,
+        .storagePushConstant16              = VK_FALSE,
+        .storageInputOutput16               = VK_FALSE,
+    };
+    {
+        query_features_chain_last->pNext = reinterpret_cast<VkBaseOutStructure*>(&query_16bit_storage_features);
+        query_features_chain_last        = query_features_chain_last->pNext;
+    }
+
     // When VK_KHR_portability_subset is NOT advertised the device is fully
     // featured by definition, so we synthesise an all-VK_TRUE struct here.
     // When it IS advertised we chain into the features2 query and the driver
@@ -1018,6 +1048,58 @@ Device_impl::Device_impl(
         }
     }
 
+    VkPhysicalDeviceShaderFloat16Int8Features set_shader_float16_int8_features{
+        .sType         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES,
+        .pNext         = nullptr,
+        .shaderFloat16 = query_shader_float16_int8_features.shaderFloat16,
+        .shaderInt8    = query_shader_float16_int8_features.shaderInt8,
+    };
+    if ((set_shader_float16_int8_features.shaderFloat16 == VK_TRUE) ||
+        (set_shader_float16_int8_features.shaderInt8    == VK_TRUE)) {
+        set_features_chain_last->pNext = reinterpret_cast<VkBaseOutStructure*>(&set_shader_float16_int8_features);
+        set_features_chain_last        = set_features_chain_last->pNext;
+        if (set_shader_float16_int8_features.shaderFloat16 == VK_TRUE) {
+            log_debug->debug("Enabled feature shaderFloat16");
+        }
+        if (set_shader_float16_int8_features.shaderInt8 == VK_TRUE) {
+            log_debug->debug("Enabled feature shaderInt8");
+        }
+    }
+    log_startup->info("  shaderFloat16                  = {}", query_shader_float16_int8_features.shaderFloat16 == VK_TRUE);
+    log_startup->info("  shaderInt8                     = {}", query_shader_float16_int8_features.shaderInt8    == VK_TRUE);
+
+    VkPhysicalDevice16BitStorageFeatures set_16bit_storage_features{
+        .sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES,
+        .pNext                              = nullptr,
+        .storageBuffer16BitAccess           = query_16bit_storage_features.storageBuffer16BitAccess,
+        .uniformAndStorageBuffer16BitAccess = query_16bit_storage_features.uniformAndStorageBuffer16BitAccess,
+        .storagePushConstant16              = query_16bit_storage_features.storagePushConstant16,
+        .storageInputOutput16               = query_16bit_storage_features.storageInputOutput16,
+    };
+    if ((set_16bit_storage_features.storageBuffer16BitAccess           == VK_TRUE) ||
+        (set_16bit_storage_features.uniformAndStorageBuffer16BitAccess == VK_TRUE) ||
+        (set_16bit_storage_features.storagePushConstant16              == VK_TRUE) ||
+        (set_16bit_storage_features.storageInputOutput16               == VK_TRUE)) {
+        set_features_chain_last->pNext = reinterpret_cast<VkBaseOutStructure*>(&set_16bit_storage_features);
+        set_features_chain_last        = set_features_chain_last->pNext;
+        if (set_16bit_storage_features.storageBuffer16BitAccess == VK_TRUE) {
+            log_debug->debug("Enabled feature storageBuffer16BitAccess");
+        }
+        if (set_16bit_storage_features.uniformAndStorageBuffer16BitAccess == VK_TRUE) {
+            log_debug->debug("Enabled feature uniformAndStorageBuffer16BitAccess");
+        }
+        if (set_16bit_storage_features.storagePushConstant16 == VK_TRUE) {
+            log_debug->debug("Enabled feature storagePushConstant16");
+        }
+        if (set_16bit_storage_features.storageInputOutput16 == VK_TRUE) {
+            log_debug->debug("Enabled feature storageInputOutput16");
+        }
+    }
+    log_startup->info("  storageBuffer16BitAccess           = {}", query_16bit_storage_features.storageBuffer16BitAccess           == VK_TRUE);
+    log_startup->info("  uniformAndStorageBuffer16BitAccess = {}", query_16bit_storage_features.uniformAndStorageBuffer16BitAccess == VK_TRUE);
+    log_startup->info("  storagePushConstant16              = {}", query_16bit_storage_features.storagePushConstant16              == VK_TRUE);
+    log_startup->info("  storageInputOutput16               = {}", query_16bit_storage_features.storageInputOutput16               == VK_TRUE);
+
     const VkDeviceCreateInfo device_create_info = {
         .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pNext                   = &set_device_features,
@@ -1199,6 +1281,12 @@ Device_impl::Device_impl(
     m_info.use_texture_view            = true;
     m_info.use_persistent_buffers      = true;
     m_info.use_clip_distance           = (qf.shaderClipDistance == VK_TRUE);
+    m_info.shader_float16              = (set_shader_float16_int8_features.shaderFloat16 == VK_TRUE);
+    m_info.shader_int8                 = (set_shader_float16_int8_features.shaderInt8    == VK_TRUE);
+    m_info.storage_buffer_16bit_access             = (set_16bit_storage_features.storageBuffer16BitAccess           == VK_TRUE);
+    m_info.uniform_and_storage_buffer_16bit_access = (set_16bit_storage_features.uniformAndStorageBuffer16BitAccess == VK_TRUE);
+    m_info.storage_push_constant_16                = (set_16bit_storage_features.storagePushConstant16              == VK_TRUE);
+    m_info.storage_input_output_16                 = (set_16bit_storage_features.storageInputOutput16               == VK_TRUE);
 
     // Vulkan coordinate conventions
     m_info.coordinate_conventions.native_depth_range = erhe::math::Depth_range::zero_to_one;
