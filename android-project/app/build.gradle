@@ -43,6 +43,26 @@ android {
             }
         }
     }
+    flavorDimensions = ["device"]
+    productFlavors {
+        mobile {
+            dimension "device"
+            externalNativeBuild {
+                cmake {
+                    arguments "-DERHE_ANDROID_FLAVOR=mobile"
+                }
+            }
+        }
+        quest {
+            dimension "device"
+            applicationIdSuffix ".quest"
+            externalNativeBuild {
+                cmake {
+                    arguments "-DERHE_ANDROID_FLAVOR=quest"
+                }
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false

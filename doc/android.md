@@ -540,3 +540,12 @@ backend-agnostic and need no changes). Soft-keyboard support. UI
 density / DPI scaling. Resolve any shader compilation issues specific to
 Android Vulkan drivers. Decide on the final package id (currently the
 `org.libsdl.app` placeholder).
+
+## See also: Meta Quest 3 support
+
+Quest 3 support builds on top of this Android pipeline using Gradle
+product flavors (`mobile` and `quest`). See `doc/quest.md` for the
+full plan, manifest overlays, build/install commands, and OpenXR
+roadmap. The two documents are maintained together: when the `mobile`
+flavor or the shared core changes here, verify whether `doc/quest.md`
+needs a matching update, and vice versa.

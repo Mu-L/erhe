@@ -3,13 +3,23 @@
 :: Build the Android APK (arm64-v8a, Vulkan-only) via Gradle, which drives
 :: erhe's top-level CMake under externalNativeBuild.
 ::
-:: Default task is assembleDebug. Extra arguments are forwarded to gradlew,
-:: e.g.:
-::     scripts\build_android.bat assembleRelease
-::     scripts\build_android.bat clean assembleDebug
-::     scripts\build_android.bat assembleDebug --info
+:: Usage:
+::     scripts\build_android.bat <mobile|quest> [extra gradle args]
+::
+:: First positional argument selects the product flavor:
+::     mobile  -> assembleMobileDebug (regular Android phone APK)
+::     quest   -> assembleQuestDebug  (Meta Quest 3 APK)
+::
+:: Extra arguments are forwarded to gradlew, e.g.:
+::     scripts\build_android.bat mobile assembleMobileRelease
+::     scripts\build_android.bat quest clean assembleQuestDebug
+::     scripts\build_android.bat quest assembleQuestDebug --info
 
 setlocal
+
+:: Capture the script's own directory before any `shift` (default `shift`
+:: also moves %0, after which %~dp0 would resolve against cwd).
+set "_script_dir=%~dp0"
 
 :: --- Locate Android SDK -----------------------------------------------------
 if "%ANDROID_HOME%"=="" (
@@ -47,8 +57,27 @@ if not exist "%JAVA_HOME%\bin\java.exe" (
     exit /b 1
 )
 
+:: --- Parse flavor argument --------------------------------------------------
+set "_flavor=%~1"
+if /i "%_flavor%"=="mobile" (
+    set "_default_task=assembleMobileDebug"
+    set "_apk_dir=mobile\debug"
+    set "_apk_name=app-mobile-debug.apk"
+    goto :flavor_ok
+)
+if /i "%_flavor%"=="quest" (
+    set "_default_task=assembleQuestDebug"
+    set "_apk_dir=quest\debug"
+    set "_apk_name=app-quest-debug.apk"
+    goto :flavor_ok
+)
+echo ERROR: usage: %~nx0 ^<mobile^|quest^> [extra gradle args]
+exit /b 1
+:flavor_ok
+shift
+
 :: --- Run Gradle -------------------------------------------------------------
-set "_proj_root=%~dp0.."
+set "_proj_root=%_script_dir%.."
 set "_gradle_dir=%_proj_root%\android-project"
 
 if not exist "%_gradle_dir%\gradlew.bat" (
@@ -56,12 +85,24 @@ if not exist "%_gradle_dir%\gradlew.bat" (
     exit /b 1
 )
 
-set "_tasks=%*"
-if "%_tasks%"=="" set "_tasks=assembleDebug"
+:: Forward any remaining args verbatim as the gradle task list
+set "_tasks="
+:collect_args
+if "%~1"=="" goto :args_done
+if defined _tasks (
+    set "_tasks=%_tasks% %1"
+) else (
+    set "_tasks=%1"
+)
+shift
+goto :collect_args
+:args_done
+if not defined _tasks set "_tasks=%_default_task%"
 
 echo ANDROID_HOME = %ANDROID_HOME%
 echo JAVA_HOME    = %JAVA_HOME%
 echo Gradle dir   = %_gradle_dir%
+echo Flavor       = %_flavor%
 echo Tasks        = %_tasks%
 
 for /f "delims=" %%a in ('powershell -nologo -command "Get-Date -Format o"') do set "start=%%a"
@@ -75,7 +116,8 @@ for /f "delims=" %%a in ('powershell -nologo -command "$start=[datetime]::Parse(
 if not "%_rc%"=="0" goto :failed
 
 echo Build completed in %duration% seconds
-if exist "%_gradle_dir%\app\build\outputs\apk\debug\app-debug.apk" echo APK: %_gradle_dir%\app\build\outputs\apk\debug\app-debug.apk
+set "_apk_path=%_gradle_dir%\app\build\outputs\apk\%_apk_dir%\%_apk_name%"
+if exist "%_apk_path%" echo APK: %_apk_path%
 exit /b 0
 
 :failed

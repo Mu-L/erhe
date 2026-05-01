@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Quest devices report headtracking. Declaring it required marks the
+         APK as VR for the Horizon Store. -->
+    <uses-feature android:name="android.hardware.vr.headtracking"
+                  android:version="1"
+                  android:required="true" />
+
+    <application>
+        <!-- Whitelist Meta hardware models eligible to install this APK. -->
+        <meta-data android:name="com.oculus.supportedDevices"
+                   android:value="quest3|quest3s|quest2|questpro" />
+    </application>
+
+</manifest>
