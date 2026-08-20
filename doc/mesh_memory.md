@@ -275,3 +275,32 @@ pools to advance globally -- but the first is incompatible with
 multi-draw indirect and the second wastes more memory than the
 current approach. See the long-form rationale in the `Buffer_pool`
 class comment in `src/erhe/scene_renderer/erhe_scene_renderer/buffer_pool.hpp`.
+
+## Open lead: pool blocks are never destroyed
+
+`Buffer_pool` only ever appends blocks (`buffer_pool.cpp`, `create_new_block`);
+there is no path that destroys one, and `~Buffer_pool` is defaulted. Releasing a
+mesh returns its range to the block's `Free_list_allocator` - frame-deferred and
+double-gated on frame completion plus the loader watermark - but the committed
+`VkBuffer` bytes stay allocated for the process lifetime.
+
+Consequences:
+
+- The process footprint never drops below its high-water mark, even after every
+  mesh from a large scene is released. Loading Bistro once permanently commits
+  Bistro-sized blocks.
+- The per-pool ceiling is `max_buffers_per_pool` (64 by default,
+  `config/editor/mesh_memory.json`). Exceeding it does not abort: `allocate()`
+  logs and returns an empty allocation, and the caller sets `build_failed`
+  (`primitive_builder.cpp`), so meshes silently fail to build.
+
+Possible improvement: destroy blocks whose allocator reports zero used bytes, at
+a safe point (scene close, or the same frame-completion gate the deferred frees
+already use). `erhe::graphics::Buffer` destruction already defers
+`vmaDestroyBuffer` through a completion handler, so the release path exists; what
+is missing is the "is this block empty and safe to drop" bookkeeping and a
+trigger.
+
+Measure before and after with the `get_memory_usage` MCP tool, which reports
+per-pool `capacity_bytes` / `used_bytes` / `block_count`
+(see doc/reloadable-asset-loads.md).

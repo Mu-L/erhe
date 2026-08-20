@@ -136,3 +136,27 @@ the feature is on. The editor renderer requires it in addition to
   `instance_custom_index`).
 - TLAS refit (UPDATE mode) instead of full rebuild.
 - Ray tracing pipeline / SBT abstraction, denoising, GI.
+
+## Open lead: the BLAS cache key can go stale over recycled buffer ranges
+
+`Scene_tlas::m_blas_cache` is keyed by a raw `const erhe::primitive::Buffer_mesh*`
+and `get_or_create_blas()` returns a cache hit with no validation. Entries whose
+primitive nothing else references are now evicted
+(`render_shape.use_count() == 1`, see doc/reloadable-asset-loads.md), which stops
+the cache pinning released content and removes the "dead pointer, address reused
+by a new Buffer_mesh" flavour of the problem.
+
+What eviction does **not** fix: `Primitive_render_shape::commit_geometry_buffer_mesh()`
+move-assigns the new `Buffer_mesh` **in place** (`primitive.cpp`). The key address
+is unchanged and the live mesh keeps the refcount at 2, so no refcount sweep
+triggers - while the vertex / index pool ranges the cached acceleration structure
+was built over have been freed and can be recycled by another mesh. The result is
+a bottom level structure describing geometry that is no longer there.
+
+Reachable whenever a deferred import finalize or a geometry edit swaps a
+primitive's renderable mesh while ray query is enabled. The fix is to make the
+cache key carry identity beyond the address - a generation counter bumped by
+`commit_geometry_buffer_mesh()`, or keying on the buffer ranges themselves - and
+to drop entries whose generation no longer matches.
+
+The same cache and the same hazard exist in `Lightmap_baker::m_blas_cache`.

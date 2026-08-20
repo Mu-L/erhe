@@ -431,3 +431,53 @@ Redo re-reads the file in 18.5 ms, then 7.7 ms on the next cycle, with **zero**
   pre-existing, out of scope, and documented above.
 - The BLAS eviction does **not** fix the recycled-range staleness bug described in
   section 4; that needs a generation counter on the cache key.
+
+## Follow-up work
+
+Where each remaining lead is written up.
+
+### Phase 6: make `Scene_open` reloadable (the biggest remaining win)
+
+`Scene_open_operation` keeps an entire `Scene_root` and its content library alive
+across undo **by design** (`scene_open_operation.hpp`): `undo()` only unregisters
+the scene and drops the browser window, and redo re-registers the same living
+objects without re-importing. So undoing "open a large glTF as a scene" still
+frees nothing - the case that motivates this work most.
+
+The mechanism carries over unchanged: give it a recipe (the path is already a
+member) and let `on_lossless_undo()` drop the `Scene_root`. What makes it a
+separate phase is the teardown. Dropping a scene needs the cleanup
+`Editor::on_close_scene()` performs - selection, viewport unbinding, tool
+re-homing, browser windows, the scene-close leak watchdog - **without** its
+`clear_history()`, which is exactly what this must not do. Sketch:
+
+- Factor the reusable half of `Editor::on_close_scene()` out of the
+  history-clearing half.
+- `Scene_open_operation::on_lossless_undo()` runs the reusable half and releases
+  `m_scene_root` / `m_content_library`.
+- `execute()` re-opens from the path when those are null, going through
+  `open_scene_gltf` the way the first execute does.
+- Watch `Asset_manager::on_scene_unregistered`: it already announces the record's
+  assets, and `take_adopted_parse` is destructive, so a re-open re-parses from
+  disk rather than adopting a moved-from parse.
+
+Expect the same identity consequences as the import phase - fresh ids, and
+`Items_removed_message` doing the work of clearing cached references.
+
+### Leads documented elsewhere
+
+- **Mesh pool blocks are never destroyed**, so the committed GPU footprint never
+  shrinks below its peak and the 64-block cap silently fails mesh builds -
+  doc/mesh_memory.md, "Open lead: pool blocks are never destroyed".
+- **`materials_as_references` parses the same file twice**, and the second parse
+  lives in a container record that dropping an import does not touch -
+  doc/asset_manager.md, "Current restrictions".
+- **The BLAS cache key can go stale over recycled buffer ranges** when
+  `commit_geometry_buffer_mesh()` swaps a mesh in place; eviction does not catch
+  it - doc/raytrace-plan.md, "Open lead: the BLAS cache key can go stale".
+- **Prefab reference entries are not undoable**, and fixing it properly needs
+  refcounted content-library reference entries rather than per-import operations -
+  doc/gltf-prefabs-plan.md, "Open lead: prefab reference entries are not
+  undoable".
+- **One empty scene costs ~688 MB of estimated texture memory** - doc/todo.md,
+  "Investigate: one empty scene costs ~688 MB of estimated texture memory".

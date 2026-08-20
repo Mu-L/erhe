@@ -630,6 +630,13 @@ reasoning stays readable.
   content-library item), and `Properties::m_inspected_material`'s dirty-edit
   warning, whose dirty flag is only set from the ImGui render path - both are
   documented above rather than asserted.
+- **Prefab reference entries added by an import are never removed by its undo**,
+  because they are written straight into the content library rather than through
+  an operation. Analysed and left out of scope here; the write-up and the reason
+  the obvious fix is unsafe (shared template objects, so per-import operations
+  would let one undo delete an entry another import still needs) are in
+  doc/gltf-prefabs-plan.md, "Open lead: prefab reference entries are not
+  undoable".
 - The full release criterion ("assets truly unloaded") needs undo **plus**
   Clear History, as the scope limit at the top states. A container unload can
   still be refused afterwards by legitimate declared users - other scenes'

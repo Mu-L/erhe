@@ -456,3 +456,11 @@ Standing checks:
 - `get_or_load_container` is still a blocking parse on the calling tick,
   unlike every other glTF load; `acquire` therefore never reports `pending`
   even though the state exists.
+- Importing with `materials_as_references = true` parses the same file **twice**:
+  once for the import itself, and once more inside
+  `acquire_import_materials_as_references` -> `acquire` -> `get_or_load_container`,
+  which builds a container record holding its own `Gltf_data` and drains its
+  textures to the GPU. The record is independent of the import, so dropping the
+  import (doc/reloadable-asset-loads.md) does not release it and the memory win
+  for that flag is roughly halved. Worth teaching the import path to reuse the
+  record's parse the way the scene-open flow does through `take_adopted_parse`.

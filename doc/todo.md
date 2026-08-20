@@ -159,3 +159,30 @@ Depth-buffer-based occlusion culling sketch (moved here from the former
 7. Use MDI to read the list of visible objects and generate corresponding
    draws. That is crucial; otherwise this is just a worse form of hardware
    occlusion queries.
+
+## Investigate: one empty scene costs ~688 MB of estimated texture memory
+
+Measured with the `get_memory_usage` MCP tool (doc/reloadable-asset-loads.md) on
+a Vulkan Debug build, 2026-08-20:
+
+```
+startup                tex =   380,185,160 (250 textures)
+after create_scene     tex = 1,068,779,192 (304 textures)
+```
+
+Creating a single **empty** scene added ~688 MB across 54 textures. The figure is
+an estimate computed from each texture's create info (format x dimensions x mip
+levels x layers), so it counts render targets, shadow maps, probe volumes and
+lightmap atlases the same as content textures, and it does not account for
+aliasing or sparse residency. It may be entirely expected - but it is large
+enough to be worth breaking down, and the tooling to do so now exists.
+
+Suggested first step: extend `get_memory_usage` to report the per-texture
+breakdown (debug label + bytes) rather than only the total, then diff the list
+across a `create_scene` call. Likely suspects are the per-scene shadow map
+array, the DDGI probe volume (`ddgi_window.cpp` already reports probe texture
+megabytes separately), and the lightmap tile atlases
+(`resident_tile_budget: 14` in `config/editor/editor_settings.json`).
+
+If the per-scene cost is real, it bounds how many scenes can be open at once far
+more tightly than mesh memory does.

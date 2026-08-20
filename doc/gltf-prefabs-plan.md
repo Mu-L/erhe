@@ -337,3 +337,31 @@ Ordered by value; each item is independent:
 - **No render-level instancing**: instances share GPU vertex/index data but
   still draw per-mesh-node. `EXT_mesh_gpu_instancing` for many-instance
   scenes is a separate future optimization, out of scope here.
+
+## Open lead: prefab reference entries are not undoable
+
+`resolve_external_assets()` -> `add_prefab_reference_entries()` writes the
+prefab's texture and material reference entries **straight into the destination
+content library** (`prefab_library.cpp`), outside the import's operation list. So
+undoing a glTF import that pulled in a prefab detaches everything else but leaves
+those entries in the library permanently.
+
+Making them ordinary `Content_library_attach_operation`s with `is_reference = true`
+looks like the obvious fix - that operation already takes exactly the arguments
+this function passes, including the material `Asset_key` - but it is **not** safe
+as-is, and doc/reloadable-asset-loads.md section 5 records why it was rejected:
+
+- The entries hold the *template's* objects, and `Prefab_library::get_or_load`
+  returns a cached template that is never released. Two imports referencing one
+  prefab therefore share a single deduped entry (`Content_library_node::add`
+  dedupes by pointer equality).
+- With per-import attach operations, undoing the second import would call
+  `m_sublibrary->remove(m_item)` and delete the entry the first import's live
+  instances still need. The same hazard already exists for plain imports made
+  with `materials_as_references`, where `acquire_import_materials_as_references`
+  substitutes manager-owned materials and two imports share pointers.
+
+So the real fix is **refcounted reference entries** in `Content_library_node`:
+an entry removed by one owner survives while another still holds it. Once that
+exists, routing prefab reference entries through the operation list is
+straightforward and undo stops leaking them.
