@@ -19,7 +19,7 @@ Material::Material(const Material_create_info& create_info)
     return
         (lhs.texture_reference == rhs.texture_reference) &&
         (lhs.sampler           == rhs.sampler          ) &&
-        (lhs.tex_coord         == rhs.tex_coord        ) &&
+        (lhs.texgen_mode       == rhs.texgen_mode      ) &&
         (lhs.rotation          == rhs.rotation         ) &&
         (lhs.offset            == rhs.offset           ) &&
         (lhs.scale             == rhs.scale            );
@@ -48,24 +48,25 @@ Material::Material(const Material_create_info& create_info)
 [[nodiscard]] auto operator==(const Material_data& lhs, const Material_data& rhs) -> bool
 {
     return
-        (lhs.base_color                 == rhs.base_color                ) &&
-        (lhs.opacity                    == rhs.opacity                   ) &&
-        (lhs.roughness                  == rhs.roughness                 ) &&
-        (lhs.metallic                   == rhs.metallic                  ) &&
-        (lhs.reflectance                == rhs.reflectance               ) &&
-        (lhs.emissive                   == rhs.emissive                  ) &&
-        (lhs.ior                        == rhs.ior                       ) &&
-        (lhs.transmission               == rhs.transmission              ) &&
-        (lhs.normal_texture_scale       == rhs.normal_texture_scale      ) &&
-        (lhs.occlusion_texture_strength == rhs.occlusion_texture_strength) &&
-        (lhs.bxdf_model                 == rhs.bxdf_model                ) &&
-        (lhs.blending_mode              == rhs.blending_mode             ) &&
-        (lhs.double_sided               == rhs.double_sided              ) &&
-        (lhs.alpha_cutoff               == rhs.alpha_cutoff              ) &&
-        (lhs.use_circular_brushed_metal == rhs.use_circular_brushed_metal) &&
-        (lhs.circular_brushed_metal_tex_coord == rhs.circular_brushed_metal_tex_coord) &&
-        (lhs.use_aniso_control          == rhs.use_aniso_control         ) &&
-        (lhs.texture_samplers           == rhs.texture_samplers          );
+        (lhs.base_color                         == rhs.base_color                        ) &&
+        (lhs.opacity                            == rhs.opacity                           ) &&
+        (lhs.roughness                          == rhs.roughness                         ) &&
+        (lhs.metallic                           == rhs.metallic                          ) &&
+        (lhs.reflectance                        == rhs.reflectance                       ) &&
+        (lhs.emissive                           == rhs.emissive                          ) &&
+        (lhs.ior                                == rhs.ior                               ) &&
+        (lhs.transmission                       == rhs.transmission                      ) &&
+        (lhs.normal_texture_scale               == rhs.normal_texture_scale              ) &&
+        (lhs.normalmap_encoding                 == rhs.normalmap_encoding                ) &&
+        (lhs.occlusion_texture_strength         == rhs.occlusion_texture_strength        ) &&
+        (lhs.bxdf_model                         == rhs.bxdf_model                        ) &&
+        (lhs.blending_mode                      == rhs.blending_mode                     ) &&
+        (lhs.double_sided                       == rhs.double_sided                      ) &&
+        (lhs.alpha_cutoff                       == rhs.alpha_cutoff                      ) &&
+        (lhs.use_circular_brushed_metal         == rhs.use_circular_brushed_metal        ) &&
+        (lhs.circular_brushed_metal_texgen_mode == rhs.circular_brushed_metal_texgen_mode) &&
+        (lhs.use_aniso_control                  == rhs.use_aniso_control                 ) &&
+        (lhs.texture_samplers                   == rhs.texture_samplers                  );
 }
 
 [[nodiscard]] auto operator!=(const Material_data& lhs, const Material_data& rhs) -> bool

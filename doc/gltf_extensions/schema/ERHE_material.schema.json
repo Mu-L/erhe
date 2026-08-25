@@ -3,6 +3,12 @@
     "$id": "ERHE_material.schema.json",
     "title": "ERHE_material glTF material extension",
     "type": "object",
+    "$defs": {
+        "texgen_mode": {
+            "type": "string",
+            "enum": ["uv0", "uv1", "uv2", "world_xy", "world_xz", "world_yz", "node_xy", "node_xz", "node_yz", "tangent"]
+        }
+    },
     "properties": {
         "roughness_y": {"type": "number"},
         "bxdf_model": {
@@ -13,8 +19,17 @@
             "type": "string",
             "enum": ["opaque", "alpha_blend", "alpha_test", "multiply", "add", "subtract", "screen_door"]
         },
-        "use_circular_brushed_metal":       {"type": "boolean"},
-        "circular_brushed_metal_tex_coord": {"type": "integer", "minimum": 0},
-        "use_aniso_control":                {"type": "boolean"}
+        "normalmap_encoding": {
+            "type": "string",
+            "enum": ["right_handed_three_channel", "right_handed_two_channel_ga", "left_handed_three_channel", "left_handed_two_channel_ga", "right_handed_two_channel_rg", "left_handed_two_channel_rg"]
+        },
+        "use_circular_brushed_metal":         {"type": "boolean"},
+        "use_aniso_control":                  {"type": "boolean"},
+        "circular_brushed_metal_texgen_mode": {"$ref": "#/$defs/texgen_mode"},
+        "base_color_texgen_mode":             {"$ref": "#/$defs/texgen_mode"},
+        "metallic_roughness_texgen_mode":     {"$ref": "#/$defs/texgen_mode"},
+        "normal_texgen_mode":                 {"$ref": "#/$defs/texgen_mode"},
+        "occlusion_texgen_mode":              {"$ref": "#/$defs/texgen_mode"},
+        "emissive_texgen_mode":               {"$ref": "#/$defs/texgen_mode"}
     }
 }

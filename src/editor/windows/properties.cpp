@@ -1846,7 +1846,6 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
         }
     });
     add_entry("Blending Mode", [&]() {
-        // Order MUST match erhe::primitive::Material_blending_mode.
         int current = static_cast<int>(data.blending_mode);
         if (ImGui::Combo("##", &current, erhe::primitive::c_material_blending_mode_names, IM_ARRAYSIZE(erhe::primitive::c_material_blending_mode_names))) {
             data.blending_mode = static_cast<erhe::primitive::Material_blending_mode>(current);
@@ -1865,10 +1864,10 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
         ImGui::Checkbox("##", &data.use_circular_brushed_metal);
     });
     if (data.use_circular_brushed_metal) {
-        add_entry("Brushed Metal TexCoord", [&](){
-            int tex_coord = static_cast<int>(data.circular_brushed_metal_tex_coord);
-            if (ImGui::SliderInt("##", &tex_coord, 0, 1)) {
-                data.circular_brushed_metal_tex_coord = static_cast<uint32_t>(tex_coord);
+        add_entry("Brushed Metal Texgen", [&](){
+            int current = static_cast<int>(data.circular_brushed_metal_texgen_mode);
+            if (ImGui::Combo("##", &current, erhe::primitive::c_texgen_mode_names, IM_ARRAYSIZE(erhe::primitive::c_texgen_mode_names))) {
+                data.circular_brushed_metal_texgen_mode = static_cast<erhe::primitive::Texgen_mode>(current);
             }
         });
     }
@@ -1904,10 +1903,10 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                     add_entry(label + " Offset",   [sampler](){ ImGui::SliderFloat2("##", &sampler->offset.x, -10.0f, 10.0f); });
                     add_entry(label + " Scale",    [sampler](){ ImGui::SliderFloat2("##", &sampler->scale.x,  -10.0f, 10.0f); });
                     add_entry(label + " Rotation", [sampler](){ ImGui::SliderFloat ("##", &sampler->rotation, -10.0f, 10.0f); });
-                    add_entry(label + " TexCoord", [sampler]() {
-                        int tex_coord = static_cast<int>(sampler->tex_coord);
-                        if (ImGui::SliderInt("##", &tex_coord, 0, 1)) {
-                            sampler->tex_coord = static_cast<uint32_t>(tex_coord);
+                    add_entry(label + " Texgen", [sampler]() {
+                        int current = static_cast<int>(sampler->texgen_mode);
+                        if (ImGui::Combo("##", &current, erhe::primitive::c_texgen_mode_names, IM_ARRAYSIZE(erhe::primitive::c_texgen_mode_names))) {
+                            sampler->texgen_mode = static_cast<erhe::primitive::Texgen_mode>(current);
                         }
                     });
                     // Sampler state rows. Every edit REPLACES the slot's
@@ -1976,6 +1975,15 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
             add_texture_slot_entries("Normal",             "##normal_texture",             &samplers.normal);
             if (samplers.normal.texture_reference) {
                 add_entry("Normal Map Scale", [&](){ ImGui::SliderFloat("##", &data.normal_texture_scale, 0.0f, 1.0f); });
+                // A KTX2 normal-mode texture overrides the channel layout
+                // half of the encoding at shader variant derivation; the
+                // handedness half is always honored.
+                add_entry("Normal Map Encoding", [&](){
+                    int current = static_cast<int>(data.normalmap_encoding);
+                    if (ImGui::Combo("##", &current, erhe::primitive::c_normalmap_encoding_names, IM_ARRAYSIZE(erhe::primitive::c_normalmap_encoding_names))) {
+                        data.normalmap_encoding = static_cast<erhe::primitive::Normalmap_encoding>(current);
+                    }
+                });
             }
             add_texture_slot_entries("Occlusion",          "##occlusion_texture",          &samplers.occlusion);
             add_texture_slot_entries("Emissive",           "##emissive_texture",           &samplers.emissive);

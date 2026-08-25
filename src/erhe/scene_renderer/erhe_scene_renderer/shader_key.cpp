@@ -92,11 +92,11 @@ namespace {
     return static_cast<bool>(s.texture_reference);
 }
 
-[[nodiscard]] auto any_sampler_uses_tex_coord(const erhe::primitive::Material& material, const uint32_t tex_coord) -> bool
+[[nodiscard]] auto any_sampler_uses_texgen(const erhe::primitive::Material& material, const erhe::primitive::Texgen_mode texgen_mode) -> bool
 {
     const erhe::primitive::Material_texture_samplers& s = material.data.texture_samplers;
-    auto uses = [tex_coord](const erhe::primitive::Material_texture_sampler& sampler) {
-        return sampler_is_bound(sampler) && (sampler.tex_coord == tex_coord);
+    auto uses = [texgen_mode](const erhe::primitive::Material_texture_sampler& sampler) {
+        return sampler_is_bound(sampler) && (sampler.texgen_mode == texgen_mode);
     };
     return uses(s.base_color)
         || uses(s.metallic_roughness)
@@ -157,17 +157,30 @@ auto Shader_key::derive(
         if (sampler_is_bound(samplers.metallic_roughness)){ key.set(Shader_bool::USE_METALLIC_ROUGHNESS_TEXTURE, true); }
         if (sampler_is_bound(samplers.normal))            {
             key.set(Shader_bool::USE_NORMAL_TEXTURE, true);
-            // A KTX2 normal-mode texture stores a two component X+Y map; the
-            // shader variant reconstructs Z. The flag travels on the texture
-            // itself, so it stays correct however the texture ends up bound
-            // to the material. Value selects the channel layout: 1 = X in
-            // RGB / Y in A (RGBA8, ASTC L+A blocks), 2 = X in R / Y in G
-            // (BC5); a two-channel GPU format implies the latter.
+            // Start from the material's authored encoding. A KTX2
+            // normal-mode texture stores a two component X+Y map whose
+            // channel layout is a property of the texture itself (the flag
+            // travels on it, so it stays correct however the texture ends
+            // up bound): override the channel-count / layout half of the
+            // encoding from the texture - X in R / Y in G when the GPU
+            // format is two-channel (BC5), X in RGB / Y in A otherwise
+            // (RGBA8, ASTC L+A blocks) - while keeping the authored
+            // handedness (left handed = Direct3D Y flip).
+            erhe::primitive::Normalmap_encoding encoding = data.normalmap_encoding;
             const erhe::graphics::Texture* normal_texture = samplers.normal.texture_reference->get_referenced_texture();
             if ((normal_texture != nullptr) && normal_texture->is_two_component_normal()) {
                 const bool xy_in_rg = erhe::dataformat::get_component_count(normal_texture->get_pixelformat()) == 2;
-                key.set(Shader_int::NORMAL_TEXTURE_TWO_COMPONENT, xy_in_rg ? 2u : 1u);
+                const bool left_handed =
+                    (encoding == erhe::primitive::Normalmap_encoding::left_handed_three_channel) ||
+                    (encoding == erhe::primitive::Normalmap_encoding::left_handed_two_channel_ga) ||
+                    (encoding == erhe::primitive::Normalmap_encoding::left_handed_two_channel_rg);
+                encoding = xy_in_rg
+                    ? (left_handed ? erhe::primitive::Normalmap_encoding::left_handed_two_channel_rg
+                                   : erhe::primitive::Normalmap_encoding::right_handed_two_channel_rg)
+                    : (left_handed ? erhe::primitive::Normalmap_encoding::left_handed_two_channel_ga
+                                   : erhe::primitive::Normalmap_encoding::right_handed_two_channel_ga);
             }
+            key.set(Shader_int::NORMAL_TEXTURE_ENCODING, to_uint32(encoding));
         }
         if (sampler_is_bound(samplers.occlusion))         { key.set(Shader_bool::USE_OCCLUSION_TEXTURE,          true); }
         if (sampler_is_bound(samplers.emissive))          { key.set(Shader_bool::USE_EMISSION_TEXTURE,           true); }
@@ -175,15 +188,15 @@ auto Shader_key::derive(
         // Per-texture texcoord set selection, plumbed as compile-time
         // defines. Set only for bound samplers so unbound textures do not
         // contribute extra shader variants (the axis stays 0).
-        if (sampler_is_bound(samplers.base_color))        { key.set(Shader_int::BASE_COLOR_TEX_COORD,         samplers.base_color.tex_coord);         }
-        if (sampler_is_bound(samplers.metallic_roughness)){ key.set(Shader_int::METALLIC_ROUGHNESS_TEX_COORD, samplers.metallic_roughness.tex_coord); }
-        if (sampler_is_bound(samplers.normal))            { key.set(Shader_int::NORMAL_TEX_COORD,             samplers.normal.tex_coord);             }
-        if (sampler_is_bound(samplers.occlusion))         { key.set(Shader_int::OCCLUSION_TEX_COORD,          samplers.occlusion.tex_coord);          }
-        if (sampler_is_bound(samplers.emissive))          { key.set(Shader_int::EMISSIVE_TEX_COORD,           samplers.emissive.tex_coord);           }
+        if (sampler_is_bound(samplers.base_color))        { key.set(Shader_int::BASE_COLOR_TEXGEN_MODE,         to_uint32(samplers.base_color.texgen_mode));         }
+        if (sampler_is_bound(samplers.metallic_roughness)){ key.set(Shader_int::METALLIC_ROUGHNESS_TEXGEN_MODE, to_uint32(samplers.metallic_roughness.texgen_mode)); }
+        if (sampler_is_bound(samplers.normal))            { key.set(Shader_int::NORMAL_TEXGEN_MODE,             to_uint32(samplers.normal.texgen_mode));             }
+        if (sampler_is_bound(samplers.occlusion))         { key.set(Shader_int::OCCLUSION_TEXGEN_MODE,          to_uint32(samplers.occlusion.texgen_mode));          }
+        if (sampler_is_bound(samplers.emissive))          { key.set(Shader_int::EMISSIVE_TEXGEN_MODE,           to_uint32(samplers.emissive.texgen_mode));           }
 
         if (data.use_circular_brushed_metal) {
             key.set(Shader_bool::USE_CIRCULAR_BRUSHED_METAL, true);
-            key.set(Shader_int::CIRCULAR_BRUSHED_METAL_TEX_COORD, data.circular_brushed_metal_tex_coord);
+            key.set(Shader_int::CIRCULAR_BRUSHED_METAL_TEXGEN_MODE, to_uint32(data.circular_brushed_metal_texgen_mode));
         }
         key.set(Shader_int::BXDF_MODEL,             static_cast<uint32_t>(data.bxdf_model));
         key.set(Shader_int::MATERIAL_BLENDING_MODE, static_cast<uint32_t>(data.blending_mode));
@@ -197,35 +210,59 @@ auto Shader_key::derive(
         if (has_normal_0 && !is_unlit) {
             key.set(Shader_bool::USE_VERTEX_VARYING_NORMAL, true);
         }
+
+        // A texgen source is needed when any bound sampler reads it or when
+        // the circular-brushed-metal block derives its tangent space from
+        // it. The alpha_test / screen_door discard path samples base-color
+        // alpha, which is covered by the bound-sampler check.
+        auto needs_texgen = [&](const erhe::primitive::Texgen_mode texgen_mode) -> bool {
+            return
+                any_sampler_uses_texgen(*material, texgen_mode) ||
+                (
+                    data.use_circular_brushed_metal &&
+                    (data.circular_brushed_metal_texgen_mode == texgen_mode)
+                );
+        };
+
         // Unlit ignores the normal map / anisotropy entirely, and NORMAL
         // above is gated on !is_unlit: an unlit material with a bound
         // normal texture (e.g. exported LOD assets) must not enable the
         // tangent frame or standard.vert's BITANGENT => TANGENT && NORMAL
-        // declaration invariant breaks ('bitangent' undeclared).
+        // declaration invariant breaks ('bitangent' undeclared). The
+        // tangent texgen mode is the exception: it projects positions onto
+        // the T/B plane in the fragment shader, so it needs the tangent
+        // frame even for unlit materials.
         const bool needs_tangent_frame =
-            !is_unlit &&
+            needs_texgen(erhe::primitive::Texgen_mode::tangent) ||
             (
-                sampler_is_bound(samplers.normal) ||
-                is_anisotropic_brdf ||
-                data.use_circular_brushed_metal
+                !is_unlit &&
+                (
+                    sampler_is_bound(samplers.normal) ||
+                    is_anisotropic_brdf ||
+                    data.use_circular_brushed_metal
+                )
             );
         if (has_tangent && has_normal_0 && needs_tangent_frame) {
             key.set(Shader_bool::USE_VERTEX_VARYING_TANGENT,   true);
             key.set(Shader_bool::USE_VERTEX_VARYING_BITANGENT, true);
         }
-        // A texcoord set varying is needed when any bound sampler reads it
-        // or when the circular-brushed-metal block derives its tangent
-        // space from it. The alpha_test / screen_door discard path samples
-        // base-color alpha, which is covered by the bound-sampler check.
-        auto needs_tex_coord = [&](const uint32_t n) -> bool {
-            return any_sampler_uses_tex_coord(*material, n)
-                || (data.use_circular_brushed_metal && (data.circular_brushed_metal_tex_coord == n));
-        };
-        if (has_texcoord_0 && needs_tex_coord(0u)) {
+        if (has_texcoord_0 && needs_texgen(erhe::primitive::Texgen_mode::uv0)) {
             key.set(Shader_bool::USE_VERTEX_VARYING_TEXCOORD0, true);
         }
-        if (has_texcoord_1 && needs_tex_coord(1u)) {
+        if (has_texcoord_1 && needs_texgen(erhe::primitive::Texgen_mode::uv1)) {
             key.set(Shader_bool::USE_VERTEX_VARYING_TEXCOORD1, true);
+        }
+        if (has_texcoord_2 && needs_texgen(erhe::primitive::Texgen_mode::uv2)) {
+            key.set(Shader_bool::USE_VERTEX_VARYING_TEXCOORD2, true);
+        }
+        // node_* texgen modes read the untransformed node-space position,
+        // which the vertex shader forwards as a dedicated varying (world_*
+        // modes reuse v_position, which every lit variant already has).
+        if (needs_texgen(erhe::primitive::Texgen_mode::node_xy) ||
+            needs_texgen(erhe::primitive::Texgen_mode::node_xz) ||
+            needs_texgen(erhe::primitive::Texgen_mode::node_yz))
+        {
+            key.set(Shader_bool::USE_VERTEX_VARYING_NODE_POSITION, true);
         }
 
         if (has_aniso_control && data.use_aniso_control) {
@@ -247,8 +284,7 @@ auto Shader_key::derive(
     // computed from normal x tangent in standard.vert) is preserved by
     // requiring has_normal_0 for the tangent frame and setting NORMAL
     // alongside it.
-    const bool shader_debug_active =
-        key.get(Shader_int::SHADER_DEBUG) != static_cast<uint32_t>(Shader_debug::none);
+    const bool shader_debug_active = key.get(Shader_int::SHADER_DEBUG) != static_cast<uint32_t>(Shader_debug::none);
     if (shader_debug_active) {
         if (has_normal_0) {
             key.set(Shader_bool::USE_VERTEX_VARYING_NORMAL, true);

@@ -70,7 +70,7 @@ namespace erhe::gltf {
 // glTF extras carriers for erhe-specific Material_data fields that do not
 // have a standard glTF representation: bxdf_model (when not isotropic and
 // not unlit -- unlit rides on KHR_materials_unlit), use_circular_brushed
-// _metal, circular_brushed_metal_tex_coord, use_aniso_control, and the
+// _metal, circular_brushed_metal_texgen_mode, use_aniso_control, and the
 // per-axis roughness_y. Round-trip preservation is import-extras-read +
 // export-extras-write keyed on the glTF material index.
 class Material_extras
@@ -80,7 +80,7 @@ public:
     std::optional<erhe::primitive::Bxdf_model>             bxdf_model;
     std::optional<erhe::primitive::Material_blending_mode> blending_mode;
     std::optional<bool>                                    use_circular_brushed_metal;
-    std::optional<uint32_t>                                circular_brushed_metal_tex_coord;
+    std::optional<erhe::primitive::Texgen_mode>            circular_brushed_metal_texgen_mode;
     std::optional<bool>                                    use_aniso_control;
 };
 
@@ -136,6 +136,61 @@ public:
     return std::nullopt;
 }
 
+[[nodiscard]] auto texgen_mode_to_c_str(erhe::primitive::Texgen_mode mode) -> const char*
+{
+    switch (mode) {
+        case erhe::primitive::Texgen_mode::uv0      : return "uv0";
+        case erhe::primitive::Texgen_mode::uv1      : return "uv1";
+        case erhe::primitive::Texgen_mode::uv2      : return "uv2";
+        case erhe::primitive::Texgen_mode::world_xy : return "world_xy";
+        case erhe::primitive::Texgen_mode::world_xz : return "world_xz";
+        case erhe::primitive::Texgen_mode::world_yz : return "world_yz";
+        case erhe::primitive::Texgen_mode::node_xy  : return "node_xy";
+        case erhe::primitive::Texgen_mode::node_xz  : return "node_xz";
+        case erhe::primitive::Texgen_mode::node_yz  : return "node_yz";
+        case erhe::primitive::Texgen_mode::tangent  : return "tangent";
+    }
+    return "uv0";
+}
+
+[[nodiscard]] auto texgen_mode_from_string(std::string_view s) -> std::optional<erhe::primitive::Texgen_mode>
+{
+    if (s == "uv0")      return erhe::primitive::Texgen_mode::uv0     ;
+    if (s == "uv1")      return erhe::primitive::Texgen_mode::uv1     ;
+    if (s == "uv2")      return erhe::primitive::Texgen_mode::uv2     ;
+    if (s == "world_xy") return erhe::primitive::Texgen_mode::world_xy;
+    if (s == "world_xz") return erhe::primitive::Texgen_mode::world_xz;
+    if (s == "world_yz") return erhe::primitive::Texgen_mode::world_yz;
+    if (s == "node_xy")  return erhe::primitive::Texgen_mode::node_xy ;
+    if (s == "node_xz")  return erhe::primitive::Texgen_mode::node_xz ;
+    if (s == "node_yz")  return erhe::primitive::Texgen_mode::node_yz ;
+    if (s == "tangent")  return erhe::primitive::Texgen_mode::tangent ;
+    return std::nullopt;
+}
+
+[[nodiscard]] auto normalmap_encoding_to_c_str(erhe::primitive::Normalmap_encoding encoding) -> const char*
+{
+    switch (encoding) {
+        case erhe::primitive::Normalmap_encoding::right_handed_three_channel : return "right_handed_three_channel";
+        case erhe::primitive::Normalmap_encoding::right_handed_two_channel_ga: return "right_handed_two_channel_ga";
+        case erhe::primitive::Normalmap_encoding::left_handed_three_channel  : return "left_handed_three_channel";
+        case erhe::primitive::Normalmap_encoding::left_handed_two_channel_ga : return "left_handed_two_channel_ga";
+        case erhe::primitive::Normalmap_encoding::right_handed_two_channel_rg: return "right_handed_two_channel_rg";
+        case erhe::primitive::Normalmap_encoding::left_handed_two_channel_rg : return "left_handed_two_channel_rg";
+    }
+    return "right_handed_three_channel";
+}
+
+[[nodiscard]] auto normalmap_encoding_from_string(std::string_view s) -> std::optional<erhe::primitive::Normalmap_encoding>
+{
+    if (s == "right_handed_three_channel")  return erhe::primitive::Normalmap_encoding::right_handed_three_channel;
+    if (s == "right_handed_two_channel_ga") return erhe::primitive::Normalmap_encoding::right_handed_two_channel_ga;
+    if (s == "left_handed_three_channel")   return erhe::primitive::Normalmap_encoding::left_handed_three_channel;
+    if (s == "left_handed_two_channel_ga")  return erhe::primitive::Normalmap_encoding::left_handed_two_channel_ga;
+    if (s == "right_handed_two_channel_rg") return erhe::primitive::Normalmap_encoding::right_handed_two_channel_rg;
+    if (s == "left_handed_two_channel_rg")  return erhe::primitive::Normalmap_encoding::left_handed_two_channel_rg;
+    return std::nullopt;
+}
 
 constexpr glm::mat4 mat4_yup_from_zup{
     1.0f, 0.0f, 0.0f, 0.0f,
@@ -1642,16 +1697,28 @@ private:
                 binding.image_index = resolved_image_index.value();
             }
             m_data_out.image_residency.material_texture_bindings.push_back(binding);
-            erhe_texture_sampler.tex_coord = static_cast<uint8_t>(gltf_texture_info.texCoordIndex);
+            auto to_erhe_texgen_mode = [](const std::size_t gltf_texcoord_index) {
+                switch (gltf_texcoord_index) {
+                    case 0: return erhe::primitive::Texgen_mode::uv0;
+                    case 1: return erhe::primitive::Texgen_mode::uv1;
+                    case 2: return erhe::primitive::Texgen_mode::uv2;
+                    default: {
+                        // Data-driven input: glTF allows any TEXCOORD_n set,
+                        // erhe carries only 0..2. Degrade instead of aborting.
+                        log_gltf->warn("glTF texcoord index {} > 2 not supported; using TEXCOORD_0", gltf_texcoord_index);
+                        return erhe::primitive::Texgen_mode::uv0;
+                    }
+                }
+            };
+            erhe_texture_sampler.texgen_mode = to_erhe_texgen_mode(gltf_texture_info.texCoordIndex);
             if (gltf_texture_info.transform) {
                 erhe_texture_sampler.rotation = gltf_texture_info.transform->rotation;
                 erhe_texture_sampler.offset   = glm::vec2{gltf_texture_info.transform->uvOffset[0], gltf_texture_info.transform->uvOffset[1]};
                 erhe_texture_sampler.scale    = glm::vec2{gltf_texture_info.transform->uvScale [0], gltf_texture_info.transform->uvScale [1]};
                 if (gltf_texture_info.transform->texCoordIndex.has_value()) {
-                    erhe_texture_sampler.tex_coord = static_cast<uint8_t>(gltf_texture_info.transform->texCoordIndex.value());
+                    erhe_texture_sampler.texgen_mode = to_erhe_texgen_mode(gltf_texture_info.transform->texCoordIndex.value());
                 }
             }
-            // TODO texture transform
         };
 
         erhe::primitive::Material_data&             create_data     = create_info.data;
@@ -3522,11 +3589,13 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                 }
             }
 
-            simdjson::dom::element circular_tex_coord_element;
-            if (extras->at_key("circular_brushed_metal_tex_coord").get(circular_tex_coord_element) == simdjson::error_code::SUCCESS) {
-                uint64_t value = 0;
-                if (circular_tex_coord_element.get_uint64().get(value) == simdjson::error_code::SUCCESS) {
-                    entry.circular_brushed_metal_tex_coord = static_cast<uint32_t>(value);
+            simdjson::dom::element circular_texgen_element;
+            if (extras->at_key("circular_brushed_metal_texgen_mode").get(circular_texgen_element) == simdjson::error_code::SUCCESS) {
+                std::string_view value;
+                if (circular_texgen_element.get_string().get(value) == simdjson::error_code::SUCCESS) {
+                    if (auto parsed = texgen_mode_from_string(value); parsed.has_value()) {
+                        entry.circular_brushed_metal_texgen_mode = parsed;
+                    }
                 }
             }
 
@@ -3655,8 +3724,8 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
         if (extras.use_circular_brushed_metal.has_value()) {
             material->data.use_circular_brushed_metal = extras.use_circular_brushed_metal.value();
         }
-        if (extras.circular_brushed_metal_tex_coord.has_value()) {
-            material->data.circular_brushed_metal_tex_coord = extras.circular_brushed_metal_tex_coord.value();
+        if (extras.circular_brushed_metal_texgen_mode.has_value()) {
+            material->data.circular_brushed_metal_texgen_mode = extras.circular_brushed_metal_texgen_mode.value();
         }
         if (extras.use_aniso_control.has_value()) {
             material->data.use_aniso_control = extras.use_aniso_control.value();
@@ -3816,16 +3885,45 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                     }
                 }
                 bool bool_value{false};
+                if (extension_object.at_key("normalmap_encoding").get_string().get(string_value) == simdjson::SUCCESS) {
+                    if (const auto parsed = normalmap_encoding_from_string(string_value); parsed.has_value()) {
+                        material->data.normalmap_encoding = parsed.value();
+                    }
+                }
                 if (extension_object.at_key("use_circular_brushed_metal").get_bool().get(bool_value) == simdjson::SUCCESS) {
                     material->data.use_circular_brushed_metal = bool_value;
                 }
+                // Legacy integer key from before texgen modes; 0..2 map to uv0..uv2.
                 std::uint64_t uint_value{0};
                 if (extension_object.at_key("circular_brushed_metal_tex_coord").get_uint64().get(uint_value) == simdjson::SUCCESS) {
-                    material->data.circular_brushed_metal_tex_coord = static_cast<uint32_t>(uint_value);
+                    if (uint_value <= 2) {
+                        material->data.circular_brushed_metal_texgen_mode = static_cast<erhe::primitive::Texgen_mode>(uint_value);
+                    }
+                }
+                if (extension_object.at_key("circular_brushed_metal_texgen_mode").get_string().get(string_value) == simdjson::SUCCESS) {
+                    if (const auto parsed = texgen_mode_from_string(string_value); parsed.has_value()) {
+                        material->data.circular_brushed_metal_texgen_mode = parsed.value();
+                    }
                 }
                 if (extension_object.at_key("use_aniso_control").get_bool().get(bool_value) == simdjson::SUCCESS) {
                     material->data.use_aniso_control = bool_value;
                 }
+                // Per-slot texgen modes. uv0..uv2 ride the core texCoord
+                // index (already applied when the samplers were parsed);
+                // only non-UV modes are carried here, overriding it.
+                const auto read_sampler_texgen = [&extension_object](const char* key, erhe::primitive::Material_texture_sampler& sampler) {
+                    std::string_view texgen_value;
+                    if (extension_object.at_key(key).get_string().get(texgen_value) == simdjson::SUCCESS) {
+                        if (const auto parsed = texgen_mode_from_string(texgen_value); parsed.has_value()) {
+                            sampler.texgen_mode = parsed.value();
+                        }
+                    }
+                };
+                read_sampler_texgen("base_color_texgen_mode",         material->data.texture_samplers.base_color);
+                read_sampler_texgen("metallic_roughness_texgen_mode", material->data.texture_samplers.metallic_roughness);
+                read_sampler_texgen("normal_texgen_mode",             material->data.texture_samplers.normal);
+                read_sampler_texgen("occlusion_texgen_mode",          material->data.texture_samplers.occlusion);
+                read_sampler_texgen("emissive_texgen_mode",           material->data.texture_samplers.emissive);
             }
         }
     }
@@ -4690,13 +4788,31 @@ private:
             (data.blending_mode != erhe::primitive::Material_blending_mode::opaque) &&
             (data.blending_mode != erhe::primitive::Material_blending_mode::alpha_blend) &&
             (data.blending_mode != erhe::primitive::Material_blending_mode::alpha_test);
-        const bool emit_circular_brushed_metal_tex_coord = (data.circular_brushed_metal_tex_coord != 1u);
+        // Non-UV texgen modes have no core-glTF representation (the core
+        // texCoord index carries uv0..uv2), so a bound slot using one needs
+        // the extension.
+        const auto sampler_emits_texgen = [](const erhe::primitive::Material_texture_sampler& sampler) {
+            return
+                static_cast<bool>(sampler.texture_reference) &&
+                (sampler.texgen_mode != erhe::primitive::Texgen_mode::uv0) &&
+                (sampler.texgen_mode != erhe::primitive::Texgen_mode::uv1) &&
+                (sampler.texgen_mode != erhe::primitive::Texgen_mode::uv2);
+        };
+        const bool emit_sampler_texgen =
+            sampler_emits_texgen(data.texture_samplers.base_color) ||
+            sampler_emits_texgen(data.texture_samplers.metallic_roughness) ||
+            sampler_emits_texgen(data.texture_samplers.normal) ||
+            sampler_emits_texgen(data.texture_samplers.occlusion) ||
+            sampler_emits_texgen(data.texture_samplers.emissive);
+        const bool emit_normalmap_encoding =
+            data.normalmap_encoding != erhe::primitive::Normalmap_encoding::right_handed_three_channel;
 
         if (!emit_roughness_y &&
             !emit_bxdf_model &&
             !emit_blending_mode &&
+            !emit_sampler_texgen &&
+            !emit_normalmap_encoding &&
             !data.use_circular_brushed_metal &&
-            !emit_circular_brushed_metal_tex_coord &&
             !data.use_aniso_control)
         {
             return;
@@ -4704,6 +4820,27 @@ private:
 
         std::string fields;
         const char* separator = "";
+
+        auto process_sampler = [&fields, &separator, &sampler_emits_texgen](const char* sampler_label, const erhe::primitive::Material_texture_sampler& sampler)
+        {
+            if (!sampler_emits_texgen(sampler)) {
+                return;
+            }
+            fields += fmt::format(
+                "{}\"{}_texgen_mode\":\"{}\"",
+                separator,
+                sampler_label,
+                texgen_mode_to_c_str(sampler.texgen_mode)
+            );
+            separator = ",";
+        };
+
+        process_sampler("base_color",         data.texture_samplers.base_color);
+        process_sampler("metallic_roughness", data.texture_samplers.metallic_roughness);
+        process_sampler("normal",             data.texture_samplers.normal);
+        process_sampler("occlusion",          data.texture_samplers.occlusion);
+        process_sampler("emissive",           data.texture_samplers.emissive);
+
         if (emit_roughness_y) {
             fields += fmt::format("{}\"roughness_y\":{}", separator, data.roughness.y);
             separator = ",";
@@ -4712,16 +4849,17 @@ private:
             fields += fmt::format("{}\"bxdf_model\":\"{}\"", separator, bxdf_model_to_c_str(data.bxdf_model));
             separator = ",";
         }
+        if (emit_normalmap_encoding) {
+            fields += fmt::format("{}\"normalmap_encoding\":\"{}\"", separator, normalmap_encoding_to_c_str(data.normalmap_encoding));
+            separator = ",";
+        }
         if (emit_blending_mode) {
             fields += fmt::format("{}\"blending_mode\":\"{}\"", separator, blending_mode_to_c_str(data.blending_mode));
             separator = ",";
         }
         if (data.use_circular_brushed_metal) {
             fields += fmt::format("{}\"use_circular_brushed_metal\":true", separator);
-            separator = ",";
-        }
-        if (emit_circular_brushed_metal_tex_coord) {
-            fields += fmt::format("{}\"circular_brushed_metal_tex_coord\":{}", separator, data.circular_brushed_metal_tex_coord);
+            fields += fmt::format(",\"circular_brushed_metal_texgen_mode\":\"{}\"", texgen_mode_to_c_str(data.circular_brushed_metal_texgen_mode));
             separator = ",";
         }
         if (data.use_aniso_control) {
@@ -5275,7 +5413,17 @@ private:
             return false;
         }
         out.textureIndex  = texture_index.value();
-        out.texCoordIndex = slot.tex_coord;
+        switch (slot.texgen_mode) {
+            case erhe::primitive::Texgen_mode::uv0: out.texCoordIndex = 0; break;
+            case erhe::primitive::Texgen_mode::uv1: out.texCoordIndex = 1; break;
+            case erhe::primitive::Texgen_mode::uv2: out.texCoordIndex = 2; break;
+            default: {
+                // Non-UV texgen modes ride the ERHE_material extension
+                // (record_material_extensions); the core index stays 0.
+                out.texCoordIndex = 0;
+                break;
+            }
+        }
         const bool has_transform =
             (slot.rotation != 0.0f) ||
             (slot.offset != glm::vec2{0.0f, 0.0f}) ||

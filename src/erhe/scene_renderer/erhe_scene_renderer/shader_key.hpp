@@ -119,6 +119,7 @@ inline constexpr const char* c_shader_debug_strings[] = {
     X(USE_VERTEX_VARYING_TEXCOORD0)     \
     X(USE_VERTEX_VARYING_TEXCOORD1)     \
     X(USE_VERTEX_VARYING_TEXCOORD2)     \
+    X(USE_VERTEX_VARYING_NODE_POSITION) \
     X(USE_VERTEX_VARYING_COLOR)         \
     X(USE_VERTEX_VARYING_ANISO_CONTROL) \
     X(VARIANT_DEPTH_ONLY)               \
@@ -148,13 +149,13 @@ inline constexpr const char* c_shader_debug_strings[] = {
     X(SHADOW_TECHNIQUE)                         \
     X(SHADOW_DEPTH_BITS)                        \
     X(SHADER_MULTIVIEW_COUNT)                   \
-    X(BASE_COLOR_TEX_COORD)                     \
-    X(METALLIC_ROUGHNESS_TEX_COORD)             \
-    X(NORMAL_TEX_COORD)                         \
-    X(NORMAL_TEXTURE_TWO_COMPONENT)             \
-    X(OCCLUSION_TEX_COORD)                      \
-    X(EMISSIVE_TEX_COORD)                       \
-    X(CIRCULAR_BRUSHED_METAL_TEX_COORD)
+    X(BASE_COLOR_TEXGEN_MODE)                   \
+    X(METALLIC_ROUGHNESS_TEXGEN_MODE)           \
+    X(NORMAL_TEXGEN_MODE)                       \
+    X(NORMAL_TEXTURE_ENCODING)                  \
+    X(OCCLUSION_TEXGEN_MODE)                    \
+    X(EMISSIVE_TEXGEN_MODE)                     \
+    X(CIRCULAR_BRUSHED_METAL_TEXGEN_MODE)
 
 enum class Shader_bool : uint32_t {
 #define ERHE_X(PARAM) PARAM,

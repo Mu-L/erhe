@@ -143,15 +143,12 @@ enum class Field_status
 class Slot_edit
 {
 public:
-    bool                                     has_texture{false};
-    std::shared_ptr<erhe::graphics::Texture> texture{};
-    std::optional<uint32_t>                  tex_coord{};
-    std::optional<float>                     rotation{};
-    std::optional<glm::vec2>                 offset{};
-    std::optional<glm::vec2>                 scale{};
-    // Sampler state: wrap is [u, v]; a present entry replaces the slot's
-    // sampler with a freshly created one (never mutated in place, so the
-    // Material_data before/after snapshot sees the pointer change).
+    bool                                                               has_texture{false};
+    std::shared_ptr<erhe::graphics::Texture>                           texture{};
+    std::optional<erhe::primitive::Texgen_mode>                        texgen_mode{};
+    std::optional<float>                                               rotation{};
+    std::optional<glm::vec2>                                           offset{};
+    std::optional<glm::vec2>                                           scale{};
     std::optional<std::array<erhe::graphics::Sampler_address_mode, 2>> wrap{};
     std::optional<erhe::graphics::Filter>                              min_filter{};
     std::optional<erhe::graphics::Filter>                              mag_filter{};
@@ -276,25 +273,22 @@ public:
         }
     }
 
-    const auto tc_it = slot_json.find("tex_coord");
+    const auto tc_it = slot_json.find("texgen_mode");
     if (tc_it != slot_json.end()) {
         if (!tc_it->is_number_integer() && !tc_it->is_number_unsigned()) {
-            out_error = "tex_coord must be an integer";
+            out_error = "texgen_mode must be an integer";
             return false;
         }
-        // Forward-looking field: Material_texture_sampler::tex_coord
-        // is stored on the material, but the current standard shader
-        // reads v_texcoord (vertex stream a_texcoord_0 only). Accept
-        // 0 or 1 so a future multi-UV shader does not need a config
-        // bump, and reject larger values explicitly instead of
-        // wrapping uint32_t silently.
-        constexpr std::int64_t k_max_tex_coord = 1;
+        // erhe::primitive::Texgen_mode values: 0..2 = uv0..uv2, then
+        // world_xy/xz/yz, node_xy/xz/yz, tangent. Reject out-of-range
+        // values instead of wrapping the enum silently.
+        constexpr std::int64_t k_max_texgen_mode = static_cast<std::int64_t>(erhe::primitive::Texgen_mode::tangent);
         const std::int64_t raw = tc_it->get<std::int64_t>();
-        if (raw < 0 || raw > k_max_tex_coord) {
-            out_error = "tex_coord must be in [0, " + std::to_string(k_max_tex_coord) + "]";
+        if (raw < 0 || raw > k_max_texgen_mode) {
+            out_error = "texgen_mode must be in [0, " + std::to_string(k_max_texgen_mode) + "]";
             return false;
         }
-        out_edit.tex_coord = static_cast<uint32_t>(raw);
+        out_edit.texgen_mode = static_cast<erhe::primitive::Texgen_mode>(raw);
     }
 
     float f_tmp{};
@@ -364,11 +358,11 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
     // Assigning (or nulling) a plain texture replaces any previous binding on
     // the slot, including a Graph_texture reference - the slot is a single
     // texture_reference.
-    if (edit.has_texture)         target.texture_reference = edit.texture;
-    if (edit.tex_coord.has_value()) target.tex_coord = edit.tex_coord.value();
-    if (edit.rotation.has_value()) target.rotation  = edit.rotation.value();
-    if (edit.offset.has_value())   target.offset    = edit.offset.value();
-    if (edit.scale.has_value())    target.scale     = edit.scale.value();
+    if (edit.has_texture)             target.texture_reference = edit.texture;
+    if (edit.texgen_mode.has_value()) target.texgen_mode       = edit.texgen_mode.value();
+    if (edit.rotation.has_value())    target.rotation          = edit.rotation.value();
+    if (edit.offset.has_value())      target.offset            = edit.offset.value();
+    if (edit.scale.has_value())       target.scale             = edit.scale.value();
 
     if (edit.has_sampler_edit()) {
         // Start from the slot's current sampler state; a null sampler edits
@@ -420,10 +414,10 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
             entry["texture_name"] = nullptr;
         }
     }
-    if (edit.tex_coord.has_value()) entry["tex_coord"] = edit.tex_coord.value();
-    if (edit.rotation.has_value())  entry["rotation"]  = edit.rotation.value();
-    if (edit.offset.has_value())    entry["offset"]    = {edit.offset->x, edit.offset->y};
-    if (edit.scale.has_value())     entry["scale"]     = {edit.scale->x,  edit.scale->y};
+    if (edit.texgen_mode.has_value()) entry["texgen_mode"] = edit.texgen_mode.value();
+    if (edit.rotation.has_value())    entry["rotation"]    = edit.rotation.value();
+    if (edit.offset.has_value())      entry["offset"]      = {edit.offset->x, edit.offset->y};
+    if (edit.scale.has_value())       entry["scale"]       = {edit.scale->x,  edit.scale->y};
     if (edit.wrap.has_value()) {
         entry["wrap"] = {address_mode_name(edit.wrap.value()[0]), address_mode_name(edit.wrap.value()[1])};
     }

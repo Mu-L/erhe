@@ -59,6 +59,52 @@ enum class Material_blending_mode : uint16_t
     alpha_test   = 6
 };
 
+// Normal map storage encoding. Right handed = OpenGL Y convention, left
+// handed = Direct3D (the shader flips Y). Three channel stores unit
+// normals as RGB = XYZ; two channel stores X+Y only and the shader
+// reconstructs Z. The two-channel channel layout is part of the value:
+// GA = X in RGB / Y in A (KTX2 normal-mode; RGBA8, ASTC L+A blocks),
+// RG = X in R / Y in G (BC5).
+#define ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_THREE_CHANNEL  0 // OpenGL
+#define ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_GA 1 // OpenGL
+#define ERHE_NORMALMAP_ENCODING_LEFT_HANDED_THREE_CHANNEL   2 // Direct3D
+#define ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_GA  3 // Direct3D
+#define ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_RG 4 // OpenGL
+#define ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_RG  5 // Direct3D
+
+#define ERHE_TEXGEN_MODE_UV0      0
+#define ERHE_TEXGEN_MODE_UV1      1
+#define ERHE_TEXGEN_MODE_UV2      2
+#define ERHE_TEXGEN_MODE_WORLD_XY 3
+#define ERHE_TEXGEN_MODE_WORLD_XZ 4
+#define ERHE_TEXGEN_MODE_WORLD_YZ 5
+#define ERHE_TEXGEN_MODE_NODE_XY  6
+#define ERHE_TEXGEN_MODE_NODE_XZ  7
+#define ERHE_TEXGEN_MODE_NODE_YZ  8
+#define ERHE_TEXGEN_MODE_TANGENT  9
+
+enum class Texgen_mode : uint16_t {
+    uv0      = ERHE_TEXGEN_MODE_UV0     ,
+    uv1      = ERHE_TEXGEN_MODE_UV1     ,
+    uv2      = ERHE_TEXGEN_MODE_UV2     ,
+    world_xy = ERHE_TEXGEN_MODE_WORLD_XY,
+    world_xz = ERHE_TEXGEN_MODE_WORLD_XZ,
+    world_yz = ERHE_TEXGEN_MODE_WORLD_YZ,
+    node_xy  = ERHE_TEXGEN_MODE_NODE_XY ,
+    node_xz  = ERHE_TEXGEN_MODE_NODE_XZ ,
+    node_yz  = ERHE_TEXGEN_MODE_NODE_YZ ,
+    tangent  = ERHE_TEXGEN_MODE_TANGENT 
+};
+
+enum class Normalmap_encoding : uint16_t {
+    right_handed_three_channel  = ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_THREE_CHANNEL,
+    right_handed_two_channel_ga = ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_GA,
+    left_handed_three_channel   = ERHE_NORMALMAP_ENCODING_LEFT_HANDED_THREE_CHANNEL,
+    left_handed_two_channel_ga  = ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_GA,
+    right_handed_two_channel_rg = ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_RG,
+    left_handed_two_channel_rg  = ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_RG
+};
+
 static constexpr const char* c_mode_strings[] = {
     "Not Set",
     "Polygon Fill",
@@ -86,9 +132,35 @@ static const char* const c_material_blending_mode_names[] = {
     "Alpha Test"
 };
 
+static const char* const c_texgen_mode_names[] = {
+    "Uv 0",
+    "Uv 1",
+    "Uv 2",
+    "World XY",
+    "World XZ",
+    "World YZ",
+    "Node XY",
+    "Node XZ",
+    "Node YZ",
+    "Tangent"
+};
+
+static const char* const c_normalmap_encoding_names[] = {
+    "Right Handed RGB",
+    "Right Handed X+Y (GA)",
+    "Left Handed RGB",
+    "Left Handed X+Y (GA)",
+    "Right Handed X+Y (RG)",
+    "Left Handed X+Y (RG)"
+};
+
 [[nodiscard]] auto c_str(Primitive_mode primitive_mode) -> const char*;
 [[nodiscard]] auto c_str(Normal_style normal_style) -> const char*;
 [[nodiscard]] auto c_str(Bxdf_model bxdf_model) -> const char*;
 [[nodiscard]] auto c_str(Material_blending_mode blending_mode) -> const char*;
+[[nodiscard]] auto c_str(Texgen_mode texgen_mode) -> const char*;
+[[nodiscard]] auto c_str(Normalmap_encoding normalmap_encoding) -> const char*;
+[[nodiscard]] auto to_uint32(Texgen_mode texgen_mode) -> uint32_t;
+[[nodiscard]] auto to_uint32(Normalmap_encoding normalmap_encoding) -> uint32_t;
 
 } // namespace erhe::primitive

@@ -19,20 +19,12 @@ namespace erhe::primitive {
 class Material_texture_sampler
 {
 public:
-    // The slot's single texture source, resolved to a live
-    // erhe::graphics::Texture every frame (see
-    // erhe::scene_renderer::Material_buffer::update). Holds either a plain
-    // erhe::graphics::Texture (which is-a Texture_reference returning itself;
-    // glTF-imported / library textures) or an editor Graph_texture (which
-    // returns its most recently baked output). Held by the graphics
-    // Texture_reference interface so erhe::primitive gains no dependency on
-    // the editor.
-    std::shared_ptr<erhe::graphics::Texture_reference> texture_reference;
-    std::shared_ptr<erhe::graphics::Sampler> sampler;
-    uint32_t                                 tex_coord{0};
-    float                                    rotation {0.0f};
-    glm::vec2                                offset   {0.0f, 0.0f};
-    glm::vec2                                scale    {1.0f, 1.0f};
+    std::shared_ptr<erhe::graphics::Texture_reference> texture_reference{};
+    std::shared_ptr<erhe::graphics::Sampler>           sampler          {};
+    Texgen_mode                                        texgen_mode      {Texgen_mode::uv0};
+    float                                              rotation         {0.0f};
+    glm::vec2                                          offset           {0.0f, 0.0f};
+    glm::vec2                                          scale            {1.0f, 1.0f};
 };
 
 [[nodiscard]] auto operator==(const Material_texture_sampler& lhs, const Material_texture_sampler& rhs);
@@ -74,36 +66,33 @@ public:
 class Material_data
 {
 public:
-    glm::vec3                 base_color                {1.0f, 1.0f, 1.0f};
-    float                     opacity                   {1.0f};
-    glm::vec2                 roughness                 {0.5f, 0.5f};
-    float                     metallic                  {0.0f};
-    float                     reflectance               {0.5f};
-    glm::vec3                 emissive                  {0.0f, 0.0f, 0.0f};
-    // Index of refraction (glTF KHR_materials_ior; dielectric default 1.5).
-    float                     ior                       {1.5f};
-    // Transmission factor (glTF KHR_materials_transmission): 0 = opaque
-    // surface, 1 = fully transmissive (glass). Consumed by the GPU ray
-    // tracer (refraction + traced reflection); the raster path ignores it.
-    float                     transmission              {0.0f};
-    float                     normal_texture_scale      {1.0f};
-    float                     occlusion_texture_strength{1.0f};
-    Bxdf_model                bxdf_model                {Bxdf_model::isotropic_brdf};
-    Material_blending_mode    blending_mode             {Material_blending_mode::opaque};
-    // glTF material.doubleSided: when set, both faces of the surface are
-    // rendered (face culling off). The glTF default is false - back faces are
-    // culled - which is what erhe's content pipelines do without this flag.
-    // Renderers partition draws by this so a double-sided material selects a
-    // culling-disabled pipeline variant.
-    bool                      double_sided              {false};
-    float                     alpha_cutoff              {0.5f};
-    bool                      use_circular_brushed_metal{false};
-    // Texcoord set read by the in-shader circular brushed metal block
-    // (T/B derivation and isotropy falloff). Defaults to 1, matching the
+    glm::vec3                 base_color                        {1.0f, 1.0f, 1.0f};
+    float                     opacity                           {1.0f};
+    glm::vec2                 roughness                         {0.5f, 0.5f};
+    float                     metallic                          {0.0f};
+    float                     reflectance                       {0.5f};
+    glm::vec3                 emissive                          {0.0f, 0.0f, 0.0f};
+    float                     ior                               {1.5f};
+    float                     transmission                      {0.0f};
+    float                     normal_texture_scale              {1.0f};
+    // Storage encoding of the bound normal texture (handedness and, for
+    // X+Y maps, the channel layout). Authorable in the Properties window;
+    // a KTX2 normal-mode texture overrides the channel layout at shader
+    // variant derivation (the flag travels on the texture), keeping the
+    // authored handedness.
+    Normalmap_encoding        normalmap_encoding                {Normalmap_encoding::right_handed_three_channel};
+    float                     occlusion_texture_strength        {1.0f};
+    Bxdf_model                bxdf_model                        {Bxdf_model::isotropic_brdf};
+    Material_blending_mode    blending_mode                     {Material_blending_mode::opaque};
+    bool                      double_sided                      {false};
+    float                     alpha_cutoff                      {0.5f};
+    bool                      use_circular_brushed_metal        {false};
+    // Texgen source for the in-shader circular brushed metal block
+    // (T/B derivation and isotropy falloff). Defaults to uv1, matching the
     // default target of generate_mesh_facet_texture_coordinates().
-    uint32_t                  circular_brushed_metal_tex_coord{1};
-    bool                      use_aniso_control         {false};
-    Material_texture_samplers texture_samplers          {};
+    Texgen_mode               circular_brushed_metal_texgen_mode{Texgen_mode::uv1};
+    bool                      use_aniso_control                 {false};
+    Material_texture_samplers texture_samplers                  {};
 };
 
 class Material_create_info

@@ -47,6 +47,50 @@
 #  define ERHE_USE_VARYING_POSITION 1
 #endif
 
+// Texgen_mode enum values. Keep in sync with erhe::primitive::Texgen_mode
+// (ERHE_TEXGEN_MODE_* in enums.hpp). Each ERHE_*_TEXGEN_MODE variant axis
+// carries one of these; ERHE_SELECT_TEXCOORD in standard.frag maps the
+// value to a texcoord source (uv sets, world / node position planes, or a
+// tangent-frame projection).
+#define ERHE_TEXGEN_MODE_UV0      0
+#define ERHE_TEXGEN_MODE_UV1      1
+#define ERHE_TEXGEN_MODE_UV2      2
+#define ERHE_TEXGEN_MODE_WORLD_XY 3
+#define ERHE_TEXGEN_MODE_WORLD_XZ 4
+#define ERHE_TEXGEN_MODE_WORLD_YZ 5
+#define ERHE_TEXGEN_MODE_NODE_XY  6
+#define ERHE_TEXGEN_MODE_NODE_XZ  7
+#define ERHE_TEXGEN_MODE_NODE_YZ  8
+#define ERHE_TEXGEN_MODE_TANGENT  9
+
+// Normalmap_encoding enum values. Keep in sync with
+// erhe::primitive::Normalmap_encoding (ERHE_NORMALMAP_ENCODING_* in
+// enums.hpp). RGB encodings store unit normals as RGB = XYZ; X+Y (two
+// channel) encodings store X+Y only and the shader reconstructs Z, with
+// the channel layout part of the value: GA = X in RGB / Y in A (KTX2
+// normal-mode; RGBA8, ASTC L+A blocks), RG = X in R / Y in G (BC5).
+// Left-handed (Direct3D-authored) encodings flip Y.
+#define ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_THREE_CHANNEL  0
+#define ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_GA 1
+#define ERHE_NORMALMAP_ENCODING_LEFT_HANDED_THREE_CHANNEL   2
+#define ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_GA  3
+#define ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_RG 4
+#define ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_RG  5
+
+// Convenience predicates for the encoding axis.
+#define ERHE_NORMALMAP_IS_TWO_CHANNEL(e) ( \
+    ((e) == ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_GA) || \
+    ((e) == ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_GA)  || \
+    ((e) == ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_RG) || \
+    ((e) == ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_RG))
+#define ERHE_NORMALMAP_IS_XY_IN_RG(e) ( \
+    ((e) == ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_RG) || \
+    ((e) == ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_RG))
+#define ERHE_NORMALMAP_IS_LEFT_HANDED(e) ( \
+    ((e) == ERHE_NORMALMAP_ENCODING_LEFT_HANDED_THREE_CHANNEL) || \
+    ((e) == ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_GA) || \
+    ((e) == ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_RG))
+
 // Bxdf_model enum values. Keep in sync with erhe::primitive::Bxdf_model.
 #define ERHE_BXDF_MODEL_UNLIT                    0
 #define ERHE_BXDF_MODEL_ISOTROPIC_BRDF           1

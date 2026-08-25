@@ -77,6 +77,75 @@ auto c_str(const Material_blending_mode blending_mode) -> const char*
     }
 }
 
+auto c_str(const Texgen_mode texgen_mode) -> const char*
+{
+    switch (texgen_mode) {
+        case Texgen_mode::uv0     : return "Uv 0";
+        case Texgen_mode::uv1     : return "Uv 1";
+        case Texgen_mode::uv2     : return "Uv 2";
+        case Texgen_mode::world_xy: return "World XY";
+        case Texgen_mode::world_xz: return "World XZ";
+        case Texgen_mode::world_yz: return "World YZ";
+        case Texgen_mode::node_xy : return "Node XY";
+        case Texgen_mode::node_xz : return "Node XZ";
+        case Texgen_mode::node_yz : return "Node YZ";
+        case Texgen_mode::tangent : return "Tangent";
+        default: { 
+            ERHE_FATAL("Bad Texgen_mode");
+        }
+    }
+}
+
+[[nodiscard]] auto c_str(const Normalmap_encoding normalmap_encoding) -> const char*
+{
+    switch (normalmap_encoding) {
+        case Normalmap_encoding::right_handed_three_channel : return "Right Handed RGB";
+        case Normalmap_encoding::right_handed_two_channel_ga: return "Right Handed X+Y (GA)";
+        case Normalmap_encoding::left_handed_three_channel  : return "Left Handed RGB";
+        case Normalmap_encoding::left_handed_two_channel_ga : return "Left Handed X+Y (GA)";
+        case Normalmap_encoding::right_handed_two_channel_rg: return "Right Handed X+Y (RG)";
+        case Normalmap_encoding::left_handed_two_channel_rg : return "Left Handed X+Y (RG)";
+        default: {
+            ERHE_FATAL("Bad Normalmap_encoding");
+        }
+    }
+}
+
+auto to_uint32(const Texgen_mode texgen_mode) -> uint32_t
+{
+    switch (texgen_mode) {
+        case Texgen_mode::uv0     : return ERHE_TEXGEN_MODE_UV0;
+        case Texgen_mode::uv1     : return ERHE_TEXGEN_MODE_UV1;
+        case Texgen_mode::uv2     : return ERHE_TEXGEN_MODE_UV2;
+        case Texgen_mode::world_xy: return ERHE_TEXGEN_MODE_WORLD_XY;
+        case Texgen_mode::world_xz: return ERHE_TEXGEN_MODE_WORLD_XZ;
+        case Texgen_mode::world_yz: return ERHE_TEXGEN_MODE_WORLD_YZ;
+        case Texgen_mode::node_xy : return ERHE_TEXGEN_MODE_NODE_XY;
+        case Texgen_mode::node_xz : return ERHE_TEXGEN_MODE_NODE_XZ;
+        case Texgen_mode::node_yz : return ERHE_TEXGEN_MODE_NODE_YZ;
+        case Texgen_mode::tangent : return ERHE_TEXGEN_MODE_TANGENT;
+        default: { 
+            ERHE_FATAL("Bad Texgen_mode");
+        }
+    }
+}
+
+auto to_uint32(const Normalmap_encoding normalmap_encoding) -> uint32_t
+{
+    switch (normalmap_encoding) {
+        case Normalmap_encoding::right_handed_three_channel : return ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_THREE_CHANNEL;
+        case Normalmap_encoding::right_handed_two_channel_ga: return ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_GA;
+        case Normalmap_encoding::left_handed_three_channel  : return ERHE_NORMALMAP_ENCODING_LEFT_HANDED_THREE_CHANNEL;
+        case Normalmap_encoding::left_handed_two_channel_ga : return ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_GA;
+        case Normalmap_encoding::right_handed_two_channel_rg: return ERHE_NORMALMAP_ENCODING_RIGHT_HANDED_TWO_CHANNEL_RG;
+        case Normalmap_encoding::left_handed_two_channel_rg : return ERHE_NORMALMAP_ENCODING_LEFT_HANDED_TWO_CHANNEL_RG;
+        default: {
+            ERHE_FATAL("Bad Normalmap_encoding");
+        }
+    }
+}
+
+
 #pragma region Primitive_raytrace
 Primitive_raytrace::Primitive_raytrace() = default;
 

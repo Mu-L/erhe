@@ -381,7 +381,7 @@ TEST_F(Mcp_test, get_material_details_has_full_structure)
         const json& s = ts[slot];
         EXPECT_TRUE(s.contains("texture_id"));
         EXPECT_TRUE(s.contains("texture_name"));
-        EXPECT_TRUE(s.contains("tex_coord"));
+        EXPECT_TRUE(s.contains("texgen_mode"));
         EXPECT_TRUE(s.contains("rotation"));
         EXPECT_TRUE(s.contains("offset"));
         EXPECT_TRUE(s.contains("scale"));
@@ -859,7 +859,7 @@ TEST_F(Mcp_test, edit_material_texture_transform_round_trip)
     edit_and_wait(
         json{{"texture_samplers", {
             {"base_color", {
-                {"tex_coord", 1},
+                {"texgen_mode", 1},
                 {"rotation",  0.1234},
                 {"offset",    json::array({0.5, 0.25})},
                 {"scale",     json::array({2.0, 3.0})}
@@ -867,7 +867,7 @@ TEST_F(Mcp_test, edit_material_texture_transform_round_trip)
         }}},
         [](const json& d) {
             const json& s = d["texture_samplers"]["base_color"];
-            return s["tex_coord"].get<int>() == 1
+            return s["texgen_mode"].get<int>() == 1
                 && approx_equal(s["rotation"].get<double>(),  0.1234)
                 && approx_equal(s["offset"][0].get<double>(), 0.5)
                 && approx_equal(s["offset"][1].get<double>(), 0.25)
@@ -879,7 +879,7 @@ TEST_F(Mcp_test, edit_material_texture_transform_round_trip)
     edit_and_wait(
         json{{"texture_samplers", {
             {"base_color", {
-                {"tex_coord", bs["tex_coord"].get<int>()},
+                {"texgen_mode", bs["texgen_mode"].get<int>()},
                 {"rotation",  orig_rotation},
                 {"offset",    bs["offset"]},
                 {"scale",     bs["scale"]}

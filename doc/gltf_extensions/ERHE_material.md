@@ -22,8 +22,9 @@ no divergent fields gets no extension at all. `unlit` rides the standard
     "bxdf_model": "anisotropic_brdf",
     "blending_mode": "multiply",
     "use_circular_brushed_metal": true,
-    "circular_brushed_metal_tex_coord": 0,
-    "use_aniso_control": true
+    "circular_brushed_metal_texgen_mode": "uv1",
+    "use_aniso_control": true,
+    "base_color_texgen_mode": "world_xz"
 }
 ```
 
@@ -35,8 +36,26 @@ no divergent fields gets no extension at all. `unlit` rides the standard
   `multiply`, `add`, `subtract`, `screen_door` (emitted only for the modes
   `alphaMode` cannot represent; those export with `alphaMode` `BLEND` as a
   sensible core fallback).
-- `use_circular_brushed_metal`, `circular_brushed_metal_tex_coord`,
+- `use_circular_brushed_metal`, `circular_brushed_metal_texgen_mode`,
   `use_aniso_control`: brushed-metal / anisotropy-control shading fields.
+- `<slot>_texgen_mode` for slots `base_color`, `metallic_roughness`,
+  `normal`, `occlusion`, `emissive`: the slot's texture coordinate source
+  when it is not a UV set. One of `world_xy`, `world_xz`, `world_yz`
+  (world position plane), `node_xy`, `node_xz`, `node_yz` (untransformed
+  node-space position plane), `tangent` (world position projected onto
+  the tangent frame's T/B plane). The UV modes `uv0`, `uv1`, `uv2` are
+  never emitted here - they ride the core `texCoord` index (which stays 0
+  when a non-UV mode is emitted). `circular_brushed_metal_texgen_mode`
+  accepts the same names, UV modes included.
+- `normalmap_encoding`: storage encoding of the normal texture (emitted
+  when not the default `right_handed_three_channel`). One of
+  `right_handed_three_channel`, `left_handed_three_channel` (RGB = XYZ),
+  `right_handed_two_channel_ga`, `left_handed_two_channel_ga` (X in RGB /
+  Y in A, KTX2 normal-mode), `right_handed_two_channel_rg`,
+  `left_handed_two_channel_rg` (X in R / Y in G, BC5). Left handed =
+  Direct3D Y convention (the shader flips Y). A KTX2 normal-mode texture
+  overrides the channel layout at render time; the handedness is always
+  honored.
 
 ## Schema
 

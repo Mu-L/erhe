@@ -62,9 +62,13 @@ const  vec2 v_texcoord_2            = vec2(0.5, 0.5);
 const  vec4 v_lightmap_scale_offset = vec4(0.0);
 #endif
 
-// Selects the texcoord set for a texture / feature from its compile-time
-// ERHE_*_TEX_COORD define; the condition folds at compile time.
-#define ERHE_SELECT_TEXCOORD(set) (((set) == 1) ? v_texcoord_1 : v_texcoord_0)
+// Untransformed node-space position for the node_* texgen modes; only
+// emitted by standard.vert when a texture slot / feature sources it.
+#if defined(ERHE_USE_VERTEX_VARYING_NODE_POSITION) && !defined(ERHE_VARIANT_POSITION_PASS)
+layout(location = 24) in vec3 v_node_position;
+#elif !defined(ERHE_VARIANT_POSITION_PASS)
+const  vec3 v_node_position = vec3(0.0);
+#endif
 
 #if defined(ERHE_USE_VERTEX_VARYING_COLOR) && !defined(ERHE_VARIANT_POSITION_PASS)
 layout(location = 2) in vec4      v_color;
@@ -78,16 +82,45 @@ layout(location = 3) in vec2      v_aniso_control;
 const  vec2 v_aniso_control = vec2(0.0);
 #endif
 
+// Neutral const fallbacks (matching the lit-path defaults below) keep the
+// ERHE_SELECT_TEXCOORD tangent branch compiling in variants without the
+// tangent frame; the branch is dead code there.
 #if defined(ERHE_USE_VERTEX_VARYING_TANGENT) && !defined(ERHE_VARIANT_POSITION_PASS)
 layout(location = 4) in vec3      v_T;
+#elif !defined(ERHE_VARIANT_POSITION_PASS)
+const  vec3 v_T = vec3(1.0, 0.0, 0.0);
 #endif
 
 #if defined(ERHE_USE_VERTEX_VARYING_BITANGENT) && !defined(ERHE_VARIANT_POSITION_PASS)
 layout(location = 5) in vec3      v_B;
+#elif !defined(ERHE_VARIANT_POSITION_PASS)
+const  vec3 v_B = vec3(0.0, 0.0, 1.0);
 #endif
 
 #if defined(ERHE_USE_VERTEX_VARYING_NORMAL) && !defined(ERHE_VARIANT_POSITION_PASS)
 layout(location = 6) in vec3      v_N;
+#endif
+
+// Selects the texcoord source for a texture / feature from its
+// compile-time ERHE_*_TEXGEN_MODE define (an ERHE_TEXGEN_MODE_* value,
+// see erhe_standard_variant.glsl); the conditions fold at compile time.
+// uv0..uv2 read the vertex texcoord sets, world_* project the world
+// position onto an axis plane, node_* the untransformed node-space
+// position, and tangent projects the world position onto the tangent
+// frame's T/B plane. Every referenced varying has a const fallback, so
+// the dead branches always compile.
+#if !defined(ERHE_VARIANT_POSITION_PASS)
+#define ERHE_SELECT_TEXCOORD(mode) ( \
+    ((mode) == ERHE_TEXGEN_MODE_UV1)      ? v_texcoord_1 : \
+    ((mode) == ERHE_TEXGEN_MODE_UV2)      ? v_texcoord_2 : \
+    ((mode) == ERHE_TEXGEN_MODE_WORLD_XY) ? v_position.xy : \
+    ((mode) == ERHE_TEXGEN_MODE_WORLD_XZ) ? v_position.xz : \
+    ((mode) == ERHE_TEXGEN_MODE_WORLD_YZ) ? v_position.yz : \
+    ((mode) == ERHE_TEXGEN_MODE_NODE_XY)  ? v_node_position.xy : \
+    ((mode) == ERHE_TEXGEN_MODE_NODE_XZ)  ? v_node_position.xz : \
+    ((mode) == ERHE_TEXGEN_MODE_NODE_YZ)  ? v_node_position.yz : \
+    ((mode) == ERHE_TEXGEN_MODE_TANGENT)  ? vec2(dot(v_position.xyz, v_T), dot(v_position.xyz, v_B)) : \
+    v_texcoord_0)
 #endif
 
 // TODO In the future we might have alpha test which would need material_index
@@ -352,7 +385,7 @@ void main()
     uvec2 base_color_texture = material.base_color_texture;
     vec4  base_color_sample  = sample_texture(
         base_color_texture,
-        ERHE_SELECT_TEXCOORD(ERHE_BASE_COLOR_TEX_COORD),
+        ERHE_SELECT_TEXCOORD(ERHE_BASE_COLOR_TEXGEN_MODE),
         material.base_color_rotation_scale,
         material.base_color_offset
     );
@@ -405,7 +438,7 @@ void main()
         // The texcoord set holding the per-facet radial coordinates is
         // selected per material (default set 1, where
         // generate_mesh_facet_texture_coordinates writes them).
-        vec2  brushed_uv = ERHE_SELECT_TEXCOORD(ERHE_CIRCULAR_BRUSHED_METAL_TEX_COORD);
+        vec2  brushed_uv = ERHE_SELECT_TEXCOORD(ERHE_CIRCULAR_BRUSHED_METAL_TEXGEN_MODE);
         // length(brushed_uv) * k_circular_scale can be zero at
         // the UV origin; the normalize below would then be
         // undefined. Epsilon-guard the denominator and zero out
@@ -447,7 +480,7 @@ void main()
 #  ifdef ERHE_USE_METALLIC_ROUGHNESS_TEXTURE
     vec4 metallic_roughness = sample_texture(
         material.metallic_roughness_texture,
-        ERHE_SELECT_TEXCOORD(ERHE_METALLIC_ROUGHNESS_TEX_COORD),
+        ERHE_SELECT_TEXCOORD(ERHE_METALLIC_ROUGHNESS_TEXGEN_MODE),
         material.metallic_roughness_rotation_scale,
         material.metallic_roughness_offset
     );
@@ -470,21 +503,25 @@ void main()
 
 #  ifdef ERHE_USE_NORMAL_TEXTURE
     {
-#    if ERHE_NORMAL_TEXTURE_TWO_COMPONENT != 0
-        // Two component X+Y normal map (KTX2 normal-mode encoding); Z is
-        // reconstructed from unit length. 1 = X in RGB / Y in A (RGBA8,
-        // ASTC L+A blocks), 2 = X in R / Y in G (BC5).
-#      if ERHE_NORMAL_TEXTURE_TWO_COMPONENT == 2
+        // ERHE_NORMAL_TEXTURE_ENCODING is an ERHE_NORMALMAP_ENCODING_*
+        // value (see erhe_standard_variant.glsl). Two-channel encodings
+        // (KTX2 normal-mode) store an X+Y map and Z is reconstructed from
+        // unit length; the channel layout is part of the encoding value
+        // (RG = X in R / Y in G (BC5), GA = X in RGB / Y in A (RGBA8,
+        // ASTC L+A blocks)). Left-handed (Direct3D-authored) encodings
+        // flip Y.
+#    if ERHE_NORMALMAP_IS_TWO_CHANNEL(ERHE_NORMAL_TEXTURE_ENCODING)
+#      if ERHE_NORMALMAP_IS_XY_IN_RG(ERHE_NORMAL_TEXTURE_ENCODING)
         vec2 nxy = sample_texture(
             material.normal_texture,
-            ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEX_COORD),
+            ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEXGEN_MODE),
             material.normal_rotation_scale,
             material.normal_offset
         ).rg * 2.0 - vec2(1.0);
 #      else
         vec2 nxy = sample_texture(
             material.normal_texture,
-            ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEX_COORD),
+            ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEXGEN_MODE),
             material.normal_rotation_scale,
             material.normal_offset
         ).ga * 2.0 - vec2(1.0);
@@ -493,10 +530,13 @@ void main()
 #    else
         vec3 ntex = sample_texture(
             material.normal_texture,
-            ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEX_COORD),
+            ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEXGEN_MODE),
             material.normal_rotation_scale,
             material.normal_offset
         ).xyz * 2.0 - vec3(1.0);
+#    endif
+#    if ERHE_NORMALMAP_IS_LEFT_HANDED(ERHE_NORMAL_TEXTURE_ENCODING)
+        ntex.y  = -ntex.y;
 #    endif
         ntex.xy = ntex.xy * material.normal_texture_scale;
         ntex    = normalize(ntex);
@@ -521,7 +561,7 @@ void main()
 #  ifdef ERHE_USE_EMISSION_TEXTURE
     emissive *= sample_texture(
         material.emissive_texture,
-        ERHE_SELECT_TEXCOORD(ERHE_EMISSIVE_TEX_COORD),
+        ERHE_SELECT_TEXCOORD(ERHE_EMISSIVE_TEXGEN_MODE),
         material.emissive_rotation_scale,
         material.emissive_offset
     ).rgb;
@@ -530,7 +570,7 @@ void main()
 #  ifdef ERHE_USE_OCCLUSION_TEXTURE
     float occlusion = sample_texture(
         material.occlusion_texture,
-        ERHE_SELECT_TEXCOORD(ERHE_OCCLUSION_TEX_COORD),
+        ERHE_SELECT_TEXCOORD(ERHE_OCCLUSION_TEXGEN_MODE),
         material.occlusion_rotation_scale,
         material.occlusion_offset
     ).r;
@@ -807,16 +847,16 @@ void main()
         out_color.rgb = srgb_to_linear(vec3(0.5) + 0.5 * N);
 #  elif ERHE_SHADER_DEBUG == 3 // normal_texture
 #    ifdef ERHE_USE_NORMAL_TEXTURE
-#      if ERHE_NORMAL_TEXTURE_TWO_COMPONENT != 0
+#      if ERHE_NORMALMAP_IS_TWO_CHANNEL(ERHE_NORMAL_TEXTURE_ENCODING)
         // Reconstruct the conventional RGB visualization from the X+Y map.
-#        if ERHE_NORMAL_TEXTURE_TWO_COMPONENT == 2
-        vec2 dbg_nxy = sample_texture(material.normal_texture, ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEX_COORD)).rg * 2.0 - vec2(1.0);
+#        if ERHE_NORMALMAP_IS_XY_IN_RG(ERHE_NORMAL_TEXTURE_ENCODING)
+        vec2 dbg_nxy = sample_texture(material.normal_texture, ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEXGEN_MODE)).rg * 2.0 - vec2(1.0);
 #        else
-        vec2 dbg_nxy = sample_texture(material.normal_texture, ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEX_COORD)).ga * 2.0 - vec2(1.0);
+        vec2 dbg_nxy = sample_texture(material.normal_texture, ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEXGEN_MODE)).ga * 2.0 - vec2(1.0);
 #        endif
         out_color.rgb = srgb_to_linear(vec3(0.5) + 0.5 * vec3(dbg_nxy, sqrt(max(1.0 - dot(dbg_nxy, dbg_nxy), 0.0))));
 #      else
-        out_color.rgb = srgb_to_linear(sample_texture(material.normal_texture, ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEX_COORD)).rgb);
+        out_color.rgb = srgb_to_linear(sample_texture(material.normal_texture, ERHE_SELECT_TEXCOORD(ERHE_NORMAL_TEXGEN_MODE)).rgb);
 #      endif
 #    else
         out_color.rgb = vec3(0.5);

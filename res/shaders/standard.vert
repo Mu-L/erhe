@@ -146,6 +146,13 @@ layout(location = 11) flat out uvec2 v_valency_edge_count;
 layout(location = 23) out float v_weight;
 #endif
 
+// Untransformed node-space position for the node_* texgen modes
+// (ERHE_SELECT_TEXCOORD in standard.frag); only emitted when a material
+// texture slot or the circular-brushed-metal block sources one.
+#if defined(ERHE_USE_VERTEX_VARYING_NODE_POSITION) && !defined(ERHE_VARIANT_POSITION_PASS)
+layout(location = 24) out vec3 v_node_position;
+#endif
+
 // Solid-wireframe varyings: a per-vertex barycentric basis (reconstructed from
 // the packed corner index in a_custom_4) plus the per-triangle real-edge mask
 // and the wireframe color / width. Only emitted for the expanded fill mesh
@@ -385,6 +392,10 @@ void main()
 
 #   if defined(ERHE_USE_VERTEX_VARYING_TEXCOORD0)
     v_texcoord_0     = a_texcoord_0;
+#   endif
+
+#   if defined(ERHE_USE_VERTEX_VARYING_NODE_POSITION)
+    v_node_position  = a_position;
 #   endif
 
 #   if defined(ERHE_USE_VERTEX_VARYING_TEXCOORD2)

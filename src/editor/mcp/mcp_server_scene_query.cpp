@@ -1286,10 +1286,10 @@ auto Mcp_server::query_material_details(const json& args) -> std::string
             const auto& d = mat->data;
             auto sampler_to_json = [](const erhe::primitive::Material_texture_sampler& s) -> json {
                 json entry = {
-                    {"tex_coord", s.tex_coord},
-                    {"rotation",  s.rotation},
-                    {"offset",    {s.offset.x, s.offset.y}},
-                    {"scale",     {s.scale.x,  s.scale.y}}
+                    {"texgen_mode", s.texgen_mode},
+                    {"rotation",    s.rotation},
+                    {"offset",      {s.offset.x, s.offset.y}},
+                    {"scale",       {s.scale.x,  s.scale.y}}
                 };
                 // The slot holds a single texture_reference; report it as
                 // texture_id/name when it is a plain Texture and as

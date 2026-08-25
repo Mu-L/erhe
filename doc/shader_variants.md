@@ -67,9 +67,10 @@ mesh lacks tangents, the normal-mapping path drops out.
 |-------|----------|
 | `ERHE_USE_SKINNING` | vertex format has `joint_indices` AND `joint_weights` AND the mesh has a `Skin` attached |
 | `ERHE_USE_VERTEX_VARYING_NORMAL` | vertex format has `normal` AND the BxDF is not `unlit` |
-| `ERHE_USE_VERTEX_VARYING_TANGENT` | vertex format has `tangent` AND `normal` AND (material has a `normal` sampler OR the BxDF is anisotropic OR `material.use_circular_brushed_metal`) |
+| `ERHE_USE_VERTEX_VARYING_TANGENT` | vertex format has `tangent` AND `normal` AND (any texgen source is `tangent` OR (BxDF not `unlit` AND (material has a `normal` sampler OR the BxDF is anisotropic OR `material.use_circular_brushed_metal`))) |
 | `ERHE_USE_VERTEX_VARYING_BITANGENT` | same condition as tangent |
-| `ERHE_USE_VERTEX_VARYING_TEXCOORD0` | vertex format has `tex_coord,0` AND (any material sampler with `tex_coord==0` is present OR `material.use_circular_brushed_metal`) |
+| `ERHE_USE_VERTEX_VARYING_TEXCOORD0` | vertex format has `tex_coord,0` AND (any bound material sampler's `texgen_mode` is `uv0` OR the circular-brushed-metal block sources `uv0`); `TEXCOORD1` / `TEXCOORD2` likewise for `uv1` / `uv2` (`TEXCOORD2` is also always on when the format carries the lightmap set) |
+| `ERHE_USE_VERTEX_VARYING_NODE_POSITION` | any bound material sampler (or the circular-brushed-metal block) uses a `node_*` texgen mode; forwards the untransformed node-space position for `ERHE_SELECT_TEXCOORD` (`world_*` modes reuse `v_position`) |
 | `ERHE_USE_VERTEX_VARYING_COLOR` | vertex format has `color,0` (always pass through; gating left for later) |
 | `ERHE_USE_VERTEX_VARYING_ANISO_CONTROL` | vertex format has `custom,custom_attribute_aniso_control` AND `material.use_aniso_control` |
 
