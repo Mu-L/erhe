@@ -130,6 +130,23 @@ public:
     std::vector<std::string> contents;
 };
 
+// An image file the editor can decode (PNG / JPEG / KTX2 / DDS - see
+// is_texture_file_extension). Its own item type so the browser can offer the
+// texture verbs on it and so a drag payload can be recognized by type name.
+class Asset_file_texture : public erhe::Item<erhe::Item_base, Asset_node, Asset_file_texture>
+{
+public:
+    explicit Asset_file_texture(const Asset_file_texture& src);
+    Asset_file_texture& operator=(const Asset_file_texture& src);
+    ~Asset_file_texture() noexcept override;
+
+    explicit Asset_file_texture(const std::filesystem::path& path);
+
+    // Implements Item_base
+    static constexpr std::string_view static_type_name{"Asset_file_texture"};
+    [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return erhe::Item_type::asset_file_texture; }
+};
+
 class Asset_file_other : public erhe::Item<erhe::Item_base, Asset_node, Asset_file_other>
 {
 public:
@@ -197,6 +214,15 @@ private:
     auto try_load       (const std::shared_ptr<Asset_file_gltf>& gltf) -> bool;
 
     auto try_import(const std::shared_ptr<Asset_file_geogram>& geogram) -> bool;
+
+    // "Import to content library texture": one menu item when a single scene
+    // is open, a submenu of scenes to choose the target content library from
+    // when several are.
+    void add_import_texture_menu_items(
+        const std::shared_ptr<Asset_file_texture>& texture,
+        std::vector<std::function<void()>>&        deferred_operations,
+        bool&                                      close
+    );
 
     // Adds "Copy path to clipboard" / "Copy relative path to clipboard" context
     // menu items for any asset that has a source path (folders and all file-based

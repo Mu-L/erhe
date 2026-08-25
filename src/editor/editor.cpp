@@ -76,6 +76,7 @@
 #include "graph_editor/graph_editor_palette_window.hpp"
 #include "graph/node_properties.hpp"
 #include "graphics/icon_set.hpp"
+#include "graphics/texture_file_loader.hpp"
 #include "graphics/thumbnails.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/operations_window.hpp"
@@ -629,6 +630,13 @@ public:
             };
             m_asset_manager->tick(asset_load_tick_context);
         }
+
+        // Standalone image files (asset browser hover previews, texture
+        // imports into a content library) upload the same way: the decode ran
+        // on a worker, the texture is created and its copies recorded here,
+        // against this tick's command buffer, before any render pass begins.
+        erhe::log::set_breadcrumb("tick: texture file loads");
+        m_texture_file_loader->tick(command_buffer);
 
         m_time->prepare_update(m_frame_activity != Frame_activity::hidden, display_advance_ns);
         m_time->update_transform_animations(*m_app_message_bus.get());
@@ -1614,6 +1622,7 @@ public:
 
             m_clipboard            = std::make_unique<Clipboard     >(commands, m_app_context, app_message_bus);
             m_prefab_library       = std::make_unique<Prefab_library>(m_app_context);
+            m_texture_file_loader  = std::make_unique<Texture_file_loader>(m_app_context);
             m_animation_player     = std::make_unique<Animation_player>(m_app_context, app_message_bus);
             m_app_scenes           = std::make_unique<App_scenes    >(m_app_context);
             m_asset_manager        = std::make_unique<Asset_manager >(m_app_context, app_message_bus, *m_app_scenes.get());
@@ -3116,6 +3125,7 @@ public:
         m_app_context.selection_tool           = m_selection_tool        .get();
         m_app_context.settings_window          = m_settings_window       .get();
         m_app_context.sheet_window             = m_sheet_window          .get();
+        m_app_context.texture_file_loader      = m_texture_file_loader   .get();
         m_app_context.thumbnails               = m_thumbnails            .get();
         m_app_context.time                     = m_time                  .get();
         m_app_context.animation_player         = m_animation_player      .get();
@@ -4180,6 +4190,7 @@ public:
     std::unique_ptr<Gradient_editor                 >        m_gradient_editor;
     std::unique_ptr<Icon_browser                    >        m_icon_browser;
     std::unique_ptr<Thumbnails                      >        m_thumbnails;
+    std::unique_ptr<Texture_file_loader             >        m_texture_file_loader;
     std::unique_ptr<Sheet_window                    >        m_sheet_window;
     std::unique_ptr<Layers_window                   >        m_layers_window;
     std::unique_ptr<Network_window                  >        m_network_window;

@@ -8,8 +8,10 @@
 #include "rendertarget_mesh.hpp"
 
 #include "app_context.hpp"
+#include "asset_browser/asset_browser.hpp"
 #include "assets/asset_manager.hpp"
 #include "assets/asset_workflow.hpp"
+#include "graphics/texture_file_loader.hpp"
 #include "brushes/brush.hpp"
 #include "content_library/content_library.hpp"
 #include "geometry_graph/graph_mesh.hpp"
@@ -31,6 +33,7 @@
 #include "windows/item_tree_window.hpp"
 
 #include "erhe_file/file.hpp"
+#include "erhe_graphics/texture.hpp"
 #include "erhe_imgui/imgui_windows.hpp"
 #include "erhe_physics/iworld.hpp"
 #include "erhe_physics/irigid_body.hpp"
@@ -414,7 +417,58 @@ auto Scene_root::make_browser_window(
     m_node_tree_window->set_item_callback(
         [this, &context](const std::shared_ptr<erhe::Item_base>& item) -> bool {
             if (!ImGui::IsDragDropActive()) {
+                // Texture preview on hover, the same preview the asset browser
+                // shows for the source file. The texture is already resident,
+                // so nothing is loaded here.
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+                    const auto hovered_content_node = std::dynamic_pointer_cast<Content_library_node>(item);
+                    if (hovered_content_node) {
+                        const auto hovered_texture = std::dynamic_pointer_cast<erhe::graphics::Texture>(hovered_content_node->item);
+                        if (hovered_texture) {
+                            ImGui::BeginTooltip();
+                            ImGui::TextUnformatted(hovered_texture->get_name().c_str());
+                            draw_texture_preview(context, hovered_texture, 256.0f);
+                            ImGui::EndTooltip();
+                        }
+                    }
+                }
                 return false;
+            }
+            // Texture file drop from the asset browser: dropping an image file
+            // onto this scene's Textures folder (or a texture in it) imports it
+            // into this content library, the same verb the asset browser's
+            // context menu offers.
+            {
+                const auto content_node = std::dynamic_pointer_cast<Content_library_node>(item);
+                const auto& textures_folder = get_content_library()->textures;
+                const bool is_textures_folder = content_node && (content_node == textures_folder);
+                const bool is_texture_item    = content_node && !is_textures_folder &&
+                    content_node->item &&
+                    std::dynamic_pointer_cast<erhe::graphics::Texture>(content_node->item) &&
+                    (content_node->get_parent().lock() == textures_folder);
+                if (is_textures_folder || is_texture_item) {
+                    const ImGuiPayload* payload_peek = ImGui::GetDragDropPayload();
+                    if ((payload_peek != nullptr) && payload_peek->IsDataType(Asset_file_texture::static_type_name.data())) {
+                        if (ImGui::BeginDragDropTarget()) {
+                            const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(Asset_file_texture::static_type_name.data());
+                            if (payload != nullptr) {
+                                erhe::Item_base* payload_item_base = *(static_cast<erhe::Item_base**>(payload->Data));
+                                const std::filesystem::path* source_path = (payload_item_base != nullptr)
+                                    ? payload_item_base->get_source_path()
+                                    : nullptr;
+                                if (source_path != nullptr) {
+                                    import_texture_into_scene(
+                                        context,
+                                        std::dynamic_pointer_cast<Scene_root>(shared_from_this()),
+                                        *source_path
+                                    );
+                                }
+                            }
+                            ImGui::EndDragDropTarget();
+                            return true;
+                        }
+                    }
+                }
             }
             // Material cross-library drop (migrated from the removed Content Library
             // window, #241 follow-up): dropping a material from another scene's

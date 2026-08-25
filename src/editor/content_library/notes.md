@@ -19,6 +19,19 @@ Provides a hierarchical container for reusable editor assets: materials, brushes
 
 - **`Content_library_window`** (`content_library_window.hpp`) -- Owns an `Item_tree_window` displaying a `Content_library`. Wires up the "Create Material" context menu and cross-library material drag-drop. Constructed by callers (editor.cpp, asset_browser.cpp, operations_window.cpp) alongside a `Scene_root`; not owned by `Scene_root` itself.
 
+## Importing texture files
+
+Image files the editor can decode (`.png` / `.jpg` / `.jpeg` / `.ktx2` / `.dds`, see `is_texture_file_extension`) appear in the Asset Browser as `Asset_file_texture` items, and enter a scene's library through `import_texture_into_scene` (`assets/asset_workflow.hpp`) two ways:
+
+- the browser's **"Import to content library texture"** context menu item - a plain item when one scene is open, a submenu of scene names when several are;
+- **dropping** the file onto the target scene's Textures folder (or a texture in it) in the Scene Hierarchy window's nested Content Library.
+
+Both queue an undoable `Content_library_attach_operation<erhe::graphics::Texture>` once the texture is resident. Every import creates a FRESH texture: an owning library entry claims its item's `Item_host`, so two libraries must never list the same object - importing the same file into two scenes gives each its own GPU texture.
+
+Decoding and uploading go through `Texture_file_loader` (`graphics/texture_file_loader.hpp`): the decode runs on the executor, and `Editor::tick` creates the texture and records its upload against the frame's command buffer. The same loader keeps a bounded LRU cache of previews for the Asset Browser's file tooltip; the Content Library's texture tooltip needs no cache, its texture is already resident. Both draw through `draw_texture_preview`.
+
+A standalone image file carries no usage information, so it is decoded as **sRGB**. A normal / ORM map imported this way is decoded as color data.
+
 ## Public API / Integration Points
 
 - `Content_library_node::add<T>()` -- add an asset

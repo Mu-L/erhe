@@ -307,6 +307,8 @@ erhe_target_sources_grouped(
     graphics/gradients.hpp
     graphics/icon_set.cpp
     graphics/icon_set.hpp
+    graphics/texture_file_loader.cpp
+    graphics/texture_file_loader.hpp
     graphics/thumbnails.cpp
     graphics/thumbnails.hpp
     grid/grid.cpp

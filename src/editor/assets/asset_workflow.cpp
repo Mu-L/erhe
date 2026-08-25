@@ -5,6 +5,7 @@
 #include "brushes/brush.hpp"
 #include "content_library/content_library.hpp"
 #include "editor_log.hpp"
+#include "graphics/texture_file_loader.hpp"
 #include "operations/content_library_attach_operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "parsers/gltf.hpp"
@@ -12,6 +13,7 @@
 
 #include "erhe_file/file.hpp"
 #include "erhe_gltf/gltf.hpp"
+#include "erhe_graphics/texture.hpp"
 #include "erhe_verify/verify.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/mesh.hpp"
@@ -289,6 +291,60 @@ auto reference_material_into_scene(
         material->get_name(), stored_key.describe(), scene_root.get_name()
     );
     return material;
+}
+
+void import_texture_into_scene(
+    App_context&                       context,
+    const std::shared_ptr<Scene_root>& scene_root,
+    const std::filesystem::path&       path
+)
+{
+    if (!scene_root || (context.texture_file_loader == nullptr) || (context.operation_stack == nullptr)) {
+        return;
+    }
+    const std::shared_ptr<Content_library> library = scene_root->get_content_library();
+    if (!library || !library->textures) {
+        log_asset->warn("import texture: scene '{}' has no texture library", scene_root->get_name());
+        return;
+    }
+    // The load outlives this call; the scene may be closed before it lands.
+    const std::weak_ptr<Scene_root> weak_scene_root = scene_root;
+    App_context* const              context_ptr     = &context;
+    const std::string               path_string     = path.generic_string();
+    context.texture_file_loader->load_async(
+        path,
+        [context_ptr, weak_scene_root, path_string](const std::shared_ptr<erhe::graphics::Texture>& texture) {
+            if (!texture) {
+                log_asset->warn("import texture: '{}' could not be loaded", path_string);
+                return;
+            }
+            const std::shared_ptr<Scene_root> target = weak_scene_root.lock();
+            if (!target) {
+                return; // scene closed while the image was loading
+            }
+            const std::shared_ptr<Content_library> target_library = target->get_content_library();
+            if (!target_library || !target_library->textures) {
+                return;
+            }
+            context_ptr->operation_stack->queue(
+                std::make_shared<Content_library_attach_operation<erhe::graphics::Texture>>(
+                    target_library,
+                    target_library->textures,
+                    texture,
+                    Gltf_source_reference{
+                        .gltf_path  = path_string,
+                        .item_name  = texture->get_name(),
+                        .item_index = -1, // a standalone file, not an index into a glTF
+                        .item_type  = "texture",
+                    }
+                )
+            );
+            log_asset->info(
+                "import texture: '{}' listed in scene '{}'",
+                path_string, target->get_name()
+            );
+        }
+    );
 }
 
 }

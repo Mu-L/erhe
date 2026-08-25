@@ -119,6 +119,7 @@ class Settings_window;
 class Sheet_window;
 class Sky_renderer;
 class Texture_graph_window;
+class Texture_file_loader;
 class Thumbnails;
 class Time;
 class Tools;
@@ -287,6 +288,7 @@ public:
     Sky_renderer*                      sky_renderer         {nullptr};
     Sheet_window*                      sheet_window         {nullptr};
     Texture_graph_window*              texture_graph_window {nullptr};
+    Texture_file_loader*               texture_file_loader  {nullptr};
     Thumbnails*                        thumbnails           {nullptr};
     Time*                              time                 {nullptr};
     Tools*                             tools                {nullptr};

@@ -214,7 +214,8 @@ public:
     static constexpr uint64_t index_graph_mesh             = 43;
     static constexpr uint64_t index_geometry_graph_mesh    = 44;
     static constexpr uint64_t index_prefab_instance        = 45;
-    static constexpr uint64_t count                        = 46;
+    static constexpr uint64_t index_asset_file_texture     = 46;
+    static constexpr uint64_t count                        = 47;
 
     static constexpr uint64_t none                   =  uint64_t{0};
     static constexpr uint64_t animation              = (uint64_t{1} << index_animation             );
@@ -262,6 +263,7 @@ public:
     static constexpr uint64_t graph_mesh             = (uint64_t{1} << index_graph_mesh            );
     static constexpr uint64_t geometry_graph_mesh    = (uint64_t{1} << index_geometry_graph_mesh   );
     static constexpr uint64_t prefab_instance        = (uint64_t{1} << index_prefab_instance       );
+    static constexpr uint64_t asset_file_texture     = (uint64_t{1} << index_asset_file_texture    );
 
     // NOTE: The names here must match the C++ class names
     static constexpr const char* c_bit_labels[] = {
@@ -310,7 +312,8 @@ public:
         "Graph_texture",
         "Graph_mesh",
         "Geometry_graph_mesh",
-        "Prefab_instance"
+        "Prefab_instance",
+        "Asset_file_texture"
     };
 };
 

@@ -9,6 +9,7 @@
 #include "assets/asset_workflow.hpp"
 #include "content_library/content_library.hpp"
 #include "editor_log.hpp"
+#include "graphics/texture_file_loader.hpp"
 #include "operations/operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/scene_open_operation.hpp"
@@ -63,6 +64,11 @@ Asset_file_geogram& Asset_file_geogram::operator=(const Asset_file_geogram&) = d
 Asset_file_geogram::~Asset_file_geogram() noexcept                        = default;
 Asset_file_geogram::Asset_file_geogram(const std::filesystem::path& path) : Item{path} {}
 
+Asset_file_texture::Asset_file_texture(const Asset_file_texture&)            = default;
+Asset_file_texture& Asset_file_texture::operator=(const Asset_file_texture&) = default;
+Asset_file_texture::~Asset_file_texture() noexcept                           = default;
+Asset_file_texture::Asset_file_texture(const std::filesystem::path& path) : Item{path} {}
+
 Asset_file_other::Asset_file_other(const Asset_file_other&)            = default;
 Asset_file_other& Asset_file_other::operator=(const Asset_file_other&) = default;
 Asset_file_other::~Asset_file_other() noexcept                         = default;
@@ -90,6 +96,8 @@ auto Asset_browser::make_node(const std::filesystem::path& path, Asset_node* con
         new_node = std::make_shared<Asset_file_gltf>(path);
     } else if (is_geogram) {
         new_node = std::make_shared<Asset_file_geogram>(path);
+    } else if (is_texture_file_extension(path)) {
+        new_node = std::make_shared<Asset_file_texture>(path);
     } else {
         new_node = std::make_shared<Asset_file_other>(path);
     }
@@ -198,6 +206,10 @@ Asset_browser::Asset_browser(
                 }
                 add_reference_material_menu_items(*gltf, deferred_operations, close);
                 }
+            }
+            const std::shared_ptr<Asset_file_texture> texture = std::dynamic_pointer_cast<Asset_file_texture>(item);
+            if (texture) {
+                add_import_texture_menu_items(texture, deferred_operations, close);
             }
             // Copy-path items for every asset that has a source path: folders and
             // all file-based assets (gltf/glb, geogram, other).
@@ -448,6 +460,52 @@ auto Asset_browser::try_load(const std::shared_ptr<Asset_file_gltf>& gltf) -> bo
     return false;
 }
 
+void Asset_browser::add_import_texture_menu_items(
+    const std::shared_ptr<Asset_file_texture>& texture,
+    std::vector<std::function<void()>>&        deferred_operations,
+    bool&                                      close
+)
+{
+    const std::filesystem::path* source_path = texture->get_source_path();
+    if ((source_path == nullptr) || (m_context.app_scenes == nullptr)) {
+        return;
+    }
+    const std::vector<std::shared_ptr<Scene_root>>& scene_roots = m_context.app_scenes->get_scene_roots();
+    App_context* const          context = &m_context;
+    const std::filesystem::path path    = *source_path;
+    const auto queue_import = [context, &deferred_operations, &close, path](const std::shared_ptr<Scene_root>& scene_root) {
+        deferred_operations.push_back(
+            [context, scene_root, path]() {
+                import_texture_into_scene(*context, scene_root, path);
+            }
+        );
+        close = true;
+    };
+
+    if (scene_roots.empty()) {
+        // Shown disabled rather than hidden, so the verb is discoverable
+        // before a scene is open.
+        ImGui::MenuItem("Import to content library texture", nullptr, false, false);
+        return;
+    }
+    // One scene: a plain item targeting it. Several: a submenu to pick which
+    // scene's content library receives the texture.
+    if (scene_roots.size() == 1) {
+        if (ImGui::MenuItem("Import to content library texture")) {
+            queue_import(scene_roots.front());
+        }
+        return;
+    }
+    if (ImGui::BeginMenu("Import to content library texture")) {
+        for (const std::shared_ptr<Scene_root>& scene_root : scene_roots) {
+            if (scene_root && ImGui::MenuItem(scene_root->get_name().c_str())) {
+                queue_import(scene_root);
+            }
+        }
+        ImGui::EndMenu();
+    }
+}
+
 void Asset_browser::add_copy_path_menu_items(const std::shared_ptr<erhe::Item_base>& item, bool& close)
 {
     const std::filesystem::path* source_path = item->get_source_path();
@@ -536,6 +594,31 @@ void Asset_browser::add_reference_material_menu_items(
 
 auto Asset_browser::item_callback(const std::shared_ptr<erhe::Item_base>& item) -> bool
 {
+    const std::shared_ptr<Asset_file_texture> texture_file = std::dynamic_pointer_cast<Asset_file_texture>(item);
+    if (texture_file) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) && (m_context.texture_file_loader != nullptr)) {
+            const std::filesystem::path* source_path = texture_file->get_source_path();
+            if (source_path != nullptr) {
+                // Only what the user actually hovers is decoded, and the
+                // decode runs on a worker: the first hovered frame shows the
+                // placeholder and the image appears a frame or two later.
+                // The result is cached, so re-hovering is free.
+                const Texture_file_loader::Preview preview = m_context.texture_file_loader->get_preview(*source_path);
+                ImGui::BeginTooltip();
+                ImGui::TextUnformatted(texture_file->get_name().c_str());
+                if (preview.texture) {
+                    draw_texture_preview(m_context, preview.texture, 256.0f);
+                } else if (preview.pending) {
+                    ImGui::TextUnformatted("Loading...");
+                } else {
+                    ImGui::TextUnformatted(preview.error.empty() ? "Preview not available" : preview.error.c_str());
+                }
+                ImGui::EndTooltip();
+            }
+        }
+        return false;
+    }
+
     const std::shared_ptr<Asset_file_gltf> gltf = std::dynamic_pointer_cast<Asset_file_gltf>(item);
     if (!gltf) {
         return false;

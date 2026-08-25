@@ -99,4 +99,18 @@ auto reference_material_into_scene(
     std::string&     out_error
 ) -> std::shared_ptr<erhe::primitive::Material>;
 
+// IMPORT TEXTURE: load an image file (PNG / JPEG / KTX2 / DDS) into a fresh
+// GPU texture and list it in the scene's content library Textures folder as
+// an owning definition entry. The decode and the upload are asynchronous
+// (Texture_file_loader); the undoable Content_library_attach_operation is
+// queued once the texture is resident, so nothing appears in the library for
+// a frame or two - and nothing at all if the file cannot be decoded (a
+// warning names it). Shared by the asset browser's context menu and the
+// Content Library drag-and-drop target.
+void import_texture_into_scene(
+    App_context&                       context,
+    const std::shared_ptr<Scene_root>& scene_root,
+    const std::filesystem::path&       path
+);
+
 }
