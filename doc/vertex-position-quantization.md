@@ -1206,6 +1206,53 @@ therefore costs nothing anywhere the editor currently runs; the UBO branch is
 reachable only on the OpenGL backend without compute shaders. Anyone wanting to
 exercise that line must force that backend, not reach for a mobile device.
 
+### The desktop verification sweep the plan owed
+
+Phase 6 was measured on the 7-mesh default scene only. The rest of what the plan
+asked for was run after phase 7, with the flag on by default and DDGI off, by
+driving the in-editor MCP server through a fixed sequence (default scene ->
+skinned rigs -> Sponza -> four debug views), capturing each view only once two
+consecutive frames were identical over the viewport region, and diffing against
+the same sequence run with the flag off.
+
+**The harness was controlled first**: two float3 runs are pixel-identical in
+every view. So every difference below is the encoding and nothing else. (Settle
+on the VIEWPORT CROP, not the whole image - the ImGui status bar prints a
+per-frame millisecond count, so a full-image comparison never repeats.)
+
+| view | pixels differing | max channel delta |
+| --- | --- | --- |
+| default scene | 201 / 1546800 (0.013 %) | 6 |
+| `vertex_valency` debug | 0 | 0 |
+| `polygon_edge_count` debug | 0 | 0 |
+| Sponza interior | 16.9 % | 32 (mean 0.095) |
+| frog pond (skinned rigs) | 77.9 % | 132 |
+
+The default-scene figure reproduces phase 6's exactly. The two precision
+sensitive debug views are bit-identical, which is the strongest single result
+here: valency and edge count are computed per vertex and would break loudly on a
+mis-decoded position.
+
+Sponza is the large-AABB case, and 16.9 % of pixels differing at a mean of 0.095
+is antialiasing edges moving by a fraction of a pixel across a scene that is
+almost entirely silhouette - no Z-fighting, no shadow acne, no cracks at the
+arch seams.
+
+**The frog pond's 77.9 % is Z-fighting, and it is not a quantization defect**
+(confirmed by the user on inspection). The pond bottom and the water plane are
+modelled coincident; any sub-millimetre shift decides the depth test differently
+over a large area, and a quantization step on that AABB is well under a
+millimetre. Coincident geometry is exactly the case the Risks section flags:
+quantization does not create the ambiguity, it re-rolls it.
+
+Memory, measured on the same scenes: stream-0 pool 3974664 -> 2634800 B with
+Sponza loaded (-33.7 %) and 1381512 -> 921008 B for the two rigs (-33.3 %), i.e.
+the predicted 33 % of stream 0, at scene scale.
+
+**Still not done**, and now the only outstanding verification: a lightmap bake
+with the flag on, and the edge-line / gizmo / out-of-AABB vertex drag trio
+(the drag needs real mouse interaction, which the MCP path does not reach).
+
 ## Provenance
 
 This plan was verified against the tree over six rounds of independent review;
