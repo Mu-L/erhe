@@ -1,7 +1,8 @@
 # Vertex position quantization
 
-Status: phases 1-6 implemented; quantization now survives ray tracing (see
-Implementation notes at the end -- the phase 5 fallback decision is SUPERSEDED)
+Status: all phases (1-7) implemented and verified; quantization survives ray
+tracing, and is confirmed working on Quest 3 (see Implementation notes at the
+end -- the phase 5 fallback decision is SUPERSEDED)
 Date: 2026-08-26
 Revision: 8 (verified over six independent review rounds; see Provenance)
 
@@ -1165,6 +1166,45 @@ implemented. The shape it should take, so nobody re-derives it:
   variant.
 * Both BLAS builders assume the position sits at offset 0 of stream 0; a copy
   would make that assumption false for the copy's range too. Fix that first.
+
+### Phase 7 (Quest / OpenXR)
+
+Run on a Quest 3 over two launches, with `quantize_vertex_positions` on.
+
+**The device query, which is what phase 7 existed to answer:**
+
+    VK_FORMAT_R16G16B16_SNORM as a vertex buffer format: supported,
+                              as acceleration structure build input: supported
+    VK_FORMAT_R16G16B16A16_SNORM as acceleration structure build input: supported
+    Vertex position storage: snorm16x3 quantized into the primitive AABB
+
+So Quest supports the 3-component format outright, in both roles - it does not
+need the in-place snorm16x4 read the desktop AMD 890M does. The gate engages,
+and ray query is enabled at the same time (`Ray query (GPU ray tracing):
+enabled, position fetch: not available`), so the quantized geometry feeds real
+BLAS builds AND the fallback instance-record fetch path, which is the one that
+decodes snorm16 lanes in the shader. User-verified visually on both runs:
+correct rendering, 73/72 fps.
+
+**Vulkan validation: 0 errors** over a ~4 minute run with the layer enabled and
+the SPIR-V cache wiped by a clean reinstall. Every remaining message is a
+BestPractices/lint warning of a family that predates this feature:
+`ImageBarrierAccessLayout` (20 - the known ID-render barrier access-mask bug),
+`vkBindImageMemory-small-dedicated-allocation` (18),
+`vkCreateFramebuffer-attachment-should-be-transient` (14),
+`ShaderOutputNotConsumed` (10), `deprecated-extension` (10),
+`TransitionUndefinedToReadOnly` (6), `Error-Result` (2). Nothing about the
+8/16-byte stream 0, nothing about the acceleration-structure transform buffer,
+and nothing about a snorm16x4 read over a snorm16x3 buffer. Phase 5's suspected
+2-byte over-read stayed retired.
+
+**The Primitive UBO budget line is unreachable on Quest**, contrary to what
+phase 1 assumed. `vulkan_device_init.cpp` sets `use_shader_storage_buffers =
+true` unconditionally, so every Vulkan device - Quest included - takes the SSBO
+path, and Metal sets it true as well. The record growing 192 -> 224 bytes
+therefore costs nothing anywhere the editor currently runs; the UBO branch is
+reachable only on the OpenGL backend without compute shaders. Anyone wanting to
+exercise that line must force that backend, not reach for a mobile device.
 
 ## Provenance
 
