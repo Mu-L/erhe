@@ -24,6 +24,8 @@ namespace {
     switch (format) {
         case erhe::dataformat::Format::format_32_vec3_float: return MTL::AttributeFormatFloat3;
         case erhe::dataformat::Format::format_16_vec3_snorm: return MTL::AttributeFormatShort3Normalized;
+        // Read in place over a padded stream-0 stride; the build uses xyz only.
+        case erhe::dataformat::Format::format_16_vec4_snorm: return MTL::AttributeFormatShort4Normalized;
         default: {
             // Not fatal; see the Vulkan mapping.
             return MTL::AttributeFormatFloat3;

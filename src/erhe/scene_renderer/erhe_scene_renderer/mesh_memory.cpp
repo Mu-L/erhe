@@ -16,6 +16,7 @@
 #include "erhe_verify/verify.hpp"
 
 #include <algorithm>
+#include <cstddef>
 
 namespace erhe::scene_renderer {
 
@@ -23,6 +24,13 @@ using Format                 = erhe::dataformat::Format;
 using Vertex_attribute_usage = erhe::dataformat::Vertex_attribute_usage;
 
 namespace {
+
+// Smallest stride a quantized stream 0 can have: a snorm16x3 position (6 bytes)
+// padded up to the 4-byte-multiple stride the constructor's packing enforces, with
+// nothing else in the stream. The skinned stream is 16. Used to answer, before any
+// vertex format exists, whether a backend's minimum acceleration structure vertex
+// stride can be met at all.
+constexpr std::size_t min_quantized_stream_0_stride = 8;
 
 // Storage format of the stream-0 position for every content vertex format, and
 // therefore the encoding the whole session runs on (doc 6.1: one encoding per
@@ -54,7 +62,20 @@ namespace {
     //
     // use_ray_query is the session's ray tracing capability, and it is what gates
     // every BLAS build, so when it is false no quantized mesh can ever reach one.
-    if (device_info.use_ray_query && !device_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer) {
+    // Either acceleration structure format will do: the 3-component one directly, or
+    // the mandatory 4-component one read in place over the padded stride (see
+    // get_blas_position_input). Only a device offering neither has to fall back.
+    //
+    // The stride minimum is the second half of the same question: Metal's triangle
+    // geometry descriptor documents a 12 byte minimum vertex stride, and the
+    // smallest quantized stream-0 stride is 8 (unskinned - see the packing below),
+    // so such a device cannot build from a quantized stream at all. Declining here
+    // keeps that from turning into meshes silently missing from the TLAS.
+    const bool acceleration_structure_ok =
+        (device_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer ||
+         device_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer) &&
+        (device_info.min_acceleration_structure_vertex_stride <= min_quantized_stream_0_stride);
+    if (device_info.use_ray_query && !acceleration_structure_ok) {
         return erhe::dataformat::Format::format_32_vec3_float;
     }
     return erhe::dataformat::Format::format_16_vec3_snorm;
@@ -84,11 +105,37 @@ auto get_blas_position_input(
         return result;
     }
 
-    // Quantized. Vulkan does not guarantee the 3-component 16-bit snorm format
-    // as acceleration structure build input, and a 4-component one cannot be
-    // read over a 6-byte stride, so a device without it simply cannot ray trace
-    // quantized geometry.
-    result.supported = graphics_device.get_info().use_16_vec3_snorm_acceleration_structure_vertex_buffer;
+    // Quantized. Vulkan does not guarantee the 3-component 16-bit snorm format as
+    // acceleration structure build input - the desktop AMD 890M rejects it - but it
+    // DOES mandate the 4-component one. Stream 0 is padded to a stride of 8 (or 16
+    // skinned), which is a whole number of int16 lanes, so the very same buffer can
+    // be read as snorm16x4 in place: an acceleration structure build takes xyz from
+    // the position format and ignores any further component. No second copy of the
+    // positions is needed, and the build transform below dequantizes either way.
+    //
+    // Reading it as snorm16x4 needs the whole 8 byte read to stay inside the vertex,
+    // which is why the position has to sit at offset 0 (both BLAS builders assume
+    // that anyway, see the doc) and the stride has to be at least 8. The stride
+    // minimum below is the backend's own (Vulkan 1, Metal 12).
+    const erhe::graphics::Device_info& device_info = graphics_device.get_info();
+    const erhe::dataformat::Vertex_stream* const stream = position.stream;
+    const std::size_t stride = (stream != nullptr) ? stream->stride : 0;
+    const bool stride_ok =
+        (stream != nullptr) &&
+        (stride >= device_info.min_acceleration_structure_vertex_stride);
+    const bool vec4_in_place_fits =
+        stride_ok &&
+        (position.attribute->offset == 0) &&
+        (stride >= 8) &&
+        ((stride % 2) == 0);
+    if (device_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer && stride_ok) {
+        result.supported = true;
+    } else if (device_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer && vec4_in_place_fits) {
+        result.vertex_format = erhe::dataformat::Format::format_16_vec4_snorm;
+        result.supported     = true;
+    } else {
+        result.supported = false;
+    }
 
     // The same affine the primitive record and the instance records carry, as a
     // build transform: translate(center) * scale(half_extent).
@@ -286,10 +333,15 @@ Mesh_memory::Mesh_memory(
         const erhe::graphics::Device_info& device_info = graphics_device.get_info();
         log_startup->warn(
             "Vertex position quantization requested but declined: the device reports "
-            "format_16_vec3_snorm as vertex buffer input = {}, as acceleration structure build input = {} "
-            "(ray query {}). Positions stay unquantized (float3).",
+            "format_16_vec3_snorm as vertex buffer input = {}, as acceleration structure build input = {}, "
+            "format_16_vec4_snorm as acceleration structure build input = {}, minimum acceleration "
+            "structure vertex stride = {} (quantized stream 0 is {}) (ray query {}). "
+            "Positions stay unquantized (float3).",
             device_info.use_16_vec3_snorm_vertex_buffer,
             device_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer,
+            device_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer,
+            device_info.min_acceleration_structure_vertex_stride,
+            min_quantized_stream_0_stride,
             device_info.use_ray_query ? "enabled" : "not available"
         );
     } else {

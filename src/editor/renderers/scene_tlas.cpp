@@ -277,6 +277,11 @@ auto Scene_tlas::update(
             // same affine as a build transform, so the structure stores dequantized
             // object-space positions - the fallback fetch reads the raw pool and has
             // to apply it itself to land in the same space.
+            // Deliberately the STORAGE encoding, not the format the acceleration
+            // structure build reads. Those two legitimately differ: a device without
+            // the 3-component snorm AS format reads the same bytes as snorm16x4
+            // (get_blas_position_input), while this record drives the fallback
+            // position fetch, which reads three int16 lanes at position_stride_bytes.
             const erhe::dataformat::Vertex_position_encoding position_encoding =
                 erhe::dataformat::get_vertex_position_encoding(&m_mesh_memory.get_vertex_input(buffer_mesh->vertex_input_key).vertex_format);
             const erhe::scene_renderer::Position_quantization quantization =

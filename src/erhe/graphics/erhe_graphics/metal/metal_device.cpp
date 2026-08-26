@@ -198,6 +198,19 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         );
     }
     m_info.use_ray_query                            = m_mtl_device->supportsRaytracing() && !gpu_capture_layer;
+
+    // Acceleration structure vertex stride rules, from
+    // MTLAccelerationStructureTriangleGeometryDescriptor::vertexStride: the stride
+    // must be a multiple of the vertex format size, and at least 12 bytes. A
+    // quantized stream 0 is padded to 8 (unskinned) or 16 (skinned) bytes, so
+    // MTL::AttributeFormatShort3Normalized (6 bytes) never divides it, while
+    // Short4Normalized (8 bytes) divides both. The 12 byte minimum still rules the
+    // unskinned stride out, which is why the minimum is published rather than
+    // silently violated - Mesh_memory declines quantization when this device also
+    // ray traces. See doc/vertex-position-quantization.md.
+    m_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer = false;
+    m_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer = true;
+    m_info.min_acceleration_structure_vertex_stride = 12;
     m_info.ray_query_disabled_by_capture_layer      = m_mtl_device->supportsRaytracing() && gpu_capture_layer;
     m_info.use_multi_draw_indirect_core             = false;
     m_info.uniform_buffer_offset_alignment          = 256;

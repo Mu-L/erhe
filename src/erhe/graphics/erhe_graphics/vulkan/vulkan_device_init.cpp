@@ -1997,6 +1997,8 @@ Device_impl::Device_impl(
     // to be queried. Vertex position quantization stores a_position in it; a
     // device without it must keep positions unquantized. Pipeline creation would
     // otherwise be the first thing to notice, and only as undefined behaviour.
+    // The block queries both it and its 4-component sibling, which is the format an
+    // acceleration structure build falls back to reading the same bytes as.
     {
         VkFormatProperties format_properties{};
         vkGetPhysicalDeviceFormatProperties(m_vulkan_physical_device, VK_FORMAT_R16G16B16_SNORM, &format_properties);
@@ -2011,6 +2013,21 @@ Device_impl::Device_impl(
             "VK_FORMAT_R16G16B16_SNORM as a vertex buffer format: {}, as acceleration structure build input: {}",
             m_info.use_16_vec3_snorm_vertex_buffer ? "supported" : "NOT supported",
             m_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer ? "supported" : "NOT supported"
+        );
+
+        // The 4-component sibling IS in Vulkan's mandatory acceleration structure
+        // vertex format table. A quantized stream 0 is padded to an 8 (or 16) byte
+        // stride, so it can be read as snorm16x4 in place - the AS uses only xyz and
+        // ignores w - which lets a quantized mesh feed a BLAS with no separate copy
+        // on a device that rejects the 3-component format.
+        VkFormatProperties vec4_format_properties{};
+        vkGetPhysicalDeviceFormatProperties(m_vulkan_physical_device, VK_FORMAT_R16G16B16A16_SNORM, &vec4_format_properties);
+        m_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer =
+            (vec4_format_properties.bufferFeatures & VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR) ==
+            VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR;
+        log_startup->info(
+            "VK_FORMAT_R16G16B16A16_SNORM as acceleration structure build input: {}",
+            m_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer ? "supported" : "NOT supported"
         );
     }
     m_info.use_clear_texture           = true;

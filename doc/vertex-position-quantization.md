@@ -1,6 +1,7 @@
 # Vertex position quantization
 
-Status: phases 1-6 implemented (see Implementation notes at the end)
+Status: phases 1-6 implemented; quantization now survives ray tracing (see
+Implementation notes at the end -- the phase 5 fallback decision is SUPERSEDED)
 Date: 2026-08-26
 Revision: 8 (verified over six independent review rounds; see Provenance)
 
@@ -937,7 +938,8 @@ the instance records carry.
 **without** `VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR`. A
 quantized mesh therefore cannot feed a BLAS on the primary dev machine.
 
-Decision (user, at the end of phase 5): **fall back to unquantized positions**
+Decision (user, at the end of phase 5) - **SUPERSEDED, see "Revised policy"
+below**: fall back to unquantized positions
 when the device cannot ray trace the format - option (a) of section 7, resolved
 at the vertex format rather than per BLAS. Phase 6 implements the gate in
 `Mesh_memory`: `quantize_vertex_positions` only takes effect when the device can
@@ -1064,6 +1066,105 @@ older file.
 * Phase 5's "known, not fixed" 2-byte over-read is **retired** by the 4-byte
   stride rule: with stride 8 or 16 the word containing byte `offset + 4` is
   inside the same vertex.
+
+### Revised policy: quantize everywhere that can, fall back only where it cannot
+
+**This supersedes the phase 5 decision above.** That decision - "fall back to
+unquantized positions on a device that cannot ray trace the format" - turned the
+whole session off because of one consumer. The policy is now:
+
+> Every path that can use quantized positions does. A path that genuinely
+> cannot gets a fallback of its own, and only that path pays for it - which in
+> the general case means a primitive may carry more than one copy of its
+> positions.
+
+Applying that turned out to remove the need for a copy entirely, at least on
+every Vulkan device.
+
+**The one consumer that cannot take `format_16_vec3_snorm` is the acceleration
+structure build**, and only on devices that do not advertise it (the desktop AMD
+890M is one; the 3-component format is not in Vulkan's mandatory table). Every
+other consumer was already handled by phases 1-6: the vertex shaders decode, the
+instance-record fallback fetch decodes, the position-fetch path reads decoded
+positions out of the structure, the CPU BVH backends have always used a separate
+float3 `Cpu_buffer`, and the mesh-component edit write-back encodes.
+
+**`format_16_vec4_snorm` IS in the mandatory table**, and section 7 dismissed it
+only because "a 4-component format cannot be read over a 6-byte stride". That
+premise expired in phase 6: the stream-0 stride is padded to 8 (unskinned) or 16
+(skinned), both whole numbers of int16 lanes. So the BLAS reads the *same*
+quantized buffer in place as snorm16x4 - the build takes xyz from the position
+format and ignores any further component - with the same dequantization build
+transform as before. No second copy, no extra memory, no separate pool.
+
+`Device_info` therefore carries two acceleration-structure queries, and
+`get_blas_position_input` prefers the 3-component format where it exists and
+falls back to reading the same bytes as 4-component where it does not. The
+session gate declines quantization only when ray tracing is available and
+*neither* format is.
+
+Measured on the AMD 890M, which needs the 4-component path:
+
+    VK_FORMAT_R16G16B16_SNORM  ... acceleration structure build input: NOT supported
+    VK_FORMAT_R16G16B16A16_SNORM ... acceleration structure build input: supported
+
+    quantized + ray tracing:  7 BLAS built, 0 errors
+    stream-0 pool             48696 -> 32464 bytes, unchanged by ray tracing
+    vs float3 + ray tracing:  201 of 1469460 viewport pixels differ, max 6/255
+
+That 201-pixel figure is exactly the raster-only figure, i.e. ray tracing adds no
+error of its own. Note it can only be measured with DDGI OFF: DDGI accumulates
+temporally and is not deterministic between runs - two *identical* float3 runs
+differ in 17.9 % of pixels with DDGI on, and in 0 pixels with it off. Any future
+comparison of a rendering change must disable DDGI or it measures nothing.
+
+#### Metal
+
+Metal is the one backend where the in-place read is not merely an alternative but
+the only legal option, and where it is still not enough. Two documented rules on
+`MTLAccelerationStructureTriangleGeometryDescriptor::vertexStride`:
+
+* the stride must be a multiple of the vertex format size -
+  `MTL::AttributeFormatShort3Normalized` is 6 bytes and neither 8 nor 16 is a
+  multiple of it, while `Short4Normalized` is 8 and divides both. So the Metal
+  device init clears `use_16_vec3_snorm_acceleration_structure_vertex_buffer`;
+  without that the 3-component branch would win and the mapping added here would
+  be dead code on Metal.
+* the stride must be at least 12 bytes. The unskinned quantized stream-0 stride
+  is 8, which no choice of format fixes.
+
+`Device_info::min_acceleration_structure_vertex_stride` publishes the second rule
+(Vulkan 1, Metal 12), and `choose_position_format` declines quantization when ray
+tracing is available and that minimum exceeds the smallest quantized stream-0
+stride. On Metal, therefore, quantization and ray tracing remain mutually
+exclusive for now, loudly, rather than producing meshes missing from the TLAS.
+Lifting it means raising the stream-0 stride to 12 or 16 on Metal (which gives
+back part of the saving) - not attempted; **untested on hardware**, there is no
+Metal device in this setup.
+
+#### If a device ever supports neither format
+
+Then, and only then, the copy the policy describes becomes necessary: a second,
+unquantized position range used solely as BLAS build input. It is NOT
+implemented. The shape it should take, so nobody re-derives it:
+
+* An optional `Buffer_mesh::raytrace_position_buffer_range` + allocation, exactly
+  like the existing optional `edge_line_joint_buffer_range` - a side buffer
+  populated only when needed.
+* Its own `Buffer_pool` (float3, stride 12), so it stays out of the stream-0
+  lockstep group entirely. BLAS indices are relative to the range start, which
+  the build already handles via `vertex_byte_offset`, so the copy only has to
+  hold the same vertices in the same order.
+* Written by the two encoders alongside the quantized stream, where the
+  unencoded positions are already in hand.
+* **Watch the arithmetic before implementing it.** A mesh carrying both pays
+  8 + 12 = 20 bytes per vertex where float3 alone costs 12 - a *regression* for
+  any mesh that is ray traced. It is only a win if the copy is confined to
+  meshes actually in the TLAS, which argues for allocating it lazily per BLAS
+  cache entry rather than at mesh build time. Do not implement the always-on
+  variant.
+* Both BLAS builders assume the position sits at offset 0 of stream 0; a copy
+  would make that assumption false for the copy's range too. Fix that first.
 
 ## Provenance
 

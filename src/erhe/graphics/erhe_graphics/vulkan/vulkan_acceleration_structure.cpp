@@ -34,6 +34,8 @@ namespace {
     switch (format) {
         case erhe::dataformat::Format::format_32_vec3_float: return VK_FORMAT_R32G32B32_SFLOAT;
         case erhe::dataformat::Format::format_16_vec3_snorm: return VK_FORMAT_R16G16B16_SNORM;
+        // Read in place over a padded stream-0 stride; the build uses xyz only.
+        case erhe::dataformat::Format::format_16_vec4_snorm: return VK_FORMAT_R16G16B16A16_SNORM;
         default: {
             // Not fatal: the previous code hard-coded R32G32B32_SFLOAT and would
             // have read the leading 3 floats of, say, a float4 position. Keep that

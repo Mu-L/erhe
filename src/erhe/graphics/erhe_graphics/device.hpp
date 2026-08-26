@@ -259,11 +259,28 @@ public:
 
     // Same format, but as acceleration structure build input. Vulkan's mandatory
     // AS vertex format set includes VK_FORMAT_R16G16_SNORM and
-    // VK_FORMAT_R16G16B16A16_SNORM but not the 3-component one, and a
-    // 4-component format cannot be read over a 6-byte stride - so quantized
-    // positions can only feed a BLAS where this is true. Queried on Vulkan;
-    // Metal accepts MTL::AttributeFormatShort3Normalized unconditionally.
+    // VK_FORMAT_R16G16B16A16_SNORM but not the 3-component one, so the Vulkan
+    // backend queries it per physical device. A device without it can still ray
+    // trace quantized geometry through the 4-component format below.
+    // Metal clears it: MTL::AttributeFormatShort3Normalized is 6 bytes and Metal
+    // requires the vertex stride to be a multiple of the vertex format size,
+    // which a padded stream-0 stride of 8 or 16 is not.
     bool use_16_vec3_snorm_acceleration_structure_vertex_buffer{true};
+
+    // VK_FORMAT_R16G16B16A16_SNORM as acceleration structure build input. This one
+    // IS in Vulkan's mandatory table. A quantized stream 0 is padded to an 8 or 16
+    // byte stride, so the same buffer can be read as snorm16x4 in place (the build
+    // uses xyz and ignores w) - which is how a quantized mesh reaches a BLAS on a
+    // device that rejects the 3-component format, with no separate copy.
+    bool use_16_vec4_snorm_acceleration_structure_vertex_buffer{true};
+
+    // Smallest vertex stride an acceleration structure build accepts. Vulkan only
+    // requires a multiple of the smallest component of the vertex format (2 bytes
+    // here), so 1 is the right default; Metal's triangle geometry descriptor
+    // documents a minimum of 12 bytes, which an unskinned quantized stream 0
+    // (stride 8) does not reach. Mesh_memory declines quantization outright when
+    // ray tracing is available and this exceeds the quantized stream-0 stride.
+    std::size_t min_acceleration_structure_vertex_stride{1};
 
     // Backend minimums applied when a Vertex_stream is packed (see
     // erhe::dataformat::Vertex_stream_packing). 1 means no constraint, which is
