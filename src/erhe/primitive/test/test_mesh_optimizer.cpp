@@ -1,0 +1,348 @@
+#include "erhe_primitive/mesh_optimizer.hpp"
+#include "erhe_primitive/triangle_soup.hpp"
+#include "erhe_dataformat/vertex_format.hpp"
+
+#include <gtest/gtest.h>
+
+#include <cstring>
+#include <vector>
+
+// Contract tests for optimize_triangle_soup(). The passes themselves are
+// meshoptimizer's; what has to hold here is that the two remaps it hands back
+// really describe the transformation, because Element_mappings for the
+// optimized variant are composed through them - a wrong remap silently
+// mispaints vertices and mispicks facets rather than failing.
+
+namespace {
+
+using erhe::dataformat::Format;
+using erhe::dataformat::Vertex_attribute_usage;
+using erhe::dataformat::Vertex_format;
+using erhe::dataformat::Vertex_stream;
+using erhe::primitive::Mesh_optimize_options;
+using erhe::primitive::Mesh_optimize_result;
+using erhe::primitive::Triangle_soup;
+
+class Test_vertex
+{
+public:
+    float position[3]{0.0f, 0.0f, 0.0f};
+    float texcoord[2]{0.0f, 0.0f};
+};
+
+[[nodiscard]] auto make_vertex_format() -> Vertex_format
+{
+    return Vertex_format{
+        Vertex_stream{
+            0,
+            {
+                {Format::format_32_vec3_float, Vertex_attribute_usage::position },
+                {Format::format_32_vec2_float, Vertex_attribute_usage::tex_coord}
+            }
+        }
+    };
+}
+
+[[nodiscard]] auto make_soup(const std::vector<Test_vertex>& vertices, const std::vector<uint32_t>& indices) -> Triangle_soup
+{
+    Triangle_soup soup{};
+    soup.vertex_format = make_vertex_format();
+    soup.index_data    = indices;
+    const std::size_t stride = soup.vertex_format.streams.front().stride;
+    // The weld compares every byte of the vertex including padding, so the
+    // buffer has to start zeroed - see the note in the plan's risk list.
+    soup.vertex_data.assign(vertices.size() * stride, uint8_t{0});
+    for (std::size_t i = 0; i < vertices.size(); ++i) {
+        std::memcpy(soup.vertex_data.data() + i * stride + 0,  &vertices[i].position[0], sizeof(float) * 3);
+        std::memcpy(soup.vertex_data.data() + i * stride + 12, &vertices[i].texcoord[0], sizeof(float) * 2);
+    }
+    return soup;
+}
+
+// A grid of quads, each split into two triangles, with every triangle emitting
+// its own three vertices. Neighbouring triangles therefore carry bitwise-equal
+// duplicates that the weld must merge, and the triangle order is deliberately
+// cache-hostile (column major) so the reordering passes have work to do.
+[[nodiscard]] auto make_unwelded_grid(const int size) -> Triangle_soup
+{
+    std::vector<Test_vertex> vertices;
+    std::vector<uint32_t>    indices;
+    for (int x = 0; x < size; ++x) {
+        for (int y = 0; y < size; ++y) {
+            const float fx = static_cast<float>(x);
+            const float fy = static_cast<float>(y);
+            const Test_vertex corners[4] = {
+                {{fx,        fy,        0.0f}, {fx,        fy       }},
+                {{fx + 1.0f, fy,        0.0f}, {fx + 1.0f, fy       }},
+                {{fx + 1.0f, fy + 1.0f, 0.0f}, {fx + 1.0f, fy + 1.0f}},
+                {{fx,        fy + 1.0f, 0.0f}, {fx,        fy + 1.0f}}
+            };
+            const int triples[2][3] = {{0, 1, 2}, {0, 2, 3}};
+            for (const int (&triple)[3] : triples) {
+                for (const int corner : triple) {
+                    indices.push_back(static_cast<uint32_t>(vertices.size()));
+                    vertices.push_back(corners[corner]);
+                }
+            }
+        }
+    }
+    return make_soup(vertices, indices);
+}
+
+[[nodiscard]] auto vertex_bytes(const Triangle_soup& soup, const std::size_t vertex) -> std::vector<uint8_t>
+{
+    const std::size_t stride = soup.vertex_format.streams.front().stride;
+    const uint8_t* const base = soup.vertex_data.data() + vertex * stride;
+    return std::vector<uint8_t>{base, base + stride};
+}
+
+} // anonymous namespace
+
+TEST(Mesh_optimizer, welds_duplicate_vertices)
+{
+    const Triangle_soup soup = make_unwelded_grid(8);
+    ASSERT_EQ(soup.get_vertex_count(), 8u * 8u * 6u); // one vertex per corner, nothing shared
+
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+
+    // A size x size grid of welded quads has (size+1)^2 distinct corners.
+    EXPECT_EQ(result.triangle_soup->get_vertex_count(), 9u * 9u);
+    EXPECT_EQ(result.statistics.vertex_count_before, soup.get_vertex_count());
+    EXPECT_EQ(result.statistics.vertex_count_after, result.triangle_soup->get_vertex_count());
+    // Triangles are only reordered, never added or dropped.
+    EXPECT_EQ(result.triangle_soup->index_data.size(), soup.index_data.size());
+}
+
+TEST(Mesh_optimizer, the_forward_vertex_remap_lands_on_equal_vertex_data)
+{
+    const Triangle_soup soup = make_unwelded_grid(8);
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+    ASSERT_EQ(result.vertex_remap.size(), soup.get_vertex_count());
+
+    for (std::size_t vertex = 0; vertex < soup.get_vertex_count(); ++vertex) {
+        const uint32_t mapped = result.vertex_remap[vertex];
+        ASSERT_NE(mapped, Mesh_optimize_result::no_vertex) << "vertex " << vertex << " is referenced, so it must map";
+        ASSERT_LT(mapped, result.triangle_soup->get_vertex_count());
+        EXPECT_EQ(vertex_bytes(soup, vertex), vertex_bytes(*result.triangle_soup, mapped))
+            << "source vertex " << vertex << " -> output " << mapped;
+    }
+}
+
+TEST(Mesh_optimizer, the_triangle_permutation_identifies_the_source_triangle)
+{
+    const Triangle_soup soup = make_unwelded_grid(8);
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+
+    const std::size_t triangle_count = soup.index_data.size() / 3;
+    ASSERT_EQ(result.triangle_permutation.size(), triangle_count);
+
+    // Every source triangle is named exactly once: the permutation is a
+    // bijection, which is what lets triangle_to_mesh_facet compose through it.
+    std::vector<int> seen(triangle_count, 0);
+    for (const uint32_t source_triangle : result.triangle_permutation) {
+        ASSERT_LT(source_triangle, triangle_count);
+        ++seen[source_triangle];
+    }
+    for (std::size_t triangle = 0; triangle < triangle_count; ++triangle) {
+        EXPECT_EQ(seen[triangle], 1) << "source triangle " << triangle;
+    }
+
+    // And it names the RIGHT one: each output triangle's three vertices must
+    // carry the same data, in the same winding order, as the source triangle it
+    // claims to come from.
+    for (std::size_t triangle = 0; triangle < triangle_count; ++triangle) {
+        const std::size_t source_triangle = result.triangle_permutation[triangle];
+        for (std::size_t corner = 0; corner < 3; ++corner) {
+            const uint32_t output_vertex = result.triangle_soup->index_data[triangle * 3 + corner];
+            const uint32_t source_vertex = soup.index_data[source_triangle * 3 + corner];
+            EXPECT_EQ(vertex_bytes(*result.triangle_soup, output_vertex), vertex_bytes(soup, source_vertex))
+                << "output triangle " << triangle << " corner " << corner;
+        }
+    }
+}
+
+TEST(Mesh_optimizer, the_remaps_agree_with_each_other)
+{
+    // The two tables have to describe ONE transformation: mapping a source
+    // triangle's corner through the vertex remap must give the very index the
+    // optimized soup uses for that corner. This is the composition
+    // Element_mappings relies on.
+    const Triangle_soup soup = make_unwelded_grid(8);
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+
+    for (std::size_t triangle = 0; triangle < result.triangle_permutation.size(); ++triangle) {
+        const std::size_t source_triangle = result.triangle_permutation[triangle];
+        for (std::size_t corner = 0; corner < 3; ++corner) {
+            const uint32_t source_vertex = soup.index_data[source_triangle * 3 + corner];
+            EXPECT_EQ(result.vertex_remap[source_vertex], result.triangle_soup->index_data[triangle * 3 + corner])
+                << "output triangle " << triangle << " corner " << corner;
+        }
+    }
+}
+
+TEST(Mesh_optimizer, reports_before_and_after_statistics)
+{
+    const Triangle_soup soup = make_unwelded_grid(16);
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+
+    // Unwelded, column-major input is close to the worst case for both metrics,
+    // so both must improve rather than merely change.
+    EXPECT_LT(result.statistics.acmr_after, result.statistics.acmr_before);
+    EXPECT_LT(result.statistics.fetch_bytes_after, result.statistics.fetch_bytes_before);
+    EXPECT_GT(result.statistics.overdraw_before, 0.0f);
+    EXPECT_GT(result.statistics.overdraw_after, 0.0f);
+    EXPECT_EQ(result.statistics.triangle_count, soup.index_data.size() / 3);
+}
+
+TEST(Mesh_optimizer, disabled_passes_are_a_faithful_copy)
+{
+    const Triangle_soup soup = make_unwelded_grid(4);
+    Mesh_optimize_options options{};
+    options.weld         = false;
+    options.vertex_cache = false;
+    options.overdraw     = false;
+    options.vertex_fetch = false;
+
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, options);
+    ASSERT_NE(result.triangle_soup, nullptr);
+    EXPECT_EQ(result.triangle_soup->index_data, soup.index_data);
+    EXPECT_EQ(result.triangle_soup->vertex_data, soup.vertex_data);
+    for (std::size_t vertex = 0; vertex < soup.get_vertex_count(); ++vertex) {
+        EXPECT_EQ(result.vertex_remap[vertex], static_cast<uint32_t>(vertex));
+    }
+    for (std::size_t triangle = 0; triangle < result.triangle_permutation.size(); ++triangle) {
+        EXPECT_EQ(result.triangle_permutation[triangle], static_cast<uint32_t>(triangle));
+    }
+}
+
+TEST(Mesh_optimizer, unreferenced_vertices_map_to_no_vertex)
+{
+    // The welding pass drops vertices no triangle references, so they have no
+    // output slot. Mesh_optimize_result documents no_vertex for them; anything
+    // composing Element_mappings through the remap has to carry the sentinel
+    // rather than index with it, so pin that it really is produced.
+    Triangle_soup soup = make_unwelded_grid(4);
+    const std::size_t referenced_count = soup.get_vertex_count();
+    const std::size_t stride = soup.vertex_format.streams.front().stride;
+    // Append two vertices that nothing indexes, distinct from every existing one
+    // so welding cannot merge them into a referenced slot.
+    soup.vertex_data.resize((referenced_count + 2) * stride, uint8_t{0});
+    const float far_away[3] = {1000.0f, 2000.0f, 3000.0f};
+    std::memcpy(soup.vertex_data.data() + (referenced_count + 0) * stride, &far_away[0], sizeof(far_away));
+    const float further[3] = {4000.0f, 5000.0f, 6000.0f};
+    std::memcpy(soup.vertex_data.data() + (referenced_count + 1) * stride, &further[0], sizeof(further));
+    ASSERT_EQ(soup.get_vertex_count(), referenced_count + 2);
+
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+    ASSERT_EQ(result.vertex_remap.size(), referenced_count + 2);
+
+    EXPECT_EQ(result.vertex_remap[referenced_count + 0], Mesh_optimize_result::no_vertex);
+    EXPECT_EQ(result.vertex_remap[referenced_count + 1], Mesh_optimize_result::no_vertex);
+    // The unreferenced pair must not have made it into the output either.
+    EXPECT_EQ(result.triangle_soup->get_vertex_count(), 5u * 5u);
+    for (std::size_t vertex = 0; vertex < referenced_count; ++vertex) {
+        EXPECT_NE(result.vertex_remap[vertex], Mesh_optimize_result::no_vertex) << "vertex " << vertex;
+    }
+}
+
+TEST(Mesh_optimizer, the_remaps_agree_for_every_pass_combination)
+{
+    // The composition has four shapes depending on which of weld / vertex_fetch
+    // ran. In particular weld off + fetch on is the only configuration where
+    // the fetch remap itself can hold no_vertex.
+    const Triangle_soup soup = make_unwelded_grid(4);
+    for (int mask = 0; mask < 16; ++mask) {
+        Mesh_optimize_options options{};
+        options.weld         = ((mask & 1) != 0);
+        options.vertex_cache = ((mask & 2) != 0);
+        options.overdraw     = ((mask & 4) != 0);
+        options.vertex_fetch = ((mask & 8) != 0);
+
+        const Mesh_optimize_result result = optimize_triangle_soup(soup, options);
+        ASSERT_NE(result.triangle_soup, nullptr) << "mask " << mask;
+        ASSERT_EQ(result.triangle_permutation.size(), soup.index_data.size() / 3) << "mask " << mask;
+        ASSERT_EQ(result.vertex_remap.size(), soup.get_vertex_count()) << "mask " << mask;
+
+        for (std::size_t triangle = 0; triangle < result.triangle_permutation.size(); ++triangle) {
+            const std::size_t source_triangle = result.triangle_permutation[triangle];
+            for (std::size_t corner = 0; corner < 3; ++corner) {
+                const uint32_t source_vertex = soup.index_data[source_triangle * 3 + corner];
+                ASSERT_NE(result.vertex_remap[source_vertex], Mesh_optimize_result::no_vertex) << "mask " << mask;
+                EXPECT_EQ(result.vertex_remap[source_vertex], result.triangle_soup->index_data[triangle * 3 + corner])
+                    << "mask " << mask << " triangle " << triangle << " corner " << corner;
+            }
+        }
+    }
+}
+
+TEST(Mesh_optimizer, duplicate_triangles_still_yield_a_bijection)
+{
+    // Two bitwise-identical triangles collide in the triple table the
+    // permutation is recovered against. Either candidate renders the same, but
+    // the permutation must still name each source triangle exactly once.
+    const std::vector<Test_vertex> vertices{
+        {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+        {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, // duplicate of vertex 0
+        {{1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}}, // duplicate of vertex 1
+        {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}}, // duplicate of vertex 2
+        {{2.0f, 2.0f, 0.0f}, {2.0f, 2.0f}}
+    };
+    // Triangles 0 and 1 become identical after welding; triangle 2 is distinct.
+    const std::vector<uint32_t> indices{0, 1, 2, 3, 4, 5, 0, 1, 6};
+    const Triangle_soup soup = make_soup(vertices, indices);
+
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+    ASSERT_EQ(result.triangle_permutation.size(), 3u);
+
+    std::vector<int> seen(3, 0);
+    for (const uint32_t source_triangle : result.triangle_permutation) {
+        ASSERT_LT(source_triangle, 3u);
+        ++seen[source_triangle];
+    }
+    for (std::size_t triangle = 0; triangle < 3; ++triangle) {
+        EXPECT_EQ(seen[triangle], 1) << "source triangle " << triangle;
+    }
+}
+
+TEST(Mesh_optimizer, refuses_input_it_cannot_describe)
+{
+    // Each of these must return a null soup rather than optimize something the
+    // remaps would not describe, or hand meshoptimizer out-of-range indices.
+    {
+        Triangle_soup soup = make_unwelded_grid(2);
+        soup.index_data.pop_back(); // not a whole number of triangles
+        EXPECT_EQ(optimize_triangle_soup(soup, Mesh_optimize_options{}).triangle_soup, nullptr);
+    }
+    {
+        Triangle_soup soup = make_unwelded_grid(2);
+        soup.index_data[0] = static_cast<uint32_t>(soup.get_vertex_count()); // out of range
+        EXPECT_EQ(optimize_triangle_soup(soup, Mesh_optimize_options{}).triangle_soup, nullptr);
+    }
+    {
+        Triangle_soup soup = make_unwelded_grid(2);
+        soup.index_data.clear();
+        EXPECT_EQ(optimize_triangle_soup(soup, Mesh_optimize_options{}).triangle_soup, nullptr);
+    }
+    {
+        Triangle_soup soup = make_unwelded_grid(2);
+        soup.primitive_type = erhe::primitive::Primitive_type::lines;
+        EXPECT_EQ(optimize_triangle_soup(soup, Mesh_optimize_options{}).triangle_soup, nullptr);
+    }
+    {
+        // Multi-stream: get_vertex_count() and mesh_from_triangle_soup() both
+        // assume a single stream bound at 0, so anything else must be refused
+        // rather than measured against the wrong stride.
+        Triangle_soup soup = make_unwelded_grid(2);
+        soup.vertex_format.streams.emplace_back(1);
+        EXPECT_EQ(optimize_triangle_soup(soup, Mesh_optimize_options{}).triangle_soup, nullptr);
+    }
+}

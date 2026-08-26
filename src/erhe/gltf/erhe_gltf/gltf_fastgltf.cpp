@@ -366,6 +366,23 @@ auto to_erhe_attribute(const fastgltf::Accessor& accessor) -> erhe::dataformat::
     }
 }
 
+// erhe::primitive::Primitive_type, which is what a Triangle_soup records - a
+// different enum from the erhe::graphics one above, and the one consumers use to
+// decide whether the index buffer is a triangle list.
+[[nodiscard]] auto to_erhe_primitive_type(const fastgltf::PrimitiveType value) -> erhe::primitive::Primitive_type
+{
+    switch (value) {
+        case fastgltf::PrimitiveType::Points:        return erhe::primitive::Primitive_type::points;
+        case fastgltf::PrimitiveType::Lines:         return erhe::primitive::Primitive_type::lines;
+        case fastgltf::PrimitiveType::LineLoop:      return erhe::primitive::Primitive_type::line_loop;
+        case fastgltf::PrimitiveType::LineStrip:     return erhe::primitive::Primitive_type::line_strip;
+        case fastgltf::PrimitiveType::Triangles:     return erhe::primitive::Primitive_type::triangles;
+        case fastgltf::PrimitiveType::TriangleStrip: return erhe::primitive::Primitive_type::triangle_strip;
+        case fastgltf::PrimitiveType::TriangleFan:   return erhe::primitive::Primitive_type::triangle_fan;
+        default:                                     return erhe::primitive::Primitive_type::none;
+    }
+}
+
 [[nodiscard]] auto to_erhe(const fastgltf::AnimationPath value) -> erhe::scene::Animation_path
 {
     switch (value) {
@@ -2007,6 +2024,11 @@ private:
 
         primitive_entry.triangle_soup = std::make_shared<erhe::primitive::Triangle_soup>();
         erhe::primitive::Triangle_soup& triangle_soup = *primitive_entry.triangle_soup.get();
+        // Record what the indices actually describe. The class default is
+        // `triangles`, so leaving this unset told every consumer that a strip,
+        // fan, line or point primitive was a triangle list - and a consumer that
+        // reorders triangles (the mesh optimizer) would silently scramble it.
+        triangle_soup.primitive_type = to_erhe_primitive_type(primitive.type);
 
         // Copy indices
         const fastgltf::Accessor& indices_accessor = m_asset->accessors[primitive.indicesAccessor.value()];

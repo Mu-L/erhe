@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 namespace erhe::primitive {
@@ -11,7 +12,9 @@ class Triangle_soup;
 
 // Which meshoptimizer passes to run. Pass order is fixed by the implementation
 // (weld, vertex cache, overdraw, vertex fetch); these only select which of them
-// are applied.
+// are applied. Turning every pass off still produces a faithful copy of the
+// source soup rather than nothing, so do not do that expecting to disable the
+// feature - leave optimization off in config instead.
 class Mesh_optimize_options
 {
 public:
@@ -46,6 +49,11 @@ public:
 class Mesh_optimize_result
 {
 public:
+    // A source vertex no triangle references. Welding drops it, so it has no
+    // output slot; anything composing through vertex_remap must carry the
+    // sentinel through rather than index with it.
+    static constexpr uint32_t no_vertex = 0xffffffffu;
+
     // Optimized copy of the source soup. Null when optimization did not run.
     std::shared_ptr<Triangle_soup> triangle_soup;
 
@@ -66,5 +74,7 @@ public:
     const Triangle_soup&         source,
     const Mesh_optimize_options& options
 ) -> Mesh_optimize_result;
+
+void log_mesh_optimize_statistics(std::string_view name, const Mesh_optimize_statistics& statistics);
 
 } // namespace erhe::primitive

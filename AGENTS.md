@@ -137,9 +137,19 @@ Required packages: `libwayland-dev libxkbcommon-dev xorg-dev` (Ubuntu) or equiva
 
 Several `erhe::*` libraries have gtest suites under `src/erhe/<name>/test/`
 (circular_ring_buffer, codegen, dataformat, geometry, graphics, item, math,
-raytrace), plus `mcp_server_tests` for the editor's MCP server. Each builds an
-`erhe_<name>_tests` executable, gated behind `-DERHE_BUILD_TESTS=ON`
+primitive, raytrace), plus `mcp_server_tests` for the editor's MCP server. Each
+builds an `erhe_<name>_tests` executable, gated behind `-DERHE_BUILD_TESTS=ON`
 (default OFF).
+
+- A test `main()` that exercises code which logs must bootstrap logging the way
+  `src/erhe/graph/test/main.cpp` does: `erhe::log::initialize_log_sinks()`, then
+  `erhe::file::log_file` by hand, then the library's `initialize_logging()`. The
+  `log_*` globals are null `shared_ptr`s until then, so the first log call from
+  a library under test is an access violation, not a silent no-op.
+- The 25 `Mcp_test` cases each wait `ERHE_MCP_TEST_TIMEOUT_S` seconds (default
+  30) for a live editor before skipping, one process each -- about 13 minutes of
+  the suite when no editor is running. Set `ERHE_MCP_TEST_TIMEOUT_S=1` for a
+  headless run.
 
 - The macOS `configure_xcode_*.sh` scripts enable tests by default. On Windows,
   `scripts\configure_tests_asan.bat` produces a dedicated test configuration
