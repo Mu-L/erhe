@@ -22,6 +22,46 @@ namespace erhe::scene_renderer {
 using Format                 = erhe::dataformat::Format;
 using Vertex_attribute_usage = erhe::dataformat::Vertex_attribute_usage;
 
+namespace {
+
+// Storage format of the stream-0 position for every content vertex format, and
+// therefore the encoding the whole session runs on (doc 6.1: one encoding per
+// Mesh_memory, because Buffer_pools are keyed on Vertex_stream instance address
+// and a second set of formats would allocate a parallel set of pools).
+//
+// Quantization is refused on a device that cannot use the format as ray tracing
+// acceleration structure build input: a BLAS build is the one consumer with no
+// fallback, and the failure mode is geometry silently disappearing from the
+// TLAS rather than rendering wrong.
+[[nodiscard]] auto choose_position_format(
+    const Mesh_memory_config&     mesh_memory_config,
+    const erhe::graphics::Device& graphics_device
+) -> erhe::dataformat::Format
+{
+    if (!mesh_memory_config.quantize_vertex_positions) {
+        return erhe::dataformat::Format::format_32_vec3_float;
+    }
+    const erhe::graphics::Device_info& device_info = graphics_device.get_info();
+    if (!device_info.use_16_vec3_snorm_vertex_buffer) {
+        return erhe::dataformat::Format::format_32_vec3_float;
+    }
+    // The acceleration structure format only has to hold where acceleration
+    // structures are actually built. Requiring it unconditionally would decline
+    // quantization on every device WITHOUT ray tracing - the AS feature bit comes
+    // from VK_KHR_acceleration_structure, so a device lacking the extension
+    // reports 0 - which is the opposite of what is wanted: those are exactly the
+    // devices where the memory saving matters most.
+    //
+    // use_ray_query is the session's ray tracing capability, and it is what gates
+    // every BLAS build, so when it is false no quantized mesh can ever reach one.
+    if (device_info.use_ray_query && !device_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer) {
+        return erhe::dataformat::Format::format_32_vec3_float;
+    }
+    return erhe::dataformat::Format::format_16_vec3_snorm;
+}
+
+} // anonymous namespace
+
 auto get_blas_position_input(
     const erhe::graphics::Device&       graphics_device,
     const Mesh_memory&                  mesh_memory,
@@ -66,13 +106,14 @@ Mesh_memory::Mesh_memory(
     const Mesh_memory_config& mesh_memory_config,
     erhe::graphics::Device&   graphics_device
 )
-    : vertex_format_empty{}
+    : position_format{choose_position_format(mesh_memory_config, graphics_device)}
+    , vertex_format_empty{}
     , vertex_format_skinned{
         erhe::dataformat::Vertex_format{
             {
                 0,
                 {
-                    { Format::format_32_vec3_float, Vertex_attribute_usage::position,      0},
+                    { position_format,              Vertex_attribute_usage::position,      0},
                     { Format::format_8_vec4_uint,   Vertex_attribute_usage::joint_indices, 0},
                     { Format::format_8_vec4_unorm,  Vertex_attribute_usage::joint_weights, 0}
                 }
@@ -104,7 +145,7 @@ Mesh_memory::Mesh_memory(
             {
                 0,
                 {
-                    { Format::format_32_vec3_float, Vertex_attribute_usage::position, 0}
+                    { position_format,              Vertex_attribute_usage::position, 0}
                 }
             },
             {
@@ -134,7 +175,7 @@ Mesh_memory::Mesh_memory(
             {
                 0,
                 {
-                    { Format::format_32_vec3_float, Vertex_attribute_usage::position, 0}
+                    { position_format,              Vertex_attribute_usage::position, 0}
                 }
             },
             {
@@ -173,7 +214,7 @@ Mesh_memory::Mesh_memory(
             {
                 0,
                 {
-                    { Format::format_32_vec3_float, Vertex_attribute_usage::position,      0},
+                    { position_format,              Vertex_attribute_usage::position,      0},
                     { Format::format_8_vec4_uint,   Vertex_attribute_usage::joint_indices, 0},
                     { Format::format_8_vec4_unorm,  Vertex_attribute_usage::joint_weights, 0}
                 }
@@ -238,6 +279,28 @@ Mesh_memory::Mesh_memory(
     , m_loader_sink          {*this}
     , m_alive_token          {std::make_shared<int>(0)}
 {
+    // Say which position encoding the session runs on, and why - a silently
+    // declined quantization request would otherwise look like the feature simply
+    // not working.
+    if (mesh_memory_config.quantize_vertex_positions && (position_format != erhe::dataformat::Format::format_16_vec3_snorm)) {
+        const erhe::graphics::Device_info& device_info = graphics_device.get_info();
+        log_startup->warn(
+            "Vertex position quantization requested but declined: the device reports "
+            "format_16_vec3_snorm as vertex buffer input = {}, as acceleration structure build input = {} "
+            "(ray query {}). Positions stay unquantized (float3).",
+            device_info.use_16_vec3_snorm_vertex_buffer,
+            device_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer,
+            device_info.use_ray_query ? "enabled" : "not available"
+        );
+    } else {
+        log_startup->info(
+            "Vertex position storage: {}",
+            (position_format == erhe::dataformat::Format::format_16_vec3_snorm)
+                ? "snorm16x3 quantized into the primitive AABB"
+                : "float3"
+        );
+    }
+
     // Apply the backend packing minimums before anything reads a stride. Both
     // default to 1 (no constraint), in which case this reproduces the layout the
     // constructors above already produced, byte for byte. It has to happen here
@@ -245,9 +308,23 @@ Mesh_memory::Mesh_memory(
     // pool, and every byte_offset / stride computation depends on it, so a stride
     // changed after an allocation would silently mismatch the pool.
     const erhe::graphics::Device_info& device_info = graphics_device.get_info();
+    // Mesh_memory requires a stride that is a multiple of 4 on top of whatever the
+    // backend asks for, for two reasons of its own:
+    //
+    // - Buffer_pool aligns each allocation to its own stream stride, and the
+    //   lockstep invariant needs byte_offset / stride to advance identically across
+    //   streams with different strides. That holds when every stream pads by whole
+    //   elements, which it does - but only a 4-byte-multiple stride ALSO keeps the
+    //   range start 4-byte aligned.
+    // - The ray-tracing instance records hand the stream-0 range address to a GLSL
+    //   buffer reference declared buffer_reference_align = 4 and index it as a uint
+    //   array. A range starting at 2 mod 4 would read every position 2 bytes off.
+    //
+    // For float3 positions every stride is already a multiple of 4, so this is inert
+    // until quantization is on; with it, stream 0 becomes 8 / 16 rather than 6 / 14.
     const erhe::dataformat::Vertex_stream_packing packing{
         .min_attribute_alignment = device_info.min_vertex_attribute_alignment,
-        .min_stride_alignment    = device_info.min_vertex_stream_stride_alignment
+        .min_stride_alignment    = std::max(device_info.min_vertex_stream_stride_alignment, std::size_t{4})
     };
     erhe::dataformat::Vertex_format* const all_formats[] = {
         &vertex_format_empty,
@@ -260,6 +337,12 @@ Mesh_memory::Mesh_memory(
     };
     for (erhe::dataformat::Vertex_format* format : all_formats) {
         format->repack(packing);
+        // Buffer_pool documents that it relies on this but cannot check it: it takes
+        // any Vertex_stream, and is_compatible() is pointer identity. Check it here,
+        // where the contract is actually established.
+        for (const erhe::dataformat::Vertex_stream& stream : format->streams) {
+            ERHE_VERIFY((stream.stride % 4) == 0);
+        }
     }
 
     get_vertex_input_from_vertex_format(vertex_format_empty);

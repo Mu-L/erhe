@@ -14,6 +14,7 @@
 #include <fmt/format.h>
 #include "erhe_verify/verify.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
@@ -537,6 +538,28 @@ Build_context::Build_context(
 
     root.calculate_bounding_volume();
     root.calculate_joint_bounding_volumes(mesh_attributes);
+
+    // The AABB is known now, and every position write happens after this point
+    // (build_polygon_fill / build_expanded_polygon_fill / build_edge_lines /
+    // build_centroid_points all run later), so the encoding pack needs no extra
+    // pass over the mesh.
+    root.position_encoding = erhe::dataformat::get_vertex_position_encoding(&root.vertex_format);
+    if (root.position_encoding != erhe::dataformat::Vertex_position_encoding::passthrough) {
+        // Same affine the primitive buffer, the BLAS build and the shaders use;
+        // get_position_quantization() in erhe_scene_renderer is the C++ mirror.
+        // Encoder and decoder must agree exactly, so a degenerate axis has to
+        // encode to exactly 0 and decode back to the centre - which it does,
+        // because the epsilon is only ever multiplied by zero.
+        constexpr float epsilon = 1e-6f;
+        const erhe::math::Aabb& bounding_box = root.buffer_mesh.bounding_box;
+        if (bounding_box.is_valid()) {
+            const glm::vec3 center      = bounding_box.center();
+            const glm::vec3 half_extent = 0.5f * bounding_box.diagonal();
+            const glm::vec3 scale       = glm::max(half_extent, glm::vec3{epsilon});
+            root.position_encode_center    = GEO::vec3f{center.x, center.y, center.z};
+            root.position_encode_inv_scale = GEO::vec3f{1.0f / scale.x, 1.0f / scale.y, 1.0f / scale.z};
+        }
+    }
 }
 
 Build_context::~Build_context() noexcept
@@ -559,6 +582,30 @@ void Build_context::build_polygon_id()
     attribute_writers.id->write(root.vertex_attributes.id_vec4, id_vec4);
 }
 
+void Build_context::write_position(const Vertex_attribute_info& info, const GEO::vec3f position)
+{
+    if (root.position_encoding == erhe::dataformat::Vertex_position_encoding::passthrough) {
+        attribute_writers.position->write(info, position);
+        return;
+    }
+    // Normalize into the AABB. The clamp only matters for values outside the box,
+    // which calculate_bounding_volume() bounds away for mesh vertices - facet
+    // centroids and expanded corners are inside by construction - but write_low3()
+    // clamps silently anyway and convert() asserts, so be explicit here.
+    const GEO::vec3f biased = position - root.position_encode_center;
+    const GEO::vec3f scaled{
+        biased.x * root.position_encode_inv_scale.x,
+        biased.y * root.position_encode_inv_scale.y,
+        biased.z * root.position_encode_inv_scale.z
+    };
+    const GEO::vec3f encoded{
+        std::clamp(scaled.x, -1.0f, 1.0f),
+        std::clamp(scaled.y, -1.0f, 1.0f),
+        std::clamp(scaled.z, -1.0f, 1.0f)
+    };
+    attribute_writers.position->write(info, encoded);
+}
+
 void Build_context::build_vertex_position()
 {
     ERHE_PROFILE_FUNCTION();
@@ -566,7 +613,7 @@ void Build_context::build_vertex_position()
     v_position = get_pointf(root.mesh.vertices, mesh_vertex);
 
     ERHE_VERIFY(std::isfinite(v_position.x) && std::isfinite(v_position.y) && std::isfinite(v_position.z));
-    attribute_writers.position->write(root.vertex_attributes.position, v_position);
+    write_position(root.vertex_attributes.position, v_position);
 
     SPDLOG_LOGGER_TRACE(
         log_primitive_builder,
@@ -807,7 +854,7 @@ void Build_context::build_centroid_position()
         ? facet_centroid.value() 
         : mesh_facet_centerf(root.mesh, mesh_facet);
 
-    attribute_writers.position->write(root.vertex_attributes.position, position);
+    write_position(root.vertex_attributes.position, position);
 }
 
 void Build_context::build_centroid_normal()

@@ -956,6 +956,38 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
         buffer_info.index_buffer_sink.enqueue_index_data(index_range, std::move(sink_index_data));
     }
 
+    // Bounding volume FIRST: the sink position encoding is derived from the AABB,
+    // so it has to exist before any vertex is converted. This is a self-contained
+    // pass over the SOURCE positions, so moving it here costs nothing.
+    const erhe::dataformat::Attribute_stream position = triangle_soup.vertex_format.find_attribute(erhe::dataformat::Vertex_attribute_usage::position);
+    erhe::math::Point_vector_bounding_volume_source positions{vertex_count};
+    if (position.attribute != nullptr) {
+        for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
+            const uint8_t* src_vertex_data_base = triangle_soup.vertex_data.data();
+            const uint8_t* src = src_vertex_data_base + position.attribute->offset + vertex_index * position.stream->stride;
+            float pos[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            erhe::dataformat::convert(src, position.attribute->format, &pos[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
+            positions.add(pos[0], pos[1], pos[2]);
+        }
+    }
+    erhe::math::calculate_bounding_volume(positions, buffer_mesh.bounding_box, buffer_mesh.bounding_sphere);
+
+    // Sink encoding. Gated on the SINK format, not the source: this function is
+    // also called with a local float3-only format by Primitive_raytrace, whose
+    // Cpu_buffer feeds the CPU BVH backends and must stay unquantized.
+    const erhe::dataformat::Vertex_position_encoding sink_position_encoding =
+        erhe::dataformat::get_vertex_position_encoding(&buffer_info.vertex_format);
+    glm::vec3 position_encode_center   {0.0f, 0.0f, 0.0f};
+    glm::vec3 position_encode_inv_scale{1.0f, 1.0f, 1.0f};
+    if ((sink_position_encoding != erhe::dataformat::Vertex_position_encoding::passthrough) && (buffer_mesh.bounding_box.is_valid())) {
+        // Same affine as Build_context and get_position_quantization().
+        constexpr float epsilon = 1e-6f;
+        const glm::vec3 half_extent = 0.5f * buffer_mesh.bounding_box.diagonal();
+        const glm::vec3 scale       = glm::max(half_extent, glm::vec3{epsilon});
+        position_encode_center    = buffer_mesh.bounding_box.center();
+        position_encode_inv_scale = glm::vec3{1.0f / scale.x, 1.0f / scale.y, 1.0f / scale.z};
+    }
+
     // Copy and convert vertices to buffer
     for (size_t stream_index = 0, stream_end = buffer_info.vertex_format.streams.size(); stream_index < stream_end; ++stream_index) {
         const erhe::dataformat::Vertex_stream& sink_stream = buffer_info.vertex_format.streams[stream_index];
@@ -970,12 +1002,34 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                 static_cast<unsigned int>(sink_attribute.usage_index)
             );
             uint8_t* sink_attribute_base = sink_vertex_data_base + sink_attribute.offset;
+            // The position attribute of a quantized sink needs the AABB pack applied
+            // before conversion. Note convert()'s format_16_vec3_snorm sink case
+            // ASSERTS on out-of-range input rather than clamping (unlike write_low3(),
+            // which the Primitive_builder path uses), so an unencoded position here is
+            // a fatal abort, not a silent squash.
+            const bool encode_position =
+                (sink_position_encoding != erhe::dataformat::Vertex_position_encoding::passthrough) &&
+                (sink_attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::position) &&
+                (sink_attribute.usage_index == 0);
             if (src.attribute != nullptr) {
                 const uint8_t* src_attribute_base = src_vertex_data_base + src.attribute->offset;
                 for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
                     uint8_t* sink = sink_attribute_base + vertex_index * sink_stream.stride;
                     const uint8_t* src_data = src_attribute_base + vertex_index * source_vertex_stride;
-                    erhe::dataformat::convert(src_data, src.attribute->format, sink, sink_attribute.format, 1.0f);
+                    if (encode_position) {
+                        float source_position[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                        erhe::dataformat::convert(src_data, src.attribute->format, &source_position[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
+                        const glm::vec3 p{source_position[0], source_position[1], source_position[2]};
+                        const glm::vec3 encoded = glm::clamp(
+                            (p - position_encode_center) * position_encode_inv_scale,
+                            glm::vec3{-1.0f},
+                            glm::vec3{ 1.0f}
+                        );
+                        const float encoded_data[4] = { encoded.x, encoded.y, encoded.z, 1.0f };
+                        erhe::dataformat::convert(&encoded_data[0], erhe::dataformat::Format::format_32_vec4_float, sink, sink_attribute.format, 1.0f);
+                    } else {
+                        erhe::dataformat::convert(src_data, src.attribute->format, sink, sink_attribute.format, 1.0f);
+                    }
                 }
             } else {
                 const float src_data[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -991,18 +1045,6 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
         );
     }
 
-    const erhe::dataformat::Attribute_stream position = triangle_soup.vertex_format.find_attribute(erhe::dataformat::Vertex_attribute_usage::position);
-    erhe::math::Point_vector_bounding_volume_source positions{vertex_count};
-    if (position.attribute != nullptr) {
-        for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
-            const uint8_t* src_vertex_data_base = triangle_soup.vertex_data.data();
-            const uint8_t* src = src_vertex_data_base + position.attribute->offset + vertex_index * position.stream->stride;
-            float pos[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-            erhe::dataformat::convert(src, position.attribute->format, &pos[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
-            positions.add(pos[0], pos[1], pos[2]);
-        }
-    }
-    erhe::math::calculate_bounding_volume(positions, buffer_mesh.bounding_box, buffer_mesh.bounding_sphere);
     return buffer_mesh;
 }
 

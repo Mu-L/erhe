@@ -2,7 +2,7 @@ from erhe_codegen import *
 
 struct("Mesh_memory_config",
     reflect=True,
-    version=1,
+    version=2,
     short_desc="Mesh Memory",
     long_desc="",
     developer=False,
@@ -40,6 +40,16 @@ struct("Mesh_memory_config",
             long_desc="Default size of a freshly grown edge-line vertex buffer block.",
             visible=True,
             developer=False
+        ),
+        field(
+            "quantize_vertex_positions",
+            Bool,
+            added_in=2,
+            default="false",
+            short_desc="Quantize Vertex Positions",
+            long_desc="Store vertex positions as snorm16x3 normalized into the primitive AABB (6 bytes instead of 12). Ignored on a device that cannot use that format as ray tracing acceleration structure build input.",
+            visible=True,
+            developer=True
         ),
         field(
             "max_buffers_per_pool",

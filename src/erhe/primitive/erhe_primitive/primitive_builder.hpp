@@ -63,6 +63,15 @@ public:
     Vertex_attributes                      vertex_attributes;
     erhe::geometry::Mesh_info              mesh_info;
     const erhe::dataformat::Vertex_format& vertex_format;
+    // Vertex position encoding of the SINK format, and the pack that goes with it:
+    // encoded = clamp((p - position_encode_center) * position_encode_inv_scale, -1, 1).
+    // Computed right after calculate_bounding_volume() - which the constructor runs
+    // before any position is written - so the AABB is already known when the first
+    // vertex arrives. Passthrough leaves the two vectors unused.
+    erhe::dataformat::Vertex_position_encoding position_encoding{erhe::dataformat::Vertex_position_encoding::passthrough};
+    GEO::vec3f                             position_encode_inv_scale{1.0f, 1.0f, 1.0f};
+    GEO::vec3f                             position_encode_center   {0.0f, 0.0f, 0.0f};
+
     std::size_t                            total_vertex_count{0};
     std::size_t                            total_index_count {0};
     bool                                   build_failed{false};
@@ -95,6 +104,10 @@ private:
     [[nodiscard]] auto get_facet_normal() -> GEO::vec3f;
 
     void build_tangent_frame();
+
+    // Single funnel for every position write: applies the sink format's encoding
+    // (a no-op for passthrough) and forwards to the position attribute writer.
+    void write_position(const Vertex_attribute_info& info, GEO::vec3f position);
 
     void build_vertex_position     ();
     void build_vertex_normal       (bool normal, bool smooth_normal);

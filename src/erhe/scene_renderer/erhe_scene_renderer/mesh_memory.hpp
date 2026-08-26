@@ -197,6 +197,15 @@ public:
     void enqueue_index_data         (const erhe::primitive::Buffer_range& buffer_range, std::vector<uint8_t>&& data) override;
     void index_writer_ready         (erhe::primitive::Index_buffer_writer&  writer)                                  override;
 
+    // Storage format of the stream-0 position in every content vertex format.
+    // format_16_vec3_snorm when Mesh_memory_config::quantize_vertex_positions is
+    // set AND the device can use that format for both vertex input and
+    // acceleration structure build input; format_32_vec3_float otherwise.
+    //
+    // Declared before the formats: member initialization order is declaration
+    // order, and they are built from it.
+    erhe::dataformat::Format        position_format;
+
     erhe::dataformat::Vertex_format vertex_format_empty;
     erhe::dataformat::Vertex_format vertex_format_skinned;
     erhe::dataformat::Vertex_format vertex_format_not_skinned;

@@ -1,6 +1,6 @@
 # Vertex position quantization
 
-Status: phases 1-5 implemented (see Implementation notes at the end)
+Status: phases 1-6 implemented (see Implementation notes at the end)
 Date: 2026-08-26
 Revision: 8 (verified over six independent review rounds; see Provenance)
 
@@ -977,6 +977,93 @@ Rebuilding mid-drag per frame was not worth it.
 past it. Inside a pool block that is harmless; it is only a real over-read if an
 allocation ends exactly at the end of the buffer. Revisit in phase 6 if a
 validation layer flags it.
+
+### Phase 6
+
+**The stream-0 strides are 8 and 16, not 6 and 14.** Mesh_memory requires a stride
+that is a multiple of 4 (`Vertex_stream_packing::min_stride_alignment`), i.e. the
+"Metal (pad to 4)" column of the 1.1 table, on every backend. Two independent
+reasons, both found by actually turning the flag on:
+
+* `Buffer_pool` aligns each allocation to its own stream stride, and the lockstep
+  invariant needs `byte_offset / stride` to advance identically across streams
+  whose strides differ. Aligning stream 0 to `lcm(14, 4) = 28` instead - the
+  obvious way to get a 4-byte aligned range start - pads a 14-byte stream by two
+  elements and a 68-byte stream by one, and the two diverge. A skinned glTF
+  import then fails with "vertex stream allocations out of lockstep". A
+  4-byte-multiple stride keeps alignment == stride, which is what the invariant
+  needs, and gets the aligned range start for free.
+* The ray-tracing instance records hand the stream-0 range address to a GLSL
+  buffer reference declared `buffer_reference_align = 4`. A range starting at
+  2 mod 4 would read every position 2 bytes off.
+
+So the saving is 33 % of stream 0 unskinned (12 -> 8) and 20 % skinned (20 -> 16),
+not the 50 % / 30 % the Expected win table quotes for the unpadded layout. Update
+that table's numbers when reading it; the unpadded layout is only reachable if
+both constraints above are solved, and neither is a backend limitation.
+
+**Measured** on the default scene (7 meshes), by forcing the encoding on past the
+device gate: stream-0 pool 48696 -> 32464 bytes (-33.3 %), total mesh memory
+573984 -> 555208 bytes. The rendered viewport differs in 201 of 1 469 460 pixels
+(0.014 %), maximum channel delta 6/255, mean 1.04 - antialiasing edges moving by
+a fraction of a pixel, which is exactly what a sub-quantization-step geometry
+shift looks like. A skinned glTF import (the unpublished-geometry path, 4.2)
+completes with no errors.
+
+**The gate is real on this hardware.** With `quantize_vertex_positions` set in
+`config/editor/mesh_memory.json`, the desktop AMD 890M declines and logs:
+
+    Vertex position quantization requested but declined: the device reports
+    format_16_vec3_snorm as vertex buffer input = true, as acceleration structure
+    build input = false. Positions stay unquantized (float3).
+
+That warning goes to `erhe.scene_renderer.startup`, not
+`erhe.scene_renderer.mesh_memory` - the latter has no entry in
+`config/editor/logging.json` and is filtered out of `logs/log.txt`, so the
+warning would have been invisible exactly when it matters.
+
+Note the config field is `added_in=2`, so the JSON file needs `"_version": 2`
+before the flag is read at all; the codegen loader ignores newer fields in an
+older file.
+
+#### Phase 6: known limits and follow-ups
+
+* **The BLAS assumes the position is at offset 0 of stream 0.** Both builders
+  pass `vertex_byte_offset = vertex_range.byte_offset` with no attribute offset
+  added. That is true for every content format today. It is also the reason
+  stream 0 was NOT reordered to put the two 1-byte joint attributes before the
+  position - which would have put the position at a 4-byte aligned offset 8 and
+  made 1.1's attribute-alignment question moot. Anyone reordering stream 0 must
+  add the position attribute's offset at both BLAS build sites first.
+* **The attribute-alignment half of the 1.1 hook is still inert.**
+  `Device_info::min_vertex_attribute_alignment` is read in `Mesh_memory` and
+  assigned by no backend, so it stays 1. With quantization on, the skinned
+  stream 0 puts `joint_indices` at offset 6 and `joint_weights` at offset 10 -
+  neither 4-byte aligned. GL and Vulkan core do not care. **Metal and MoltenVK's
+  portability subset may**, and no Metal run with the flag forced on has been
+  done. Set `min_vertex_attribute_alignment = 4` on Metal, or reorder stream 0
+  per the point above, before calling this cross-backend.
+* **Far-from-origin precision.** The measured 201-pixel figure was taken on a
+  scene near the origin. For a primitive centred ~500 m out, `ulp(500 m)` is
+  about the size of the quantization step itself, so the effective worst-case
+  error is roughly twice the nominal half-step. Encoder and decoder pay it
+  symmetrically, so they never disagree - but this is the regime where the
+  Z-fighting risk bites, and it is why the Bistro / Sponza pass is still owed.
+* **The affine is written out in four places** (`primitive_builder.cpp`,
+  `primitive.cpp`, `primitive_buffer.cpp`, `mesh_component_transform.cpp`) with
+  the same epsilon, because `erhe_primitive` cannot see `erhe_scene_renderer`.
+  They agree today only by inspection. Moving `Position_quantization` /
+  `get_position_quantization` down into `erhe_math` next to `Aabb` - the same
+  move phase 2 made for `Vertex_position_encoding` - would make divergence
+  impossible. Worth doing before anyone touches the encoding.
+* **16-bit indices would reintroduce the alignment problem.** The instance
+  records hand `index_address` to the same `buffer_reference_align = 4` buffer
+  reference. Every `Buffer_info::index_type` in the tree is
+  `format_32_scalar_uint`, so index ranges are 4-aligned; a 16-bit index path
+  would need the same stride rule stream 0 got.
+* Phase 5's "known, not fixed" 2-byte over-read is **retired** by the 4-byte
+  stride rule: with stride 8 or 16 the word containing byte `offset + 4` is
+  inside the same vertex.
 
 ## Provenance
 
