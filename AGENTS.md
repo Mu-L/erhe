@@ -10,15 +10,11 @@ This file provides guidance to AI coding agents working with this repository.
 
 When an untracked `prompt_queue.txt` exists in the repo root, it is a handoff written by an older AI coding session so that work can continue with fresh context: read it first and continue the work it describes. It may hold a queue of sequential handoffs (do the first item, and only write the next when the current one is done and verified). Once an item has been read and its work is done, remove that item; when the file holds nothing outstanding, delete it - do not keep a stale file around. The file holds outstanding work only: it is never a record of work already done. Notes about the work done must already be in the commit messages for that work, and any durable statement of how the code now behaves belongs in the subsystem's `notes.md` or under `doc/` - so no information is lost by deleting an item. (Writing a new `prompt_queue.txt` is only warranted when handing off still-unfinished work to a future session.)
 
-## `src/rendering_test/` is rotten
+## `rendering_test` has been deleted
 
-`src/rendering_test/` (the standalone `rendering_test` executable, its own duplicated shaders under `res/rendering_test/shaders/`, and its `cell_*.cpp` files) is in a known-bad state and slated for re-implementation. Do not invest effort in keeping it consistent when refactoring shared code (e.g. `erhe::scene_renderer`). Acceptable failure modes when touching shared infrastructure:
+The standalone `rendering_test` executable (`src/rendering_test/`, its duplicated shaders under `res/rendering_test/shaders/`, its `cell_*.cpp` files and `config/rendering_test/`) had rotted past the point of being worth repairing - it was already excluded from the build - and was removed so it stops showing up as a false dependency in refactors of shared code. A replacement is future work, to be written fresh against the current `erhe::*` APIs rather than resurrected; recover the old tree from git history if it is wanted as a reference.
 
-- `rendering_test` no longer builds or runs.
-- Its duplicated shaders fall out of sync with the editor's.
-- Its `Rendering_test` class wiring breaks.
-
-Focus refactors on the `editor` executable and the `erhe::*` libraries. If a change in shared infrastructure would otherwise require parallel updates to `src/rendering_test/`, skip the rendering_test side and leave it broken; it will be replaced wholesale, so coherent partial fixes there are wasted work.
+Refactors of shared infrastructure (e.g. `erhe::scene_renderer`) now need to keep only the `editor` executable, `src/example`, `src/hello_swap`, `src/hextiles` and the `erhe::*` libraries consistent.
 
 ## Building
 
