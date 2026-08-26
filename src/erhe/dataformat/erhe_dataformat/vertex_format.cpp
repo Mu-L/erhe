@@ -1,6 +1,8 @@
 #include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_hash/hash.hpp"
 
+#include <algorithm>
+#include <numeric>
 #include <sstream>
 
 namespace erhe::dataformat {
@@ -88,6 +90,35 @@ void Vertex_stream::finalize_stride()
 {
     if (max_alignment > 1) {
         stride = ((stride + max_alignment - 1) / max_alignment) * max_alignment;
+    }
+}
+
+void Vertex_stream::repack(const Vertex_stream_packing& packing)
+{
+    stride        = 0;
+    max_alignment = 1;
+    for (Vertex_attribute& attribute : attributes) {
+        // lcm, not max: an alignment that satisfies both constraints. For the
+        // powers of two every real backend uses this is just the larger of the
+        // two, but max() would silently satisfy neither for anything else.
+        const std::size_t alignment = std::lcm(
+            get_component_byte_size(attribute.format),
+            packing.min_attribute_alignment
+        );
+        if (alignment > 1) {
+            stride = ((stride + alignment - 1) / alignment) * alignment;
+        }
+        if (alignment > max_alignment) {
+            max_alignment = alignment;
+        }
+        attribute.offset = stride;
+        stride += get_format_size_bytes(attribute.format);
+    }
+    // Pad so that the next vertex's first attribute is aligned, and to whatever
+    // stride granularity the backend requires on top of that.
+    const std::size_t stride_alignment = std::lcm(max_alignment, packing.min_stride_alignment);
+    if (stride_alignment > 1) {
+        stride = ((stride + stride_alignment - 1) / stride_alignment) * stride_alignment;
     }
 }
 
@@ -211,6 +242,13 @@ auto Vertex_format::get_hash() const -> uint64_t
         result = erhe::hash::hash(stream_hash, result);
     }
     return result;
+}
+
+void Vertex_format::repack(const Vertex_stream_packing& packing)
+{
+    for (Vertex_stream& stream : streams) {
+        stream.repack(packing);
+    }
 }
 
 auto Vertex_format::to_string() const -> std::string

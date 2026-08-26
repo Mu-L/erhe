@@ -72,6 +72,39 @@ enum class Vertex_step : unsigned int
 
 [[nodiscard]] auto c_str(Vertex_step step) -> const char*;
 
+// Backend-imposed minimums on how a stream is packed. Both default to 1, which
+// is exactly no constraint: the resulting offsets and stride are then whatever
+// the attribute component sizes alone produce.
+//
+// They exist because a 2-byte position format takes the stream-0 strides off
+// multiples of 4 and moves the skinned stream's joint attributes to offsets 6
+// and 10 - and Metal requires MTLVertexBufferLayoutDescriptor.stride to be a
+// multiple of 4, while some portability-subset implementations also constrain
+// attribute offsets. GL and Vulkan core impose neither.
+//
+// A stream must be packed with its final values BEFORE it backs any allocation:
+// Buffer_pool captures the stride at pool creation and all byte_offset / stride
+// arithmetic depends on it, and is_compatible() is pointer identity, so it
+// would not catch a stride changed afterwards.
+class Vertex_stream_packing
+{
+public:
+    std::size_t min_attribute_alignment{1};
+    std::size_t min_stride_alignment   {1};
+
+    [[nodiscard]] auto operator==(const Vertex_stream_packing& other) const -> bool
+    {
+        return
+            (min_attribute_alignment == other.min_attribute_alignment) &&
+            (min_stride_alignment    == other.min_stride_alignment);
+    }
+
+    [[nodiscard]] auto operator!=(const Vertex_stream_packing& other) const -> bool
+    {
+        return !(*this == other);
+    }
+};
+
 class Vertex_stream
 {
 public:
@@ -91,6 +124,17 @@ public:
 
     // Call after all emplace_back() calls to pad stride for Vulkan alignment
     void finalize_stride();
+
+    // Recompute every attribute offset and the stride under the given packing
+    // constraints, from the attributes in declaration order - i.e. exactly what
+    // the initializer-list constructor does, but with backend minimums applied.
+    // With the default (all-1) packing it reproduces that constructor's layout
+    // byte for byte.
+    //
+    // It always finalizes the stride, so a stream built by emplace_back() without
+    // a finalize_stride() call can come back padded. That is the finalized layout
+    // either way; only an unfinalized stream sees a difference.
+    void repack(const Vertex_stream_packing& packing);
 
     [[nodiscard]] auto is_buffer_compatible(const Vertex_stream& other) const -> bool;
     [[nodiscard]] auto get_hash() const -> uint64_t;
@@ -133,6 +177,9 @@ public:
     [[nodiscard]] auto get_attributes() const -> std::vector<Attribute_stream>;
     [[nodiscard]] auto get_hash      () const -> uint64_t;
     [[nodiscard]] auto to_string     () const -> std::string;
+
+    // Repack every stream; see Vertex_stream::repack().
+    void repack(const Vertex_stream_packing& packing);
 
     [[nodiscard]] auto operator==(const Vertex_format& other) const -> bool
     {

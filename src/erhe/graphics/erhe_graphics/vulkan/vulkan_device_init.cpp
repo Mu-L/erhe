@@ -1991,6 +1991,22 @@ Device_impl::Device_impl(
         "Conservative rasterization: {}",
         m_info.use_conservative_rasterization ? "enabled" : "not available"
     );
+
+    // VK_FORMAT_R16G16B16_SNORM is NOT in Vulkan's mandatory vertex-buffer
+    // format table (unlike the 1/2/4-component 16-bit snorm formats), so it has
+    // to be queried. Vertex position quantization stores a_position in it; a
+    // device without it must keep positions unquantized. Pipeline creation would
+    // otherwise be the first thing to notice, and only as undefined behaviour.
+    {
+        VkFormatProperties format_properties{};
+        vkGetPhysicalDeviceFormatProperties(m_vulkan_physical_device, VK_FORMAT_R16G16B16_SNORM, &format_properties);
+        m_info.use_16_vec3_snorm_vertex_buffer =
+            (format_properties.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) == VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT;
+        log_startup->info(
+            "VK_FORMAT_R16G16B16_SNORM as a vertex buffer format: {}",
+            m_info.use_16_vec3_snorm_vertex_buffer ? "supported" : "NOT supported"
+        );
+    }
     m_info.use_clear_texture           = true;
     m_info.use_texture_view            = true;
     m_info.use_persistent_buffers      = true;

@@ -248,6 +248,22 @@ public:
     bool use_debug_output            {false}; // GL 4.3 or ARB_debug_output — debug callback
     bool use_debug_groups            {false}; // GL 4.3 — push/pop debug group (not in ARB_debug_output)
 
+    // The device can source a vertex attribute from a 3-component 16-bit snorm
+    // buffer (format_16_vec3_snorm). Vulkan guarantees
+    // VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT for the 1/2/4-component 16-bit snorm
+    // formats but NOT for VK_FORMAT_R16G16B16_SNORM, so the Vulkan backend
+    // queries it per physical device; GL and Metal have it unconditionally.
+    // A device without it must fall back to unquantized positions (or, later,
+    // to a padded snorm16x4) - see doc/vertex-position-quantization.md.
+    bool use_16_vec3_snorm_vertex_buffer{true};
+
+    // Backend minimums applied when a Vertex_stream is packed (see
+    // erhe::dataformat::Vertex_stream_packing). 1 means no constraint, which is
+    // what GL and Vulkan core impose; Metal requires a stride that is a multiple
+    // of 4. Mesh_memory packs its formats with these before allocating anything.
+    std::size_t min_vertex_attribute_alignment    {1};
+    std::size_t min_vertex_stream_stride_alignment{1};
+
     // The SOLID_WIREFRAME standard-shader variant draws real polygon edges in
     // the lit fill fragment, which adds several flat varyings at high explicit
     // locations (v_bary / v_edge_mask / v_wire_color / v_wire_width at

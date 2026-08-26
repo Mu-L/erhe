@@ -1476,6 +1476,9 @@ auto to_vk_vertex_format(const erhe::dataformat::Format format) -> VkFormat
         case F::format_16_vec4_unorm:   return VK_FORMAT_R16G16B16A16_UNORM;
         case F::format_16_scalar_snorm: return VK_FORMAT_R16_SNORM;
         case F::format_16_vec2_snorm:   return VK_FORMAT_R16G16_SNORM;
+        // Not in Vulkan's mandatory vertex-buffer format table; see
+        // Device_info::use_16_vec3_snorm_vertex_buffer.
+        case F::format_16_vec3_snorm:   return VK_FORMAT_R16G16B16_SNORM;
         case F::format_16_vec4_snorm:   return VK_FORMAT_R16G16B16A16_SNORM;
         case F::format_32_scalar_float: return VK_FORMAT_R32_SFLOAT;
         case F::format_32_vec2_float:   return VK_FORMAT_R32G32_SFLOAT;

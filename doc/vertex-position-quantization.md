@@ -1,6 +1,6 @@
 # Vertex position quantization
 
-Status: plan (nothing implemented yet)
+Status: phases 1-3 implemented (see Implementation notes at the end)
 Date: 2026-08-26
 Revision: 8 (verified over six independent review rounds; see Provenance)
 
@@ -833,6 +833,69 @@ costs the shader one `fma` instead of a `mix`. Since the decode is behind a
 compile-time `#if`, the "identity for passthrough" argument does not apply (a
 passthrough shader never reads the fields), so this is purely an ALU / clarity
 call. Keep `scale` / `offset` unless a consumer needs the raw AABB.
+
+## Implementation notes
+
+Recorded as the phases land; the sections above are the design as planned, this
+is where it differs.
+
+### Phase 1 (commit 733c11648)
+
+As specified. One addition: the UBO branch of `Primitive_interface` now logs the
+resulting primitives-per-block, so §3's "log loudly if a frame does not fit" has
+something to read. The desktop dev machine takes the SSBO path, so that line is
+first exercised on Quest.
+
+`Draw_list_scene::write_entry_record()` does **not** abort when the primitive has
+no renderable `Buffer_mesh`. `classify_primitive()` guarantees one at
+registration, but `refresh_object_records()` replays entries against a scene that
+may have been mutated since - the same shape as the queued-op-vs-mutated-scene
+abort that function has produced before - so it falls back to the identity affine.
+
+### Phase 2 (commit 6f00e68ac)
+
+As specified. `Vertex_position_encoding` and `get_vertex_position_encoding()`
+landed in `erhe_dataformat` (`vertex_format.hpp`), which is the "move it down"
+option §5 preferred over duplicating the mapping.
+
+Verified on Vulkan and OpenGL: 50 shader variants each (13 shadow, 37 color),
+every one reporting the axis at 0, and every cache miss during prewarm.
+
+### Phase 3
+
+**Deviation from §1.1's schedule.** The alignment hook is *not* threaded into the
+`Vertex_stream` constructor and `finalize_stride()` as §1.1 proposed. Instead:
+
+* `erhe::dataformat::Vertex_stream_packing` carries the two minimums
+  (`min_attribute_alignment`, `min_stride_alignment`), both defaulting to 1.
+* `Vertex_stream::repack()` / `Vertex_format::repack()` re-derive every offset and
+  the stride under a given packing, and `Mesh_memory`'s constructor calls
+  `repack()` on all seven of its formats - before anything can capture a stride.
+
+The reason is that the constructors are shared with *source-side* formats
+(`Triangle_soup`'s in the glTF importer, `Primitive_raytrace`'s float3-only one),
+which must not be subject to a backend's vertex-buffer packing rules. Repacking
+at the `Mesh_memory` boundary applies the constraint exactly where it belongs.
+Phase 6 only has to set the two values on `Device_info`.
+
+Consequences, both accepted:
+
+* `repack()` always finalizes the stride, so it can differ from an *un*finalized
+  `emplace_back()`-built stream. Tested both ways.
+* The constraint is applied at one site, not enforced globally. The other
+  GPU-facing vertex formats (`lightmap_baker`'s seam format,
+  `content_wide_line_interface`'s, the debug/ImGui/hextiles renderers') bypass it.
+  All of them are 32-bit float throughout, so every stride is already a multiple
+  of 4 and a Metal-style rule is satisfied by accident - but that is an accident,
+  not an invariant. Revisit if any of them gains an 8- or 16-bit attribute.
+
+`Device_info::use_16_vec3_snorm_vertex_buffer` is written and logged but not yet
+consumed; phase 6 consumes it alongside the config flag.
+
+**Open question answered:** the desktop AMD 890M iGPU reports
+`VK_FORMAT_R16G16B16_SNORM` with `VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT`, so vec3 is
+viable there. Quest is still unchecked - the query logs itself at device init, so
+the answer arrives with the first Quest run.
 
 ## Provenance
 

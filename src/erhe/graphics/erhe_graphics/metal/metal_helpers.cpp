@@ -130,6 +130,7 @@ auto to_mtl_vertex_format(const erhe::dataformat::Format format) -> MTL::VertexF
         case F::format_16_vec4_unorm:    return MTL::VertexFormatUShort4Normalized;
         case F::format_16_scalar_snorm:  return MTL::VertexFormatShortNormalized;
         case F::format_16_vec2_snorm:    return MTL::VertexFormatShort2Normalized;
+        case F::format_16_vec3_snorm:    return MTL::VertexFormatShort3Normalized;
         case F::format_16_vec4_snorm:    return MTL::VertexFormatShort4Normalized;
         case F::format_32_scalar_float:  return MTL::VertexFormatFloat;
         case F::format_32_vec2_float:    return MTL::VertexFormatFloat2;

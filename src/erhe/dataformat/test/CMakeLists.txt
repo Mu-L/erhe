@@ -12,6 +12,7 @@ set(_target "erhe_dataformat_tests")
 add_executable(${_target}
     main.cpp
     test_vertex_format.cpp
+    test_vertex_stream_packing.cpp
 )
 
 target_link_libraries(${_target}

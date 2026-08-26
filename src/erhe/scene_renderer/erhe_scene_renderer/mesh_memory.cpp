@@ -197,6 +197,30 @@ Mesh_memory::Mesh_memory(
     , m_loader_sink          {*this}
     , m_alive_token          {std::make_shared<int>(0)}
 {
+    // Apply the backend packing minimums before anything reads a stride. Both
+    // default to 1 (no constraint), in which case this reproduces the layout the
+    // constructors above already produced, byte for byte. It has to happen here
+    // rather than at first use: Buffer_pool captures the stride when it creates a
+    // pool, and every byte_offset / stride computation depends on it, so a stride
+    // changed after an allocation would silently mismatch the pool.
+    const erhe::graphics::Device_info& device_info = graphics_device.get_info();
+    const erhe::dataformat::Vertex_stream_packing packing{
+        .min_attribute_alignment = device_info.min_vertex_attribute_alignment,
+        .min_stride_alignment    = device_info.min_vertex_stream_stride_alignment
+    };
+    erhe::dataformat::Vertex_format* const all_formats[] = {
+        &vertex_format_empty,
+        &vertex_format_skinned,
+        &vertex_format_not_skinned,
+        &vertex_format_not_skinned_wireframe,
+        &vertex_format_skinned_wireframe,
+        &vertex_format_edge_line,
+        &vertex_format_edge_line_joints
+    };
+    for (erhe::dataformat::Vertex_format* format : all_formats) {
+        format->repack(packing);
+    }
+
     get_vertex_input_from_vertex_format(vertex_format_empty);
     get_vertex_input_from_vertex_format(vertex_format_skinned);
     get_vertex_input_from_vertex_format(vertex_format_not_skinned);
