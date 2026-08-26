@@ -51,6 +51,11 @@ public:
     // former pad-to-16 slots, so the view block size is unchanged.
     std::size_t id_mode               {0};
     std::size_t id_base               {0};
+    // Vertex position dequantization affine for the dispatched primitive, as
+    // vec4s (xyz used). content_edge_lines.vert transforms a_position itself and
+    // has no primitive block in scope, so it decodes from here instead.
+    std::size_t position_scale        {0};
+    std::size_t position_offset       {0};
 };
 
 // Shader-interface description for the content wide-line renderer. Owns

@@ -676,6 +676,11 @@ private:
     std::size_t                                        m_draw_block_uv_offset        {0};
     std::size_t                                        m_draw_block_jitter_offset    {0};
     std::size_t                                        m_draw_block_base_color_offset{0};
+    // Vertex position dequantization affine for the drawn primitive. The bake
+    // vertex program transforms a_position itself and has no primitive block in
+    // scope, so it decodes from the per-draw block.
+    std::size_t                                        m_draw_block_position_scale_offset {0};
+    std::size_t                                        m_draw_block_position_offset_offset{0};
     std::size_t                                        m_draw_block_size             {0};
     std::unique_ptr<erhe::graphics::Bind_group_layout> m_bind_group_layout;
     std::unique_ptr<erhe::graphics::Fragment_outputs>  m_fragment_outputs;

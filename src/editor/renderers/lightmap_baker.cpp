@@ -39,6 +39,7 @@
 #include "erhe_scene/scene.hpp"
 #include "erhe_math/math_util.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
+#include "erhe_scene_renderer/primitive_buffer.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <fmt/format.h>
@@ -388,12 +389,40 @@ layout(location = 4) out vec3 v_nn_col1;
 layout(location = 5) out vec3 v_nn_col2;
 layout(location = 6) out vec3 v_nb;
 
+// Copy of erhe_decode_vertex_position() from res/shaders/erhe_vertex_position.glsl,
+// inlined rather than #included: this program is compiled from an inline source
+// string, and Shader_stages_create_info::final_source() runs the include loader
+// only over shader.paths - so an #include here would be expanded by glslang on
+// Vulkan and left verbatim on GL, i.e. it would build on one backend and fail on
+// the other. ERHE_VERTEX_POSITION_ENCODING itself IS emitted, because both bake
+// programs are created with a .vertex_format. Keep the two in sync.
+// Keep the enumerator VALUES in sync with erhe::dataformat::Vertex_position_encoding
+// and res/shaders/erhe_vertex_position.glsl; the macro is spelled differently here
+// only so an inline copy can never clash with the shared header if both are ever
+// visible at once.
+#define ERHE_LM_VERTEX_POSITION_ENCODING_SNORM16X3_AABB 1
+
+// The same backstop the shared helper carries: a missing define is SILENT in the
+// GLSL preprocessor (it evaluates to passthrough), so make it a build failure.
+#ifndef ERHE_VERTEX_POSITION_ENCODING
+#   error "ERHE_VERTEX_POSITION_ENCODING is not defined - this shader was compiled without a vertex format"
+#endif
+
+vec3 erhe_lm_decode_vertex_position()
+{
+#if ERHE_VERTEX_POSITION_ENCODING == ERHE_LM_VERTEX_POSITION_ENCODING_SNORM16X3_AABB
+    return a_position * lightmap_draw.position_scale.xyz + lightmap_draw.position_offset.xyz;
+#else
+    return a_position;
+#endif
+}
+
 void main()
 {
     vec2 atlas_uv = a_texcoord_2 * lightmap_draw.uv_scale_offset.xy + lightmap_draw.uv_scale_offset.zw;
     vec2 ndc      = atlas_uv * 2.0 - 1.0 + lightmap_draw.jitter_ndc.xy;
     gl_Position   = vec4(ndc.x, ERHE_LM_Y_SIGN * ndc.y, 0.0, 1.0);
-    vec3 world_position = (lightmap_draw.world_from_node * vec4(a_position, 1.0)).xyz;
+    vec3 world_position = (lightmap_draw.world_from_node * vec4(erhe_lm_decode_vertex_position(), 1.0)).xyz;
     vec3 world_normal   = normalize(mat3(lightmap_draw.world_from_node) * a_normal);
     v_position    = world_position;
     v_normal      = world_normal;
@@ -1259,6 +1288,8 @@ Lightmap_baker::Lightmap_baker(erhe::graphics::Device& graphics_device, erhe::sc
     m_draw_block_uv_offset         = m_draw_block->add_vec4("uv_scale_offset")->get_offset_in_parent();
     m_draw_block_jitter_offset     = m_draw_block->add_vec4("jitter_ndc")->get_offset_in_parent();
     m_draw_block_base_color_offset = m_draw_block->add_vec4("base_color")->get_offset_in_parent();
+    m_draw_block_position_scale_offset  = m_draw_block->add_vec4("position_scale" )->get_offset_in_parent();
+    m_draw_block_position_offset_offset = m_draw_block->add_vec4("position_offset")->get_offset_in_parent();
     m_draw_block_size              = m_draw_block->get_size_bytes(Shader_resource::Layout::std140);
 
     m_bind_group_layout = std::make_unique<Bind_group_layout>(
@@ -3211,23 +3242,47 @@ auto Lightmap_baker::bake_gbuffer(const int tile) -> bool
         const float jitter_step = 0.5f * 2.0f / static_cast<float>(tile_size);
         const std::span<std::byte> mapped = draw_ubo.map_bytes(0, ubo_bytes);
         std::memset(mapped.data(), 0, ubo_bytes);
+        // Every record, including the ones draw_regions() filters out, gets the
+        // identity affine first. A zeroed position_scale would collapse a
+        // quantized mesh to its AABB center; this keeps an unfilled record
+        // wrong-but-finite if the two filters ever diverge.
+        {
+            const erhe::scene_renderer::Position_quantization identity{};
+            for (std::size_t record_index = 0, record_count = jitter_count * m_layout.regions.size(); record_index < record_count; ++record_index) {
+                std::byte* const record = mapped.data() + record_index * c_draw_ubo_stride;
+                std::memcpy(record + m_draw_block_position_scale_offset,  &identity.scale,  sizeof(glm::vec4));
+                std::memcpy(record + m_draw_block_position_offset_offset, &identity.offset, sizeof(glm::vec4));
+            }
+        }
         for (std::size_t j = 0; j < jitter_count; ++j) {
             const glm::vec4 jitter_ndc{jitter_taps[j].x * jitter_step, jitter_taps[j].y * jitter_step, 0.0f, 0.0f};
             for (std::size_t i = 0; i < m_layout.regions.size(); ++i) {
                 const Instance_region& region = m_layout.regions[i];
                 if (region.tile != tile) {
-                    continue; // draw_regions skips these; the record stays zero
+                    continue; // draw_regions skips these; the record keeps the identity affine
                 }
                 const erhe::scene::Node* const node = region.mesh ? region.mesh->get_node() : nullptr;
                 const glm::mat4 world_from_node = (node != nullptr) ? node->world_from_node() : glm::mat4{1.0f};
                 glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
+                // Dequantization affine for the drawn primitive; stays the identity
+                // when the region has no renderable Buffer_mesh.
+                erhe::scene_renderer::Position_quantization quantization{};
                 if (region.mesh) {
                     const std::vector<erhe::scene::Mesh_primitive>& primitives = region.mesh->get_primitives();
-                    if ((region.primitive_index < primitives.size()) && primitives[region.primitive_index].material) {
-                        const erhe::primitive::Material& material = *primitives[region.primitive_index].material;
-                        // Diffuse albedo: metals have no diffuse lobe, so
-                        // they bounce (and later receive) almost nothing.
-                        base_color = glm::vec4{material.data.base_color * (1.0f - material.data.metallic), 1.0f};
+                    if (region.primitive_index < primitives.size()) {
+                        const erhe::scene::Mesh_primitive& mesh_primitive = primitives[region.primitive_index];
+                        if (mesh_primitive.material) {
+                            const erhe::primitive::Material& material = *mesh_primitive.material;
+                            // Diffuse albedo: metals have no diffuse lobe, so
+                            // they bounce (and later receive) almost nothing.
+                            base_color = glm::vec4{material.data.base_color * (1.0f - material.data.metallic), 1.0f};
+                        }
+                        const erhe::primitive::Primitive* const primitive = mesh_primitive.primitive.get();
+                        const erhe::primitive::Buffer_mesh* const buffer_mesh =
+                            (primitive != nullptr) ? primitive->get_renderable_mesh() : nullptr;
+                        if (buffer_mesh != nullptr) {
+                            quantization = erhe::scene_renderer::get_position_quantization(buffer_mesh->bounding_box);
+                        }
                     }
                 }
                 // Region uv_scale_offset is already tile-local: exactly the
@@ -3238,6 +3293,8 @@ auto Lightmap_baker::bake_gbuffer(const int tile) -> bool
                 std::memcpy(record + m_draw_block_uv_offset,         &tile_uv_scale_offset, sizeof(glm::vec4));
                 std::memcpy(record + m_draw_block_jitter_offset,     &jitter_ndc,           sizeof(glm::vec4));
                 std::memcpy(record + m_draw_block_base_color_offset, &base_color,           sizeof(glm::vec4));
+                std::memcpy(record + m_draw_block_position_scale_offset,  &quantization.scale,  sizeof(glm::vec4));
+                std::memcpy(record + m_draw_block_position_offset_offset, &quantization.offset, sizeof(glm::vec4));
             }
         }
         draw_ubo.unmap();

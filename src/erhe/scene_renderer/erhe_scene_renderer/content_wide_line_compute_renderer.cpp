@@ -338,7 +338,12 @@ void Content_wide_line_compute_renderer::compute(erhe::graphics::Compute_command
             static_cast<uint32_t>(dispatch.edge_count),
             stride_per_view_v,
             dispatch.base_joint_index,
-            dispatch.id_base
+            dispatch.id_base,
+            // Identity: this backend reads positions from the separate
+            // vertex_format_edge_line stream, which is never quantized
+            // (doc/vertex-position-quantization.md 4.3). Its vertex stage
+            // decodes nothing.
+            Position_quantization{}
         );
         view_buffer_range.bytes_written(view_size);
         view_buffer_range.close();

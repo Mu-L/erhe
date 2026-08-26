@@ -10,6 +10,7 @@
 // attribute defines, so the plain transform branch is taken).
 
 #include "erhe_camera_view.glsl"
+#include "erhe_vertex_position.glsl"
 
 #if defined(ERHE_ATTRIBUTE_a_joint_weights_0) && defined(ERHE_ATTRIBUTE_a_joint_indices_0)
 #include "erhe_skinning.glsl"
@@ -36,7 +37,13 @@ void main()
 #endif
 
     mat4 clip_from_world = view.cameras[c_view_index].clip_from_world;
-    vec4 position        = world_from_node * vec4(a_position, 1.0);
+
+    // This shader has no primitive block in scope - it reads per-draw data from
+    // the wide-line renderer's own view UBO - so the dequantization affine comes
+    // from there. It is the same affine the fill pass decodes with, so the lines
+    // land on the fill surface rather than beside it.
+    vec3 node_position   = erhe_decode_vertex_position(view.position_scale.xyz, view.position_offset.xyz);
+    vec4 position        = world_from_node * vec4(node_position, 1.0);
 
     vec3 view_position_in_world = view.cameras[c_view_index].view_position_in_world.xyz;
     float fov_left              = view.cameras[c_view_index].fov[0];

@@ -95,6 +95,9 @@ private:
         uint32_t    edge_count     {0};   // index_count / 2
         bool        skinned        {false};
         uint32_t    base_joint_index{0};
+        // Vertex position dequantization affine, from the primitive AABB. The
+        // vertex stage reads the mesh stream 0 position, so it decodes with this.
+        Position_quantization position_quantization{};
 
         // Regular mesh index buffer + slice describing edge_line_indices.
         erhe::graphics::Buffer*  index_buffer            {nullptr};
@@ -208,6 +211,7 @@ void Content_wide_line_geometry_renderer::add_primitive(
     entry.edge_count              = static_cast<uint32_t>(edge_indices.index_count / 2);
     entry.skinned                 = mesh_is_skinned;
     entry.base_joint_index        = mesh_is_skinned ? base_joint_index : 0u;
+    entry.position_quantization   = get_position_quantization(buffer_mesh.bounding_box);
     entry.index_buffer            = index_buffer;
     entry.first_index_byte_offset = base_index_byte_offset;
     entry.index_count             = static_cast<uint32_t>(edge_indices.index_count);
@@ -359,7 +363,8 @@ void Content_wide_line_geometry_renderer::render(
             dispatch.edge_count,
             0u,  // stride_per_view: unused by the geometry-shader vertex stage
             dispatch.base_joint_index,
-            0u   // id_base: ID-buffer edge-line method is compute-backend only
+            0u,  // id_base: ID-buffer edge-line method is compute-backend only
+            dispatch.position_quantization
         );
         view_buffer_range.bytes_written(view_size);
         view_buffer_range.close();

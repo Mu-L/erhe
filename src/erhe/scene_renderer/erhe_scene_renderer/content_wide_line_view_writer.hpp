@@ -14,6 +14,7 @@
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/projection.hpp"
 #include "erhe_scene_renderer/content_wide_line_interface.hpp"
+#include "erhe_scene_renderer/primitive_buffer.hpp"
 
 #include <glm/glm.hpp>
 
@@ -93,7 +94,12 @@ inline void write_view_block(
     uint32_t                              edge_count,
     uint32_t                              stride_per_view,
     uint32_t                              base_joint_index,
-    uint32_t                              id_base
+    uint32_t                              id_base,
+    // Vertex position dequantization affine for this dispatch. The geometry
+    // backend transforms a_position from the mesh stream and passes the
+    // primitive's; the compute backend reads the separate, never quantized
+    // edge-line stream and passes the identity.
+    const Position_quantization&          position_quantization
 )
 {
     using erhe::graphics::as_span;
@@ -123,6 +129,8 @@ inline void write_view_block(
     write(view_data, offsets.line_bias_clamp,      as_span(frame_params.line_bias_clamp    ));
     write(view_data, offsets.id_mode,              as_span(frame_params.id_mode            ));
     write(view_data, offsets.id_base,              as_span(id_base                         ));
+    write(view_data, offsets.position_scale,       as_span(position_quantization.scale     ));
+    write(view_data, offsets.position_offset,      as_span(position_quantization.offset    ));
 }
 
 } // namespace erhe::scene_renderer

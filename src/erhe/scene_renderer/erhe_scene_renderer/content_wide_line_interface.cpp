@@ -102,6 +102,8 @@ Content_wide_line_interface::Content_wide_line_interface(
     //   float  line_bias_clamp;             // max toward-camera extrapolation (ULPs)
     //   uint   id_mode;                     // 0 = write line color, 1 = write face id
     //   uint   id_base;                     // per-dispatch face-id base (id mode)
+    //   vec4   position_scale;              // per-dispatch vertex position dequantization
+    //   vec4   position_offset;             //   affine (xyz used)
     //
     // Per-eye data is grouped into cameras[] so the multiview compute
     // shader can write one triangle set per view in a single dispatch
@@ -133,6 +135,10 @@ Content_wide_line_interface::Content_wide_line_interface(
     // These reuse the two former pad-to-16 slots, so the block size is unchanged.
     offsets.id_mode              = view_block.add_uint ("id_mode"             )->get_offset_in_parent();
     offsets.id_base              = view_block.add_uint ("id_base"             )->get_offset_in_parent();
+    // Vertex position dequantization affine (see Content_wide_line_view_offsets).
+    // vec4s, so they carry 16-byte alignment and land after the scalars above.
+    offsets.position_scale       = view_block.add_vec4 ("position_scale"      )->get_offset_in_parent();
+    offsets.position_offset      = view_block.add_vec4 ("position_offset"     )->get_offset_in_parent();
 
     // Skinned geometry-shader bind group layout: view UBO + global joint
     // block. The vertex shader reads a_joint_indices_0 + a_joint_weights_0
