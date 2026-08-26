@@ -2002,9 +2002,15 @@ Device_impl::Device_impl(
         vkGetPhysicalDeviceFormatProperties(m_vulkan_physical_device, VK_FORMAT_R16G16B16_SNORM, &format_properties);
         m_info.use_16_vec3_snorm_vertex_buffer =
             (format_properties.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) == VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT;
+        // Acceleration structure build input is a separate feature bit, and the
+        // one that decides whether a quantized mesh can be ray traced at all.
+        m_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer =
+            (format_properties.bufferFeatures & VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR) ==
+            VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR;
         log_startup->info(
-            "VK_FORMAT_R16G16B16_SNORM as a vertex buffer format: {}",
-            m_info.use_16_vec3_snorm_vertex_buffer ? "supported" : "NOT supported"
+            "VK_FORMAT_R16G16B16_SNORM as a vertex buffer format: {}, as acceleration structure build input: {}",
+            m_info.use_16_vec3_snorm_vertex_buffer ? "supported" : "NOT supported",
+            m_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer ? "supported" : "NOT supported"
         );
     }
     m_info.use_clear_texture           = true;

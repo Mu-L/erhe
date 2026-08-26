@@ -45,6 +45,12 @@ private:
     std::unique_ptr<Buffer>     m_buffer;          // acceleration structure storage
     std::unique_ptr<Buffer>     m_scratch_buffer;  // build scratch (device local)
     std::unique_ptr<Buffer>     m_instance_buffer; // top level only, host visible persistent
+    // Bottom level only, and only when some geometry carries a non-identity
+    // transform: one VkTransformMatrixKHR per geometry, referenced by
+    // VkAccelerationStructureGeometryTrianglesDataKHR::transformData. The build
+    // reads it, so it has to outlive the build - hence a member rather than a
+    // local.
+    std::unique_ptr<Buffer>     m_transform_buffer;
     VkAccelerationStructureKHR  m_acceleration_structure{VK_NULL_HANDLE};
     VkDeviceAddress             m_device_address {0};
     VkDeviceAddress             m_scratch_address{0}; // aligned to minAccelerationStructureScratchOffsetAlignment

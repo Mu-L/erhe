@@ -8,9 +8,44 @@
 
 #include <Metal/Metal.hpp>
 
+#include <algorithm>
+#include <cstring>
 #include <unordered_map>
 
 namespace erhe::graphics {
+
+namespace {
+
+// The formats a Metal acceleration structure build accepts for positions.
+// Short3Normalized is accepted unconditionally, unlike Vulkan, where the
+// 3-component snorm format has to be queried.
+[[nodiscard]] auto to_mtl_acceleration_structure_vertex_format(const erhe::dataformat::Format format) -> MTL::AttributeFormat
+{
+    switch (format) {
+        case erhe::dataformat::Format::format_32_vec3_float: return MTL::AttributeFormatFloat3;
+        case erhe::dataformat::Format::format_16_vec3_snorm: return MTL::AttributeFormatShort3Normalized;
+        default: {
+            // Not fatal; see the Vulkan mapping.
+            return MTL::AttributeFormatFloat3;
+        }
+    }
+}
+
+// MTLPackedFloat4x3 is three columns of 4 packed floats... i.e. 4 columns of 3:
+// columns[c][r]. glm::mat4 is column-major too, so this is a plain truncation
+// of the fourth row.
+[[nodiscard]] auto to_mtl_packed_float4x3(const glm::mat4& m) -> MTL::PackedFloat4x3
+{
+    MTL::PackedFloat4x3 result{};
+    for (int column = 0; column < 4; ++column) {
+        for (int row = 0; row < 3; ++row) {
+            result.columns[column][row] = m[column][row];
+        }
+    }
+    return result;
+}
+
+} // anonymous namespace
 
 Acceleration_structure_impl::Acceleration_structure_impl(Device& device, const Acceleration_structure_create_info& create_info)
     : m_device            {device}
@@ -31,6 +66,23 @@ Acceleration_structure_impl::Acceleration_structure_impl(Device& device, const A
 
         std::vector<NS::Object*> geometry_descriptors;
         geometry_descriptors.reserve(create_info.triangle_geometries.size());
+
+        // One packed 4x3 per geometry, allocated once for the whole structure and
+        // only when something actually needs a transform. The build reads it, so it
+        // must outlive this constructor.
+        const bool any_transform = std::any_of(
+            create_info.triangle_geometries.begin(),
+            create_info.triangle_geometries.end(),
+            [](const Acceleration_structure_triangles& t) { return t.transform != glm::mat4{1.0f}; }
+        );
+        if (any_transform) {
+            m_transform_buffer = mtl_device->newBuffer(
+                create_info.triangle_geometries.size() * sizeof(MTL::PackedFloat4x3),
+                MTL::ResourceStorageModeShared
+            );
+            ERHE_VERIFY(m_transform_buffer != nullptr);
+        }
+        std::size_t geometry_index = 0;
         for (const Acceleration_structure_triangles& triangles : create_info.triangle_geometries) {
             ERHE_VERIFY(triangles.vertex_buffer != nullptr);
             ERHE_VERIFY(triangles.index_buffer != nullptr);
@@ -47,13 +99,25 @@ Acceleration_structure_impl::Acceleration_structure_impl(Device& device, const A
                 MTL::AccelerationStructureTriangleGeometryDescriptor::alloc()->init();
             geometry->setVertexBuffer      (vertex_buffer);
             geometry->setVertexBufferOffset(triangles.vertex_byte_offset);
-            geometry->setVertexFormat      (MTL::AttributeFormatFloat3);
+            geometry->setVertexFormat      (to_mtl_acceleration_structure_vertex_format(triangles.vertex_format));
             geometry->setVertexStride      (triangles.vertex_byte_stride);
             geometry->setIndexBuffer       (index_buffer);
             geometry->setIndexBufferOffset (triangles.index_byte_offset);
             geometry->setIndexType         (MTL::IndexTypeUInt32);
             geometry->setTriangleCount     (triangles.index_count / 3);
             geometry->setOpaque            (triangles.opaque);
+            if (m_transform_buffer != nullptr) {
+                const std::size_t transform_byte_offset = geometry_index * sizeof(MTL::PackedFloat4x3);
+                const MTL::PackedFloat4x3 mtl_transform = to_mtl_packed_float4x3(triangles.transform);
+                std::memcpy(
+                    static_cast<std::byte*>(m_transform_buffer->contents()) + transform_byte_offset,
+                    &mtl_transform,
+                    sizeof(MTL::PackedFloat4x3)
+                );
+                geometry->setTransformationMatrixBuffer      (m_transform_buffer);
+                geometry->setTransformationMatrixBufferOffset(transform_byte_offset);
+            }
+            ++geometry_index;
             geometry_descriptors.push_back(geometry);
         }
 
@@ -114,15 +178,18 @@ Acceleration_structure_impl::~Acceleration_structure_impl() noexcept
     MTL::AccelerationStructure*                    acceleration_structure = m_acceleration_structure;
     MTL::Buffer*                                   scratch_buffer         = m_scratch_buffer;
     MTL::Buffer*                                   instance_buffer        = m_instance_buffer;
+    MTL::Buffer*                                   transform_buffer       = m_transform_buffer;
     MTL::PrimitiveAccelerationStructureDescriptor* primitive_descriptor   = m_primitive_descriptor;
     MTL::InstanceAccelerationStructureDescriptor*  instance_descriptor    = m_instance_descriptor;
     if ((acceleration_structure != nullptr) || (scratch_buffer != nullptr) || (instance_buffer != nullptr) ||
+        (transform_buffer != nullptr) ||
         (primitive_descriptor != nullptr) || (instance_descriptor != nullptr)) {
         m_device.get_impl().add_completion_handler(
-            [acceleration_structure, scratch_buffer, instance_buffer, primitive_descriptor, instance_descriptor](Device_impl&) {
+            [acceleration_structure, scratch_buffer, instance_buffer, transform_buffer, primitive_descriptor, instance_descriptor](Device_impl&) {
                 if (acceleration_structure != nullptr) { acceleration_structure->release(); }
                 if (scratch_buffer         != nullptr) { scratch_buffer->release(); }
                 if (instance_buffer        != nullptr) { instance_buffer->release(); }
+                if (transform_buffer       != nullptr) { transform_buffer->release(); }
                 if (primitive_descriptor   != nullptr) { primitive_descriptor->release(); }
                 if (instance_descriptor    != nullptr) { instance_descriptor->release(); }
             }

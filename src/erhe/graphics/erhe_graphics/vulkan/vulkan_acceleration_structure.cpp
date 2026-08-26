@@ -8,6 +8,7 @@
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_verify/verify.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace erhe::graphics {
@@ -22,6 +23,37 @@ namespace {
         .buffer = vk_buffer
     };
     return vkGetBufferDeviceAddress(vulkan_device, &address_info);
+}
+
+// The formats an acceleration structure build accepts for positions. This is a
+// smaller set than the vertex-input one, and R16G16B16_SNORM is not in Vulkan's
+// mandatory list at all - callers must have checked
+// Device_info::use_16_vec3_snorm_acceleration_structure_vertex_buffer.
+[[nodiscard]] auto to_vk_acceleration_structure_vertex_format(const erhe::dataformat::Format format) -> VkFormat
+{
+    switch (format) {
+        case erhe::dataformat::Format::format_32_vec3_float: return VK_FORMAT_R32G32B32_SFLOAT;
+        case erhe::dataformat::Format::format_16_vec3_snorm: return VK_FORMAT_R16G16B16_SNORM;
+        default: {
+            // Not fatal: the previous code hard-coded R32G32B32_SFLOAT and would
+            // have read the leading 3 floats of, say, a float4 position. Keep that
+            // behaviour for anything unrecognized rather than aborting.
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        }
+    }
+}
+
+// VkTransformMatrixKHR is a row-major 3x4; glm::mat4 is column-major, so
+// element [row][column] is m[column][row].
+[[nodiscard]] auto to_vk_transform_matrix(const glm::mat4& m) -> VkTransformMatrixKHR
+{
+    VkTransformMatrixKHR result{};
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 4; ++column) {
+            result.matrix[row][column] = m[column][row];
+        }
+    }
+    return result;
 }
 
 } // anonymous namespace
@@ -48,6 +80,31 @@ Acceleration_structure_impl::Acceleration_structure_impl(Device& device, const A
         m_vk_geometries.reserve(create_info.triangle_geometries.size());
         m_vk_ranges    .reserve(create_info.triangle_geometries.size());
         primitive_counts.reserve(create_info.triangle_geometries.size());
+
+        // One VkTransformMatrixKHR per geometry, allocated once for the whole
+        // structure, only when something actually needs a transform. The build
+        // reads it by device address, so it must outlive this constructor.
+        const bool any_transform = std::any_of(
+            create_info.triangle_geometries.begin(),
+            create_info.triangle_geometries.end(),
+            [](const Acceleration_structure_triangles& t) { return t.transform != glm::mat4{1.0f}; }
+        );
+        VkDeviceAddress transform_base_address = 0;
+        if (any_transform) {
+            m_transform_buffer = std::make_unique<Buffer>(
+                device,
+                Buffer_create_info{
+                    .capacity_byte_count               = create_info.triangle_geometries.size() * sizeof(VkTransformMatrixKHR),
+                    .usage                             = Buffer_usage::acceleration_structure_build_input | Buffer_usage::shader_device_address,
+                    .required_memory_property_bit_mask =
+                        Memory_property_flag_bit_mask::host_write |
+                        Memory_property_flag_bit_mask::host_coherent,
+                    .debug_label                       = create_info.debug_label
+                }
+            );
+            transform_base_address = get_buffer_device_address(vulkan_device, m_transform_buffer->get_impl().get_vk_buffer());
+        }
+        std::size_t geometry_index = 0;
         for (const Acceleration_structure_triangles& triangles : create_info.triangle_geometries) {
             ERHE_VERIFY(triangles.vertex_buffer != nullptr);
             ERHE_VERIFY(triangles.index_buffer != nullptr);
@@ -61,6 +118,18 @@ Acceleration_structure_impl::Acceleration_structure_impl(Device& device, const A
             const VkDeviceAddress index_address =
                 get_buffer_device_address(vulkan_device, triangles.index_buffer->get_impl().get_vk_buffer()) +
                 triangles.index_byte_offset;
+
+            // Written into the shared transform buffer at this geometry's slot;
+            // a zero address means "no transform", which is what identity gets.
+            VkDeviceAddress transform_address = 0;
+            if (m_transform_buffer != nullptr) {
+                const std::size_t         transform_byte_offset = geometry_index * sizeof(VkTransformMatrixKHR);
+                const VkTransformMatrixKHR vk_transform         = to_vk_transform_matrix(triangles.transform);
+                const std::span<std::byte> mapped               = m_transform_buffer->map_bytes(transform_byte_offset, sizeof(VkTransformMatrixKHR));
+                std::memcpy(mapped.data(), &vk_transform, sizeof(VkTransformMatrixKHR));
+                m_transform_buffer->unmap();
+                transform_address = transform_base_address + transform_byte_offset;
+            }
             m_vk_geometries.push_back(
                 VkAccelerationStructureGeometryKHR{
                     .sType        = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
@@ -70,13 +139,13 @@ Acceleration_structure_impl::Acceleration_structure_impl(Device& device, const A
                         .triangles = VkAccelerationStructureGeometryTrianglesDataKHR{
                             .sType         = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
                             .pNext         = nullptr,
-                            .vertexFormat  = VK_FORMAT_R32G32B32_SFLOAT,
+                            .vertexFormat  = to_vk_acceleration_structure_vertex_format(triangles.vertex_format),
                             .vertexData    = { .deviceAddress = vertex_address },
                             .vertexStride  = triangles.vertex_byte_stride,
                             .maxVertex     = static_cast<uint32_t>(triangles.vertex_count - 1),
                             .indexType     = VK_INDEX_TYPE_UINT32,
                             .indexData     = { .deviceAddress = index_address },
-                            .transformData = { .deviceAddress = 0 }
+                            .transformData = { .deviceAddress = transform_address }
                         }
                     },
                     .flags = triangles.opaque ? static_cast<VkGeometryFlagsKHR>(VK_GEOMETRY_OPAQUE_BIT_KHR) : VkGeometryFlagsKHR{0}
@@ -92,6 +161,7 @@ Acceleration_structure_impl::Acceleration_structure_impl(Device& device, const A
                 }
             );
             primitive_counts.push_back(triangle_count);
+            ++geometry_index;
         }
     } else {
         ERHE_VERIFY(m_max_instance_count > 0);

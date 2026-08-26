@@ -13,6 +13,8 @@
 #include "erhe_profile/profile.hpp"
 #include "erhe_scene_renderer/shader_key.hpp"
 
+#include <glm/glm.hpp>
+
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -94,6 +96,29 @@ enum class Mesh_memory_queue : unsigned int
     // Anything that publishes immediately must stay on the interactive
     // queue, or it will draw from buffers that are still trickling in.
     loader = 1
+};
+
+// How a bottom level acceleration structure must read the positions of one
+// Buffer_mesh, and the transform that puts them back in object space.
+//
+// Both BLAS builders in the editor - the scene TLAS and the lightmap baker's own
+// cache - go through this, so the build transform can never disagree with the
+// dequantization affine the instance records carry for the fallback fetch.
+class Blas_position_input
+{
+public:
+    erhe::dataformat::Format vertex_format{erhe::dataformat::Format::format_32_vec3_float};
+    // Applied at build time, so the structure stores object-space positions and
+    // the instance transform (hence every normal derived from it) is unaffected.
+    glm::mat4                transform    {1.0f};
+    // False when the vertex format carries no position at all - nothing to build
+    // from, and not a device limitation.
+    bool                     has_position {true};
+    // False when the positions are quantized but the device cannot use that format
+    // as acceleration structure build input. Under the shipped configuration this
+    // never happens: Mesh_memory refuses to quantize on such a device in the first
+    // place, so this is a backstop rather than a path the editor relies on.
+    bool                     supported    {true};
 };
 
 class Mesh_memory final
@@ -379,5 +404,11 @@ void bucket_primitives(
     // is not part of the lit scene and should not occlude it.
     bool                                                       exclude_unlit_primitives = false
 );
+
+[[nodiscard]] auto get_blas_position_input(
+    const erhe::graphics::Device&       graphics_device,
+    const Mesh_memory&                  mesh_memory,
+    const erhe::primitive::Buffer_mesh& buffer_mesh
+) -> Blas_position_input;
 
 }

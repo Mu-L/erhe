@@ -563,6 +563,43 @@ vec3 fetch_vec3(Uint_data vertices, uint base)
     );
 }
 
+// Vertex position encoding carried in Lm_instance_record::position_encoding;
+// mirrors erhe::dataformat::Vertex_position_encoding. Same decode as
+// res/shaders/erhe_ray_hit.glsl - inlined because this program is compiled from
+// an inline source string, where an #include resolves on Vulkan and not on GL.
+const uint c_vertex_position_encoding_snorm16x3_aabb = 1u;
+
+// One 16-bit lane at an arbitrary BYTE offset: a quantized stream 0 has a 6 or
+// 14 byte stride, so no vertex or component offset is 4-byte aligned.
+uint lm_fetch_u16(Uint_data data, uint byte_offset)
+{
+    uint word  = data.data[byte_offset >> 2u];
+    uint shift = (byte_offset & 2u) * 8u;
+    return (word >> shift) & 0xffffu;
+}
+
+float lm_snorm16_from_bits(uint bits)
+{
+    int value = int(bits << 16) >> 16;
+    return max(float(value) * (1.0 / 32767.0), -1.0);
+}
+
+// Object-space position of one vertex, dequantized to match the space the
+// acceleration structure stores (its BLAS build applies the same affine).
+vec3 lm_fetch_position(Lm_instance_record record, Uint_data position_data, uint vertex_index)
+{
+    uint byte_offset = vertex_index * record.position_stride_bytes;
+    if (record.position_encoding == c_vertex_position_encoding_snorm16x3_aabb) {
+        vec3 encoded = vec3(
+            lm_snorm16_from_bits(lm_fetch_u16(position_data, byte_offset + 0u)),
+            lm_snorm16_from_bits(lm_fetch_u16(position_data, byte_offset + 2u)),
+            lm_snorm16_from_bits(lm_fetch_u16(position_data, byte_offset + 4u))
+        );
+        return (encoded * record.position_scale.xyz) + record.position_offset.xyz;
+    }
+    return fetch_vec3(position_data, byte_offset >> 2u);
+}
+
 // PCG (www.pcg-random.org): per-texel per-frame decorrelation.
 uint pcg_hash(uint v)
 {
@@ -664,8 +701,8 @@ vec3 adaptive_offset(vec3 position, vec3 direction)
 // World-space geometric normal of the committed hit's triangle. Object-space
 // positions come from the acceleration structure when the backend supports
 // GL_EXT_ray_tracing_position_fetch, otherwise from the stream-0 pool (the
-// BLAS build input, so the values are identical) via the instance record's
-// position_address.
+// pool via the instance record's position_address; fetch_position() dequantizes,
+// so both land in the same object space).
 vec3 committed_face_normal(rayQueryEXT ray_query)
 {
     vec3 positions[3];
@@ -680,9 +717,9 @@ vec3 committed_face_normal(rayQueryEXT ray_query)
     uint i0 = indices.data[3u * primitive + 0u];
     uint i1 = indices.data[3u * primitive + 1u];
     uint i2 = indices.data[3u * primitive + 2u];
-    positions[0] = fetch_vec3(position_data, i0 * record.position_stride_uints);
-    positions[1] = fetch_vec3(position_data, i1 * record.position_stride_uints);
-    positions[2] = fetch_vec3(position_data, i2 * record.position_stride_uints);
+    positions[0] = lm_fetch_position(record, position_data, i0);
+    positions[1] = lm_fetch_position(record, position_data, i1);
+    positions[2] = lm_fetch_position(record, position_data, i2);
 #endif
     mat4x3 world_from_object = rayQueryGetIntersectionObjectToWorldEXT(ray_query, true);
     vec3 p0 = world_from_object * vec4(positions[0], 1.0);
@@ -972,6 +1009,43 @@ vec3 fetch_vec3(Uint_data vertices, uint base)
         uintBitsToFloat(vertices.data[base + 2u])
     );
 }
+
+// Vertex position encoding carried in Lm_instance_record::position_encoding;
+// mirrors erhe::dataformat::Vertex_position_encoding. Same decode as
+// res/shaders/erhe_ray_hit.glsl - inlined because this program is compiled from
+// an inline source string, where an #include resolves on Vulkan and not on GL.
+const uint c_vertex_position_encoding_snorm16x3_aabb = 1u;
+
+// One 16-bit lane at an arbitrary BYTE offset: a quantized stream 0 has a 6 or
+// 14 byte stride, so no vertex or component offset is 4-byte aligned.
+uint lm_fetch_u16(Uint_data data, uint byte_offset)
+{
+    uint word  = data.data[byte_offset >> 2u];
+    uint shift = (byte_offset & 2u) * 8u;
+    return (word >> shift) & 0xffffu;
+}
+
+float lm_snorm16_from_bits(uint bits)
+{
+    int value = int(bits << 16) >> 16;
+    return max(float(value) * (1.0 / 32767.0), -1.0);
+}
+
+// Object-space position of one vertex, dequantized to match the space the
+// acceleration structure stores (its BLAS build applies the same affine).
+vec3 lm_fetch_position(Lm_instance_record record, Uint_data position_data, uint vertex_index)
+{
+    uint byte_offset = vertex_index * record.position_stride_bytes;
+    if (record.position_encoding == c_vertex_position_encoding_snorm16x3_aabb) {
+        vec3 encoded = vec3(
+            lm_snorm16_from_bits(lm_fetch_u16(position_data, byte_offset + 0u)),
+            lm_snorm16_from_bits(lm_fetch_u16(position_data, byte_offset + 2u)),
+            lm_snorm16_from_bits(lm_fetch_u16(position_data, byte_offset + 4u))
+        );
+        return (encoded * record.position_scale.xyz) + record.position_offset.xyz;
+    }
+    return fetch_vec3(position_data, byte_offset >> 2u);
+}
 #endif
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
@@ -996,9 +1070,9 @@ vec3 committed_face_normal(rayQueryEXT ray_query)
     uint i0 = indices.data[3u * primitive + 0u];
     uint i1 = indices.data[3u * primitive + 1u];
     uint i2 = indices.data[3u * primitive + 2u];
-    positions[0] = fetch_vec3(position_data, i0 * record.position_stride_uints);
-    positions[1] = fetch_vec3(position_data, i1 * record.position_stride_uints);
-    positions[2] = fetch_vec3(position_data, i2 * record.position_stride_uints);
+    positions[0] = lm_fetch_position(record, position_data, i0);
+    positions[1] = lm_fetch_position(record, position_data, i1);
+    positions[2] = lm_fetch_position(record, position_data, i2);
 #endif
     mat4x3 world_from_object = rayQueryGetIntersectionObjectToWorldEXT(ray_query, true);
     vec3 p0 = world_from_object * vec4(positions[0], 1.0);
@@ -1436,14 +1510,23 @@ Lightmap_baker::Lightmap_baker(erhe::graphics::Device& graphics_device, erhe::sc
     const std::size_t off_vertex_address   = m_lm_instance_struct->add_uvec2("vertex_address"       )->get_offset_in_parent();
     const std::size_t off_position_address = m_lm_instance_struct->add_uvec2("position_address"     )->get_offset_in_parent();
     const std::size_t off_stride           = m_lm_instance_struct->add_uint ("vertex_stride_uints"  )->get_offset_in_parent();
-    const std::size_t off_position_stride  = m_lm_instance_struct->add_uint ("position_stride_uints")->get_offset_in_parent();
+    const std::size_t off_position_stride  = m_lm_instance_struct->add_uint ("position_stride_bytes")->get_offset_in_parent();
+    const std::size_t off_position_encoding= m_lm_instance_struct->add_uint ("position_encoding"    )->get_offset_in_parent();
+    m_lm_instance_struct->add_uint("reserved0");
+    m_lm_instance_struct->add_uint("reserved1");
+    m_lm_instance_struct->add_uint("reserved2");
     const std::size_t off_uv_scale_offset  = m_lm_instance_struct->add_vec4 ("uv_scale_offset"      )->get_offset_in_parent();
+    const std::size_t off_position_scale   = m_lm_instance_struct->add_vec4 ("position_scale"       )->get_offset_in_parent();
+    const std::size_t off_position_offset  = m_lm_instance_struct->add_vec4 ("position_offset"      )->get_offset_in_parent();
     ERHE_VERIFY(off_index_address    == offsetof(Lm_instance_record, index_address));
     ERHE_VERIFY(off_vertex_address   == offsetof(Lm_instance_record, vertex_address));
     ERHE_VERIFY(off_position_address == offsetof(Lm_instance_record, position_address));
     ERHE_VERIFY(off_stride           == offsetof(Lm_instance_record, vertex_stride_uints));
-    ERHE_VERIFY(off_position_stride  == offsetof(Lm_instance_record, position_stride_uints));
+    ERHE_VERIFY(off_position_stride  == offsetof(Lm_instance_record, position_stride_bytes));
+    ERHE_VERIFY(off_position_encoding== offsetof(Lm_instance_record, position_encoding));
     ERHE_VERIFY(off_uv_scale_offset  == offsetof(Lm_instance_record, uv_scale_offset));
+    ERHE_VERIFY(off_position_scale   == offsetof(Lm_instance_record, position_scale));
+    ERHE_VERIFY(off_position_offset  == offsetof(Lm_instance_record, position_offset));
     ERHE_VERIFY(m_lm_instance_struct->get_size_bytes() == sizeof(Lm_instance_record));
     m_lm_instance_block = std::make_unique<Shader_resource>(
         graphics_device,
@@ -3655,6 +3738,29 @@ auto Lightmap_baker::get_or_create_blas(
         return nullptr;
     }
 
+    // Shared with Scene_tlas::get_or_create_blas so the build transform can never
+    // disagree with the dequantization affine the instance records carry.
+    const erhe::scene_renderer::Blas_position_input position_input =
+        erhe::scene_renderer::get_blas_position_input(m_graphics_device, m_mesh_memory, buffer_mesh);
+    if (!position_input.has_position) {
+        return nullptr;
+    }
+    if (!position_input.supported) {
+        // Backstop only - Mesh_memory refuses to quantize on a device that cannot
+        // ray trace the format, so this should be unreachable. Log once rather
+        // than once per mesh per frame: get_or_create_blas runs every frame and
+        // nothing negative-caches a refusal.
+        static bool reported = false;
+        if (!reported) {
+            reported = true;
+            log_render->error(
+                "Vertex positions are quantized but the device cannot use that format as acceleration "
+                "structure build input; this mesh cannot be included in the bake"
+            );
+        }
+        return nullptr;
+    }
+
     Blas_entry& entry = m_blas_cache[&buffer_mesh];
     entry.primitive = primitive;
     entry.acceleration_structure = std::make_unique<Acceleration_structure>(
@@ -3667,6 +3773,8 @@ auto Lightmap_baker::get_or_create_blas(
                     .vertex_byte_offset = vertex_range.byte_offset,
                     .vertex_byte_stride = vertex_range.element_size,
                     .vertex_count       = vertex_range.count,
+                    .vertex_format      = position_input.vertex_format,
+                    .transform          = position_input.transform,
                     .index_buffer       = index_buffer,
                     .index_byte_offset  = index_range.byte_offset + (triangles.first_index * index_range.element_size),
                     .index_count        = triangles.index_count,
@@ -3990,7 +4098,10 @@ void Lightmap_baker::collect_instances(
                 const erhe::primitive::Buffer_range& index_range    = buffer_mesh->index_buffer_range;
                 erhe::graphics::Buffer* position_buffer = m_mesh_memory.get_vertex_buffer(position_range);
                 erhe::graphics::Buffer* index_buffer    = m_mesh_memory.get_index_buffer(index_range);
-                if ((position_buffer == nullptr) || (index_buffer == nullptr) || ((position_range.element_size % 4) != 0)) {
+                // No % 4 requirement on the position stride any more: it is carried
+                // in bytes, so a quantized 6 or 14 byte stream 0 no longer makes the
+                // guard fire and silently drop the occluder from the bake.
+                if ((position_buffer == nullptr) || (index_buffer == nullptr)) {
                     continue;
                 }
                 const uint64_t position_base_address = position_buffer->get_device_address();
@@ -4000,7 +4111,16 @@ void Lightmap_baker::collect_instances(
                 }
                 record.index_address         = index_base_address + index_range.byte_offset + (buffer_mesh->triangle_fill_indices.first_index * index_range.element_size);
                 record.position_address      = position_base_address + position_range.byte_offset;
-                record.position_stride_uints = static_cast<uint32_t>(position_range.element_size / 4);
+                record.position_stride_bytes = static_cast<uint32_t>(position_range.element_size);
+                record.position_encoding     = static_cast<uint32_t>(
+                    erhe::dataformat::get_vertex_position_encoding(
+                        &m_mesh_memory.get_vertex_input(buffer_mesh->vertex_input_key).vertex_format
+                    )
+                );
+                const erhe::scene_renderer::Position_quantization quantization =
+                    erhe::scene_renderer::get_position_quantization(buffer_mesh->bounding_box);
+                record.position_scale        = quantization.scale;
+                record.position_offset       = quantization.offset;
             }
             if (buffer_mesh->vertex_buffer_ranges.size() >= 2) {
                 const erhe::primitive::Buffer_range& attribute_range = buffer_mesh->vertex_buffer_ranges[1];

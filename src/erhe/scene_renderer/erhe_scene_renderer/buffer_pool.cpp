@@ -8,6 +8,7 @@
 #include "erhe_verify/verify.hpp"
 
 #include <algorithm>
+#include <numeric>
 #include <string>
 
 namespace erhe::scene_renderer {
@@ -258,7 +259,17 @@ auto Buffer_pool::allocate(const std::size_t element_count) -> erhe::primitive::
         : erhe::dataformat::get_format_size_bytes(m_index_format);
 
     const std::size_t allocation_byte_count = element_count * element_size;
-    const std::size_t allocation_alignment  = element_size;
+    // Aligning to the element size is what keeps byte_offset / element_size (i.e.
+    // base_vertex, and the index bases) exact. lcm with 4 additionally keeps the
+    // range start 4-byte aligned, which the ray-tracing instance records rely on:
+    // they hand the range address to a GLSL buffer reference declared
+    // buffer_reference_align = 4 and index it as a uint array. A quantized stream 0
+    // has a 6 or 14 byte stride, so element-size alignment alone would put half the
+    // ranges on a 2 mod 4 address and every fetched position would be 2 bytes off.
+    //
+    // For every stride in use today (4, 12, 20, ...) lcm(stride, 4) == stride, so
+    // this changes no existing allocation.
+    const std::size_t allocation_alignment  = std::lcm(element_size, std::size_t{4});
 
     std::optional<std::pair<Pool_block*, std::size_t>> hit = allocate_internal(allocation_byte_count, allocation_alignment);
     if (!hit.has_value()) {

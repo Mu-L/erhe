@@ -1,4 +1,5 @@
 #include "renderers/scene_tlas.hpp"
+#include "editor_log.hpp"
 
 #include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/command_buffer.hpp"
@@ -12,6 +13,7 @@
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
+#include "erhe_scene_renderer/primitive_buffer.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <algorithm>
@@ -48,18 +50,23 @@ Scene_tlas::Scene_tlas(
     const std::size_t off_vertex_address        = m_instance_struct.add_uvec2("vertex_address"       )->get_offset_in_parent();
     const std::size_t off_position_address      = m_instance_struct.add_uvec2("position_address"     )->get_offset_in_parent();
     const std::size_t off_vertex_stride_uints   = m_instance_struct.add_uint ("vertex_stride_uints"  )->get_offset_in_parent();
-    const std::size_t off_position_stride_uints = m_instance_struct.add_uint ("position_stride_uints")->get_offset_in_parent();
+    const std::size_t off_position_stride_bytes = m_instance_struct.add_uint ("position_stride_bytes")->get_offset_in_parent();
     const std::size_t off_material_index        = m_instance_struct.add_uint ("material_index"       )->get_offset_in_parent();
     const std::size_t off_flags                 = m_instance_struct.add_uint ("flags"                )->get_offset_in_parent();
+    const std::size_t off_position_encoding     = m_instance_struct.add_uint ("position_encoding"    )->get_offset_in_parent();
     m_instance_struct.add_uint("reserved0");
-    m_instance_struct.add_uint("reserved1");
+    const std::size_t off_position_scale        = m_instance_struct.add_vec4 ("position_scale"       )->get_offset_in_parent();
+    const std::size_t off_position_offset       = m_instance_struct.add_vec4 ("position_offset"      )->get_offset_in_parent();
     ERHE_VERIFY(off_index_address         == offsetof(Instance_record_data, index_address));
     ERHE_VERIFY(off_vertex_address        == offsetof(Instance_record_data, vertex_address));
     ERHE_VERIFY(off_position_address      == offsetof(Instance_record_data, position_address));
     ERHE_VERIFY(off_vertex_stride_uints   == offsetof(Instance_record_data, vertex_stride_uints));
-    ERHE_VERIFY(off_position_stride_uints == offsetof(Instance_record_data, position_stride_uints));
+    ERHE_VERIFY(off_position_stride_bytes == offsetof(Instance_record_data, position_stride_bytes));
     ERHE_VERIFY(off_material_index        == offsetof(Instance_record_data, material_index));
     ERHE_VERIFY(off_flags                 == offsetof(Instance_record_data, flags));
+    ERHE_VERIFY(off_position_encoding     == offsetof(Instance_record_data, position_encoding));
+    ERHE_VERIFY(off_position_scale        == offsetof(Instance_record_data, position_scale));
+    ERHE_VERIFY(off_position_offset       == offsetof(Instance_record_data, position_offset));
     ERHE_VERIFY(m_instance_struct.get_size_bytes() == sizeof(Instance_record_data));
     m_instance_block.add_struct("instances", &m_instance_struct, erhe::graphics::Shader_resource::unsized_array);
 
@@ -119,12 +126,16 @@ auto Scene_tlas::get_or_create_blas(
         return existing->second.acceleration_structure.get();
     }
 
-    // The acceleration structure reads triangles straight from the mesh
-    // memory pools: stream 0 starts with position (3 x float32 at offset 0)
-    // for both the skinned and non-skinned vertex formats, and indices are a
-    // uint32 triangle list. Indices are relative to the range start (draws
-    // use base_vertex), so baking the range byte offsets into the build
-    // addresses matches.
+    // The acceleration structure reads triangles straight from the mesh memory
+    // pools: stream 0 starts with position at offset 0 for both the skinned and
+    // non-skinned vertex formats, and indices are a uint32 triangle list. Indices
+    // are relative to the range start (draws use base_vertex), so baking the range
+    // byte offsets into the build addresses matches.
+    //
+    // When positions are quantized the build reads them as snorm16x3 and applies
+    // the primitive's dequantization affine as a build transform, so the stored
+    // geometry - and therefore the object space the hit shaders see, and every
+    // normal derived from the instance transform - is exactly what it was before.
     if (buffer_mesh.vertex_buffer_ranges.empty()) {
         return nullptr;
     }
@@ -143,6 +154,30 @@ auto Scene_tlas::get_or_create_blas(
         return nullptr;
     }
 
+    // Position storage format and, when quantized, the affine that maps the
+    // encoded values back into object space. Shared with the lightmap baker's
+    // BLAS cache so the two builds cannot disagree.
+    const erhe::scene_renderer::Blas_position_input position_input =
+        erhe::scene_renderer::get_blas_position_input(m_graphics_device, m_mesh_memory, buffer_mesh);
+    if (!position_input.has_position) {
+        return nullptr;
+    }
+    if (!position_input.supported) {
+        // Backstop only - Mesh_memory refuses to quantize on a device that cannot
+        // ray trace the format, so this should be unreachable. Log once rather
+        // than once per mesh per frame: get_or_create_blas runs every frame and
+        // nothing negative-caches a refusal.
+        static bool reported = false;
+        if (!reported) {
+            reported = true;
+            log_render->error(
+                "Vertex positions are quantized but the device cannot use that format as acceleration "
+                "structure build input; this mesh cannot be ray traced"
+            );
+        }
+        return nullptr;
+    }
+
     Blas_entry& entry = m_blas_cache[&buffer_mesh];
     entry.primitive = primitive;
     entry.acceleration_structure = std::make_unique<Acceleration_structure>(
@@ -155,6 +190,8 @@ auto Scene_tlas::get_or_create_blas(
                     .vertex_byte_offset = vertex_range.byte_offset,
                     .vertex_byte_stride = vertex_range.element_size,
                     .vertex_count       = vertex_range.count,
+                    .vertex_format      = position_input.vertex_format,
+                    .transform          = position_input.transform,
                     .index_buffer       = index_buffer,
                     .index_byte_offset  = index_range.byte_offset + (triangles.first_index * index_range.element_size),
                     .index_count        = triangles.index_count,
@@ -227,10 +264,23 @@ auto Scene_tlas::update(
             const uint64_t position_base_address  = position_buffer->get_device_address();
             const uint64_t attribute_base_address = attribute_buffer->get_device_address();
             const uint64_t index_base_address     = index_buffer->get_device_address();
+            // The stream-1 fetch is uint granular, so that stride still has to be a
+            // multiple of 4. The position stride no longer does - it is carried in
+            // bytes - which is what keeps a quantized (6 or 14 byte) stream 0 from
+            // silently dropping the whole instance out of the TLAS.
             if ((position_base_address == 0) || (attribute_base_address == 0) || (index_base_address == 0) ||
-                ((attribute_range.element_size % 4) != 0) || ((position_range.element_size % 4) != 0)) {
+                ((attribute_range.element_size % 4) != 0)) {
                 continue;
             }
+
+            // Position encoding and its dequantization affine: the BLAS carries the
+            // same affine as a build transform, so the structure stores dequantized
+            // object-space positions - the fallback fetch reads the raw pool and has
+            // to apply it itself to land in the same space.
+            const erhe::dataformat::Vertex_position_encoding position_encoding =
+                erhe::dataformat::get_vertex_position_encoding(&m_mesh_memory.get_vertex_input(buffer_mesh->vertex_input_key).vertex_format);
+            const erhe::scene_renderer::Position_quantization quantization =
+                erhe::scene_renderer::get_position_quantization(buffer_mesh->bounding_box);
 
             const erhe::primitive::Material* material       = mesh_primitive.material.get();
             const uint32_t                   material_index = (material != nullptr) ? material->material_buffer_index : 0u;
@@ -242,11 +292,13 @@ auto Scene_tlas::update(
                     .vertex_address        = attribute_base_address + attribute_range.byte_offset,
                     .position_address      = position_base_address + position_range.byte_offset,
                     .vertex_stride_uints   = static_cast<uint32_t>(attribute_range.element_size / 4),
-                    .position_stride_uints = static_cast<uint32_t>(position_range.element_size / 4),
+                    .position_stride_bytes = static_cast<uint32_t>(position_range.element_size),
                     .material_index        = material_index,
                     .flags                 = transmissive ? 1u : 0u,
+                    .position_encoding     = static_cast<uint32_t>(position_encoding),
                     .reserved0             = 0u,
-                    .reserved1             = 0u
+                    .position_scale        = quantization.scale,
+                    .position_offset       = quantization.offset
                 }
             );
             m_instances.push_back(

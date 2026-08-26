@@ -257,6 +257,14 @@ public:
     // to a padded snorm16x4) - see doc/vertex-position-quantization.md.
     bool use_16_vec3_snorm_vertex_buffer{true};
 
+    // Same format, but as acceleration structure build input. Vulkan's mandatory
+    // AS vertex format set includes VK_FORMAT_R16G16_SNORM and
+    // VK_FORMAT_R16G16B16A16_SNORM but not the 3-component one, and a
+    // 4-component format cannot be read over a 6-byte stride - so quantized
+    // positions can only feed a BLAS where this is true. Queried on Vulkan;
+    // Metal accepts MTL::AttributeFormatShort3Normalized unconditionally.
+    bool use_16_vec3_snorm_acceleration_structure_vertex_buffer{true};
+
     // Backend minimums applied when a Vertex_stream is packed (see
     // erhe::dataformat::Vertex_stream_packing). 1 means no constraint, which is
     // what GL and Vulkan core impose; Metal requires a stride that is a multiple

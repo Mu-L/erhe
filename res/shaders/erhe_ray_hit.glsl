@@ -48,6 +48,32 @@ struct Hit_surface {
     float hit_t;
 };
 
+// Vertex position encoding carried in Instance_record::position_encoding.
+// Mirrors erhe::dataformat::Vertex_position_encoding. These shaders are not
+// compiled through Shader_key, so they never receive
+// ERHE_VERTEX_POSITION_ENCODING - the selector travels in the record instead,
+// which also keeps this working per instance rather than per session.
+const uint c_vertex_position_encoding_passthrough    = 0u;
+const uint c_vertex_position_encoding_snorm16x3_aabb = 1u;
+
+// One 16-bit lane out of the uint array, at an arbitrary BYTE offset. A
+// quantized stream 0 has a 6 or 14 byte stride, so neither the vertex offset
+// nor the component offset is 4-byte aligned; the buffer itself always is.
+uint fetch_u16(Uint_data data, uint byte_offset)
+{
+    uint word  = data.data[byte_offset >> 2u];
+    uint shift = (byte_offset & 2u) * 8u;
+    return (word >> shift) & 0xffffu;
+}
+
+// snorm16 -> [-1, 1], matching erhe::dataformat::float_to_snorm16 on the encode
+// side: -32768 and -32767 both map to -1.
+float snorm16_from_bits(uint bits)
+{
+    int value = int(bits << 16) >> 16;
+    return max(float(value) * (1.0 / 32767.0), -1.0);
+}
+
 vec3 fetch_vec3(Uint_data vertices, uint base)
 {
     return vec3(
@@ -73,6 +99,26 @@ vec4 fetch_vec4(Uint_data vertices, uint base)
         uintBitsToFloat(vertices.data[base + 2u]),
         uintBitsToFloat(vertices.data[base + 3u])
     );
+}
+
+// Object-space position of one vertex of the hit triangle, from the stream-0
+// pool. Used only when the device has no ray-tracing position fetch; when it
+// does, the acceleration structure hands back positions that are already
+// dequantized (the BLAS build applies the same affine as a transform), so both
+// paths land in the same object space.
+vec3 fetch_position(Instance_record record, Uint_data position_data, uint vertex_index)
+{
+    uint byte_offset = vertex_index * record.position_stride_bytes;
+    if (record.position_encoding == c_vertex_position_encoding_snorm16x3_aabb) {
+        vec3 encoded = vec3(
+            snorm16_from_bits(fetch_u16(position_data, byte_offset + 0u)),
+            snorm16_from_bits(fetch_u16(position_data, byte_offset + 2u)),
+            snorm16_from_bits(fetch_u16(position_data, byte_offset + 4u))
+        );
+        return (encoded * record.position_scale.xyz) + record.position_offset.xyz;
+    }
+    // Passthrough: float3, and the byte offset is a multiple of 4.
+    return fetch_vec3(position_data, byte_offset >> 2u);
 }
 
 // Closest-hit trace + attribute/material fetch. Returns false on miss.
@@ -105,18 +151,19 @@ bool trace_closest(vec3 origin, vec3 direction, float t_max, out Hit_surface sur
 
     // Geometric normal from the committed triangle's object-space positions:
     // fetched from the acceleration structure when the backend supports
-    // GL_EXT_ray_tracing_position_fetch, otherwise from the stream-0 pool
-    // (the BLAS build input, so the values are identical) via the instance's
-    // position_address.
+    // GL_EXT_ray_tracing_position_fetch, otherwise from the stream-0 pool via the
+    // instance's position_address. Both land in the same object space: the
+    // structure stores build-transformed (dequantized) positions, and
+    // fetch_position() applies the same affine to the raw pool values.
     mat4x3 world_from_object = rayQueryGetIntersectionObjectToWorldEXT(ray_query, true);
     vec3 positions[3];
 #if ERHE_RT_HAS_POSITION_FETCH
     rayQueryGetIntersectionTriangleVertexPositionsEXT(ray_query, true, positions);
 #else
     Uint_data position_data = Uint_data(record.position_address);
-    positions[0] = fetch_vec3(position_data, i0 * record.position_stride_uints);
-    positions[1] = fetch_vec3(position_data, i1 * record.position_stride_uints);
-    positions[2] = fetch_vec3(position_data, i2 * record.position_stride_uints);
+    positions[0] = fetch_position(record, position_data, i0);
+    positions[1] = fetch_position(record, position_data, i1);
+    positions[2] = fetch_position(record, position_data, i2);
 #endif
     vec3 p0 = world_from_object * vec4(positions[0], 1.0);
     vec3 p1 = world_from_object * vec4(positions[1], 1.0);

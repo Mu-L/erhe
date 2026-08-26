@@ -1,5 +1,6 @@
 #pragma once
 
+#include "erhe_dataformat/dataformat.hpp"
 #include "erhe_utility/debug_label.hpp"
 
 #include <glm/glm.hpp>
@@ -30,13 +31,29 @@ enum class Acceleration_structure_type : unsigned int {
 class Acceleration_structure_triangles
 {
 public:
-    // Positions are 3 x float32 read at vertex_byte_offset + i * vertex_byte_stride.
-    // The vertex buffer needs Buffer_usage::acceleration_structure_build_input |
-    // shader_device_address.
+    // Positions are read at vertex_byte_offset + i * vertex_byte_stride, in
+    // vertex_format. The vertex buffer needs
+    // Buffer_usage::acceleration_structure_build_input | shader_device_address.
     const Buffer* vertex_buffer     {nullptr};
     std::size_t   vertex_byte_offset{0};
     std::size_t   vertex_byte_stride{0};
     std::size_t   vertex_count      {0};
+
+    // Storage format of the positions. Only format_32_vec3_float and
+    // format_16_vec3_snorm are accepted; the latter needs
+    // Device_info::use_16_vec3_snorm_acceleration_structure_vertex_buffer and
+    // is only meaningful together with a transform (below), which dequantizes.
+    erhe::dataformat::Format vertex_format{erhe::dataformat::Format::format_32_vec3_float};
+
+    // Optional affine applied to every vertex AT BUILD TIME, so the structure
+    // stores transformed positions and the geometry's object space is the
+    // post-transform one. This is how quantized positions reach a BLAS: the
+    // transform is the primitive's dequantization affine, and the instance
+    // transform (and therefore the object-to-world the hit shaders read, and the
+    // normals derived from it) is unaffected.
+    //
+    // Identity means "no transform" and costs nothing on either backend.
+    glm::mat4     transform         {1.0f};
 
     // Indices are a uint32 triangle list (index_count is a multiple of 3).
     // Same buffer usage requirements as the vertex buffer.

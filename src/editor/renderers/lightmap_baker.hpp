@@ -592,8 +592,20 @@ private:
         uint64_t  vertex_address       {0}; // start of the stream-1 vertex range
         uint64_t  position_address     {0}; // start of the stream-0 vertex range (position-fetch fallback)
         uint32_t  vertex_stride_uints  {0};
-        uint32_t  position_stride_uints{0};
+        // BYTE granular; a quantized stream 0 has a 6 or 14 byte stride, which
+        // uint granularity cannot express (and whose guard used to drop the
+        // instance from the bake entirely).
+        uint32_t  position_stride_bytes{0};
+        // erhe::dataformat::Vertex_position_encoding of the stream-0 position.
+        uint32_t  position_encoding    {0};
+        uint32_t  reserved0            {0};
+        uint32_t  reserved1            {0};
+        uint32_t  reserved2            {0};
         glm::vec4 uv_scale_offset      {0.0f, 0.0f, 0.0f, 0.0f};
+        // Dequantization affine for the fallback fetch; see
+        // Scene_tlas::Instance_record_data.
+        glm::vec4 position_scale       {1.0f, 1.0f, 1.0f, 0.0f};
+        glm::vec4 position_offset      {0.0f, 0.0f, 0.0f, 0.0f};
     };
 
     class Light_record

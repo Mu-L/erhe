@@ -1,6 +1,6 @@
 # Vertex position quantization
 
-Status: phases 1-3 implemented (see Implementation notes at the end)
+Status: phases 1-5 implemented (see Implementation notes at the end)
 Date: 2026-08-26
 Revision: 8 (verified over six independent review rounds; see Provenance)
 
@@ -896,6 +896,87 @@ consumed; phase 6 consumes it alongside the config flag.
 `VK_FORMAT_R16G16B16_SNORM` with `VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT`, so vec3 is
 viable there. Quest is still unchecked - the query logs itself at device init, so
 the answer arrives with the first Quest run.
+
+### Phase 4 (commit 60a0ba9b6)
+
+As specified. Two things worth knowing:
+
+* `content_edge_lines.vert` is not compiled on a normal desktop at all - the
+  geometry-shader wide-line backend is built only when the device has no compute
+  shaders, and the Vulkan backend rejects geometry shaders outright. It was
+  verified by forcing that backend on under OpenGL, and the check was confirmed
+  able to fail with a deliberate bad field reference. Any future change to that
+  shader has the same coverage problem.
+* Every lightmap draw record is pre-filled with the identity affine right after
+  the `memset`, so a record the draw filter skips is wrong-but-finite instead of
+  collapsing its mesh to a point.
+
+### Phase 5
+
+**BLAS: build transform, not instance transform.** Section 7 left the mechanism
+open. The dequantization affine is applied as a *build* transform
+(`VkAccelerationStructureGeometryTrianglesDataKHR::transformData`, Metal's
+transformation matrix buffer), so the structure stores object space positions and
+the instance transform is untouched.
+
+Folding the affine into the *instance* transform instead would need no new GPU
+plumbing at all, and it is tempting - but it is wrong. Normals and tangents are
+fetched from stream 1, which is never quantized, and
+`res/shaders/erhe_ray_hit.glsl` transforms them with the inverse transpose of
+`world_from_object`. Making that matrix `world_from_node * dequant` would apply
+the per axis half extent scale to attributes that never lived in encoded space,
+warping every shading normal on a non-cubic AABB. Do not revisit this.
+
+`get_blas_position_input()` (`mesh_memory.hpp`) is the single source of both the
+format and the transform, so the two BLAS builders - the scene TLAS and the
+lightmap baker's own cache - cannot disagree with each other or with the affine
+the instance records carry.
+
+**Answered, and it constrains the feature:** the desktop AMD 890M reports
+`VK_FORMAT_R16G16B16_SNORM` with `VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT` but
+**without** `VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR`. A
+quantized mesh therefore cannot feed a BLAS on the primary dev machine.
+
+Decision (user, at the end of phase 5): **fall back to unquantized positions**
+when the device cannot ray trace the format - option (a) of section 7, resolved
+at the vertex format rather than per BLAS. Phase 6 implements the gate in
+`Mesh_memory`: `quantize_vertex_positions` only takes effect when the device can
+also use the format as acceleration structure build input, and says so in the log
+when it declines. Section 7's option (b), a separate float3 position copy for
+BLAS input, is **not** implemented. Future work: a padded `snorm16x4_aabb`, which
+Vulkan's mandatory AS format table does include - that is the enumerator the
+design reserved for exactly this.
+
+The `supported == false` path in the two BLAS builders is therefore a backstop
+that the shipped configuration never reaches; it logs once rather than once per
+mesh per frame.
+
+**Instance records are byte granular now.** `position_stride_uints` became
+`position_stride_bytes` in both `Instance_record_data` (48 -> 80 B) and
+`Lm_instance_record` (64 -> 96 B), each gaining `position_encoding` plus the
+scale / offset vec4s, and the `(element_size % 4) != 0 -> continue` guards that
+would have silently dropped a quantized instance out of the TLAS and out of the
+bake are gone. The stream-1 guard stays: that fetch is still uint granular.
+
+**Pool ranges are now lcm(stride, 4) aligned** (`buffer_pool.cpp`). Element size
+alignment alone is what makes `byte_offset / element_size` exact, but a 6 or 14
+byte stride would then put half the ranges on a `2 mod 4` address - and the
+instance records hand that address to a GLSL buffer reference declared
+`buffer_reference_align = 4`. Every fetched position would have been 2 bytes off.
+For every stride in use today lcm(stride, 4) == stride, so nothing moved.
+
+**Deviation in the edit write-back.** Section 7 asked for an out-of-AABB vertex
+edit to trigger a primitive rebuild rather than clamp. It clamps, warns once per
+drag, and lets commit rebuild: `Move_mesh_vertices_operation` already constructs a
+fresh `Primitive` from the geometry, which recomputes the AABB, so the committed
+result is exact and only the live drag preview pins the vertex to the box face.
+Rebuilding mid-drag per frame was not worth it.
+
+**Known, not fixed:** the snorm16 fetch reads the `uint` word containing byte
+`offset + 4`, which for the last vertex of an allocation can read up to 2 bytes
+past it. Inside a pool block that is harmless; it is only a real over-read if an
+allocation ends exactly at the end of the buffer. Revisit in phase 6 if a
+validation layer flags it.
 
 ## Provenance
 

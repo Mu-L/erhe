@@ -4,6 +4,8 @@
 #include "erhe_graphics/ring_buffer_range.hpp"
 #include "erhe_graphics/shader_resource.hpp"
 
+#include <glm/glm.hpp>
+
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -58,16 +60,29 @@ public:
         uint64_t vertex_address;        // device address of the stream-1 vertex range start
         uint64_t position_address;      // device address of the stream-0 vertex range start (position-fetch fallback)
         uint32_t vertex_stride_uints;
-        uint32_t position_stride_uints;
+        // BYTE granular, not uints: a quantized stream 0 has a 6 or 14 byte
+        // stride, which uint granularity cannot express. The old guard that
+        // skipped such instances dropped them from the TLAS entirely.
+        uint32_t position_stride_bytes;
         uint32_t material_index;
         uint32_t flags;                 // bit 0: transmissive material
-        // Pads the struct to a multiple of 16 so the std140-rounded
-        // Shader_resource size matches sizeof (the layout VERIFYs in the
-        // constructor compare the two).
+        // erhe::dataformat::Vertex_position_encoding of the stream-0 position.
+        // Carried in the record rather than as a shader define: none of these
+        // shaders is compiled through Shader_key, so none receives
+        // ERHE_VERTEX_POSITION_ENCODING - and a record-carried selector also
+        // survives a future per-primitive encoding.
+        uint32_t position_encoding;
+        // Pads the scalars to a multiple of 16 so the vec4s below land on their
+        // own alignment and the std140-rounded Shader_resource size matches
+        // sizeof (the layout VERIFYs in the constructor compare the two).
         uint32_t reserved0;
-        uint32_t reserved1;
+        // Dequantization affine for the fallback fetch. The BLAS carries the same
+        // affine as a build transform, so object space is the dequantized one and
+        // the fetched positions have to be dequantized to match.
+        glm::vec4 position_scale;
+        glm::vec4 position_offset;
     };
-    static_assert(sizeof(Instance_record_data) == 48);
+    static_assert(sizeof(Instance_record_data) == 80);
 
     // Instance mask bits, mirrored in the ray query shaders: bit 0 = every
     // instance, bit 1 = non-transmissive instances only (shadow rays trace

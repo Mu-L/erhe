@@ -9,6 +9,7 @@
 
 #include "erhe_scene/mesh.hpp"
 #include "erhe_primitive/buffer_mesh.hpp"
+#include "erhe_scene_renderer/primitive_buffer.hpp"
 #include "erhe_primitive/buffer_writer.hpp"
 #include "erhe_primitive/primitive.hpp"
 
@@ -20,6 +21,46 @@ namespace erhe::scene_renderer {
 
 using Format                 = erhe::dataformat::Format;
 using Vertex_attribute_usage = erhe::dataformat::Vertex_attribute_usage;
+
+auto get_blas_position_input(
+    const erhe::graphics::Device&       graphics_device,
+    const Mesh_memory&                  mesh_memory,
+    const erhe::primitive::Buffer_mesh& buffer_mesh
+) -> Blas_position_input
+{
+    const erhe::dataformat::Vertex_format& vertex_format =
+        mesh_memory.get_vertex_input(buffer_mesh.vertex_input_key).vertex_format;
+    const erhe::dataformat::Attribute_stream position =
+        vertex_format.find_attribute(erhe::dataformat::Vertex_attribute_usage::position, 0);
+    if (position.attribute == nullptr) {
+        // No position at all: nothing to build from. Distinct from "the device
+        // cannot use this format", which is what has_position reports.
+        return Blas_position_input{.has_position = false};
+    }
+
+    Blas_position_input result{};
+    result.vertex_format = position.attribute->format;
+    if (erhe::dataformat::get_vertex_position_encoding(&vertex_format) == erhe::dataformat::Vertex_position_encoding::passthrough) {
+        return result;
+    }
+
+    // Quantized. Vulkan does not guarantee the 3-component 16-bit snorm format
+    // as acceleration structure build input, and a 4-component one cannot be
+    // read over a 6-byte stride, so a device without it simply cannot ray trace
+    // quantized geometry.
+    result.supported = graphics_device.get_info().use_16_vec3_snorm_acceleration_structure_vertex_buffer;
+
+    // The same affine the primitive record and the instance records carry, as a
+    // build transform: translate(center) * scale(half_extent).
+    const Position_quantization quantization = get_position_quantization(buffer_mesh.bounding_box);
+    result.transform = glm::mat4{
+        glm::vec4{quantization.scale.x, 0.0f, 0.0f, 0.0f},
+        glm::vec4{0.0f, quantization.scale.y, 0.0f, 0.0f},
+        glm::vec4{0.0f, 0.0f, quantization.scale.z, 0.0f},
+        glm::vec4{quantization.offset.x, quantization.offset.y, quantization.offset.z, 1.0f}
+    };
+    return result;
+}
 
 Mesh_memory::Mesh_memory(
     const Mesh_memory_config& mesh_memory_config,

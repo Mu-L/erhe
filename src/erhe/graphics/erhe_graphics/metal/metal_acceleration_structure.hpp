@@ -70,6 +70,11 @@ private:
     MTL::AccelerationStructure*                    m_acceleration_structure{nullptr};
     MTL::Buffer*                                   m_scratch_buffer        {nullptr};
     MTL::Buffer*                                   m_instance_buffer       {nullptr}; // top level only, host visible
+    // Bottom level only, and only when some geometry carries a non-identity
+    // transform: one packed 4x3 (column-major) matrix per geometry, referenced by
+    // MTLAccelerationStructureTriangleGeometryDescriptor. The build reads it, so
+    // it has to outlive the constructor.
+    MTL::Buffer*                                   m_transform_buffer      {nullptr};
     MTL::PrimitiveAccelerationStructureDescriptor* m_primitive_descriptor  {nullptr}; // bottom level only
     MTL::InstanceAccelerationStructureDescriptor*  m_instance_descriptor   {nullptr}; // top level only
     std::vector<MTL::AccelerationStructure*>       m_referenced_bottom_level{};
