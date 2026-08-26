@@ -25,6 +25,23 @@
 
 namespace erhe::scene_renderer {
 
+auto get_position_quantization(const erhe::math::Aabb& bounding_box) -> Position_quantization
+{
+    if (!bounding_box.is_valid()) {
+        return Position_quantization{};
+    }
+    // Small enough that it never perturbs a real extent, large enough to keep
+    // the encoder's division finite on a degenerate (zero thickness) axis.
+    constexpr float epsilon = 1e-6f;
+    const glm::vec3 center      = bounding_box.center();
+    const glm::vec3 half_extent = 0.5f * bounding_box.diagonal();
+    const glm::vec3 scale       = glm::max(half_extent, glm::vec3{epsilon});
+    return Position_quantization{
+        .scale  = glm::vec4{scale,  0.0f},
+        .offset = glm::vec4{center, 0.0f}
+    };
+}
+
 Primitive_interface::Primitive_interface(erhe::graphics::Device& graphics_device, const int max_primitive_count)
     : primitive_block{
         graphics_device,
@@ -47,7 +64,9 @@ Primitive_interface::Primitive_interface(erhe::graphics::Device& graphics_device
         .size             = primitive_struct.add_float("size"                  )->get_offset_in_parent(),
         .skinning_factor  = primitive_struct.add_float("skinning_factor"       )->get_offset_in_parent(),
         .base_joint_index = primitive_struct.add_uint ("base_joint_index"      )->get_offset_in_parent(),
-        .base_vertex      = primitive_struct.add_uint ("base_vertex"           )->get_offset_in_parent()
+        .base_vertex      = primitive_struct.add_uint ("base_vertex"           )->get_offset_in_parent(),
+        .position_scale   = primitive_struct.add_vec4 ("position_scale"        )->get_offset_in_parent(),
+        .position_offset  = primitive_struct.add_vec4 ("position_offset"       )->get_offset_in_parent()
     }
     , max_primitive_count{static_cast<std::size_t>(max_primitive_count)}
 {
@@ -59,6 +78,19 @@ Primitive_interface::Primitive_interface(erhe::graphics::Device& graphics_device
         const std::size_t ubo_max      = static_cast<std::size_t>(graphics_device.get_info().max_uniform_block_size) / element_size;
         this->max_primitive_count = std::min(this->max_primitive_count, ubo_max);
         array_size = this->max_primitive_count;
+        // The UBO path is the one that pays for a wider Primitive record: the
+        // record size divides the uniform block, so growing the struct lowers
+        // primitives-per-block and Draw_list_scene chunks its draws more often.
+        // Log it, so a device that ends up with an implausibly small budget is
+        // visible rather than merely slow. (The SSBO path uses an unsized array
+        // and is unaffected.)
+        log_primitive_buffer->info(
+            "Primitive UBO: record {} bytes, max uniform block {} bytes -> {} primitives per block (requested {})",
+            element_size,
+            graphics_device.get_info().max_uniform_block_size,
+            this->max_primitive_count,
+            max_primitive_count
+        );
     }
     primitive_block.add_struct("primitives", &primitive_struct, array_size);
 }
@@ -221,6 +253,7 @@ auto Primitive_buffer::update(
             // vertexOffset). The ID-render shader subtracts it from gl_VertexID so the packed triangle id is
             // the 0-based per-primitive facet index that id_ranges()/get_mesh_facet_from_triangle() expect.
             const uint32_t  base_vertex      = buffer_mesh->base_vertex();
+            const Position_quantization quantization = get_position_quantization(buffer_mesh->bounding_box);
 
             SPDLOG_LOGGER_TRACE(
                 log_primitive_buffer, 
@@ -257,6 +290,8 @@ auto Primitive_buffer::update(
                 write(primitive_gpu_data, write_offset + offsets.skinning_factor,  as_span(skinning_factor ));
                 write(primitive_gpu_data, write_offset + offsets.base_joint_index, as_span(base_joint_index));
                 write(primitive_gpu_data, write_offset + offsets.base_vertex,      as_span(base_vertex     ));
+                write(primitive_gpu_data, write_offset + offsets.position_scale,  as_span(quantization.scale ));
+                write(primitive_gpu_data, write_offset + offsets.position_offset, as_span(quantization.offset));
 
             }
             write_offset += entry_size;
@@ -345,6 +380,7 @@ void Primitive_buffer::write_primitive(
     const float     skinning_factor  = skin ? 1.0f : 0.0f;
     const uint32_t  base_joint_index = skin ? skin->skin_data.joint_buffer_index : 0;
     const uint32_t  base_vertex      = buffer_mesh->base_vertex();
+    const Position_quantization quantization = get_position_quantization(buffer_mesh->bounding_box);
 
     // ID-buffer edge-line method: stamp the per-primitive face-id base into
     // primitive.color (raw float in .x) so the EDGE_LINES_FROM_ID fill
@@ -376,6 +412,8 @@ void Primitive_buffer::write_primitive(
     write(primitive_gpu_data, write_offset + offsets.skinning_factor,       as_span(skinning_factor ));
     write(primitive_gpu_data, write_offset + offsets.base_joint_index,      as_span(base_joint_index));
     write(primitive_gpu_data, write_offset + offsets.base_vertex,           as_span(base_vertex     ));
+    write(primitive_gpu_data, write_offset + offsets.position_scale,        as_span(quantization.scale ));
+    write(primitive_gpu_data, write_offset + offsets.position_offset,       as_span(quantization.offset));
     write_offset += entry_size;
 
     if (use_id_ranges) {
@@ -540,6 +578,12 @@ auto Primitive_buffer::update(
         write(primitive_gpu_data, write_offset + offsets.size,             size_span                );
         write(primitive_gpu_data, write_offset + offsets.skinning_factor,  as_span(skinning_factor ));
         write(primitive_gpu_data, write_offset + offsets.base_joint_index, as_span(base_joint_index));
+        // No Buffer_mesh here (this overload iterates Nodes, and correspondingly
+        // never writes base_vertex either), so these draws can only ever be
+        // passthrough. Write the identity affine for hygiene.
+        const Position_quantization quantization{};
+        write(primitive_gpu_data, write_offset + offsets.position_scale,   as_span(quantization.scale ));
+        write(primitive_gpu_data, write_offset + offsets.position_offset,  as_span(quantization.offset));
         write_offset += entry_size;
     }
     buffer_range.bytes_written(write_offset);

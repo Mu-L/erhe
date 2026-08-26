@@ -3,6 +3,7 @@
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/shader_resource.hpp"
+#include "erhe_math/aabb.hpp"
 #include "erhe_primitive/enums.hpp"
 #include "erhe_scene_renderer/generated/primitive_color_source.hpp"
 
@@ -43,7 +44,28 @@ public:
     std::size_t base_vertex;        // uint  1 * 4 bytes - first vertex of this primitive in the shared vertex pool;
                                     // the ID-render shader subtracts it from gl_VertexID so the packed triangle id
                                     // is the 0-based per-primitive facet index (not a pool-global vertex index).
+    std::size_t position_scale;     // vec4  4 * 4 bytes - xyz = object space AABB half extent, w unused
+    std::size_t position_offset;    // vec4  4 * 4 bytes - xyz = object space AABB center,      w unused
+                                    // Vertex position dequantization affine: decoded = a_position * scale + offset.
+                                    // Always the primitive's real AABB - it is the *decode* that is a no-op while
+                                    // positions are stored as float3, because a passthrough shader never reads these.
 };
+
+// Dequantization affine for one primitive, derived from its object space AABB.
+// Encoder and decoder must agree exactly, so both go through this:
+//   scale  = max(0.5 * (max - min), epsilon)  per axis
+//   offset = 0.5 * (max + min)
+// A degenerate axis encodes to exactly 0 and decodes back to the center, so the
+// epsilon never contributes there. An AABB that is invalid - i.e. never had a
+// point included - yields the identity instead.
+class Position_quantization
+{
+public:
+    glm::vec4 scale {1.0f, 1.0f, 1.0f, 0.0f};
+    glm::vec4 offset{0.0f, 0.0f, 0.0f, 0.0f};
+};
+
+[[nodiscard]] auto get_position_quantization(const erhe::math::Aabb& bounding_box) -> Position_quantization;
 
 class Primitive_interface
 {

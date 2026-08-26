@@ -439,6 +439,26 @@ void write_slot_fields(std::byte* record, const Primitive_struct& offsets, const
     std::memcpy(record + offsets.base_joint_index, &base_joint_index, sizeof(uint32_t));
 }
 
+// The dequantization affine is static per Buffer_mesh, so it belongs in the
+// cached record next to base_vertex. write_entry_record() memsets the record
+// and Primitive_buffer::update()'s fast path memcpys it verbatim, patching only
+// color and size - so a quantized draw that is not written here would decode
+// every position against scale = offset = 0.
+//
+// buffer_mesh may be null: classify_primitive() guarantees one at registration,
+// but refresh_object_records() replays entries against a scene that may have
+// been mutated since. Fall back to the identity affine rather than aborting -
+// the same shape as the queued-op-vs-mutated-scene abort that
+// write_entry_record() has produced before.
+void write_position_quantization_fields(std::byte* record, const Primitive_struct& offsets, const erhe::primitive::Buffer_mesh* buffer_mesh)
+{
+    const Position_quantization quantization = (buffer_mesh != nullptr)
+        ? get_position_quantization(buffer_mesh->bounding_box)
+        : Position_quantization{};
+    std::memcpy(record + offsets.position_scale,  &quantization.scale,  sizeof(glm::vec4));
+    std::memcpy(record + offsets.position_offset, &quantization.offset, sizeof(glm::vec4));
+}
+
 } // anonymous namespace
 
 void Draw_list_scene::write_entry_record(const Draw_list_object& object, const Draw_list_entry& entry, std::byte* record) const
@@ -459,6 +479,9 @@ void Draw_list_scene::write_entry_record(const Draw_list_object& object, const D
     std::memcpy(record + offsets.lightmap_scale_offset, &mesh_primitive.lightmap_uv_scale_offset, sizeof(glm::vec4));
     write_slot_fields(record, offsets, *mesh, mesh_primitive);
     std::memcpy(record + offsets.base_vertex, &entry.base_vertex, sizeof(uint32_t));
+    const erhe::primitive::Primitive*   primitive   = mesh_primitive.primitive.get();
+    const erhe::primitive::Buffer_mesh* buffer_mesh = (primitive != nullptr) ? primitive->get_renderable_mesh() : nullptr;
+    write_position_quantization_fields(record, offsets, buffer_mesh);
 }
 
 void Draw_list_scene::write_object_transform(const uint32_t object_index)
