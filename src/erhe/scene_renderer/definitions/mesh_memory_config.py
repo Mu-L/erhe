@@ -2,7 +2,7 @@ from erhe_codegen import *
 
 struct("Mesh_memory_config",
     reflect=True,
-    version=2,
+    version=3,
     short_desc="Mesh Memory",
     long_desc="",
     developer=False,
@@ -48,6 +48,26 @@ struct("Mesh_memory_config",
             default="false",
             short_desc="Quantize Vertex Positions",
             long_desc="Store vertex positions as snorm16x3 normalized into the primitive AABB (6 bytes instead of 12). Ignored on a device that cannot use that format as ray tracing acceleration structure build input.",
+            visible=True,
+            developer=True
+        ),
+        field(
+            "optimize_meshes",
+            Bool,
+            added_in=3,
+            default="false",
+            short_desc="Optimize Meshes",
+            long_desc="Build an additional meshoptimizer-optimized variant of every renderable mesh (vertex weld, vertex cache order, overdraw order, vertex fetch order). The unoptimized variant is always built and stays the one the ID renderer, ray tracing and vertex editing use. Applies to meshes built after the change.",
+            visible=True,
+            developer=True
+        ),
+        field(
+            "mesh_optimize_cache",
+            Bool,
+            added_in=3,
+            default="false",
+            short_desc="Mesh Optimization Cache",
+            long_desc="Cache mesh optimization results on disk, keyed by source content hash, so repeated loads of the same asset skip the optimization passes. Applies to imported glTF meshes only; procedural and geometry path builds are not cached. No effect unless Optimize Meshes is enabled.",
             visible=True,
             developer=True
         ),

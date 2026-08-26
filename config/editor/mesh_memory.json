@@ -1,8 +1,10 @@
 {
-    "_version": 2,
+    "_version": 3,
     "vertex_pool_block_size_mb": 32,
     "index_pool_block_size_mb": 16,
     "edge_line_vertex_pool_block_size_mb": 8,
     "quantize_vertex_positions": true,
+    "optimize_meshes": false,
+    "mesh_optimize_cache": false,
     "max_buffers_per_pool": 64
 }
