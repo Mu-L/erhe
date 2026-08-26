@@ -1249,9 +1249,20 @@ Memory, measured on the same scenes: stream-0 pool 3974664 -> 2634800 B with
 Sponza loaded (-33.7 %) and 1381512 -> 921008 B for the two rigs (-33.3 %), i.e.
 the predicted 33 % of stream 0, at scene scale.
 
-**Still not done**, and now the only outstanding verification: a lightmap bake
-with the flag on, and the edge-line / gizmo / out-of-AABB vertex drag trio
-(the drag needs real mouse interaction, which the MCP path does not reach).
+**The lightmap bake runs with the flag on.** `lightmap_prepare_tiles` (7 meshes,
+12 pieces, 4 tiles) followed by `lightmap_bake_gbuffer` and `lightmap_bake_direct`
+all succeed with no errors, which means the baker's own BLAS cache built from
+quantized positions - the path that phase 5's device gate would have refused.
+Rendering with lightmaps on shows the skinned frog rig correctly, which also
+retires the "the rest-pose AABB was never visually confirmed" item.
+
+**The gizmo and the selection edge lines are correct** with quantization on: the
+translate / rotate gizmo lands on the selected mesh and the outline follows the
+frog's silhouette.
+
+**Still not done**: an out-of-AABB vertex drag. It needs real mouse interaction,
+which the MCP path does not reach, so the clamp-and-warn behaviour described
+above is still only verified by reading the code.
 
 ## Provenance
 
