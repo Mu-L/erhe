@@ -6,7 +6,6 @@
 #include "erhe_math/viewport.hpp"
 #include "erhe_scene_renderer/camera_buffer.hpp"
 #include "erhe_scene_renderer/content_wide_line_view_writer.hpp"
-#include "erhe_scene_renderer/face_id_base_provider.hpp"
 
 #include <glm/glm.hpp>
 
@@ -81,16 +80,6 @@ public:
     void               set_line_bias_clamp (float ulps)   { m_line_bias_clamp = ulps; }
     [[nodiscard]] auto get_line_bias_clamp () const -> float { return m_line_bias_clamp; }
 
-    // ID-buffer edge-line method. When enabled, the compute backend writes the
-    // encoded face id (per-half-quad facet + per-dispatch id_base) into the
-    // triangle color slot instead of the line color, so an earlier edge-id
-    // pre-pass produces a face-ID buffer the polygon-fill shader samples. The
-    // caller pairs this with set_use_tent(true) + set_line_bias_margin(0) (no
-    // toward-camera lift -> half-quad depth == face plane) and renders into the
-    // edge-id framebuffer with blending disabled.
-    void               set_id_mode(bool value) { m_id_mode = value; }
-    [[nodiscard]] auto get_id_mode() const -> bool { return m_id_mode; }
-
     // True for the compute backend (compute() runs a real dispatch and
     // callers must emit a compute->vertex memory barrier afterwards),
     // false for the geometry-shader backend (compute() is a no-op, there
@@ -123,17 +112,12 @@ public:
     // partitions dispatches across composition passes (selection
     // outline, selected, not_selected, ...). Subclass picks which
     // primitives carry usable edge data for its backend.
-    // id_base_provider supplies the per-primitive face-id base for the id mode
-    // (nullptr for the normal color path). When non-null, each queued primitive's
-    // dispatch carries get_face_id_base(mesh, primitive_index), which the compute
-    // shader adds to the facet index before encoding.
     void add_mesh(
-        Mesh_memory&                 mesh_memory,
-        const erhe::scene::Mesh&     mesh,
-        const glm::vec4&             color,
-        float                        line_width,
-        uint32_t                     group              = 0,
-        const Face_id_base_provider* id_base_provider   = nullptr
+        Mesh_memory&             mesh_memory,
+        const erhe::scene::Mesh& mesh,
+        const glm::vec4&         color,
+        float                    line_width,
+        uint32_t                 group = 0
     );
 
     // Run the compute pre-pass that pre-transforms edge endpoints into
@@ -151,22 +135,12 @@ public:
     // overrides pipeline_state's blend. The caller's
     // pipeline_state.data.shader_stages, vertex_input, and
     // bind_group_layout are ignored.
-    //
-    // ID-buffer edge-line method SEED mask: when seed_texture is non-null (the
-    // edge-id pass passes the face-ID seed buffer + its sampler), the compute
-    // backend draws with the seed-masked graphics variant, which discards any edge
-    // fragment whose own face id does not equal the seed's frontmost-visible-face
-    // id at that pixel. Always single-view (the edge-id pass is single-view). The
-    // color edge-line path leaves both null and is unaffected; the geometry
-    // backend ignores them (the id method requires the compute backend).
     virtual void render(
         erhe::graphics::Render_command_encoder& render_encoder,
         erhe::graphics::Base_render_pipeline&   pipeline_state,
         erhe::graphics::Color_blend_state*      color_blend_state,
         uint32_t                                group        = 0,
-        bool                                    multiview    = false,
-        const erhe::graphics::Texture*          seed_texture = nullptr,
-        const erhe::graphics::Sampler*          seed_sampler = nullptr
+        bool                                    multiview    = false
     ) = 0;
 
     void end_frame();
@@ -192,8 +166,7 @@ protected:
         float                               line_width,
         uint32_t                            group,
         bool                                mesh_is_skinned,
-        uint32_t                            base_joint_index,
-        uint32_t                            id_base
+        uint32_t                            base_joint_index
     ) = 0;
 
     // Subclass hook for end_frame() -- release any per-dispatch ring
@@ -228,10 +201,6 @@ private:
     float                              m_line_bias_margin{1024.0f};
     float                              m_line_bias_clamp{2048.0f};
 
-    // ID-buffer edge-line method: when set, set_view_params() stamps id_mode = 1
-    // into the per-frame params so the compute backend writes encoded face ids.
-    bool                               m_id_mode{false};
-
     erhe::graphics::Ring_buffer_client* m_joint_buffer_client{nullptr};
     erhe::graphics::Ring_buffer_range   m_joint_buffer_range;
     bool                                m_joint_buffer_set{false};
@@ -247,19 +216,13 @@ private:
 //
 // multiview_graphics_shader_stages may be null for single-view-only
 // builds; the multiview render path will then no-op.
-// graphics_shader_stages_seed is the seed-masked single-view graphics variant
-// (content_line_after_compute.frag compiled with ERHE_CONTENT_LINE_SEED_MASK,
-// using graphics_seed_bind_group_layout). May be null; the seed-masked draw then
-// no-ops and the ID-buffer edge-line method falls back to the unmasked edge-id
-// buffer.
 auto make_content_wide_line_compute_renderer(
     erhe::graphics::Device&        graphics_device,
     Content_wide_line_interface&   interface_,
     erhe::graphics::Shader_stages* compute_shader_stages,
     erhe::graphics::Shader_stages* compute_shader_stages_skinned,
     erhe::graphics::Shader_stages* graphics_shader_stages,
-    erhe::graphics::Shader_stages* multiview_graphics_shader_stages,
-    erhe::graphics::Shader_stages* graphics_shader_stages_seed
+    erhe::graphics::Shader_stages* multiview_graphics_shader_stages
 ) -> std::unique_ptr<Content_wide_line_renderer>;
 
 // Factory for the geometry-shader backend (used when the device does

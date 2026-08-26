@@ -115,24 +115,11 @@ auto Forward_renderer::begin_pass(
     render_encoder.set_bind_group_layout(m_program_interface.bind_group_layout.get());
 
 
-    // Reset the texture heap BEFORE the camera update so the ID-buffer edge-line
-    // method can allocate the face-ID buffer into the heap and write its
-    // (now-valid) heap handle into the camera UBO. The material / light buffers
-    // below allocate into the same already-reset heap. Texelfetch sampling makes
+    // Reset the texture heap before the camera update; the material / light
+    // buffers below allocate into the same already-reset heap. Texelfetch sampling makes
     // the sampler irrelevant, so the nearest m_fallback_sampler is fine.
     m_texture_heap->reset_heap(render_encoder.get_command_buffer());
 
-    // edge_line_color / edge_line_width feed both edge-line variants: the
-    // EDGE_LINES_FROM_ID fill (which also needs the face-ID texture handle) and
-    // the EDGE_LINES_CORNER_CAP overlay (which does not). Set the color/width
-    // unconditionally so the corner-cap pass gets them even with no ID texture;
-    // variants that read neither simply ignore the fields.
-    Edge_lines_parameters edge_lines_parameters{};
-    edge_lines_parameters.edge_line_color = base.edge_line_color;
-    edge_lines_parameters.edge_line_width = base.edge_line_width;
-    if (base.edge_id_texture != nullptr) {
-        edge_lines_parameters.edge_id_texture_handle = m_texture_heap->allocate(base.edge_id_texture, &m_fallback_sampler);
-    }
 
     ERHE_VERIFY(!base.views.empty());
     // Single-view passes (size 1) call update() so the trailing
@@ -150,8 +137,7 @@ auto Forward_renderer::begin_pass(
             base.frame_number,
             base.reverse_depth,
             base.depth_range,
-            base.conventions,
-            edge_lines_parameters
+            base.conventions
         );
     } else {
         const Camera_view_input& view = base.views[0];
@@ -167,8 +153,7 @@ auto Forward_renderer::begin_pass(
             base.frame_number,
             base.reverse_depth,
             base.depth_range,
-            base.conventions,
-            edge_lines_parameters
+            base.conventions
         );
     }
     m_camera_buffer.bind(render_encoder, state.camera_range.value());

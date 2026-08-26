@@ -131,8 +131,7 @@
         "_version": 2,
         "use_tent": false,
         "line_bias_margin": 1024,
-        "line_bias_clamp": 2048,
-        "use_id_buffer": false
+        "line_bias_clamp": 2048
     },
     "graph_node_preview_edge_lines": {
         "enabled": true,

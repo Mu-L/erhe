@@ -81,46 +81,6 @@ using erhe::geometry::to_glm_vec3;
 
 namespace editor {
 
-void Face_id_registry::clear()
-{
-    m_bases.clear();
-    m_next_base = 1u;
-}
-
-void Face_id_registry::add_mesh(const erhe::scene::Mesh& mesh)
-{
-    if (m_bases.find(&mesh) != m_bases.end()) {
-        return; // already assigned this frame
-    }
-    const std::vector<erhe::scene::Mesh_primitive>& primitives = mesh.get_primitives();
-    std::vector<uint32_t> bases;
-    bases.reserve(primitives.size());
-    for (const erhe::scene::Mesh_primitive& mesh_primitive : primitives) {
-        bases.push_back(m_next_base);
-        // Space the next base by this primitive's fill index count, an upper
-        // bound on its facet count, so base + facet never reaches the next base.
-        uint32_t span = 1u;
-        if (mesh_primitive.primitive) {
-            const erhe::primitive::Buffer_mesh* buffer_mesh = mesh_primitive.primitive->get_renderable_mesh();
-            if (buffer_mesh != nullptr) {
-                const erhe::primitive::Index_range index_range = buffer_mesh->index_range(erhe::primitive::Primitive_mode::polygon_fill);
-                span = static_cast<uint32_t>(std::max<std::size_t>(index_range.index_count, std::size_t{1}));
-            }
-        }
-        m_next_base += span;
-    }
-    m_bases.emplace(&mesh, std::move(bases));
-}
-
-auto Face_id_registry::get_face_id_base(const erhe::scene::Mesh& mesh, const std::size_t primitive_index) const -> uint32_t
-{
-    const auto it = m_bases.find(&mesh);
-    if ((it == m_bases.end()) || (primitive_index >= it->second.size())) {
-        return 0u; // unregistered -> EDGE_LINES_FROM_ID treats it as "no edge"
-    }
-    return it->second[primitive_index];
-}
-
 using erhe::graphics::Vertex_input_state;
 using erhe::graphics::Input_assembly_state;
 using erhe::graphics::Rasterization_state;
@@ -272,15 +232,10 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
 
     erhe::graphics::Device& graphics_device = m_rendergraph.get_graphics_device();
 
-    // Set when the ID-buffer edge-line method is active this frame: the wide-line
-    // renderer runs in id mode, the registry is rebuilt, and an edge-id pre-pass
-    // is rendered before the main pass for the polygon-fill shader to sample.
-    bool use_id_edge_lines = false;
-
     // Meshes fed to the content wide line renderer this frame. Zero when this
     // view's Visual Style disables every edge-line pass (and nothing is
-    // selected / ghosted): the ribbon compute, the joint-buffer handoff and
-    // the edge-id pre-pass are all skipped then.
+    // selected / ghosted): the ribbon compute and the joint-buffer handoff
+    // are skipped then.
     std::size_t content_wide_line_mesh_count = 0;
 
     // Last frame's overlay pass was skipped (early-out) after render() had
@@ -306,25 +261,9 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
             // Push the editor-global content edge-line config (method + bias) to
             // the renderer each frame; it is edited in the Settings window.
             const Content_edge_lines_config& cel = m_context.editor_settings->content_edge_lines;
-            // The ID-buffer method is compute-only (id mode runs in the compute
-            // expansion) and needs the Id_renderer that owns the face-ID buffer.
-            use_id_edge_lines =
-                cel.use_id_buffer &&
-                (m_context.id_renderer != nullptr) &&
-                m_context.content_wide_line_renderer->uses_compute();
-            m_context.content_wide_line_renderer->set_id_mode(use_id_edge_lines);
-            if (use_id_edge_lines) {
-                // Tent geometry with NO toward-camera lift: each half-quad's depth
-                // equals its own face plane, so the edge-id pass's depth test picks
-                // the frontmost face's edge per pixel.
-                m_context.content_wide_line_renderer->set_use_tent(true);
-                m_context.content_wide_line_renderer->set_line_bias_margin(0.0f);
-                m_context.content_wide_line_renderer->set_line_bias_clamp(0.0f);
-            } else {
-                m_context.content_wide_line_renderer->set_use_tent(cel.use_tent);
-                m_context.content_wide_line_renderer->set_line_bias_margin(cel.line_bias_margin);
-                m_context.content_wide_line_renderer->set_line_bias_clamp(cel.line_bias_clamp);
-            }
+            m_context.content_wide_line_renderer->set_use_tent(cel.use_tent);
+            m_context.content_wide_line_renderer->set_line_bias_margin(cel.line_bias_margin);
+            m_context.content_wide_line_renderer->set_line_bias_clamp(cel.line_bias_clamp);
             m_context.content_wide_line_renderer->begin_frame();
         }
 
@@ -388,33 +327,19 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
                         const glm::vec4 color      = settings.constant_color0;
                         const float     line_width = settings.constant_size;
                         const auto&     filter     = data.filter;
-                        // In id mode every edge goes to one group (0) and carries
-                        // the face-id base provider; the color is unused (the
-                        // compute writes face ids). In color mode keep the pass's
-                        // selection group and no provider.
-                        const uint32_t  group      = use_id_edge_lines ? 0u : data.content_wide_line_group;
-                        const erhe::scene_renderer::Face_id_base_provider* provider =
-                            use_id_edge_lines ? &m_face_id_registry : nullptr;
+                        const uint32_t  group      = data.content_wide_line_group;
 
                         for (const auto layer_id : data.mesh_layers) {
                             const auto mesh_layer = scene->get_mesh_layer_by_id(layer_id);
                             if (mesh_layer) {
                                 for (const auto& mesh : mesh_layer->meshes) {
                                     if (filter(mesh->get_flag_bits())) {
-                                        if (use_id_edge_lines) {
-                                            m_face_id_registry.add_mesh(*mesh);
-                                            // Collect this content mesh for the seed
-                                            // pass: it renders exactly the visible
-                                            // content the edge method covers.
-                                            m_seed_meshes.push_back(mesh);
-                                        }
                                         m_context.content_wide_line_renderer->add_mesh(
                                             *m_context.mesh_memory,
                                             *mesh,
                                             color,
                                             line_width,
-                                            group,
-                                            provider
+                                            group
                                         );
                                         ++content_wide_line_mesh_count;
                                     }
@@ -423,23 +348,6 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
                         }
                     };
 
-                    if (use_id_edge_lines) {
-                        // ID-buffer method: rebuild the per-frame face-id base
-                        // registry and feed only the regular content edge passes
-                        // (both selection states into one id group). The animated
-                        // selection / translucent outlines are a separate visual
-                        // and stay on the wide-line path; they are simply off here.
-                        m_face_id_registry.clear();
-                        m_seed_meshes.clear(); // capacity kept; refilled by feed_pass
-                        {
-                            erhe::graphics::Scoped_debug_group feed_debug_group{command_buffer, "edge_id_not_selected"};
-                            feed_pass(m_context.app_rendering->edge_lines_not_selected.get());
-                        }
-                        {
-                            erhe::graphics::Scoped_debug_group feed_debug_group{command_buffer, "edge_id_selected"};
-                            feed_pass(m_context.app_rendering->edge_lines_selected.get());
-                        }
-                    } else {
                     // Feed selection outline with animated color/width. The
                     // outline appearance is editor-global (Selection_outline_style),
                     // shared by all scene views; edited in the Settings window.
@@ -481,7 +389,6 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
                         erhe::graphics::Scoped_debug_group feed_debug_group{command_buffer, "ghost_edge_lines"};
                         feed_pass(m_context.app_rendering->ghost_edge_lines.get());
                     }
-                    } // end else (color edge-line feed)
                 }
             }
 
@@ -513,44 +420,6 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
                     m_context.content_wide_line_renderer->set_joint_buffer(&joint_buffer, std::move(joint_buffer_range));
                 }
 
-                // ID-buffer edge-line method: render the SEED face-ID buffer
-                // (visible content fill -> frontmost-visible-face id per pixel) in
-                // its own render pass BEFORE the edge compute + edge-id pass, so the
-                // seed-masked edge-id draw can reject edge fragments that do not land
-                // on their own face's visible surface. Run order per the handoff:
-                // seed -> edge compute -> edge-id (masked) -> fill.
-                if (
-                    use_id_edge_lines &&
-                    (m_context.id_renderer != nullptr) &&
-                    !m_seed_meshes.empty() &&
-                    (context.camera != nullptr)
-                ) {
-                    erhe::scene_renderer::Joint_buffer* seed_joint_buffer =
-                        (m_context.forward_renderer != nullptr) ? &m_context.forward_renderer->get_joint_buffer() : nullptr;
-                    std::span<const std::shared_ptr<erhe::scene::Skin>> seed_skins{};
-                    const std::shared_ptr<Scene_root>& seed_scene_root = context.scene_view.get_scene_root();
-                    if (seed_scene_root) {
-                        erhe::scene::Scene* seed_scene = seed_scene_root->get_hosted_scene();
-                        if (seed_scene != nullptr) {
-                            seed_skins = seed_scene->get_skins();
-                        }
-                    }
-                    m_context.id_renderer->render_content_seed(
-                        Id_renderer::Seed_render_parameters{
-                            .command_buffer        = command_buffer,
-                            .viewport              = context.viewport,
-                            .camera                = *context.camera,
-                            .meshes                = m_seed_meshes,
-                            .face_id_base_provider = &m_face_id_registry,
-                            .reverse_depth         = get_reverse_depth(),
-                            .depth_range           = get_depth_range(),
-                            .conventions           = get_conventions(),
-                            .joint_buffer          = seed_joint_buffer,
-                            .skins                 = seed_skins
-                        }
-                    );
-                }
-
                 // Compute pre-pass + compute->vertex barrier only on the
                 // compute backend. The geometry-shader backend (used when
                 // the device does not expose compute shaders, e.g. OpenGL
@@ -579,22 +448,6 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
             }
         }
 
-        // ID-buffer edge-line method: now that the edge ribbons are expanded,
-        // render them into the face-ID buffer (its own pass, before the main
-        // viewport pass) and hand the buffer + matching base provider to the
-        // composition passes via the render context. Skipped when no meshes
-        // were fed (this view's Visual Style disables the edge-line passes):
-        // the pre-pass would be empty and leaving edge_id_texture unset also
-        // keeps EDGE_LINES_FROM_ID out of the fill shader.
-        if (use_id_edge_lines && (content_wide_line_mesh_count > 0) && (m_context.id_renderer != nullptr)) {
-            m_context.id_renderer->render_content_edge_id(
-                command_buffer,
-                context.viewport,
-                *m_context.content_wide_line_renderer
-            );
-            context.edge_id_texture       = m_context.id_renderer->get_edge_id_texture();
-            context.face_id_base_provider = &m_face_id_registry;
-        }
     }
 
     // Shadow-texel debug visualization sync. Texel_renderer samples the shadow

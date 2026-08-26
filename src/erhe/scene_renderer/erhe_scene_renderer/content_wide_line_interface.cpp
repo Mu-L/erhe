@@ -11,10 +11,6 @@ constexpr int c_edge_line_vertex_binding_point        = 0;
 constexpr int c_triangle_vertex_binding_point         = 1;
 constexpr int c_edge_line_joint_vertex_binding_point  = 2;
 constexpr int c_view_binding_point                    = 3;
-// Sampler slot (separate binding-point namespace from the buffers above) for the
-// ID-buffer edge-line method's seed face-ID texture, sampled by the seed-masked
-// edge-id fragment shader.
-constexpr int c_seed_id_sampler_binding_point         = 0;
 
 [[nodiscard]] auto make_block_binding(
     const erhe::graphics::Shader_resource& block,
@@ -100,8 +96,6 @@ Content_wide_line_interface::Content_wide_line_interface(
     //   float  window_to_ndc_scale;         // tent depth-range convention factor
     //   uint   use_tent;                    // 0 = simple quad, 1 = two-face tent
     //   float  line_bias_clamp;             // max toward-camera extrapolation (ULPs)
-    //   uint   id_mode;                     // 0 = write line color, 1 = write face id
-    //   uint   id_base;                     // per-dispatch face-id base (id mode)
     //   vec4   position_scale;              // per-dispatch vertex position dequantization
     //   vec4   position_offset;             //   affine (xyz used)
     //
@@ -127,14 +121,6 @@ Content_wide_line_interface::Content_wide_line_interface(
     offsets.window_to_ndc_scale  = view_block.add_float("window_to_ndc_scale" )->get_offset_in_parent();
     offsets.use_tent             = view_block.add_uint ("use_tent"            )->get_offset_in_parent();
     offsets.line_bias_clamp      = view_block.add_float("line_bias_clamp"     )->get_offset_in_parent();
-    // ID-buffer edge-line method (Content_wide_line_renderer id mode): id_mode
-    // selects whether the compute shader writes the line color (0) or the
-    // encoded face id (1) into the triangle color slot; id_base is the
-    // per-primitive face-id base (added to each half-quad's facet index before
-    // vec3_from_uint encoding) so a fill fragment can match face for face.
-    // These reuse the two former pad-to-16 slots, so the block size is unchanged.
-    offsets.id_mode              = view_block.add_uint ("id_mode"             )->get_offset_in_parent();
-    offsets.id_base              = view_block.add_uint ("id_base"             )->get_offset_in_parent();
     // Vertex position dequantization affine (see Content_wide_line_view_offsets).
     // vec4s, so they carry 16-byte alignment and land after the scalars above.
     offsets.position_scale       = view_block.add_vec4 ("position_scale"      )->get_offset_in_parent();
@@ -250,33 +236,6 @@ Content_wide_line_interface::Content_wide_line_interface(
         }
     );
 
-    // Seed-masked edge-id draw layout (ID-buffer edge-line method): same triangle
-    // SSBO + view UBO as above, plus a dedicated s_seed_id sampler. The
-    // ERHE_CONTENT_LINE_SEED_MASK fragment variant texelFetches the seed face-ID
-    // buffer to reject edge fragments off their own face's visible surface. The
-    // sampler is bound at runtime via set_sampled_image() (a plain nearest sampler,
-    // not a comparison sampler -- safe via push descriptors on MoltenVK), so it is
-    // not pinned as an immutable sampler here.
-    graphics_seed_bind_group_layout = std::make_unique<erhe::graphics::Bind_group_layout>(
-        graphics_device,
-        erhe::graphics::Bind_group_layout_create_info{
-            .bindings = {
-                {.binding_point = c_triangle_vertex_binding_point, .type = erhe::graphics::Binding_type::storage_buffer, .stage_flags = erhe::graphics::Shader_stage_flags::vertex},
-                make_block_binding(view_block, erhe::graphics::Shader_stage_flags::vertex | erhe::graphics::Shader_stage_flags::fragment),
-                {
-                    .binding_point   = c_seed_id_sampler_binding_point,
-                    .type            = erhe::graphics::Binding_type::combined_image_sampler,
-                    .sampler_aspect  = erhe::graphics::Sampler_aspect::color,
-                    .name            = "s_seed_id",
-                    .glsl_type       = erhe::graphics::Glsl_type::sampler_2d,
-                    .is_texture_heap = false,
-                    .stage_flags     = erhe::graphics::Shader_stage_flags::fragment
-                }
-            },
-            .debug_label       = "Content wide line graphics seed",
-            .uses_texture_heap = false
-        }
-    );
 
     // Skinned bind group layout: same bindings as bind_group_layout plus
     // the joint side-buffer SSBO and the global `joint` block. Built only

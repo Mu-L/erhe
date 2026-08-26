@@ -77,11 +77,6 @@ public:
     float                            window_to_ndc_scale;
     uint32_t                         use_tent;
     float                            line_bias_clamp;
-    // ID-buffer edge-line method: 0 = compute writes the line color into the
-    // triangle color slot (normal wide-line draw); 1 = compute writes the
-    // encoded face id (per-half-quad facet + per-dispatch id_base). Per-frame
-    // because the whole edge-id pre-pass runs in one mode.
-    uint32_t                         id_mode;
 };
 
 inline void write_view_block(
@@ -94,7 +89,6 @@ inline void write_view_block(
     uint32_t                              edge_count,
     uint32_t                              stride_per_view,
     uint32_t                              base_joint_index,
-    uint32_t                              id_base,
     // Vertex position dequantization affine for this dispatch. The geometry
     // backend transforms a_position from the mesh stream and passes the
     // primitive's; the compute backend reads the separate, never quantized
@@ -127,8 +121,6 @@ inline void write_view_block(
     write(view_data, offsets.window_to_ndc_scale,  as_span(frame_params.window_to_ndc_scale));
     write(view_data, offsets.use_tent,             as_span(frame_params.use_tent           ));
     write(view_data, offsets.line_bias_clamp,      as_span(frame_params.line_bias_clamp    ));
-    write(view_data, offsets.id_mode,              as_span(frame_params.id_mode            ));
-    write(view_data, offsets.id_base,              as_span(id_base                         ));
     write(view_data, offsets.position_scale,       as_span(position_quantization.scale     ));
     write(view_data, offsets.position_offset,      as_span(position_quantization.offset    ));
 }

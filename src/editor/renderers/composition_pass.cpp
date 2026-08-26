@@ -266,15 +266,6 @@ void Composition_pass::render(const Render_context& context)
                 );
             }
         } else {
-            // ID-buffer edge-line method: when active (Viewport_scene_view set
-            // the face-ID buffer on the context) and this is a capable lit
-            // content fill pass, force-enable the EDGE_LINES_FROM_ID variant, hand
-            // the fill the face-ID buffer + the matching per-primitive base
-            // provider, and source the edge-line color from this pass's appearance
-            // (edge_lines mode), so the selected / not-selected split colors fall
-            // out of the separate fill passes.
-            const bool apply_edge_id = (context.edge_id_texture != nullptr) && data.edge_lines_from_id_capable;
-
             uint32_t force_enable_mask = data.shader_key_force_enable_mask;
             erhe::scene_renderer::Primitive_interface_settings primitive_settings =
                 data.primitive_settings.has_value()
@@ -282,27 +273,6 @@ void Composition_pass::render(const Render_context& context)
                     : data.get_appearance
                         ? get_primitive_settings(data.get_appearance(context), data.primitive_mode)
                         : erhe::scene_renderer::Primitive_interface_settings{};
-            const erhe::graphics::Texture* edge_id_texture = nullptr;
-            glm::vec4                      edge_line_color {0.0f, 0.0f, 0.0f, 1.0f};
-            float                          edge_line_width {1.0f};
-            if (apply_edge_id) {
-                force_enable_mask |= erhe::scene_renderer::make_shader_bool_mask(erhe::scene_renderer::Shader_bool::EDGE_LINES_FROM_ID);
-                primitive_settings.face_id_base_provider = context.face_id_base_provider;
-                edge_id_texture = context.edge_id_texture;
-                if (data.get_appearance) {
-                    edge_line_color = get_primitive_settings(data.get_appearance(context), erhe::primitive::Primitive_mode::edge_lines).constant_color0;
-                }
-            }
-            // Corner-cap overlay pass: source the cap's edge-line color AND width
-            // from the edge_lines appearance (matching the wide-line ribbon) and
-            // forward both to the camera UBO. No face-ID texture is involved.
-            if (data.edge_lines_corner_cap && data.get_appearance) {
-                const erhe::scene_renderer::Primitive_interface_settings edge_settings =
-                    get_primitive_settings(data.get_appearance(context), erhe::primitive::Primitive_mode::edge_lines);
-                edge_line_color = edge_settings.constant_color0;
-                edge_line_width = edge_settings.constant_size;
-            }
-
             // Weight_display's active joint for the joint_weight_ramp debug
             // mode. Locked into a local so the node outlives the render call
             // below, which takes it as a raw pointer.
@@ -313,8 +283,7 @@ void Composition_pass::render(const Render_context& context)
             // phase 3/5): route to the scene's persistent draw lists when the
             // gate is on and this pass is fully expressible with them -
             // polygon fill, no shader debug, no shader / blend overrides, no
-            // forced shader bits (the ID-buffer edge method forces
-            // EDGE_LINES_FROM_ID -> fallback while active, Q9), and a plain
+            // forced shader bits, and a plain
             // opaque / translucent / allow_all blending policy. Everything
             // else stays on Forward_renderer::render().
             erhe::scene_renderer::Draw_list_scene* draw_list_scene = scene_root->get_draw_list_scene();
@@ -331,7 +300,6 @@ void Composition_pass::render(const Render_context& context)
                 (data.color_blend_override == nullptr) &&
                 (force_enable_mask == 0u) &&
                 (data.shader_key_force_disable_mask == 0u) &&
-                !apply_edge_id &&
                 (
                     (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::opaque_primitives_only) ||
                     (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::translucent_primitives_only) ||
@@ -359,9 +327,6 @@ void Composition_pass::render(const Render_context& context)
                             .reverse_depth     = context.scene_view.get_reverse_depth(),
                             .depth_range       = context.scene_view.get_depth_range(),
                             .conventions       = context.scene_view.get_conventions(),
-                            .edge_id_texture   = nullptr,
-                            .edge_line_color   = edge_line_color,
-                            .edge_line_width   = edge_line_width,
                             .debug_label       = get_name(),
                         },
                         .draw_list_scene       = *draw_list_scene,
@@ -403,9 +368,6 @@ void Composition_pass::render(const Render_context& context)
                         .reverse_depth     = context.scene_view.get_reverse_depth(),
                         .depth_range       = context.scene_view.get_depth_range(),
                         .conventions       = context.scene_view.get_conventions(),
-                        .edge_id_texture   = edge_id_texture,
-                        .edge_line_color   = edge_line_color,
-                        .edge_line_width   = edge_line_width,
                         .debug_label       = get_name(),
                     },
                     .mesh_spans             = m_mesh_spans,

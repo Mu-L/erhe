@@ -129,9 +129,6 @@ inline constexpr const char* c_shader_debug_strings[] = {
     X(VARIANT_SHADOW_CUBE)              \
     X(VARIANT_POINTS)                   \
     X(SOLID_WIREFRAME)                  \
-    X(EDGE_LINES_FROM_ID)               \
-    X(EDGE_LINES_CORNER_CAP)            \
-    X(VARIANT_FACE_ID_SEED)             \
     X(USE_DDGI)
 
 #define ERHE_SHADER_INT(X) \

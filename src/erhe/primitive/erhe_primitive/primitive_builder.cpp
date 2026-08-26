@@ -1066,21 +1066,6 @@ void Build_context::build_expanded_polygon_fill()
 
     Vertex_buffer_writer* wireframe_writer = expanded_writer_for(Vertex_attribute_usage::custom, custom_attribute_wireframe);
 
-    // Corner-cap data for the ID-buffer edge-line method: the triangle's three
-    // corner object positions, replicated onto its three soup vertices so the
-    // fill fragment can project them and cap real-edge corners (no Z-fight: the
-    // cap is shaded by the fill fragment at the fill's own depth).
-    const Vertex_attribute_info corner_pos_info[3] = {
-        Vertex_attribute_info{*expanded_format, Vertex_attribute_usage::custom, custom_attribute_corner_position_0},
-        Vertex_attribute_info{*expanded_format, Vertex_attribute_usage::custom, custom_attribute_corner_position_1},
-        Vertex_attribute_info{*expanded_format, Vertex_attribute_usage::custom, custom_attribute_corner_position_2}
-    };
-    Vertex_buffer_writer* corner_pos_writer[3] = {
-        expanded_writer_for(Vertex_attribute_usage::custom, custom_attribute_corner_position_0),
-        expanded_writer_for(Vertex_attribute_usage::custom, custom_attribute_corner_position_1),
-        expanded_writer_for(Vertex_attribute_usage::custom, custom_attribute_corner_position_2)
-    };
-
     // Redirect the build_vertex_* helpers' writers to the expanded streams for
     // the duration of this pass; the per-attribute offsets in
     // root.vertex_attributes are valid because the expanded format mirrors the
@@ -1165,11 +1150,6 @@ void Build_context::build_expanded_polygon_fill()
 
             const GEO::index_t tri_corners [3] = { corner0, corner1, corner2 };
             const GEO::index_t tri_vertices[3] = { vertex0, vertex1, vertex2 };
-            const GEO::vec3f   corner_positions[3] = {
-                get_pointf(root.mesh.vertices, vertex0),
-                get_pointf(root.mesh.vertices, vertex1),
-                get_pointf(root.mesh.vertices, vertex2)
-            };
 
             const uint32_t base = expanded_vertex_index;
             index_writer.write_expanded_triangle(base + 0u, base + 1u, base + 2u);
@@ -1198,12 +1178,6 @@ void Build_context::build_expanded_polygon_fill()
                     wireframe_writer->write(wireframe_info, packed);
                 }
 
-                for (uint32_t c = 0; c < 3u; ++c) {
-                    if (corner_pos_writer[c] != nullptr) {
-                        corner_pos_writer[c]->write(corner_pos_info[c], corner_positions[c]);
-                    }
-                }
-
                 for (std::unique_ptr<Vertex_buffer_writer>& w : expanded_writers) {
                     w->next_vertex();
                 }
@@ -1228,8 +1202,8 @@ void Build_context::build_edge_lines()
 
     // Edge-line vertex data feeds Content_wide_line_renderer's compute
     // expansion. Two vec4s per edge endpoint (position + per-edge face normal)
-    // matching the compute shader's edge_line_vertex SSBO struct. position.w packs
-    // the adjacent facet id; normal.w packs two per-face signs (its sign = the
+    // matching the compute shader's edge_line_vertex SSBO struct. position.w is
+    // an unused pad slot; normal.w packs two per-face signs (its sign = the
     // interior-tangent sign, its magnitude = the edge-traversal winding tdir; see
     // the pack site below). The buffer range itself is allocated up front by
     // Build_context_root::allocate_edge_line_vertex_buffer().
@@ -1384,19 +1358,6 @@ void Build_context::build_edge_lines()
                 }
             }
 
-            // Per-endpoint adjacent facet id for the ID-buffer edge-line method
-            // (Content_wide_line_renderer id mode): endpoint 0 carries face A's
-            // facet index, endpoint 1 carries face B's (falling back to A on a
-            // boundary edge / to 0 on a facet-less edge). Stored in the otherwise
-            // spare position.w slot so the edge SSBO struct size is unchanged; the
-            // (toggle-off) color path ignores position.w. These facet indices are
-            // the SAME index space build_polygon_id() writes into the fill mesh's
-            // custom_attribute_id, so the fill fragment can match face for face.
-            const uint32_t id_a = (facet_a != GEO::NO_INDEX) ? static_cast<uint32_t>(facet_a) : 0u;
-            const uint32_t id_b = (facet_b != GEO::NO_INDEX) ? static_cast<uint32_t>(facet_b)
-                                : (facet_a != GEO::NO_INDEX) ? static_cast<uint32_t>(facet_a)
-                                : 0u;
-
             // Pack BOTH per-face signs into normal.w: its SIGN carries the
             // interior-tangent sign (sign_a/sign_b, +/-1), its MAGNITUDE carries the
             // edge-traversal winding tdir (tdir > 0 -> 1, tdir < 0 -> 2). Exact in
@@ -1406,8 +1367,8 @@ void Build_context::build_edge_lines()
             // packed 0 -> the shader's degenerate-frame path.
             const float packed_w_a = sign_a * ((tdir_a < 0.0f) ? 2.0f : 1.0f);
             const float packed_w_b = sign_b * ((tdir_b < 0.0f) ? 2.0f : 1.0f);
-            const float data_a[8] = { pos_a.x, pos_a.y, pos_a.z, static_cast<float>(id_a), normal_a.x, normal_a.y, normal_a.z, packed_w_a };
-            const float data_b[8] = { pos_b.x, pos_b.y, pos_b.z, static_cast<float>(id_b), normal_b.x, normal_b.y, normal_b.z, packed_w_b };
+            const float data_a[8] = { pos_a.x, pos_a.y, pos_a.z, 0.0f, normal_a.x, normal_a.y, normal_a.z, packed_w_a };
+            const float data_b[8] = { pos_b.x, pos_b.y, pos_b.z, 0.0f, normal_b.x, normal_b.y, normal_b.z, packed_w_b };
             memcpy(edge_line_vertex_data.data() + edge_vertex_write_offset, data_a, vertex_element_size);
             edge_vertex_write_offset += vertex_element_size;
             memcpy(edge_line_vertex_data.data() + edge_vertex_write_offset, data_b, vertex_element_size);

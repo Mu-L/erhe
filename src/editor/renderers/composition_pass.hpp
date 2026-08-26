@@ -41,20 +41,6 @@ public:
     // is disabled they render inline in the content pass. Composer::render uses
     // this to split the content phase from the overlay phase.
     bool                                                                   overlay{false};
-    // ID-buffer edge-line method: this pass is a lit content polygon-fill pass
-    // that should paint edge lines from the face-ID buffer when the method is
-    // active (Render_context::edge_id_texture set). Gated so the method is only
-    // applied where Primitive_buffer also stamps the face-id base into
-    // primitive.color (these passes get the Face_id_base_provider).
-    bool                                                                   edge_lines_from_id_capable{false};
-    // ID-buffer edge-line method, corner-cap overlay: this pass renders the
-    // expanded fill soup (primitive_mode solid_wireframe) with the
-    // EDGE_LINES_CORNER_CAP variant force-enabled, painting the edge color near
-    // real shared vertices to fill the gaps the per-pixel id match leaves there.
-    // When set, the pass's edge-line color AND width are sourced from its
-    // appearance (edge_lines mode) and forwarded to the camera UBO (the cap reads
-    // edge_line_color + edge_line_width + vp_y_sign); no face-ID texture needed.
-    bool                                                                   edge_lines_corner_cap{false};
     uint32_t                                                               content_wide_line_group{0};
     std::vector<erhe::scene::Layer_id>                                     mesh_layers{};
     std::size_t                                                            non_mesh_vertex_count{0};

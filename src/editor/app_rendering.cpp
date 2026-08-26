@@ -207,7 +207,6 @@ App_rendering::App_rendering(
     auto content_fill_not_selected = make_composition_pass(
         "Content fill opaque not selected",
         Composition_pass_data{
-            .edge_lines_from_id_capable{true},
             .mesh_layers          {Mesh_layer_id::content, Mesh_layer_id::controller},
             .blending_mode_policy {Blending_mode_policy::opaque_primitives_only},
             .primitive_mode       {Primitive_mode::polygon_fill},
@@ -225,7 +224,6 @@ App_rendering::App_rendering(
     auto content_fill_selected_or_hovered = make_composition_pass(
         "Content fill selected",
         Composition_pass_data{
-            .edge_lines_from_id_capable{true},
             .mesh_layers         {Mesh_layer_id::content, Mesh_layer_id::controller},
             .blending_mode_policy{Blending_mode_policy::opaque_primitives_only},
             .primitive_mode      {Primitive_mode::polygon_fill},
@@ -278,62 +276,6 @@ App_rendering::App_rendering(
                     return solid_wireframe_supported;
                 }
             },
-        },
-        selected
-    );
-
-    // ID-buffer edge-line method, corner caps. The EDGE_LINES_FROM_ID fill paints
-    // edges where the per-pixel face-ID buffer matches, but at a shared vertex the
-    // overlapping ribbons store one id/pixel, so the other faces' fills find no
-    // match -> corner gaps. These overlay passes redraw the expanded fill soup
-    // (Primitive_mode::solid_wireframe -> same depth-less-or-equal, no-depth-write
-    // overlay pipeline) with the EDGE_LINES_CORNER_CAP variant, which paints the
-    // edge color within the ribbon half-width of each real projected corner -- a
-    // pure screen-space distance test, so every face meeting at the vertex fills
-    // its own side. Additive on top of the working fill path: only enabled when the
-    // ID-buffer method is active. No get_render_style -> not gated on the
-    // solid_wireframe render-style flag; gated on use_id_buffer instead. The
-    // appearance supplies the edge color + width (matching the wide-line ribbon).
-    auto content_edge_corner_cap_not_selected = make_composition_pass(
-        "Content edge corner caps not selected",
-        Composition_pass_data{
-            .edge_lines_corner_cap        {true},
-            .mesh_layers                  {Mesh_layer_id::content},
-            .blending_mode_policy         {Blending_mode_policy::opaque_primitives_only},
-            .primitive_mode               {Primitive_mode::solid_wireframe},
-            .filter                       {filter_not_selected},
-            .shader_key_force_enable_mask {make_shader_bool_mask(Shader_bool::EDGE_LINES_CORNER_CAP)},
-            .get_appearance               {appearance_not_selected},
-            .is_enabled                   {
-                // Follows the per-view Visual Style edge-lines toggle like the
-                // edge feed in Viewport_scene_view: no edges means no caps.
-                [](const Render_context& context) -> bool {
-                    return
-                        context.app_context.editor_settings->content_edge_lines.use_id_buffer &&
-                        context.viewport_config.render_style_not_selected.edge_lines;
-                }
-            }
-        },
-        not_selected
-    );
-
-    auto content_edge_corner_cap_selected = make_composition_pass(
-        "Content edge corner caps selected",
-        Composition_pass_data{
-            .edge_lines_corner_cap        {true},
-            .mesh_layers                  {Mesh_layer_id::content},
-            .blending_mode_policy         {Blending_mode_policy::opaque_primitives_only},
-            .primitive_mode               {Primitive_mode::solid_wireframe},
-            .filter                       {filter_selected},
-            .shader_key_force_enable_mask {make_shader_bool_mask(Shader_bool::EDGE_LINES_CORNER_CAP)},
-            .get_appearance               {appearance_selected},
-            .is_enabled                   {
-                [](const Render_context& context) -> bool {
-                    return
-                        context.app_context.editor_settings->content_edge_lines.use_id_buffer &&
-                        context.viewport_config.render_style_selected.edge_lines;
-                }
-            }
         },
         selected
     );
@@ -401,12 +343,6 @@ App_rendering::App_rendering(
                 // (macOS GL 4.1) its toggle is inert, so the wide-line edges
                 // must not be suppressed by it.
                 [solid_wireframe_supported](const Render_context& context) -> bool {
-                    // The ID-buffer method paints edges from the polygon-fill pass
-                    // instead, so suppress the wide-line edge pass (it would also
-                    // draw the id-mode dispatches as color into the main pass).
-                    if (context.app_context.editor_settings->content_edge_lines.use_id_buffer) {
-                        return false;
-                    }
                     return !solid_wireframe_supported || !context.viewport_config.render_style_not_selected.solid_wireframe;
                 }
             }
@@ -425,9 +361,6 @@ App_rendering::App_rendering(
             .get_appearance                {appearance_selected},
             .is_enabled                    {
                 [solid_wireframe_supported](const Render_context& context) -> bool {
-                    if (context.app_context.editor_settings->content_edge_lines.use_id_buffer) {
-                        return false;
-                    }
                     return !solid_wireframe_supported || !context.viewport_config.render_style_selected.solid_wireframe;
                 }
             }

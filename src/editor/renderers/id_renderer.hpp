@@ -43,8 +43,6 @@ namespace erhe::scene {
     class Skin;
 }
 namespace erhe::scene_renderer {
-    class Content_wide_line_renderer;
-    class Face_id_base_provider;
     class Joint_buffer;
     class Mesh_memory;
     class Program_interface;
@@ -128,52 +126,6 @@ public:
     void render            (const Render_parameters& parameters);
     void next_frame        ();
 
-    // ID-buffer edge-line method: render the content edge ribbons -- already
-    // queued and compute-expanded by the caller into wide_line_renderer in id
-    // mode -- into a viewport-sized rgba8 face-ID buffer with depth test, BEFORE
-    // the main viewport pass. The polygon-fill shader then samples
-    // get_edge_id_texture() and paints an edge line wherever the stored face id
-    // matches its own facet id. This framebuffer is separate from the picking
-    // one above: its color is sampled in-frame (not read back) and its depth is
-    // cleared then discarded.
-    void render_content_edge_id(
-        erhe::graphics::Command_buffer&                   command_buffer,
-        const erhe::math::Viewport&                       viewport,
-        erhe::scene_renderer::Content_wide_line_renderer& wide_line_renderer
-    );
-    [[nodiscard]] auto get_edge_id_texture() const -> erhe::graphics::Texture*;
-
-    // ID-buffer edge-line method, SEED pass. Renders the visible content fill
-    // (the meshes registered for the edge method) outputting each fragment's
-    // encoded face id (per-primitive base + facet id, the same registry namespace
-    // the edge-id pre-pass and the EDGE_LINES_FROM_ID fill use) into a dedicated
-    // face-ID buffer with its own depth buffer, so the buffer holds the FRONTMOST
-    // visible face id per pixel. render_content_edge_id() then hands this texture
-    // to the wide-line draw, which discards any edge fragment whose own face id
-    // does not equal the seed there -- rejecting cap / overspray fragments before
-    // they can win the edge-id depth test. Runs BEFORE the edge compute + edge-id
-    // pass; its color is sampled in-frame (not read back) and its depth is
-    // cleared then discarded.
-    class Seed_render_parameters
-    {
-    public:
-        erhe::graphics::Command_buffer&                            command_buffer;
-        const erhe::math::Viewport&                                viewport;
-        const erhe::scene::Camera&                                 camera;
-        const std::span<const std::shared_ptr<erhe::scene::Mesh>>& meshes;
-        const erhe::scene_renderer::Face_id_base_provider*         face_id_base_provider{nullptr};
-        bool                                                       reverse_depth{true};
-        erhe::math::Depth_range                                    depth_range{erhe::math::Depth_range::zero_to_one};
-        erhe::math::Coordinate_conventions                         conventions;
-        // Joint UBO/SSBO for skinned content (same Joint_buffer that
-        // Forward_renderer uses, so both updates allocate disjoint ring ranges).
-        // The seed must apply skinning so its visible surface matches the fill.
-        erhe::scene_renderer::Joint_buffer*                        joint_buffer{nullptr};
-        std::span<const std::shared_ptr<erhe::scene::Skin>>        skins{};
-    };
-    void render_content_seed(const Seed_render_parameters& parameters);
-    [[nodiscard]] auto get_seed_id_texture() const -> erhe::graphics::Texture*;
-    [[nodiscard]] auto get_seed_sampler   () const -> const erhe::graphics::Sampler*;
 
     [[nodiscard]] auto get(int x, int y, uint32_t& out_id, float& out_depth, uint64_t& out_frame_number) -> bool;
     [[nodiscard]] auto get(int x, int y) -> Id_query_result;
@@ -263,7 +215,6 @@ private:
     [[nodiscard]] auto get_current_transfer_entry() -> Transfer_entry&;
 
     void update_framebuffer(erhe::math::Viewport viewport);
-    void update_edge_id_framebuffer(erhe::math::Viewport viewport);
 
     bool                                         m_enabled{true};
     erhe::math::Viewport                         m_viewport{0, 0, 0, 0};
@@ -293,21 +244,6 @@ private:
     std::unique_ptr<erhe::graphics::Texture>     m_depth_texture;
     std::unique_ptr<erhe::graphics::Render_pass> m_render_pass;
     std::unique_ptr<erhe::graphics::Gpu_timer>   m_gpu_timer;
-    // Edge-ID pre-pass render target (ID-buffer edge-line method), separate from
-    // the picking framebuffer above: color is sampled by the polygon-fill pass
-    // the same frame, depth is cleared then discarded, and nothing is read back.
-    std::unique_ptr<erhe::graphics::Texture>     m_edge_id_color_texture;
-    std::unique_ptr<erhe::graphics::Texture>     m_edge_id_depth_texture;
-    std::unique_ptr<erhe::graphics::Render_pass> m_edge_id_render_pass;
-    // Seed pre-pass render target (ID-buffer edge-line method): the visible
-    // content fill rendered with VARIANT_FACE_ID_SEED into a face-ID color buffer
-    // (sampled by the edge-id pass) with its own depth (frontmost face wins, then
-    // discarded). The sampler is nearest/clamp -- the edge-id pass texelFetches by
-    // integer pixel, so filtering is irrelevant; created once, size-independent.
-    std::unique_ptr<erhe::graphics::Texture>     m_seed_color_texture;
-    std::unique_ptr<erhe::graphics::Texture>     m_seed_depth_texture;
-    std::unique_ptr<erhe::graphics::Render_pass> m_seed_render_pass;
-    std::unique_ptr<erhe::graphics::Sampler>     m_seed_sampler;
     erhe::graphics::Ring_buffer_client           m_texture_read_buffer;
 
     std::array<Transfer_entry, s_transfer_entry_count> m_transfer_entries;
@@ -424,12 +360,10 @@ private:
         const std::span<const std::shared_ptr<erhe::scene::Mesh>>& meshes
     );
 
-    // Shared bucket-and-draw core for both the picking ID render (render_meshes)
-    // and the edge-line seed render (render_content_seed). Buckets the meshes,
-    // resolves a shader variant per bucket (force_enable_mask), and draws them
-    // into the supplied render pass with the given primitive settings.
-    // use_id_ranges records the id_offset->mesh table the picking readback walks;
-    // the seed pass passes false (its color is sampled, never read back).
+    // Bucket-and-draw core for the picking ID render (render_meshes). Buckets
+    // the meshes, resolves a shader variant per bucket (force_enable_mask), and
+    // draws them into the supplied render pass with the given primitive settings.
+    // use_id_ranges records the id_offset->mesh table the picking readback walks.
     void render_buckets(
         erhe::graphics::Render_command_encoder&                    render_encoder,
         erhe::graphics::Base_render_pipeline&                      pipeline,
@@ -441,7 +375,6 @@ private:
         const std::span<const std::shared_ptr<erhe::scene::Mesh>>& meshes
     );
 
-    void update_seed_framebuffer(erhe::math::Viewport viewport);
 
     std::vector<Range> m_ranges;
     // Scissor optimization: restrict rasterization to the s_extent rect

@@ -46,11 +46,6 @@ public:
     std::size_t window_to_ndc_scale   {0};
     std::size_t use_tent              {0};
     std::size_t line_bias_clamp       {0};
-    // ID-buffer edge-line method: id_mode (0 = write line color, 1 = write
-    // encoded face id) and id_base (per-primitive face-id base). Occupy the two
-    // former pad-to-16 slots, so the view block size is unchanged.
-    std::size_t id_mode               {0};
-    std::size_t id_base               {0};
     // Vertex position dequantization affine for the dispatched primitive, as
     // vec4s (xyz used). content_edge_lines.vert transforms a_position itself and
     // has no primitive block in scope, so it decodes from here instead.
@@ -120,14 +115,6 @@ public:
     // SSBO-read render paths: triangle SSBO + view UBO. nullptr when
     // SSBOs are not supported.
     std::unique_ptr<erhe::graphics::Bind_group_layout> graphics_bind_group_layout;
-    // Graphics pipeline layout for the ID-buffer edge-line method's SEED-masked
-    // edge-id draw: same triangle SSBO + view UBO as graphics_bind_group_layout
-    // plus a dedicated s_seed_id sampler (slot 0) that content_line_after_compute.frag
-    // (compiled with ERHE_CONTENT_LINE_SEED_MASK) texelFetches to reject edge
-    // fragments that do not land on their own face's visible surface. Separate
-    // layout so the color edge-line path's shader / layout are unchanged. nullptr
-    // when SSBOs are not supported.
-    std::unique_ptr<erhe::graphics::Bind_group_layout> graphics_seed_bind_group_layout;
 
     // Geometry-shader backend bind group layouts. The geometry-shader
     // path expands lines into quads inside the vertex/geom stages of an

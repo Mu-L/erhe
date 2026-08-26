@@ -57,9 +57,7 @@ public:
         erhe::graphics::Base_render_pipeline&   pipeline_state,
         erhe::graphics::Color_blend_state*      color_blend_state,
         uint32_t                                group,
-        bool                                    multiview,
-        const erhe::graphics::Texture*          seed_texture,
-        const erhe::graphics::Sampler*          seed_sampler
+        bool                                    multiview
     ) override;
 
 protected:
@@ -71,8 +69,7 @@ protected:
         float                               line_width,
         uint32_t                            group,
         bool                                mesh_is_skinned,
-        uint32_t                            base_joint_index,
-        uint32_t                            id_base
+        uint32_t                            base_joint_index
     ) override;
 
     void release_backend_state() override;
@@ -163,13 +160,9 @@ void Content_wide_line_geometry_renderer::add_primitive(
     const float                         line_width,
     const uint32_t                      group,
     const bool                          mesh_is_skinned,
-    const uint32_t                      base_joint_index,
-    const uint32_t                      id_base
+    const uint32_t                      base_joint_index
 )
 {
-    // id_base is unused: the geometry-shader backend does not implement the
-    // ID-buffer edge-line method (compute backend only, per scope).
-    static_cast<void>(id_base);
     const erhe::primitive::Index_range& edge_indices = buffer_mesh.edge_line_indices;
     if (edge_indices.index_count == 0) {
         return;
@@ -249,9 +242,7 @@ void Content_wide_line_geometry_renderer::render(
     erhe::graphics::Base_render_pipeline&   pipeline_state,
     erhe::graphics::Color_blend_state*      color_blend_state,
     const uint32_t                          group,
-    const bool                              multiview,
-    const erhe::graphics::Texture*          seed_texture,
-    const erhe::graphics::Sampler*          seed_sampler
+    const bool                              multiview
 )
 {
     // Geometry-shader backend does not currently support multiview
@@ -260,11 +251,6 @@ void Content_wide_line_geometry_renderer::render(
     // backend; this path is desktop-only.
     ERHE_VERIFY(!multiview);
     static_cast<void>(multiview);
-    // The ID-buffer edge-line method requires the compute backend (the seed mask
-    // runs in the compute-expanded edge-id draw); the geometry backend never
-    // receives a seed texture.
-    static_cast<void>(seed_texture);
-    static_cast<void>(seed_sampler);
 
     if (m_dispatches.empty()) {
         return;
@@ -363,7 +349,6 @@ void Content_wide_line_geometry_renderer::render(
             dispatch.edge_count,
             0u,  // stride_per_view: unused by the geometry-shader vertex stage
             dispatch.base_joint_index,
-            0u,  // id_base: ID-buffer edge-line method is compute-backend only
             dispatch.position_quantization
         );
         view_buffer_range.bytes_written(view_size);

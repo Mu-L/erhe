@@ -5,18 +5,6 @@
 
 layout(local_size_x = 32) in;
 
-// Pack a 24-bit integer id into an rgb triple. Must match standard.frag's
-// vec3_from_uint and the build_polygon_id / picker encoding so that, in the
-// ID-buffer edge-line method, an edge half-quad's encoded face id is bit-exact
-// with the value the polygon-fill fragment computes for the same face.
-vec3 vec3_from_uint(uint i)
-{
-    uint r = (i >> 16u) & 0xffu;
-    uint g = (i >>  8u) & 0xffu;
-    uint b = (i >>  0u) & 0xffu;
-    return vec3(float(r) / 255.0, float(g) / 255.0, float(b) / 255.0);
-}
-
 float get_line_width(vec4 position, float thickness, vec4 fov, vec4 viewport)
 {
     // Negative thickness = fixed screen-space pixel width (no distance scaling)
@@ -213,12 +201,6 @@ void do_wide_line(uint view_index, uint in_line_index, uint out_triangle_index)
     float tdir_a          = (abs(packed_w_a) > 1.5) ? -1.0 : 1.0;
     float tdir_b          = (abs(packed_w_b) > 1.5) ? -1.0 : 1.0;
 
-    // Adjacent facet id per endpoint for the ID-buffer edge-line method
-    // (build_edge_lines packs them into position.w). Endpoint 0 -> face A's
-    // facet, endpoint 1 -> face B's. Ignored unless view.id_mode != 0.
-    uint facet_id_a = uint(edge_line_vertex_buffer.vertices[in_i0].position.w);
-    uint facet_id_b = uint(edge_line_vertex_buffer.vertices[in_i1].position.w);
-
     mat4 clip_from_world = view.cameras[view_index].clip_from_world;
 
 #ifdef ERHE_USE_SKINNING
@@ -300,34 +282,8 @@ void do_wide_line(uint view_index, uint in_line_index, uint out_triangle_index)
         vec2 side_in_screen  = vec2(-axis_in_screen.y, axis_in_screen.x);
         vec2 axis_in_ndc     = ndc_from_screen_direction(axis_in_screen, vp_size);
         vec2 side_in_ndc     = ndc_from_screen_direction(side_in_screen, vp_size);
-        // Perpendicular AA headroom for the ID path. The edge-id fragment shader
-        // (content_line_after_compute.frag, seed-mask path) writes a capsule-SDF
-        // coverage = clamp(half_width - dist + 0.5, 0, 1) with half_width = width0 * 0.5
-        // (the on-screen perpendicular half-extent), so the coverage ramp reaches 0 at
-        // screen dist == half_width + 0.5 px. With Stage-1 geometry (perpendicular extent
-        // == half_width) the ramp is hard-clipped by the rasterized edge at ~0.5 coverage
-        // -> only half-amplitude AA. Widen the SIDE (perpendicular) component so the ramp
-        // completes (1 -> 0) inside the geometry and the hard geometry edge falls in a
-        // coverage-0 (discarded) region -> full AA.
-        //
-        // UNITS: side0/side1 are in width0 units; the on-screen perpendicular extent is
-        // HALF of that, because side_in_ndc = side_in_screen / vp_size while screen_from_ndc
-        // maps an NDC direction back as ndc * 0.5 * vp_size (the 0.5 / factor-of-2 NDC<->px
-        // round trip). So screen extent = side0 * 0.5 px = half_width + aa_margin * 0.5.
-        // To reach the ramp end (half_width + 0.5) the margin must be >= 1.0; aa_margin = 2.0
-        // adds ~1.0 screen px, i.e. ~0.5 px of coverage-0 headroom past the ramp end so the
-        // hard geometry edge is reliably invisible. The AXIS (along-edge) component and the
-        // carried half-width .w in emit_quad stay width0/width1, so the VISIBLE line width is
-        // unchanged (the frag's coverage uses the carried v_line_width, not the geometry
-        // extent). The color path (id_mode == 0) is left untouched -- widening it would
-        // change the drawn line width.
         float side0 = width0;
         float side1 = width1;
-        if (view.id_mode != 0u) {
-            const float aa_margin = 2.0; // width0 units; ~1.0 screen px (covers the 1px ramp + headroom)
-            side0 += aa_margin;
-            side1 += aa_margin;
-        }
         vec2 offset_a_in_ndc = ( side_in_ndc * side0 - axis_in_ndc * width0);
         vec2 offset_b_in_ndc = ( side_in_ndc * side1 + axis_in_ndc * width1);
         vec2 offset_c_in_ndc = (-side_in_ndc * side1 + axis_in_ndc * width1);
@@ -491,17 +447,12 @@ void do_wide_line(uint view_index, uint in_line_index, uint out_triangle_index)
         v1_frag_screen.y = mix(v1_frag_screen.y, vp_size.y - v1_in_screen.y, step(view.vp_y_sign, 0.0));
         vec4 l_in_screen = vec4(v0_frag_screen, v1_frag_screen);
 
-        // Per-face half-quads (face A -> slots 0..5, face B -> slots 6..11). In id
-        // mode each carries its own facet id; in color mode both use the line
-        // color. emit_quad() takes the trapezoid as (crease0, crease1, outer1,
+        // Per-face half-quads (face A -> slots 0..5, face B -> slots 6..11);
+        // both use the line color. emit_quad() takes the trapezoid as (crease0, crease1, outer1,
         // outer0); the a_front / b_front flag (front/back by projected winding)
         // keeps the front face's half-quad and collapses the back face's.
         vec4 col_a = color;
         vec4 col_b = color;
-        if (view.id_mode != 0u) {
-            col_a = vec4(vec3_from_uint(view.id_base + facet_id_a), 1.0);
-            col_b = vec4(vec3_from_uint(view.id_base + facet_id_b), 1.0);
-        }
         vec2 a_emit_o0 = a_on_plus ? a_in_ndc : d_in_ndc;
         vec2 a_emit_o1 = a_on_plus ? b_in_ndc : c_in_ndc;
         emit_quad(

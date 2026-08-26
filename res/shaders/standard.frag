@@ -21,7 +21,7 @@ layout(location = 0) flat in int v_draw_id;
 layout(location = 1) flat in int v_primitive_id;
 #endif
 
-#if defined(ERHE_VARIANT_ID_RENDER) || defined(ERHE_VARIANT_FACE_ID_SEED)
+#if defined(ERHE_VARIANT_ID_RENDER)
 vec3 vec3_from_uint(uint i)
 {
     uint r = (i >> 16u) & 0xffu;
@@ -173,22 +173,6 @@ layout(location = 15) flat in vec4  v_wire_color;
 layout(location = 16) flat in float v_wire_width;
 #endif
 
-// ID-buffer edge-line method: this fragment's own face id (per-primitive base +
-// facet id), computed in standard.vert. The EDGE_LINES_FROM_ID fill compares it
-// against the face-ID buffer; the FACE_ID_SEED seed pass writes it out.
-#if defined(ERHE_EDGE_LINES_FROM_ID) || defined(ERHE_VARIANT_FACE_ID_SEED)
-layout(location = 17) flat in uint v_edge_face_id;
-#endif
-
-// ID-buffer edge-line method, corner caps: this triangle's 3 corners in
-// viewport-relative screen space (xy), ribbon half-width (z, px), used flag (w).
-// See standard.vert.
-#if defined(ERHE_EDGE_LINES_CORNER_CAP)
-layout(location = 18) flat in vec4 v_cap0;
-layout(location = 19) flat in vec4 v_cap1;
-layout(location = 20) flat in vec4 v_cap2;
-#endif
-
 // "Lit-path locals are required" gate: true when the BxDF runs lighting
 // OR when a debug visualization needs N / V / T / B / sampled
 // material properties. The debug overrides read those even in the
@@ -257,16 +241,6 @@ void main()
     return;
 #endif
 
-#if defined(ERHE_VARIANT_FACE_ID_SEED)
-    // ID-buffer edge-line seed pass: write this fragment's encoded face id
-    // (per-primitive base + facet id, computed in standard.vert) into the seed
-    // buffer. The depth test keeps the FRONTMOST face per pixel, so the seed holds
-    // the visible-surface face id; the edge-id pre-pass samples it to reject edge
-    // fragments that do not land on their own face. No lighting / varyings.
-    out_color = vec4(vec3_from_uint(v_edge_face_id), 1.0);
-    return;
-#endif
-
 #if defined(ERHE_VARIANT_SHADOW_DISTANCE)
     // Shadow_technique_mode::distance caster (the "bias-free" path). Store the
     // light-space depth with a slope+resolution bias baked in via fwidth (=
@@ -289,91 +263,12 @@ void main()
     return;
 #endif
 
-#if defined(ERHE_EDGE_LINES_CORNER_CAP)
-    // Corner-cap overlay: paint the edge color within the ribbon half-width of any
-    // real projected corner, then stop. A pure screen-space distance test (no
-    // face-ID match), so every face meeting at a shared vertex caps its own side --
-    // filling the gaps the EDGE_LINES_FROM_ID per-pixel match leaves there. The
-    // overlay pass's depth test (less-or-equal, no write) lets the frontmost face
-    // win each pixel, so the cap sits on the visible surface at the fill's depth.
-    {
-        vec2 frag = gl_FragCoord.xy - camera.cameras[c_view_index].viewport.xy;
-        if (
-            ((v_cap0.w > 0.5) && (distance(frag, v_cap0.xy) <= v_cap0.z)) ||
-            ((v_cap1.w > 0.5) && (distance(frag, v_cap1.xy) <= v_cap1.z)) ||
-            ((v_cap2.w > 0.5) && (distance(frag, v_cap2.xy) <= v_cap2.z))
-        ) {
-            out_color = camera.cameras[c_view_index].edge_line_color;
-            return;
-        }
-        discard;
-    }
-#endif
-
 // The lit-path locals + light loops reference v_material_index,
 // v_position, v_texcoord_0/1, the material/light/camera blocks, and the
 // BxDF/light/srgb/texture includes -- all gated on POSITION_PASS at the
 // top of this file. Gate the body on POSITION_PASS too so the ID-render
 // variant does not pull them in.
 #if !defined(ERHE_VARIANT_POSITION_PASS)
-#if defined(ERHE_EDGE_LINES_FROM_ID)
-    // Sub-pixel coverage of this fragment by the ID-buffer edge line. Captured here
-    // and applied at the END of main() as mix(lit_fill, edge_line_color, edge_coverage),
-    // so the band's outer edge is anti-aliased against the lit surface instead of a hard
-    // 1px step. A fully covered fragment short-circuits to pure edge color below (skipping
-    // the lit fill, preserving the pre-AA behaviour and its lighting-skip optimization).
-    float edge_coverage = 0.0;
-    // Sample the face-ID buffer rendered earlier this frame at this fragment's
-    // own pixel (texelFetch: exact, no filtering) and paint the edge-line color
-    // at the fill's exact depth (no separate line geometry, hence no Z-fight)
-    // where it holds a valid edge id for this visible surface. Otherwise fall
-    // through to the normal lit fill.
-    {
-        uvec2 edge_id_tex = camera.cameras[c_view_index].edge_id_texture;
-        vec2  vp_offset   = camera.cameras[c_view_index].viewport.xy;
-        ivec2 edge_px     = ivec2(gl_FragCoord.xy - vp_offset);
-        // texelFetch() does not clamp: out-of-range integer coordinates are undefined
-        // behaviour (no robustImageAccess) and hang the GPU on some drivers (the Apple
-        // GPU via MoltenVK). A fragment outside the face-ID buffer carries no edge data,
-        // so only sample when the pixel lies inside the texture; otherwise it is no edge.
-        if (edge_id_tex.x != max_u32) {
-            ivec2 edge_size = ivec2(get_texture_size(edge_id_tex));
-            if (all(greaterThanEqual(edge_px, ivec2(0))) && all(lessThan(edge_px, edge_size))) {
-                vec4 edge_texel = texel_fetch(edge_id_tex, edge_px);
-                uint edge_id    = (uint(edge_texel.r * 255.0 + 0.5) << 16) |
-                                  (uint(edge_texel.g * 255.0 + 0.5) <<  8) |
-                                   uint(edge_texel.b * 255.0 + 0.5);
-                // Accept BOTH face ids the edge uses: this fragment's own facet
-                // (edge_id == v_edge_face_id) AND the adjacent facet that shares the
-                // edge. The seed pre-pass masks the edge-id buffer to the FRONTMOST
-                // VISIBLE face per pixel, so any non-zero value here is necessarily
-                // an edge of THIS visible surface -- either this fragment's own
-                // facet, or, at the 1px crease between the two edge half-quads where
-                // the fill's rasterized face and the edge-id pass's face disagree,
-                // the other facet of the same edge. Accepting the non-matching case
-                // closes that seam without painting any unrelated face's edge (the
-                // seed mask already discarded occluded / wrong-cap ids from the
-                // buffer). v_edge_face_id must be non-zero too: an unregistered fill
-                // mesh (base 0) has no edges, and the seed leaves background /
-                // unregistered occluders at id 0.
-                if ((v_edge_face_id != 0u) && (edge_id != 0u)) {
-                    // alpha carries the sub-pixel capsule coverage written by the
-                    // edge-id pass (content_line_after_compute.frag); rgb is the id.
-                    edge_coverage = edge_texel.a;
-                    if (edge_coverage >= 0.996) {
-                        // Fully inside the band: pure edge color, skip the lit fill
-                        // (matches the pre-AA behaviour and its lighting-skip).
-                        out_color = camera.cameras[c_view_index].edge_line_color;
-                        return;
-                    }
-                    // Partial coverage (the ~1px boundary fringe): fall through to the
-                    // lit fill; the deferred mix at the end of main() composites it.
-                }
-            }
-        }
-    }
-#endif
-
     Material material   = material.materials[v_material_index];
     vec3     base_color = material.base_color.rgb;
 
@@ -1038,14 +933,5 @@ void main()
     }
 #endif
 
-#if defined(ERHE_EDGE_LINES_FROM_ID)
-    // Anti-aliased band edge: composite the edge-line color over the lit fill by the
-    // sub-pixel coverage captured at the top of main(). Fully covered fragments already
-    // returned pure edge color; here only the ~1px boundary fringe (0 < coverage < 1)
-    // is blended, smoothing the band's outer edge against the MSAA-smooth surface.
-    if (edge_coverage > 0.0) {
-        out_color.rgb = mix(out_color.rgb, camera.cameras[c_view_index].edge_line_color.rgb, edge_coverage);
-    }
-#endif
 #endif
 }

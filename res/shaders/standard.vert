@@ -5,51 +5,6 @@
 
 #define a_valency_edge_count a_custom_2
 
-#if defined(ERHE_EDGE_LINES_CORNER_CAP)
-// Screen-space ribbon width (px) at a clip-space point, replicating the wide-line
-// expansion (compute_before_content_line.comp get_line_width) so the corner-cap
-// disk exactly covers the ribbon thickness at the corner. thickness < 0 == fixed
-// screen-space pixel width (no distance scaling).
-float cap_line_width(vec4 position, float thickness, vec4 fov, vec4 viewport)
-{
-    if (thickness < 0.0) {
-        return -thickness;
-    }
-    float fov_width        = fov[1] - fov[0];
-    float viewport_width   = viewport[2];
-    float max_size         = 4.0 * thickness;
-    float scaled_thickness = max(max_size / position.w, 1.0);
-    return (1.0 / 1024.0) * viewport_width * scaled_thickness / fov_width;
-}
-
-// Project one real triangle corner (object space) to a viewport-relative screen
-// position, returning vec4(screen.xy, ribbon_half_width_px, used). vp_y_sign < 0
-// (top-left framebuffer origin) flips screen Y to match gl_FragCoord -- mirrors the
-// wide-line vp_y_sign path, since clip_from_world is y-up NDC on the main view.
-vec4 project_corner_cap(
-    vec3  corner_obj,
-    bool  used,
-    mat4  clip_from_world,
-    mat4  world_from_node,
-    vec4  vp,
-    vec4  fov,
-    float vp_y_sign,
-    float line_width
-)
-{
-    vec4 clip_c = clip_from_world * (world_from_node * vec4(corner_obj, 1.0));
-    // A corner at or behind the eye plane (w <= 0) has no valid screen position.
-    if (clip_c.w <= 0.0) {
-        return vec4(0.0);
-    }
-    vec2  ndc_c  = clip_c.xy / clip_c.w;
-    vec2  scr    = (ndc_c * 0.5 + 0.5) * vp.zw;
-    scr.y        = mix(scr.y, vp.w - scr.y, step(vp_y_sign, 0.0));
-    float half_w = 0.5 * cap_line_width(clip_c, line_width, fov, vp);
-    return vec4(scr, half_w, used ? 1.0 : 0.0);
-}
-#endif
-
 #if defined(ERHE_VARIANT_ID_RENDER)
 // Locations 0 and 1 are reused under the ID-render variant for the two
 // flat outputs the fragment packs into an RGB id. The lit varyings below
@@ -165,27 +120,6 @@ layout(location = 15) flat out vec4  v_wire_color;
 layout(location = 16) flat out float v_wire_width;
 #endif
 
-// ID-buffer edge-line method: this fragment's own face id (per-primitive base
-// from primitive.color.x + this triangle's facet id from a_custom_0). The
-// EDGE_LINES_FROM_ID fill compares it against the face-ID buffer it samples and
-// paints an edge line on a match; the FACE_ID_SEED seed pass writes it out as the
-// frontmost-visible-face id. Flat: every vertex of a triangle shares one facet id.
-#if defined(ERHE_EDGE_LINES_FROM_ID) || defined(ERHE_VARIANT_FACE_ID_SEED)
-layout(location = 17) flat out uint v_edge_face_id;
-#endif
-
-// ID-buffer edge-line method, corner caps: this triangle's 3 corners projected to
-// viewport-relative screen space (xy), each with its ribbon half-width (z, px) and
-// a used flag (w; 1 = real shared vertex that should be capped, 0 = internal
-// fan-triangulation corner that must not be). The fragment paints the edge color
-// within half-width of any used corner, filling the gaps the per-pixel id match
-// leaves at shared vertices.
-#if defined(ERHE_EDGE_LINES_CORNER_CAP)
-layout(location = 18) flat out vec4 v_cap0;
-layout(location = 19) flat out vec4 v_cap1;
-layout(location = 20) flat out vec4 v_cap2;
-#endif
-
 void main()
 {
     mat4 world_from_node;
@@ -259,36 +193,6 @@ void main()
     // attribute: mesh identity comes from the id_offset range, not this value.
     v_primitive_id = 0;
 #   endif
-#endif
-
-#if defined(ERHE_EDGE_LINES_FROM_ID) || defined(ERHE_VARIANT_FACE_ID_SEED)
-    // ID-buffer edge-line method face id. Recover the per-primitive face-id base
-    // (raw float in primitive.color.x, stamped by Primitive_buffer via the shared
-    // Face_id_base_provider) and add this triangle's facet id (a_custom_0 =
-    // vec4_from_uint(facet)). The result matches what the edge-id pre-pass encoded
-    // for the same face and what the seed pass writes out for the same face.
-    // Computed here -- outside the !POSITION_PASS lit block -- so the FACE_ID_SEED
-    // position-pass variant (which skips that block) still gets it.
-    {
-        uint face_id_base = uint(primitive.primitives[ERHE_DRAW_ID].color.x + 0.5);
-#       if defined(ERHE_ATTRIBUTE_a_custom_0)
-        // a_custom_0 is build_polygon_id()'s vec4_from_uint(facet): r = (facet>>24),
-        // g = (facet>>16), b = (facet>>8), a = (facet>>0). Small facet indices live
-        // entirely in .a, so all four components must be recombined (decoding only
-        // r,g,b yields 0 for every facet < 256 -> only facet 0 ever matches).
-        uint facet_id = (uint(a_custom_0.r * 255.0 + 0.5) << 24) |
-                        (uint(a_custom_0.g * 255.0 + 0.5) << 16) |
-                        (uint(a_custom_0.b * 255.0 + 0.5) <<  8) |
-                         uint(a_custom_0.a * 255.0 + 0.5);
-#       else
-        uint facet_id = 0u;
-#       endif
-        // base 0 = this mesh has no face-id assignment (not registered for the
-        // edge method, e.g. controller / rendertarget meshes in a shared fill
-        // pass). 0 is the buffer's "no edge" id, so it can never match -> these
-        // meshes simply render the normal fill / seed to 0 (occluder, no edge).
-        v_edge_face_id = (face_id_base != 0u) ? (face_id_base + facet_id) : 0u;
-    }
 #endif
 
 #if defined(ERHE_VARIANT_POINTS)
@@ -374,31 +278,6 @@ void main()
     v_position       = position;
 
     v_material_index = primitive.primitives[ERHE_DRAW_ID].material_index;
-
-#   if defined(ERHE_EDGE_LINES_CORNER_CAP)
-    // Project this triangle's 3 real corners (object positions in a_custom_5/6/7,
-    // replicated to all 3 soup vertices by build_expanded_polygon_fill) so the
-    // fragment can cap shared vertices. used = the corner is an endpoint of a real
-    // polygon edge: edge_mask (a_custom_4 bits 2..4) bit b gates the edge opposite
-    // corner b, so corner c is real when either of the two bits != c is set --
-    // internal fan-triangulation corners (no real edge) are left uncapped.
-    {
-        vec4  vp        = camera.cameras[c_view_index].viewport;
-        vec4  fov       = camera.cameras[c_view_index].fov;
-        float vp_y_sign = camera.cameras[c_view_index].vp_y_sign;
-        float lw        = camera.cameras[c_view_index].edge_line_width;
-#       if defined(ERHE_ATTRIBUTE_a_custom_4) && defined(ERHE_ATTRIBUTE_a_custom_5) && defined(ERHE_ATTRIBUTE_a_custom_6) && defined(ERHE_ATTRIBUTE_a_custom_7)
-        uint edge_mask = (a_custom_4 >> 2u) & 7u;
-        v_cap0 = project_corner_cap(a_custom_5, (edge_mask & 0x6u) != 0u, clip_from_world, world_from_node, vp, fov, vp_y_sign, lw);
-        v_cap1 = project_corner_cap(a_custom_6, (edge_mask & 0x5u) != 0u, clip_from_world, world_from_node, vp, fov, vp_y_sign, lw);
-        v_cap2 = project_corner_cap(a_custom_7, (edge_mask & 0x3u) != 0u, clip_from_world, world_from_node, vp, fov, vp_y_sign, lw);
-#       else
-        v_cap0 = vec4(0.0);
-        v_cap1 = vec4(0.0);
-        v_cap2 = vec4(0.0);
-#       endif
-    }
-#   endif
 
 #   if defined(ERHE_USE_VERTEX_VARYING_TEXCOORD0)
     v_texcoord_0     = a_texcoord_0;
