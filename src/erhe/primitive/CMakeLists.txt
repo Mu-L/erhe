@@ -22,6 +22,8 @@ erhe_target_sources_grouped(
     erhe_primitive/index_range.hpp
     erhe_primitive/material.cpp
     erhe_primitive/material.hpp
+    erhe_primitive/mesh_optimizer.cpp
+    erhe_primitive/mesh_optimizer.hpp
     erhe_primitive/primitive_builder.cpp
     erhe_primitive/primitive_builder.hpp
     erhe_primitive/primitive_log.cpp
@@ -51,6 +53,7 @@ target_link_libraries(${_target}
         erhe::profile
         erhe::verify
         fmt::fmt
+        meshoptimizer
 )
 
 erhe_target_settings(${_target} "erhe")

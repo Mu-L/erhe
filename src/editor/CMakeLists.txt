@@ -1029,7 +1029,6 @@ target_link_libraries(
         erhe::time
         erhe::ui
         erhe::verify
-        #meshoptimizer
         geogram
         imgui
         imgui_gradient::imgui_gradient

@@ -709,6 +709,18 @@ CPMAddPackage(
     GITHUB_REPOSITORY simdjson/simdjson
 )
 
+CPMAddPackage(
+    NAME              meshoptimizer
+    GIT_TAG           v1.2
+    VERSION           1.2
+    GIT_SHALLOW       TRUE
+    GITHUB_REPOSITORY zeux/meshoptimizer
+    OPTIONS
+        "MESHOPT_BUILD_DEMO OFF"
+        "MESHOPT_BUILD_GLTFPACK OFF"
+        "MESHOPT_INSTALL OFF"
+)
+
 # CPMAddPackage(
 #     NAME              reflect-cpp
 #     GIT_SHALLOW       TRUE

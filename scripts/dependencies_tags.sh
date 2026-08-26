@@ -23,6 +23,7 @@ REPOS=(
     "harfbuzz/harfbuzz"
     "embree/embree"
     "madmann91/bvh"
+    "zeux/meshoptimizer"
     "jrouwe/JoltPhysics"
     "KhronosGroup/OpenXR-SDK"
 )
