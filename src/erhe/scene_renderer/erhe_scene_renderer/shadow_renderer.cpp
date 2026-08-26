@@ -768,9 +768,13 @@ void Shadow_renderer::prewarm_pipelines(
     // format. Warm those too, so enabling the draw-list path does not
     // compile on the first shadow frame. Shader_variant_cache is keyed on the
     // Shader_key alone: the vertex format only matters at first compile, and
-    // the position (and joints / weights) attributes sit at the same
-    // locations in every mesh format, which is what makes one variant per
-    // skinning state valid.
+    // the position (and joints / weights) attributes sit at the same locations
+    // in every mesh format. What makes one variant per skinning state valid is
+    // that plus the position *encoding* being one per session
+    // (Mesh_memory_config::quantize_vertex_positions builds every content format
+    // with the same position format, doc/vertex-position-quantization.md 6.1) -
+    // the lambda below reads it off each format so the two cannot disagree. A
+    // per-primitive encoding (6.3) would multiply these variants.
     {
         // All three sub-variants (depth-only, depth-only + distance, cube) x
         // {not skinned, skinned}: six variants, so neither the distance
@@ -780,12 +784,24 @@ void Shadow_renderer::prewarm_pipelines(
             make_shader_bool_mask(Shader_bool::VARIANT_DEPTH_ONLY) | make_shader_bool_mask(Shader_bool::VARIANT_SHADOW_DISTANCE),
             make_shader_bool_mask(Shader_bool::VARIANT_SHADOW_CUBE)
         };
+        // Derive the position encoding from the very format each variant is
+        // compiled against, so the two can never disagree. Shader_variant_cache
+        // keys its map on the Shader_key alone, so an encoding-0 key prewarmed
+        // against a quantized format would leave every real shadow draw missing
+        // the cache and compiling on the render thread.
+        auto prewarm = [this](Shader_key key, const erhe::dataformat::Vertex_format& vertex_format) {
+            key.set(
+                Shader_int::VERTEX_POSITION_ENCODING,
+                static_cast<uint32_t>(erhe::dataformat::get_vertex_position_encoding(&vertex_format))
+            );
+            static_cast<void>(m_shader_variant_cache.get(key, &vertex_format));
+        };
         for (const uint32_t mask : sub_variant_masks) {
             Shader_key key{};
             key.bool_mask = mask;
-            static_cast<void>(m_shader_variant_cache.get(key, &m_mesh_memory.vertex_format_not_skinned));
+            prewarm(key, m_mesh_memory.vertex_format_not_skinned);
             key.set(Shader_bool::USE_SKINNING, true);
-            static_cast<void>(m_shader_variant_cache.get(key, &m_mesh_memory.vertex_format_skinned));
+            prewarm(key, m_mesh_memory.vertex_format_skinned);
         }
     }
 

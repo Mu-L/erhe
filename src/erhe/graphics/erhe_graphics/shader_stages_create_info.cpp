@@ -13,6 +13,7 @@
 #include "erhe_graphics/enums.hpp"
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
+#include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
 
@@ -50,6 +51,30 @@ auto glsl_token(const Glsl_type attribute_type) -> const char*
     }
 }
 
+namespace {
+
+// The one emitter of ERHE_VERTEX_POSITION_ENCODING, shared by attributes_source()
+// (vertex stages) and attribute_defines_source() (every other stage); final_source()
+// picks exactly one of those per stage, so the macro is emitted once. Its value is a
+// pure function of the vertex format, and those two functions are where the format is
+// in hand - so every shader compiled against a format gets the matching decode without
+// its compile site having to remember to pass a define.
+//
+// A missing define is SILENT in the GLSL preprocessor: it evaluates to passthrough.
+// The #ifndef backstop in res/shaders/erhe_vertex_position.glsl is what turns a
+// format-less compile of a decoding shader into a build failure rather than garbage.
+//
+// Shader_key carries the same axis for variant identity but deliberately omits it
+// from get_defines(), so nothing can redefine it with a conflicting value.
+void write_vertex_position_encoding_define(std::stringstream& sb, const erhe::dataformat::Vertex_format* vertex_format)
+{
+    sb << "#define ERHE_VERTEX_POSITION_ENCODING "
+       << static_cast<uint32_t>(erhe::dataformat::get_vertex_position_encoding(vertex_format))
+       << "\n";
+}
+
+} // anonymous namespace
+
 auto Shader_stages_create_info::attributes_source() const -> std::string
 {
     std::stringstream sb;
@@ -67,6 +92,7 @@ auto Shader_stages_create_info::attributes_source() const -> std::string
         for (const auto& attribute : vertex_input.attributes) {
             sb << "#define ERHE_ATTRIBUTE_" << attribute.name << " 1\n";
         }
+        write_vertex_position_encoding_define(sb, vertex_format);
         sb << "\n";
     }
 
@@ -87,6 +113,7 @@ auto Shader_stages_create_info::attribute_defines_source() const -> std::string
         for (const auto& attribute : vertex_input.attributes) {
             sb << "#define ERHE_ATTRIBUTE_" << attribute.name << " 1\n";
         }
+        write_vertex_position_encoding_define(sb, vertex_format);
         sb << "\n";
     }
 

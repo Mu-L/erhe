@@ -229,4 +229,28 @@ auto Vertex_format::to_string() const -> std::string
     return ss.str();
 }
 
+auto c_str(const Vertex_position_encoding encoding) -> const char*
+{
+    switch (encoding) {
+        case Vertex_position_encoding::passthrough:    return "passthrough";
+        case Vertex_position_encoding::snorm16x3_aabb: return "snorm16x3_aabb";
+        default:                                       return "?";
+    }
+}
+
+auto get_vertex_position_encoding(const Vertex_format* vertex_format) -> Vertex_position_encoding
+{
+    if (vertex_format == nullptr) {
+        return Vertex_position_encoding::passthrough;
+    }
+    const Attribute_stream position = vertex_format->find_attribute(Vertex_attribute_usage::position, 0);
+    if (position.attribute == nullptr) {
+        return Vertex_position_encoding::passthrough;
+    }
+    switch (position.attribute->format) {
+        case Format::format_16_vec3_snorm: return Vertex_position_encoding::snorm16x3_aabb;
+        default:                           return Vertex_position_encoding::passthrough;
+    }
+}
+
 } // namespace erhe::dataformat

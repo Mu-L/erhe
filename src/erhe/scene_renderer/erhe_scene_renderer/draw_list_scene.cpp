@@ -120,12 +120,21 @@ public:
         }
         case Draw_purpose::shadow: {
             // R4: shadow variants are position-only passes; the only
-            // primitive-derived component that matters is skinning. Derive
-            // with a null material so no material bits leak in, then keep
-            // USE_SKINNING only.
+            // primitive-derived components that matter are the ones that
+            // describe how to *get to* a position. Derive with a null material
+            // so no material bits leak in, then keep exactly those axes:
+            // skinning, and how a_position is encoded - without the latter a
+            // quantized mesh would rasterize its caster from raw [-1,1]
+            // positions while the lit pass decodes correctly.
             const Shader_key full = Shader_key{}.derive(nullptr, &vertex_input_entry.vertex_format, skinned);
             result.key = Shader_key{};
             result.key.set(Shader_bool::USE_SKINNING, full.get(Shader_bool::USE_SKINNING));
+            // Derived from buffer_mesh->vertex_input_key, while the variant is
+            // compiled against buffer_set.vertex_input_key (the *expanded* format
+            // for solid wireframe). Those always agree under the one-encoding-per-
+            // session MVP; a per-primitive encoding would have to derive from the
+            // bound key instead. See doc/vertex-position-quantization.md 6.3.
+            result.key.set(Shader_int::VERTEX_POSITION_ENCODING, full.get(Shader_int::VERTEX_POSITION_ENCODING));
             break;
         }
         default: {

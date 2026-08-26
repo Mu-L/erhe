@@ -1,6 +1,7 @@
 #include "erhe_camera_view.glsl"
 #include "erhe_skinning.glsl"
 #include "erhe_standard_variant.glsl"
+#include "erhe_vertex_position.glsl"
 
 #define a_valency_edge_count a_custom_2
 
@@ -210,7 +211,16 @@ void main()
 
     mat4 clip_from_world = camera.cameras[c_view_index].clip_from_world;
 
-    vec4 position        = world_from_node * vec4(a_position, 1.0);
+    // Object space position: identical to a_position unless the vertex format
+    // stores it quantized into the primitive AABB, in which case this is the
+    // decode. ERHE_DRAW_ID is the same primitive record the transforms above
+    // came from, so caster and lit pass always decode with the same affine.
+    vec3 node_position   = erhe_decode_vertex_position(
+        primitive.primitives[ERHE_DRAW_ID].position_scale.xyz,
+        primitive.primitives[ERHE_DRAW_ID].position_offset.xyz
+    );
+
+    vec4 position        = world_from_node * vec4(node_position, 1.0);
     gl_Position          = clip_from_world * position;
 
 #if defined(ERHE_VARIANT_SHADOW_CUBE)
@@ -395,7 +405,7 @@ void main()
 #   endif
 
 #   if defined(ERHE_USE_VERTEX_VARYING_NODE_POSITION)
-    v_node_position  = a_position;
+    v_node_position  = node_position;
 #   endif
 
 #   if defined(ERHE_USE_VERTEX_VARYING_TEXCOORD2)

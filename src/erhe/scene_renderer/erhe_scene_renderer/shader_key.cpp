@@ -40,8 +40,16 @@ auto Shader_key::get_defines() const -> std::vector<std::pair<std::string, std::
     ERHE_SHADER_BOOL(ERHE_X)
 #undef ERHE_X
 
+    // VERTEX_POSITION_ENCODING is deliberately excluded: it is emitted by
+    // Shader_stages_create_info::attributes_source(), which derives it from the
+    // vertex format itself. Emitting it here as well would let a hand-built key
+    // that forgot the axis produce a *conflicting* redefinition of the macro.
+    // It stays in the key for variant hashing and identity (and describe() still
+    // shows it - that re-enumerates ERHE_SHADER_INT independently of this).
 #define ERHE_X(PARAM) \
-    defines.emplace_back(std::string{"ERHE_" #PARAM}, fmt::format("{}", get(Shader_int::PARAM)));
+    if (Shader_int::PARAM != Shader_int::VERTEX_POSITION_ENCODING) { \
+        defines.emplace_back(std::string{"ERHE_" #PARAM}, fmt::format("{}", get(Shader_int::PARAM))); \
+    }
 
     ERHE_SHADER_INT(ERHE_X)
 #undef ERHE_X
@@ -116,6 +124,16 @@ auto Shader_key::derive(
     Shader_key key{};
     key.bool_mask  = bool_mask;
     key.int_values = int_values;
+
+    // Assign unconditionally rather than only setting the non-zero case: the line
+    // above copies int_values from *this, so a stale non-zero encoding on an
+    // environment key would otherwise be carried through. derive(material, nullptr,
+    // ...) - the material-identity hash - correspondingly pins it to passthrough,
+    // which is what that hash wants.
+    key.set(
+        Shader_int::VERTEX_POSITION_ENCODING,
+        static_cast<uint32_t>(erhe::dataformat::get_vertex_position_encoding(vertex_format))
+    );
 
     using usage = erhe::dataformat::Vertex_attribute_usage;
     const bool has_normal_0      = (vertex_format != nullptr) && vertex_format_has_attribute(*vertex_format, usage::normal,        erhe::dataformat::normal_attribute);

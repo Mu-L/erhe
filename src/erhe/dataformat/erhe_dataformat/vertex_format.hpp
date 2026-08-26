@@ -146,4 +146,26 @@ public:
     std::vector<Vertex_stream> streams;
 };
 
+// How a_position is stored in a vertex format, and therefore how the vertex
+// shader must decode it. This is a property of the vertex format, not of any
+// one shader, which is why it lives here: both the shader key (which hashes it
+// into the variant identity) and Shader_stages_create_info::attributes_source()
+// (which emits the matching ERHE_VERTEX_POSITION_ENCODING define) derive it
+// from the format with get_vertex_position_encoding() below.
+//
+// Keep in sync with the ERHE_VERTEX_POSITION_ENCODING_* macros in
+// res/shaders/erhe_vertex_position.glsl.
+enum class Vertex_position_encoding : uint32_t
+{
+    passthrough    = 0, // a_position is an object space float3
+    snorm16x3_aabb = 1  // a_position is snorm16x3, normalized into the primitive's object space AABB
+    // snorm16x4_aabb = 2 // future work: padded, or w carries a payload
+};
+
+[[nodiscard]] auto c_str(Vertex_position_encoding encoding) -> const char*;
+
+// passthrough for a null format, or for one whose position attribute is not a
+// recognized quantized format (including a format with no position at all).
+[[nodiscard]] auto get_vertex_position_encoding(const Vertex_format* vertex_format) -> Vertex_position_encoding;
+
 } // namespace erhe::dataformat
