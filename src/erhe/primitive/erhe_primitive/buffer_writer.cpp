@@ -623,6 +623,16 @@ void Vertex_buffer_writer::write(const Vertex_attribute_info& attribute, const G
     );
 }
 
+void Vertex_buffer_writer::write_snorm16x3(const Vertex_attribute_info& attribute, const int16_t x, const int16_t y, const int16_t z)
+{
+    ERHE_VERIFY(attribute.format == erhe::dataformat::Format::format_16_vec3_snorm);
+    const std::span<std::uint8_t> destination = vertex_data_span.subspan(vertex_write_offset + attribute.offset, attribute.size);
+    int16_t* const ptr = reinterpret_cast<int16_t*>(destination.data());
+    ptr[0] = x;
+    ptr[1] = y;
+    ptr[2] = z;
+}
+
 void Vertex_buffer_writer::write(const Vertex_attribute_info& attribute, const GEO::vec4f value)
 {
     write_low4(

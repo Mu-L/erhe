@@ -12,6 +12,10 @@
 #include "erhe_verify/verify.hpp"
 
 #include <fmt/format.h>
+#include <meshoptimizer.h>
+
+#include <cmath>
+#include <cstring>
 
 namespace erhe::primitive {
 
@@ -1011,6 +1015,11 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                 (sink_position_encoding != erhe::dataformat::Vertex_position_encoding::passthrough) &&
                 (sink_attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::position) &&
                 (sink_attribute.usage_index == 0);
+            // Loop-invariant, so check it here rather than per vertex.
+            // get_vertex_position_encoding() reports snorm16x3_aabb for no other
+            // position format, which is what lets the encode branch below write
+            // its snorm16 triple straight into the sink.
+            ERHE_VERIFY(!encode_position || (sink_attribute.format == erhe::dataformat::Format::format_16_vec3_snorm));
             if (src.attribute != nullptr) {
                 const uint8_t* src_attribute_base = src_vertex_data_base + src.attribute->offset;
                 for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
@@ -1019,14 +1028,33 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                     if (encode_position) {
                         float source_position[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
                         erhe::dataformat::convert(src_data, src.attribute->format, &source_position[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
+                        // Both clamps below propagate NaN, and meshopt_quantizeSnorm()
+                        // maps NaN to the AABB's -X/-Y/-Z corner instead of failing.
+                        // convert() used to catch that with its own range verify, so
+                        // keep the diagnostic here - matching build_vertex_position().
+                        ERHE_VERIFY(
+                            std::isfinite(source_position[0]) &&
+                            std::isfinite(source_position[1]) &&
+                            std::isfinite(source_position[2])
+                        );
                         const glm::vec3 p{source_position[0], source_position[1], source_position[2]};
                         const glm::vec3 encoded = glm::clamp(
                             (p - position_encode_center) * position_encode_inv_scale,
                             glm::vec3{-1.0f},
                             glm::vec3{ 1.0f}
                         );
-                        const float encoded_data[4] = { encoded.x, encoded.y, encoded.z, 1.0f };
-                        erhe::dataformat::convert(&encoded_data[0], erhe::dataformat::Format::format_32_vec4_float, sink, sink_attribute.format, 1.0f);
+                        // Quantize through meshoptimizer rather than convert():
+                        // the clamp above makes meshopt_quantizeSnorm() bit-identical
+                        // to erhe::dataformat::float_to_snorm16() (same 32767 scale,
+                        // same round-half-away-from-zero; they can only differ on
+                        // input outside [-1, 1], which the clamp and the finite check
+                        // above rule out).
+                        const int16_t quantized[3] = {
+                            static_cast<int16_t>(meshopt_quantizeSnorm(encoded.x, 16)),
+                            static_cast<int16_t>(meshopt_quantizeSnorm(encoded.y, 16)),
+                            static_cast<int16_t>(meshopt_quantizeSnorm(encoded.z, 16))
+                        };
+                        std::memcpy(sink, &quantized[0], sizeof(quantized));
                     } else {
                         erhe::dataformat::convert(src_data, src.attribute->format, sink, sink_attribute.format, 1.0f);
                     }

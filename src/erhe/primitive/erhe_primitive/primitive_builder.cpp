@@ -12,6 +12,7 @@
 #include "erhe_profile/profile.hpp"
 
 #include <fmt/format.h>
+#include <meshoptimizer.h>
 #include "erhe_verify/verify.hpp"
 
 #include <algorithm>
@@ -591,7 +592,10 @@ void Build_context::write_position(const Vertex_attribute_info& info, const GEO:
     // Normalize into the AABB. The clamp only matters for values outside the box,
     // which calculate_bounding_volume() bounds away for mesh vertices - facet
     // centroids and expanded corners are inside by construction - but write_low3()
-    // clamps silently anyway and convert() asserts, so be explicit here.
+    // clamps silently anyway and convert() asserts, so be explicit here. The clamp
+    // is also what makes meshopt_quantizeSnorm() below bit-identical to
+    // erhe::dataformat::float_to_snorm16(): both scale by 32767 and round half away
+    // from zero, and they can only differ on input outside [-1, 1].
     const GEO::vec3f biased = position - root.position_encode_center;
     const GEO::vec3f scaled{
         biased.x * root.position_encode_inv_scale.x,
@@ -603,7 +607,12 @@ void Build_context::write_position(const Vertex_attribute_info& info, const GEO:
         std::clamp(scaled.y, -1.0f, 1.0f),
         std::clamp(scaled.z, -1.0f, 1.0f)
     };
-    attribute_writers.position->write(info, encoded);
+    attribute_writers.position->write_snorm16x3(
+        info,
+        static_cast<int16_t>(meshopt_quantizeSnorm(encoded.x, 16)),
+        static_cast<int16_t>(meshopt_quantizeSnorm(encoded.y, 16)),
+        static_cast<int16_t>(meshopt_quantizeSnorm(encoded.z, 16))
+    );
 }
 
 void Build_context::build_vertex_position()

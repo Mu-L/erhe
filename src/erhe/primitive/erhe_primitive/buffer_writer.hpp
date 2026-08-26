@@ -57,6 +57,11 @@ public:
     void write(const Vertex_attribute_info& attribute, uint32_t value);
     void write(const Vertex_attribute_info& attribute, glm::uvec2 value);
     void write(const Vertex_attribute_info& attribute, glm::uvec4 value);
+    // Writes three snorm16 components verbatim. The typed write() overloads
+    // dispatch on Format alone and cannot express "this attribute is already
+    // quantized", so the AABB-encoded position - whose quantization goes
+    // through meshopt_quantizeSnorm - needs this raw route.
+    void write_snorm16x3(const Vertex_attribute_info& attribute, int16_t x, int16_t y, int16_t z);
     void move (std::size_t relative_offset);
     void next_vertex();
 
