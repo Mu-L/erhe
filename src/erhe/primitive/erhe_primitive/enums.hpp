@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace erhe::primitive {
@@ -21,6 +22,28 @@ enum class Primitive_mode : unsigned int {
     solid_wireframe   = 6, // expanded fill triangles, drawn with the solid-wireframe shader variant
     count             = 7
 };
+
+// Which build of a Primitive_render_shape's renderable data is meant.
+//
+// `original` is source order and carries valid per-corner facet ids. It is
+// ALWAYS built, which is what lets the ID renderer, picking and ray tracing
+// work unconditionally - none of them ever look at `optimized`.
+//
+// `optimized` is the meshoptimizer build: welded and reordered, with the facet
+// id bytes zeroed because welding makes them meaningless. It exists only when
+// mesh optimization is enabled, and it is dropped again on the first GPU vertex
+// edit. There is no "active variant" state: a renderer queries which variants
+// are present and chooses.
+// uint16_t so it fits the padding slot in the hot Draw_list_entry.
+enum class Mesh_variant : uint16_t {
+    original  = 0,
+    optimized = 1,
+    count     = 2
+};
+
+inline constexpr std::size_t mesh_variant_count = static_cast<std::size_t>(Mesh_variant::count);
+
+[[nodiscard]] auto c_str(Mesh_variant variant) -> const char*;
 
 enum class Primitive_type : unsigned int {
     none                     = 0,

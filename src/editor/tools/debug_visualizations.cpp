@@ -238,7 +238,7 @@ void Debug_visualizations::mesh_visualization(const Render_context& render_conte
         if (!primitive.render_shape) {
             continue;
         }
-        const erhe::primitive::Buffer_mesh& buffer_mesh = primitive.render_shape->get_renderable_mesh();
+        const erhe::primitive::Buffer_mesh& buffer_mesh = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
 
         const float box_volume    = buffer_mesh.bounding_box.volume();
         const float sphere_volume = buffer_mesh.bounding_sphere.volume();
@@ -438,7 +438,7 @@ void Debug_visualizations::mesh_primitive_boxes_visualization(const Render_conte
                     }
                 }
 
-                const erhe::math::Aabb& box = primitive.render_shape->get_renderable_mesh().bounding_box;
+                const erhe::math::Aabb& box = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original).bounding_box;
                 if (!box.is_valid()) {
                     continue;
                 }
@@ -474,7 +474,7 @@ void Debug_visualizations::bone_boxes_visualization(const Render_context& contex
                 if (!primitive.render_shape) {
                     continue;
                 }
-                const std::vector<erhe::math::Aabb>& joint_boxes = primitive.render_shape->get_renderable_mesh().joint_bounding_boxes;
+                const std::vector<erhe::math::Aabb>& joint_boxes = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original).joint_bounding_boxes;
                 const std::size_t end = std::min(joint_boxes.size(), skin_data.joints.size());
                 for (std::size_t i = 0; i < end; ++i) {
                     const erhe::math::Aabb& joint_box = joint_boxes[i];
@@ -1356,8 +1356,8 @@ void Debug_visualizations::camera_visualization(const Render_context& render_con
                     erhe::scene::Node*                node                      = mesh->get_node();
                     const erhe::scene::Trs_transform& world_from_node_transform = node->world_from_node_transform();
                     const glm::mat4                   world_from_node           = world_from_node_transform.get_matrix();
-                    const erhe::math::Aabb            node_local_aabb           = primitive.render_shape->get_renderable_mesh().bounding_box;
-                    const erhe::math::Sphere          node_local_sphere         = primitive.render_shape->get_renderable_mesh().bounding_sphere;
+                    const erhe::math::Aabb            node_local_aabb           = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original).bounding_box;
+                    const erhe::math::Sphere          node_local_sphere         = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original).bounding_sphere;
                     const erhe::math::Aabb            aabb_in_world             = node_local_aabb  .transformed_by(world_from_node);
                     const erhe::math::Sphere          sphere_in_world           = node_local_sphere.transformed_by(world_from_node);
                     const bool aabb_visible   = aabb_in_frustum  (planes, corners, aabb_in_world);

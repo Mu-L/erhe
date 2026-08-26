@@ -43,6 +43,7 @@ public:
     bool                                accepted    {false};
     bool                                double_sided{false};
     const erhe::primitive::Buffer_mesh* buffer_mesh {nullptr};
+    erhe::primitive::Mesh_variant       variant     {erhe::primitive::Mesh_variant::original};
     Draw_blending                       blending   {Draw_blending::opaque};
     Buffer_set                          buffer_set {};
     Shader_key                          key        {};
@@ -64,7 +65,16 @@ public:
     if (primitive == nullptr) {
         return result;
     }
-    const erhe::primitive::Buffer_mesh* buffer_mesh = primitive->get_renderable_mesh();
+    if (primitive->render_shape == nullptr) {
+        return result;
+    }
+    // Registration bakes draw parameters, so the variant choice is made here
+    // and recorded on the entry. Draw lists are content rendering, so they
+    // prefer the optimized variant; the ID pass does not use draw lists.
+    const std::pair<erhe::primitive::Mesh_variant, const erhe::primitive::Buffer_mesh*> resolved =
+        primitive->render_shape->get_resolved_renderable_mesh(erhe::primitive::Mesh_variant::optimized);
+    result.variant = resolved.first;
+    const erhe::primitive::Buffer_mesh* buffer_mesh = resolved.second;
     if (buffer_mesh == nullptr) {
         return result;
     }
@@ -342,6 +352,7 @@ void Draw_list_scene::add_entries(const uint32_t object_index)
             Draw_list_entry entry{};
             entry.object_index         = object_index;
             entry.mesh_primitive_index = static_cast<uint16_t>(i);
+            entry.variant              = classification.variant;
             entry.flag_bits            = object.flag_bits;
             entry.index_count          = static_cast<uint32_t>(classification.index_range.index_count);
             entry.first_index          = static_cast<uint32_t>(classification.index_range.first_index) + buffer_mesh.base_index();
@@ -489,7 +500,9 @@ void Draw_list_scene::write_entry_record(const Draw_list_object& object, const D
     write_slot_fields(record, offsets, *mesh, mesh_primitive);
     std::memcpy(record + offsets.base_vertex, &entry.base_vertex, sizeof(uint32_t));
     const erhe::primitive::Primitive*   primitive   = mesh_primitive.primitive.get();
-    const erhe::primitive::Buffer_mesh* buffer_mesh = (primitive != nullptr) ? primitive->get_renderable_mesh() : nullptr;
+    // The variant the entry's draw parameters were baked from, not a fresh
+    // choice: the quantization AABB has to match the vertices being drawn.
+    const erhe::primitive::Buffer_mesh* buffer_mesh = (primitive != nullptr) ? primitive->get_renderable_mesh(entry.variant) : nullptr;
     write_position_quantization_fields(record, offsets, buffer_mesh);
 }
 

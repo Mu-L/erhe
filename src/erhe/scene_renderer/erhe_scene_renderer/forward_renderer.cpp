@@ -329,6 +329,7 @@ void Forward_renderer::render(const Render_parameters& parameters)
                 filter,
                 parameters.primitive_mode,
                 parameters.blending_mode_policy,
+                erhe::primitive::Mesh_variant::optimized,
                 parameters.shader_debug_filter
             );
         }
@@ -608,7 +609,8 @@ auto Forward_renderer::prewarm_standard_variants(const Prewarm_parameters& param
                     meshes,
                     {}, // TODO
                     parameters.primitive_mode,
-                    parameters.blending_mode_policy
+                    parameters.blending_mode_policy,
+                    erhe::primitive::Mesh_variant::optimized
                 );
             }
 

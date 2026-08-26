@@ -141,7 +141,12 @@ void Content_wide_line_renderer::add_mesh(
         if (!mesh_primitive.primitive) {
             continue;
         }
-        const erhe::primitive::Buffer_mesh* buffer_mesh = mesh_primitive.primitive->get_renderable_mesh();
+        // Edge lines come from the dedicated edge-line vertex buffer, which is
+        // written from GEO mesh data and is independent of the main buffer's
+        // vertex order - so the always-present variant is the right source, and
+        // stays right even while an optimized variant is what gets drawn.
+        const erhe::primitive::Buffer_mesh* buffer_mesh =
+            mesh_primitive.primitive->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
         if (buffer_mesh == nullptr) {
             continue;
         }

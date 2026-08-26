@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_math/aabb.hpp"
+#include "erhe_primitive/enums.hpp"
 
 #include <cstdint>
 
@@ -21,7 +22,14 @@ public:
     uint32_t         object_index        {0};
     // Index into Mesh::get_primitives() of the owning mesh.
     uint16_t         mesh_primitive_index{0};
-    uint16_t         pad                 {0};
+    // The Buffer_mesh variant the draw parameters below were baked from.
+    // Registration picks it; the per-draw record write must read the same one,
+    // and a change of variant needs re-registration (base_vertex, the index
+    // ranges and the quantization AABB are all variant-specific).
+    //
+    // Sized to fit the slot the old padding occupied, so the hot contiguous
+    // entry vector does not grow (see the static_assert in the .cpp).
+    erhe::primitive::Mesh_variant variant{erhe::primitive::Mesh_variant::original};
     // Mirrored Item_flags word of the owning mesh (R12a); Item_filter is
     // evaluated against this at draw time (R7a).
     uint64_t         flag_bits           {0};

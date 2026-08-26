@@ -150,7 +150,8 @@ namespace {
                 if (shape == nullptr) {
                     continue;
                 }
-                const std::vector<erhe::math::Aabb>& joint_boxes = shape->get_renderable_mesh().joint_bounding_boxes;
+                const std::vector<erhe::math::Aabb>& joint_boxes =
+                    shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original).joint_bounding_boxes;
                 if ((joint_index >= joint_boxes.size()) || !joint_boxes[joint_index].is_valid()) {
                     continue;
                 }

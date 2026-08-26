@@ -313,6 +313,10 @@ class Mesh_primitive_entry
 public:
     erhe::scene::Mesh* mesh{nullptr};
     const uint16_t     mesh_primitive_index;
+    // The Buffer_mesh variant bucketing chose for this primitive. Carried here
+    // rather than re-derived downstream, so the record and draw fill sites
+    // cannot disagree with the bucket about which variant is being drawn.
+    const erhe::primitive::Buffer_mesh* buffer_mesh{nullptr};
 };
 
 // Identifies a specific vertex input state, specific index buffer, and specific vertex buffers.
@@ -407,6 +411,12 @@ void bucket_primitives(
     const erhe::Item_filter&                                   filter,
     erhe::primitive::Primitive_mode                            primitive_mode,
     Blending_mode_policy                                       blending_mode_policy,
+    // Which mesh variant to bucket. Content passes pass `optimized` (which
+    // falls back to `original` per primitive when no optimized build is live);
+    // the ID renderer MUST pass `original` - it is the only variant with valid
+    // facet ids, and welding makes the optimized one meaningless for picking.
+    // The resolved Buffer_mesh travels on each bucket entry from here on.
+    erhe::primitive::Mesh_variant                              variant_preference,
     const erhe::Item_filter&                                   shader_debug_filter = {},
     // Skip primitives whose material is unlit (KHR_materials_unlit). Used by
     // the shadow pass: unlit geometry (sky domes, backdrops, emissive decals)

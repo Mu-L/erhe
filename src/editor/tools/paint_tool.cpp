@@ -304,7 +304,7 @@ auto Paint_tool::vertex_buffer_index_from_scnene_mesh_primitive_corner(
     if (!primitive.render_shape) {
         return {};
     }
-    const erhe::primitive::Element_mappings& element_mappings = primitive.render_shape->get_element_mappings();
+    const erhe::primitive::Element_mappings& element_mappings = primitive.render_shape->get_element_mappings(erhe::primitive::Mesh_variant::original);
     if (geo_mesh_corner >= element_mappings.mesh_corner_to_vertex_buffer_index.size()) {
         return {};
     }
@@ -343,7 +343,10 @@ void Paint_tool::paint_vertex(
         return ;
     }
 
-    const erhe::primitive::Buffer_mesh&             buffer_mesh      = primitive.render_shape->get_renderable_mesh();
+    // GPU vertex edits always address the per-corner original buffer: the
+    // element mappings only describe that variant, and an optimized variant is
+    // invalidated by the edit rather than written through.
+    const erhe::primitive::Buffer_mesh&             buffer_mesh      = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
     const erhe::scene_renderer::Vertex_input_entry& vertex_input     = mesh_memory.get_vertex_input(buffer_mesh.vertex_input_key);
     const erhe::dataformat::Vertex_format&          vertex_format    = vertex_input.vertex_format;
     const erhe::dataformat::Attribute_stream        attribute_stream = vertex_format.find_attribute(erhe::dataformat::Vertex_attribute_usage::color, 0);

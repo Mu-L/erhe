@@ -16,6 +16,9 @@
 namespace erhe {
     class Item_filter;
 }
+namespace erhe::primitive {
+    class Buffer_mesh;
+}
 namespace erhe::scene {
     class Mesh;
     class Mesh_layer;
@@ -197,6 +200,9 @@ private:
     void write_primitive(
         erhe::scene::Mesh&                  mesh,
         uint16_t                            mesh_primitive_index,
+        // The variant the bucket chose. base_vertex, the index ranges and the
+        // quantization AABB all have to come from the mesh that is drawn.
+        const erhe::primitive::Buffer_mesh& buffer_mesh,
         erhe::primitive::Primitive_mode     primitive_mode,
         const Primitive_interface_settings& settings,
         bool                                use_id_ranges,

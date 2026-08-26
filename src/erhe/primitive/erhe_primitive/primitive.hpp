@@ -4,11 +4,13 @@
 #include "erhe_primitive/build_info.hpp"
 #include "erhe_primitive/enums.hpp"
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string_view>
+#include <utility>
 
 namespace GEO { class Mesh; }
 
@@ -130,7 +132,11 @@ public:
     [[nodiscard]] auto get_raytrace                () -> Primitive_raytrace&;
     [[nodiscard]] auto get_raytrace                () const -> const Primitive_raytrace&;
     [[nodiscard]] auto get_triangle_soup           () const -> const std::shared_ptr<Triangle_soup>&;
-    [[nodiscard]] auto get_element_mappings        () const -> const erhe::primitive::Element_mappings&;
+    // Mesh <-> vertex-buffer/triangle correspondence for one variant. The
+    // correspondence is order-dependent, so one instance cannot serve both
+    // variants; every caller must name the variant whose Buffer_mesh it is
+    // about to index.
+    [[nodiscard]] auto get_element_mappings        (Mesh_variant variant) const -> const erhe::primitive::Element_mappings&;
     // Resolves a raytrace hit (the IGeometry that reported it + triangle
     // index) to a GEO::Mesh facet. The geometry may be the current raytrace
     // or the retired proxy a not-yet-refreshed sharer still references; the
@@ -149,9 +155,9 @@ protected:
     // Caller holds m_state_mutex.
     [[nodiscard]] auto has_real_raytrace_state_locked() const -> bool;
 
-    // Keep this before members - at least m_renderable_mesh - which initialization
-    // in constructors uses m_element_mappings.
-    erhe::primitive::Element_mappings         m_element_mappings;
+    // Keep this before members - at least m_renderable_meshes - which
+    // initialization in constructors uses m_element_mappings.
+    std::array<erhe::primitive::Element_mappings, mesh_variant_count> m_element_mappings;
     std::shared_ptr<erhe::geometry::Geometry> m_geometry{};
     std::shared_ptr<Triangle_soup>            m_triangle_soup{};
     Primitive_raytrace                        m_raytrace{};
@@ -180,8 +186,24 @@ public:
     auto make_buffer_mesh(const Buffer_info& build_info) -> bool;
     [[nodiscard]] auto has_buffer_mesh_triangles  () const -> bool;
     [[nodiscard]] auto has_edge_lines             () const -> bool;
-    [[nodiscard]] auto get_mutable_renderable_mesh() -> Buffer_mesh& { return m_renderable_mesh; }
-    [[nodiscard]] auto get_renderable_mesh        () const -> const Buffer_mesh& { return m_renderable_mesh; }
+    // Mesh_variant::original is always present (empty until the first build);
+    // Mesh_variant::optimized only while an optimized build is live.
+    [[nodiscard]] auto has_renderable_mesh        (Mesh_variant variant) const -> bool;
+    // Resolves what a caller WANTS against what is actually present, and hands
+    // back both the resolved variant and its mesh under a single lock - so the
+    // two can never disagree, and an invalidation racing between a separate
+    // "which variant?" and "give me it" call cannot happen.
+    //
+    // `original` as the preference means original, full stop: that is how the
+    // ID renderer, ray tracing and the GPU vertex edit paths pin themselves to
+    // the variant with valid facet ids. `optimized` means "optimized if it is
+    // there, else original" - the content-rendering choice.
+    [[nodiscard]] auto get_resolved_renderable_mesh(Mesh_variant preference) const -> std::pair<Mesh_variant, const Buffer_mesh*>;
+    // Both abort on a variant that is not present; check has_renderable_mesh()
+    // first for anything but `original`. There is deliberately no fallback: a
+    // silent one would blur which data a build or an edit actually used.
+    [[nodiscard]] auto get_mutable_renderable_mesh(Mesh_variant variant) -> Buffer_mesh&;
+    [[nodiscard]] auto get_renderable_mesh        (Mesh_variant variant) const -> const Buffer_mesh&;
     [[nodiscard]] auto get_normal_style           () const -> Normal_style { return m_normal_style; }
 
     // Deferred edge-lines finalize (glTF import): the load path builds a
@@ -199,17 +221,24 @@ private:
     auto make_buffer_mesh_build_locked(const Buffer_info& buffer_info) -> bool;
     [[nodiscard]] auto has_edge_lines_state_locked() const -> bool;
 
+    // A worker prepares every requested variant and the main thread commits
+    // them all in one atomic swap, so a committed geometry mesh can never be
+    // shadowed by a stale fill-only one.
     class Pending_buffer_mesh
     {
     public:
-        Buffer_mesh                       buffer_mesh;
-        erhe::primitive::Element_mappings element_mappings;
-        Normal_style                      normal_style{Normal_style::none};
+        std::array<Buffer_mesh, mesh_variant_count>                       buffer_meshes;
+        std::array<erhe::primitive::Element_mappings, mesh_variant_count> element_mappings;
+        bool                                                              has_optimized{false};
+        Normal_style                                                      normal_style {Normal_style::none};
     };
 
-    Normal_style                         m_normal_style   {Normal_style::none};
-    Buffer_mesh                          m_renderable_mesh{};
-    std::unique_ptr<Pending_buffer_mesh> m_pending_buffer_mesh{};
+    Normal_style                                m_normal_style    {Normal_style::none};
+    std::array<Buffer_mesh, mesh_variant_count> m_renderable_meshes{};
+    // `original` has no flag: it is always present, empty until the first
+    // build. Only the optimized variant comes and goes.
+    std::atomic<bool>                           m_has_optimized   {false};
+    std::unique_ptr<Pending_buffer_mesh>        m_pending_buffer_mesh{};
 };
 
 /////////////////////////
@@ -246,7 +275,9 @@ public:
     // AABB proxy raytrace over the renderable-mesh bounds; no-op when a
     // raytrace (proxy or real) already exists. See Primitive_raytrace.
     [[nodiscard]] auto make_raytrace_proxy     () const -> bool;
-    [[nodiscard]] auto get_renderable_mesh     () const -> const Buffer_mesh*;
+    // Null when there is no render shape, or when the named variant is not
+    // present on it. See Primitive_render_shape::get_drawn_variant().
+    [[nodiscard]] auto get_renderable_mesh     (Mesh_variant variant) const -> const Buffer_mesh*;
     [[nodiscard]] auto get_name                () const -> std::string_view;
     [[nodiscard]] auto get_bounding_box        () const -> erhe::math::Aabb;
     [[nodiscard]] auto get_shape_for_raytrace  () const -> std::shared_ptr<Primitive_shape>;

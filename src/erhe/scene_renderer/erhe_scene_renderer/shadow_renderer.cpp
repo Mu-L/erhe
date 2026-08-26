@@ -173,6 +173,7 @@ void Shadow_renderer::draw_shadow_casters(
             shadow_filter,
             primitive_mode,
             Blending_mode_policy::opaque_primitives_only, // TODO Think about what would be correct
+            erhe::primitive::Mesh_variant::optimized,
             {}, // no shader debug filter
             exclude_unlit_primitives
         );
@@ -757,7 +758,8 @@ void Shadow_renderer::prewarm_pipelines(
             meshes,
             shadow_filter,
             erhe::primitive::Primitive_mode::polygon_fill,
-            Blending_mode_policy::opaque_primitives_only // TODO
+            Blending_mode_policy::opaque_primitives_only, // TODO
+            erhe::primitive::Mesh_variant::optimized
         );
     }
 

@@ -1024,7 +1024,7 @@ auto Render_bucket::accept(
             return false;
         }
     }
-    entries.emplace_back(&mesh, static_cast<uint16_t>(mesh_primitive_index));
+    entries.emplace_back(&mesh, static_cast<uint16_t>(mesh_primitive_index), &buffer_mesh);
     return true;
 }
 
@@ -1038,6 +1038,7 @@ void bucket_primitives(
     const erhe::Item_filter&                                   filter,
     const erhe::primitive::Primitive_mode                      primitive_mode,
     const Blending_mode_policy                                 blending_mode_policy,
+    const erhe::primitive::Mesh_variant                        variant_preference,
     const erhe::Item_filter&                                   shader_debug_filter,
     const bool                                                 exclude_unlit_primitives
 )
@@ -1064,7 +1065,13 @@ void bucket_primitives(
             if (primitive == nullptr) {
                 continue;
             }
-            const erhe::primitive::Buffer_mesh* buffer_mesh = primitive->get_renderable_mesh();
+            // The variant choice is made once, here, and travels with the bucket
+            // entry to the record and draw fill sites.
+            if (primitive->render_shape == nullptr) {
+                continue;
+            }
+            const erhe::primitive::Buffer_mesh* buffer_mesh =
+                primitive->render_shape->get_resolved_renderable_mesh(variant_preference).second;
             if (buffer_mesh == nullptr) {
                 continue;
             }

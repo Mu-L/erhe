@@ -266,7 +266,9 @@ auto Mcp_server::query_id_range_mapping(const json& args) -> std::string
             if (range.index_of_gltf_primitive_in_mesh < primitives.size()) {
                 const erhe::primitive::Primitive* primitive = primitives[range.index_of_gltf_primitive_in_mesh].primitive.get();
                 if (primitive != nullptr) {
-                    const erhe::primitive::Buffer_mesh* buffer_mesh = primitive->get_renderable_mesh();
+                    // ID ranges describe the ID renderer's draw, which is always
+                    // the original variant (it is the one with valid facet ids).
+                    const erhe::primitive::Buffer_mesh* buffer_mesh = primitive->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
                     if (buffer_mesh != nullptr) {
                         entry["base_vertex"] = buffer_mesh->base_vertex();
                     }

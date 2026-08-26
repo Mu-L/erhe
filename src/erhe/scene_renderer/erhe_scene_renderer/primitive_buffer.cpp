@@ -226,7 +226,10 @@ auto Primitive_buffer::update(
         for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_primitives()) {
             const erhe::primitive::Primitive&   primitive   = *mesh_primitive.primitive.get();
             const erhe::primitive::Material*    material    = mesh_primitive.material.get();
-            const erhe::primitive::Buffer_mesh* buffer_mesh = primitive.get_renderable_mesh();
+            const erhe::primitive::Buffer_mesh* buffer_mesh =
+                (primitive.render_shape != nullptr)
+                    ? primitive.render_shape->get_resolved_renderable_mesh(erhe::primitive::Mesh_variant::optimized).second
+                    : nullptr;
             ERHE_VERIFY(buffer_mesh != nullptr);
             const erhe::primitive::Index_range  index_range = buffer_mesh->index_range(primitive_mode);
             const uint32_t count = static_cast<uint32_t>(index_range.index_count);
@@ -322,6 +325,7 @@ auto Primitive_buffer::update(
 void Primitive_buffer::write_primitive(
     erhe::scene::Mesh&                    mesh_ref,
     const uint16_t                        mesh_primitive_index,
+    const erhe::primitive::Buffer_mesh&   buffer_mesh_ref,
     const erhe::primitive::Primitive_mode primitive_mode,
     const Primitive_interface_settings&   settings,
     const bool                            use_id_ranges,
@@ -341,8 +345,7 @@ void Primitive_buffer::write_primitive(
     const erhe::scene::Mesh_primitive& mesh_primitive = mesh_primitives[mesh_primitive_index];
     const erhe::primitive::Primitive*  primitive_ptr  = mesh_primitive.primitive.get();
     ERHE_VERIFY(primitive_ptr != nullptr);
-    const erhe::primitive::Buffer_mesh* buffer_mesh = primitive_ptr->get_renderable_mesh();
-    ERHE_VERIFY(buffer_mesh != nullptr);
+    const erhe::primitive::Buffer_mesh* buffer_mesh = &buffer_mesh_ref;
     const erhe::primitive::Index_range index_range = buffer_mesh->index_range(primitive_mode);
     const uint32_t count = static_cast<uint32_t>(index_range.index_count);
     ERHE_VERIFY(count > 0);
@@ -442,7 +445,8 @@ auto Primitive_buffer::update(
 
     for (const Mesh_primitive_entry& entry : bucket.entries) {
         ERHE_VERIFY(entry.mesh != nullptr);
-        write_primitive(*entry.mesh, entry.mesh_primitive_index, primitive_mode, settings, use_id_ranges, primitive_gpu_data, write_offset);
+        ERHE_VERIFY(entry.buffer_mesh != nullptr);
+        write_primitive(*entry.mesh, entry.mesh_primitive_index, *entry.buffer_mesh, primitive_mode, settings, use_id_ranges, primitive_gpu_data, write_offset);
     }
 
     buffer_range.bytes_written(write_offset);
@@ -519,7 +523,15 @@ auto Primitive_buffer::update(
             }
             erhe::scene::Mesh* mesh = draw_list_scene.get_object_mesh(entry.object_index);
             ERHE_VERIFY(mesh != nullptr);
-            write_primitive(*mesh, entry.mesh_primitive_index, primitive_mode, settings, false, primitive_gpu_data, write_offset);
+            const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_primitives();
+            ERHE_VERIFY(entry.mesh_primitive_index < mesh_primitives.size());
+            const erhe::primitive::Primitive* primitive = mesh_primitives[entry.mesh_primitive_index].primitive.get();
+            ERHE_VERIFY(primitive != nullptr);
+            // The variant the entry's draw parameters were baked from at
+            // registration, not a fresh choice.
+            const erhe::primitive::Buffer_mesh* buffer_mesh = primitive->get_renderable_mesh(entry.variant);
+            ERHE_VERIFY(buffer_mesh != nullptr);
+            write_primitive(*mesh, entry.mesh_primitive_index, *buffer_mesh, primitive_mode, settings, false, primitive_gpu_data, write_offset);
             ++primitive_count;
         }
     }

@@ -3362,7 +3362,7 @@ auto Lightmap_baker::bake_gbuffer(const int tile) -> bool
                         }
                         const erhe::primitive::Primitive* const primitive = mesh_primitive.primitive.get();
                         const erhe::primitive::Buffer_mesh* const buffer_mesh =
-                            (primitive != nullptr) ? primitive->get_renderable_mesh() : nullptr;
+                            (primitive != nullptr) ? primitive->get_renderable_mesh(erhe::primitive::Mesh_variant::original) : nullptr;
                         if (buffer_mesh != nullptr) {
                             quantization = erhe::scene_renderer::get_position_quantization(buffer_mesh->bounding_box);
                         }
@@ -3432,7 +3432,7 @@ auto Lightmap_baker::bake_gbuffer(const int tile) -> bool
             if (primitive == nullptr) {
                 continue;
             }
-            const erhe::primitive::Buffer_mesh* const buffer_mesh = primitive->get_renderable_mesh();
+            const erhe::primitive::Buffer_mesh* const buffer_mesh = primitive->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
             if ((buffer_mesh == nullptr) || (buffer_mesh->triangle_fill_indices.index_count == 0)) {
                 continue;
             }
@@ -4078,7 +4078,10 @@ void Lightmap_baker::collect_instances(
             if (!mesh_primitive.primitive) {
                 continue;
             }
-            const erhe::primitive::Buffer_mesh* buffer_mesh = mesh_primitive.primitive->get_renderable_mesh();
+            // Ray tracing pins to the original variant: BLAS never references the
+            // optimized mesh, which is what lets a mesh edit drop that variant
+            // without evicting any acceleration structure.
+            const erhe::primitive::Buffer_mesh* buffer_mesh = mesh_primitive.primitive->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
             if (buffer_mesh == nullptr) {
                 continue;
             }
@@ -5098,7 +5101,7 @@ auto Lightmap_baker::compute_scene_hashes(Scene_root& scene_root) const -> Scene
             hash_layout = fnv1a64(&mesh_ptr, sizeof(mesh_ptr), hash_layout);
             for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_primitives()) {
                 const erhe::primitive::Primitive* const primitive = mesh_primitive.primitive.get();
-                const erhe::primitive::Buffer_mesh* const buffer_mesh = (primitive != nullptr) ? primitive->get_renderable_mesh() : nullptr;
+                const erhe::primitive::Buffer_mesh* const buffer_mesh = (primitive != nullptr) ? primitive->get_renderable_mesh(erhe::primitive::Mesh_variant::original) : nullptr;
                 hash_layout = fnv1a64(&buffer_mesh, sizeof(buffer_mesh), hash_layout);
             }
         }
@@ -5113,7 +5116,7 @@ auto Lightmap_baker::compute_scene_hashes(Scene_root& scene_root) const -> Scene
                 if (entry.piece_mesh) {
                     for (const erhe::scene::Mesh_primitive& mesh_primitive : entry.piece_mesh->get_primitives()) {
                         const erhe::primitive::Primitive* const primitive = mesh_primitive.primitive.get();
-                        const erhe::primitive::Buffer_mesh* const buffer_mesh = (primitive != nullptr) ? primitive->get_renderable_mesh() : nullptr;
+                        const erhe::primitive::Buffer_mesh* const buffer_mesh = (primitive != nullptr) ? primitive->get_renderable_mesh(erhe::primitive::Mesh_variant::original) : nullptr;
                         hash_layout = fnv1a64(&buffer_mesh, sizeof(buffer_mesh), hash_layout);
                     }
                 }

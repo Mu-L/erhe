@@ -238,7 +238,11 @@ auto Scene_tlas::update(
             if (!mesh_primitive.primitive) {
                 continue;
             }
-            const erhe::primitive::Buffer_mesh* buffer_mesh = mesh_primitive.primitive->get_renderable_mesh();
+            // Ray tracing pins to the original variant, unaffected by the mesh
+            // optimizer: BLAS never references the optimized mesh, so dropping
+            // that variant on a vertex edit needs no acceleration structure
+            // eviction, and ray-traced results always reflect source order.
+            const erhe::primitive::Buffer_mesh* buffer_mesh = mesh_primitive.primitive->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
             if (buffer_mesh == nullptr) {
                 continue;
             }

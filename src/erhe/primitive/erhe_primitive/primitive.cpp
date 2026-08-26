@@ -51,6 +51,17 @@ auto c_str(const Normal_style normal_style) -> const char*
     }
 }
 
+auto c_str(const Mesh_variant variant) -> const char*
+{
+    switch (variant) {
+        case Mesh_variant::original:  return "original";
+        case Mesh_variant::optimized: return "optimized";
+        default: {
+            ERHE_FATAL("Bad mesh variant");
+        }
+    }
+}
+
 auto c_str(const Bxdf_model bxdf_model) -> const char*
 {
     switch (bxdf_model) {
@@ -514,8 +525,10 @@ auto Primitive_shape::make_geometry_build_locked() -> std::shared_ptr<erhe::geom
         if (m_geometry_published.load(std::memory_order_relaxed)) {
             return m_geometry;
         }
-        ERHE_VERIFY(m_element_mappings.triangle_to_mesh_facet.empty());
-        ERHE_VERIFY(m_element_mappings.mesh_corner_to_vertex_buffer_index.empty());
+        for (const Element_mappings& mappings : m_element_mappings) {
+            ERHE_VERIFY(mappings.triangle_to_mesh_facet.empty());
+            ERHE_VERIFY(mappings.mesh_corner_to_vertex_buffer_index.empty());
+        }
     }
 
     // Build into locals with no state lock held: this is the multi-second
@@ -548,7 +561,11 @@ auto Primitive_shape::make_geometry_build_locked() -> std::shared_ptr<erhe::geom
         if (m_geometry_published.load(std::memory_order_relaxed)) {
             return m_geometry; // another path won while we built; drop ours
         }
-        m_element_mappings = std::move(element_mappings);
+        // parse_triangles() output is source order, so it describes the
+        // `original` variant. The `optimized` instance is composed from it by
+        // the buffer mesh build, which is the first point that knows the
+        // optimization remap.
+        m_element_mappings[static_cast<std::size_t>(Mesh_variant::original)] = std::move(element_mappings);
         m_geometry         = std::move(geometry);
         m_geometry_published.store(true, std::memory_order_release);
         return m_geometry;
@@ -747,9 +764,9 @@ Primitive_render_shape::Primitive_render_shape(const std::shared_ptr<erhe::geome
 }
 
 Primitive_render_shape::Primitive_render_shape(Buffer_mesh&& renderable_mesh)
-    : m_normal_style   {Normal_style::corner_normals}
-    , m_renderable_mesh{std::move(renderable_mesh)}
+    : m_normal_style{Normal_style::corner_normals}
 {
+    m_renderable_meshes[static_cast<std::size_t>(Mesh_variant::original)] = std::move(renderable_mesh);
 }
 
 Primitive_render_shape::Primitive_render_shape(const std::shared_ptr<Triangle_soup>& triangle_soup)
@@ -761,7 +778,7 @@ Primitive_render_shape::Primitive_render_shape(const std::shared_ptr<Triangle_so
 auto Primitive_render_shape::has_buffer_mesh_triangles() const -> bool
 {
     const std::lock_guard<std::mutex> state_lock{m_state_mutex};
-    return m_renderable_mesh.index_range(Primitive_mode::polygon_fill).index_count > 0;
+    return m_renderable_meshes[static_cast<std::size_t>(Mesh_variant::original)].index_range(Primitive_mode::polygon_fill).index_count > 0;
 }
 
 auto Primitive_render_shape::has_edge_lines() const -> bool
@@ -772,7 +789,7 @@ auto Primitive_render_shape::has_edge_lines() const -> bool
 
 auto Primitive_render_shape::has_edge_lines_state_locked() const -> bool
 {
-    return m_renderable_mesh.index_range(Primitive_mode::edge_lines).index_count > 0;
+    return m_renderable_meshes[static_cast<std::size_t>(Mesh_variant::original)].index_range(Primitive_mode::edge_lines).index_count > 0;
 }
 
 auto Primitive_render_shape::prepare_geometry_buffer_mesh(const Build_info& build_info, const Normal_style normal_style) -> bool
@@ -796,10 +813,10 @@ auto Primitive_render_shape::prepare_geometry_buffer_mesh(const Build_info& buil
     std::unique_ptr<Pending_buffer_mesh> pending = std::make_unique<Pending_buffer_mesh>();
     pending->normal_style = normal_style;
     const bool ok = build_buffer_mesh(
-        pending->buffer_mesh,
+        pending->buffer_meshes[static_cast<std::size_t>(Mesh_variant::original)],
         geometry->get_mesh(),
         build_info,
-        pending->element_mappings,
+        pending->element_mappings[static_cast<std::size_t>(Mesh_variant::original)],
         normal_style
     );
     if (!ok) {
@@ -822,9 +839,12 @@ auto Primitive_render_shape::commit_geometry_buffer_mesh() -> bool
     if (!m_pending_buffer_mesh) {
         return false;
     }
-    m_renderable_mesh  = std::move(m_pending_buffer_mesh->buffer_mesh);
-    m_element_mappings = std::move(m_pending_buffer_mesh->element_mappings);
-    m_normal_style     = m_pending_buffer_mesh->normal_style;
+    // The whole built-variant set swaps together, so a renderer can never see
+    // one variant's mesh paired with another's mappings.
+    m_renderable_meshes = std::move(m_pending_buffer_mesh->buffer_meshes);
+    m_element_mappings  = std::move(m_pending_buffer_mesh->element_mappings);
+    m_has_optimized.store(m_pending_buffer_mesh->has_optimized, std::memory_order_release);
+    m_normal_style      = m_pending_buffer_mesh->normal_style;
     m_pending_buffer_mesh.reset();
     return true;
 }
@@ -863,8 +883,8 @@ auto Primitive_render_shape::make_buffer_mesh_build_locked(const Build_info& bui
         return false;
     }
     const std::lock_guard<std::mutex> state_lock{m_state_mutex};
-    m_renderable_mesh  = std::move(buffer_mesh);
-    m_element_mappings = std::move(element_mappings);
+    m_renderable_meshes[static_cast<std::size_t>(Mesh_variant::original)] = std::move(buffer_mesh);
+    m_element_mappings [static_cast<std::size_t>(Mesh_variant::original)] = std::move(element_mappings);
     return true;
 }
 
@@ -878,8 +898,45 @@ auto Primitive_render_shape::make_buffer_mesh_build_locked(const Buffer_info& bu
         return false;
     }
     const std::lock_guard<std::mutex> state_lock{m_state_mutex};
-    m_renderable_mesh = std::move(buffer_mesh_opt.value());
+    m_renderable_meshes[static_cast<std::size_t>(Mesh_variant::original)] = std::move(buffer_mesh_opt.value());
     return true;
+}
+
+auto Primitive_render_shape::has_renderable_mesh(const Mesh_variant variant) const -> bool
+{
+    switch (variant) {
+        case Mesh_variant::original:  return true;
+        case Mesh_variant::optimized: return m_has_optimized.load(std::memory_order_acquire);
+        default: {
+            ERHE_FATAL("Bad mesh variant");
+        }
+    }
+}
+
+auto Primitive_render_shape::get_resolved_renderable_mesh(const Mesh_variant preference) const -> std::pair<Mesh_variant, const Buffer_mesh*>
+{
+    // One lock for both halves of the answer: resolving the variant and then
+    // fetching it separately would let an invalidation land in between.
+    const std::lock_guard<std::mutex> state_lock{m_state_mutex};
+    const Mesh_variant variant =
+        ((preference == Mesh_variant::optimized) && m_has_optimized.load(std::memory_order_relaxed))
+            ? Mesh_variant::optimized
+            : Mesh_variant::original;
+    return {variant, &m_renderable_meshes[static_cast<std::size_t>(variant)]};
+}
+
+auto Primitive_render_shape::get_renderable_mesh(const Mesh_variant variant) const -> const Buffer_mesh&
+{
+    ERHE_VERIFY(static_cast<std::size_t>(variant) < mesh_variant_count);
+    ERHE_VERIFY((variant == Mesh_variant::original) || m_has_optimized.load(std::memory_order_acquire));
+    return m_renderable_meshes[static_cast<std::size_t>(variant)];
+}
+
+auto Primitive_render_shape::get_mutable_renderable_mesh(const Mesh_variant variant) -> Buffer_mesh&
+{
+    ERHE_VERIFY(static_cast<std::size_t>(variant) < mesh_variant_count);
+    ERHE_VERIFY((variant == Mesh_variant::original) || m_has_optimized.load(std::memory_order_acquire));
+    return m_renderable_meshes[static_cast<std::size_t>(variant)];
 }
 #pragma endregion Primitive_render_shape
 
@@ -1092,9 +1149,10 @@ auto Primitive_shape::get_mesh_facet_from_triangle(const erhe::raytrace::IGeomet
     return GEO::NO_INDEX;
 }
 
-auto Primitive_shape::get_element_mappings() const -> const Element_mappings&
+auto Primitive_shape::get_element_mappings(const Mesh_variant variant) const -> const Element_mappings&
 {
-    return m_element_mappings;
+    ERHE_VERIFY(static_cast<std::size_t>(variant) < mesh_variant_count);
+    return m_element_mappings[static_cast<std::size_t>(variant)];
 }
 
 /////////////////////////
@@ -1236,12 +1294,12 @@ auto Primitive::make_renderable_mesh(const Buffer_info& buffer_info) const -> bo
     return render_shape->make_buffer_mesh(buffer_info);
 }
 
-auto Primitive::get_renderable_mesh() const -> const Buffer_mesh*
+auto Primitive::get_renderable_mesh(const Mesh_variant variant) const -> const Buffer_mesh*
 {
-    if (!render_shape) {
+    if (!render_shape || !render_shape->has_renderable_mesh(variant)) {
         return nullptr;
     }
-    return &render_shape->get_renderable_mesh();
+    return &render_shape->get_renderable_mesh(variant);
 }
 
 static std::string Primitive__get_name__empty{};
@@ -1259,7 +1317,9 @@ auto Primitive::get_bounding_box() const -> erhe::math::Aabb
 {
     erhe::math::Aabb bounding_box{};
     if (render_shape) {
-        bounding_box.include(render_shape->get_renderable_mesh().bounding_box);
+        // Either variant's bounding box would do - welding and reordering do not
+        // move vertices - but `original` is the one that always exists.
+        bounding_box.include(render_shape->get_renderable_mesh(Mesh_variant::original).bounding_box);
     }
     if (collision_shape) {
         bounding_box.include(collision_shape->get_raytrace().get_raytrace_mesh().bounding_box);

@@ -781,8 +781,14 @@ void Properties::mesh_properties(erhe::scene::Mesh& mesh)
         erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
         if (primitive.render_shape) {
             shape_properties("Render shape", primitive.render_shape.get());
-            const erhe::primitive::Buffer_mesh& renderable_mesh = primitive.render_shape->get_renderable_mesh();
-            buffer_mesh_properties("Renderable Buffer Mesh", &renderable_mesh);
+            const erhe::primitive::Buffer_mesh& original_mesh = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
+            buffer_mesh_properties("Renderable Buffer Mesh", &original_mesh);
+            // Inspecting a shape should show what is actually resident, so list
+            // the optimized variant separately whenever one is live.
+            if (primitive.render_shape->has_renderable_mesh(erhe::primitive::Mesh_variant::optimized)) {
+                const erhe::primitive::Buffer_mesh& optimized_mesh = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::optimized);
+                buffer_mesh_properties("Optimized Buffer Mesh", &optimized_mesh);
+            }
         }
         if (m_context.developer_mode && primitive.collision_shape) {
             shape_properties("Collision shape", primitive.collision_shape.get());

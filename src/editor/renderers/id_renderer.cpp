@@ -320,7 +320,10 @@ void Id_renderer::render_buckets(
         meshes,
         filter,
         primitive_mode,
-        Blending_mode_policy::override_with_base_render_pipeline // TODO
+        Blending_mode_policy::override_with_base_render_pipeline, // TODO
+        // The ID pass MUST stay on the original variant: it is the only one
+        // with valid per-corner facet ids.
+        erhe::primitive::Mesh_variant::original
     );
 
     for (std::size_t bucket_index = 0, end = buckets.size(); bucket_index < end; ++bucket_index) {

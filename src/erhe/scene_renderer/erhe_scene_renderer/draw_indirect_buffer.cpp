@@ -72,7 +72,10 @@ auto Draw_indirect_buffer::update(
 
         for (auto& mesh_primitive : mesh->get_primitives()) {
             const erhe::primitive::Primitive&   primitive   = *mesh_primitive.primitive.get();
-            const erhe::primitive::Buffer_mesh& buffer_mesh = primitive.render_shape->get_renderable_mesh();
+            const erhe::primitive::Buffer_mesh* buffer_mesh_ptr =
+                primitive.render_shape->get_resolved_renderable_mesh(erhe::primitive::Mesh_variant::optimized).second;
+            ERHE_VERIFY(buffer_mesh_ptr != nullptr);
+            const erhe::primitive::Buffer_mesh& buffer_mesh = *buffer_mesh_ptr;
             const erhe::primitive::Index_range  index_range = buffer_mesh.index_range(primitive_mode);
             if (index_range.index_count == 0) {
                 continue;
@@ -144,7 +147,8 @@ auto Draw_indirect_buffer::update(
         const erhe::scene::Mesh_primitive& mesh_primitive = mesh_primitives[entry.mesh_primitive_index];
         const erhe::primitive::Primitive*  primitive_ptr  = mesh_primitive.primitive.get();
         ERHE_VERIFY(primitive_ptr != nullptr);
-        const erhe::primitive::Buffer_mesh* buffer_mesh = primitive_ptr->get_renderable_mesh();
+        // The variant bucketing chose - do not re-derive it here.
+        const erhe::primitive::Buffer_mesh* buffer_mesh = entry.buffer_mesh;
         ERHE_VERIFY(buffer_mesh != nullptr);
         const erhe::primitive::Index_range index_range = buffer_mesh->index_range(primitive_mode);
         ERHE_VERIFY(index_range.index_count > 0);
