@@ -262,6 +262,36 @@ optimization that achieved nothing.
 ### Phase 5a — Deferred allocation (smaller than it sounds)
 - The writers **already stage in CPU memory** (`Vertex_buffer_writer::vertex_data` / `Index_buffer_writer::index_data` are CPU vectors flushed once via `vertex_writer_ready`/`index_writer_ready` in the destructors, buffer_writer.cpp:500-537, 592-596). The actual work: move the GPU allocation **after** the build — the whole 5-allocation block (`allocate_vertex_buffers` + edge-line vertex + edge-line joint + expanded-fill + index, primitive_builder.cpp:48-58) moves **together, still under `buffer_mesh_allocation_mutex()`**, preserving the atomic-transaction guarantee; size writers from `mesh_info` counts instead of `buffer_range.count`; rework `is_ready()` (primitive_builder.cpp:905-911) and the lockstep base_vertex check; accept that allocation failure now surfaces after build work. Byte-identical output with optimization off (buffer-dump verification). This is also the seam LOD/meshlets will need.
 
+**Phase 5a done (2026-08-27).** Two things the plan text did not account for,
+both of which would have silently broken rendering:
+
+- **`build_expanded_polygon_fill()` created its writers function-locally**, so
+  they flushed mid-build - before the deferred allocation exists. They are now
+  members of `Build_context` (`expanded_vertex_writers`), created in its
+  constructor and flushed with the rest.
+- **`build_edge_lines()` gated on `edge_line_vertex_buffer_range.count > 0`**,
+  which is empty during the build once allocation is deferred - edge-line data
+  would simply never have been staged, silently. Those gates now mirror the
+  conditions `allocate_edge_line_*_buffer()` allocates under, the bytes stage
+  into `Build_context` members, and `allocate_and_bind_writers()` enqueues them
+  once the ranges exist.
+
+Also: writers take a vertex/index COUNT instead of reading an allocated range,
+`Index_buffer_writer` takes its element size from the index format rather than
+from the range, and both writers gained `set_buffer_range()` plus a destructor
+guard - without a destination a writer DROPS its staged bytes, so a failed
+allocation can no longer flush at a default (pool 0, offset 0) range and
+overwrite another mesh. `is_ready()` now asks the mesh counts rather than the
+ranges. `allocate_index_range()`'s bounds check moved to `allocate_buffers()`
+as a post-condition, since there is nothing to check against at call time.
+
+Verified on ABeautifulGame.glb with layout, camera, DDGI and clock pinned:
+**pre-5a vs post-5a with the optimizer off: 0 differing viewport pixels of
+2 198 250** - the true before/after for this refactor, since it changes every
+mesh build whether or not optimization is on. Optimizer off vs on after 5a is
+also 0, and the procedural startup scene (platonic solids, geometry path) builds
+and renders with no errors.
+
 ### Phase 5b — meshopt passes on the staged build
 Pass order (weld **first** — post-Phase-0 the id attribute no longer blocks cross-facet merging; running the cache pass before weld would optimize a share-free index graph and forfeit the ACMR win):
 1. **Weld:** `meshopt_generateVertexRemapMulti` over the **corner-vertex prefix only** (centroid-point vertices are appended to the same lockstep streams after the corners — `total_vertex_count = corners + centroids`, primitive_builder.cpp:66-70 — and must not enter the weld), called in **unindexed mode** (`indices = NULL`, `index_count == vertex_count`) so every corner gets a remap entry — a remap generated from fill indices alone would drop corners referenced only by corner-point indices (`build_corner_point_index()` emits for every corner unconditionally, primitive_builder.cpp:885-890, and fill can be disabled per primitive type). Compare streams are per-**attribute** subranges (ptr/stride/size triplets — `generateVertexRemapMulti` supports `stride > size` subranges by design; ≤16 streams, erhe's ~12 fit), covering every attribute **except** facet id, whose bytes are zeroed in the optimized output. Apply the forward remap to all streams' corner prefix, the fill indices, and the corner-point indices; compose `mesh_corner_to_vertex_buffer_index` and `mesh_vertex_to_vertex_buffer_index` through it; shrink counts.

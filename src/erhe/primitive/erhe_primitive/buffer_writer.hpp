@@ -29,10 +29,10 @@ class Buffer_mesh;
 class Vertex_buffer_writer
 {
 public:
-    Vertex_buffer_writer(Build_context& build_context, Vertex_buffer_sink& buffer_sink, std::size_t stream, std::size_t stride);
-    // Variant targeting an explicit Buffer_range (e.g. the expanded
-    // solid-wireframe vertex range) instead of buffer_mesh.vertex_buffer_ranges[stream].
-    Vertex_buffer_writer(Build_context& build_context, Vertex_buffer_sink& buffer_sink, std::size_t stream, std::size_t stride, const Buffer_range& target_range);
+    // `vertex_count` sizes the CPU staging vector. It comes from the mesh
+    // counts rather than from an allocated Buffer_range, because the GPU
+    // allocation happens AFTER the build - see Build_context_root::allocate_buffers().
+    Vertex_buffer_writer(Build_context& build_context, Vertex_buffer_sink& buffer_sink, std::size_t stream, std::size_t stride, std::size_t vertex_count);
     Vertex_buffer_writer(const Vertex_buffer_writer&) = delete;
     Vertex_buffer_writer& operator=(const Vertex_buffer_writer&) = delete;
     Vertex_buffer_writer(Vertex_buffer_writer&&) = delete;
@@ -65,6 +65,14 @@ public:
     void move (std::size_t relative_offset);
     void next_vertex();
 
+    // Hands the writer the range its staged bytes belong in. Called once, after
+    // the build, by Build_context_root::allocate_buffers(). Until it is called
+    // the writer has no destination and must not be flushed; the destructor
+    // checks that, so a failed allocation drops the staged data instead of
+    // writing it at a default (pool 0, offset 0) destination.
+    void set_buffer_range(const Buffer_range& range);
+    [[nodiscard]] auto has_buffer_range() const -> bool { return m_has_buffer_range; }
+
     [[nodiscard]] auto start_offset() -> std::size_t;
 
     Build_context&            build_context;
@@ -75,6 +83,9 @@ public:
     std::vector<std::uint8_t> vertex_data;
     std::span<std::uint8_t>   vertex_data_span;
     std::size_t               vertex_write_offset{0};
+
+private:
+    bool                      m_has_buffer_range{false};
 };
 
 /// Writes 8/16/32 -bit indices to byte buffer/memory
@@ -85,6 +96,10 @@ class Index_buffer_writer
 public:
     Index_buffer_writer(Build_context& build_context, Index_buffer_sink& buffer_sink);
     virtual ~Index_buffer_writer() noexcept;
+
+    // See Vertex_buffer_writer::set_buffer_range().
+    void set_buffer_range(const Buffer_range& range);
+    [[nodiscard]] auto has_buffer_range() const -> bool { return m_has_buffer_range; }
 
     void write_corner           (uint32_t v0);
     void write_triangle         (uint32_t v0, uint32_t v1, uint32_t v2);
@@ -112,6 +127,9 @@ public:
     std::size_t expanded_triangle_indices_written{0};
     std::size_t edge_line_indices_written        {0};
     std::size_t polygon_centroid_indices_written {0};
+
+private:
+    bool m_has_buffer_range{false};
 };
 
 } // namespace erhe::primitive

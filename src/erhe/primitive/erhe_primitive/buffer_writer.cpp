@@ -501,39 +501,41 @@ Vertex_buffer_writer::Vertex_buffer_writer(
     Build_context&      build_context,
     Vertex_buffer_sink& buffer_sink,
     const std::size_t   stream,
-    const std::size_t   stride
+    const std::size_t   stride,
+    const std::size_t   vertex_count
 )
     : build_context{build_context}
     , buffer_sink  {buffer_sink}
     , stream       {stream}
     , stride       {stride}
-    , buffer_range {build_context.root.buffer_mesh.vertex_buffer_ranges[stream]}
 {
-    vertex_data.resize(buffer_range.count * buffer_range.element_size);
+    // Sized from the mesh counts: the GPU allocation this will be flushed into
+    // does not exist yet (Build_context_root::allocate_buffers() runs after the
+    // build). set_buffer_range() supplies the destination later.
+    vertex_data.resize(vertex_count * stride);
     vertex_data_span = vertex_data;
-    ERHE_VERIFY(buffer_range.element_size == stride);
 }
 
-Vertex_buffer_writer::Vertex_buffer_writer(
-    Build_context&      build_context,
-    Vertex_buffer_sink& buffer_sink,
-    const std::size_t   stream,
-    const std::size_t   stride,
-    const Buffer_range& target_range
-)
-    : build_context{build_context}
-    , buffer_sink  {buffer_sink}
-    , stream       {stream}
-    , stride       {stride}
-    , buffer_range {target_range}
+void Vertex_buffer_writer::set_buffer_range(const Buffer_range& range)
 {
-    vertex_data.resize(buffer_range.count * buffer_range.element_size);
-    vertex_data_span = vertex_data;
-    ERHE_VERIFY(buffer_range.element_size == stride);
+    ERHE_VERIFY(!m_has_buffer_range);
+    ERHE_VERIFY(range.element_size == stride);
+    // The allocation must cover exactly what was staged. A mismatch means the
+    // build wrote a different vertex count than the allocation was sized for,
+    // which would silently corrupt neighbouring meshes in the shared pool.
+    ERHE_VERIFY(range.count * range.element_size == vertex_data.size());
+    buffer_range       = range;
+    m_has_buffer_range = true;
 }
 
 Vertex_buffer_writer::~Vertex_buffer_writer() noexcept
 {
+    // No destination: the build failed, or its allocation did. Drop the staged
+    // bytes rather than flushing them at a default (pool 0, offset 0) range,
+    // which would overwrite another mesh's vertices.
+    if (!m_has_buffer_range) {
+        return;
+    }
     buffer_sink.vertex_writer_ready(*this);
 }
 
@@ -545,14 +547,17 @@ auto Vertex_buffer_writer::start_offset() -> std::size_t
 Index_buffer_writer::Index_buffer_writer(Build_context& build_context, Index_buffer_sink& buffer_sink)
     : build_context  {build_context}
     , buffer_sink    {buffer_sink}
-    , buffer_range   {build_context.root.buffer_mesh.index_buffer_range}
     , index_type     {build_context.root.build_info.buffer_info.index_type}
-    , index_type_size{build_context.root.buffer_mesh.index_buffer_range.element_size}
+    // From the format rather than from an allocated range: the index buffer is
+    // allocated after the build (Build_context_root::allocate_buffers()).
+    , index_type_size{erhe::dataformat::get_format_size_bytes(build_context.root.build_info.buffer_info.index_type)}
 {
-    const auto& buffer_mesh        = build_context.root.buffer_mesh;
-    const auto& index_buffer_range = buffer_mesh.index_buffer_range;
-    const auto& mesh_info          = build_context.root.mesh_info;
-    index_data.resize(index_buffer_range.count * index_type_size);
+    const auto& buffer_mesh = build_context.root.buffer_mesh;
+    const auto& mesh_info   = build_context.root.mesh_info;
+    // The per-type sub-ranges below are pure CPU bookkeeping filled by
+    // Build_context_root::allocate_index_range() during get_mesh_info(), so
+    // they are known without any GPU allocation.
+    index_data.resize(build_context.root.total_index_count * index_type_size);
     index_data_span = index_data;
 
     const auto& primitive_types = build_context.root.build_info.primitive_types;
@@ -589,14 +594,27 @@ Index_buffer_writer::Index_buffer_writer(Build_context& build_context, Index_buf
     }
 }
 
+void Index_buffer_writer::set_buffer_range(const Buffer_range& range)
+{
+    ERHE_VERIFY(!m_has_buffer_range);
+    ERHE_VERIFY(range.element_size == index_type_size);
+    ERHE_VERIFY(range.count * range.element_size == index_data.size());
+    buffer_range       = range;
+    m_has_buffer_range = true;
+}
+
 Index_buffer_writer::~Index_buffer_writer() noexcept
 {
+    // See Vertex_buffer_writer::~Vertex_buffer_writer().
+    if (!m_has_buffer_range) {
+        return;
+    }
     buffer_sink.index_writer_ready(*this);
 }
 
 auto Index_buffer_writer::start_offset() -> std::size_t
 {
-    return build_context.root.buffer_mesh.index_buffer_range.byte_offset;
+    return buffer_range.byte_offset;
 }
 
 void Vertex_buffer_writer::write(const Vertex_attribute_info& attribute, const GEO::vec3 value)

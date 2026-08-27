@@ -48,6 +48,12 @@ public:
     void get_vertex_attributes          ();
     void calculate_bounding_volume      ();
     void calculate_joint_bounding_volumes(erhe::geometry::Mesh_attributes& mesh_attributes);
+    // One atomic multi-pool allocation transaction for the whole mesh, run
+    // AFTER the build so the meshopt passes (phase 5b) can change the vertex
+    // and index counts the allocation is sized for. Everything the build needs
+    // before then - the per-type index sub-ranges, the staging sizes - comes
+    // from mesh counts, not from allocated ranges.
+    void allocate_buffers               ();
     void allocate_vertex_buffers        ();
     void allocate_edge_line_vertex_buffer();
     void allocate_edge_line_joint_buffer ();
@@ -90,6 +96,11 @@ public:
     ~Build_context() noexcept;
 
     auto is_ready() const -> bool;
+
+    // Runs root.allocate_buffers() and hands every writer its destination.
+    // Returns false when the build or the allocation failed, in which case no
+    // writer has a range and none of them will flush.
+    auto allocate_and_bind_writers() -> bool;
 
     void build_polygon_fill         ();
     void build_expanded_polygon_fill();
@@ -142,6 +153,22 @@ private:
     Index_buffer_writer index_writer;
     erhe::geometry::Mesh_attributes mesh_attributes;
     std::vector<std::unique_ptr<Vertex_buffer_writer>> vertex_writers;
+    // Expanded solid-wireframe writers. These live here rather than inside
+    // build_expanded_polygon_fill() because a writer must outlive the build:
+    // it flushes in its destructor, and the destination range does not exist
+    // until allocate_and_bind_writers() runs after the build.
+    std::vector<std::unique_ptr<Vertex_buffer_writer>> expanded_vertex_writers;
+
+private:
+    // Edge-line side buffers. build_edge_lines() stages raw bytes here rather
+    // than through a Vertex_buffer_writer, and allocate_and_bind_writers()
+    // enqueues them once their ranges exist.
+    std::vector<uint8_t> m_edge_line_vertex_data;
+    std::vector<uint8_t> m_edge_line_joint_data;
+    std::size_t          m_edge_line_vertex_bytes_written{0};
+    std::size_t          m_edge_line_joint_bytes_written {0};
+
+public:
     // Use root.element_mappings.corner_to_vertex_id
     // std::vector<size_t>  corner_indices;
 

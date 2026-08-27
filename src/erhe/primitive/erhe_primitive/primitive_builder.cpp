@@ -46,16 +46,29 @@ Build_context_root::Build_context_root(
 {
     get_mesh_info                  ();
     get_vertex_attributes          ();
-    {
-        // One atomic multi-pool allocation transaction per mesh - see
-        // buffer_mesh_allocation_mutex(). The data writes that follow the
-        // allocation go to the mesh's own ranges and need no lock.
-        const std::lock_guard<std::mutex> allocation_lock{buffer_mesh_allocation_mutex()};
-        allocate_vertex_buffers        ();
-        allocate_edge_line_vertex_buffer();
-        allocate_edge_line_joint_buffer ();
-        allocate_expanded_fill_buffers  ();
-        allocate_index_buffer          ();
+    // Deliberately no allocation here - see allocate_buffers(), which runs
+    // after the build.
+}
+
+void Build_context_root::allocate_buffers()
+{
+    // One atomic multi-pool allocation transaction per mesh - see
+    // buffer_mesh_allocation_mutex(). The five allocations move together so
+    // that guarantee is preserved. The data writes are already staged in CPU
+    // memory by now and go to the mesh's own ranges, so they need no lock.
+    const std::lock_guard<std::mutex> allocation_lock{buffer_mesh_allocation_mutex()};
+    allocate_vertex_buffers        ();
+    allocate_edge_line_vertex_buffer();
+    allocate_edge_line_joint_buffer ();
+    allocate_expanded_fill_buffers  ();
+    allocate_index_buffer          ();
+
+    // allocate_index_range() handed out per-type sub-ranges long before this,
+    // so its own bounds check against the index allocation could not run. Do it
+    // here instead, now that the allocation exists: a sub-range past the end
+    // would have the build write over another mesh's indices.
+    if (!build_failed) {
+        ERHE_VERIFY(next_index_range_start <= buffer_mesh.index_buffer_range.count);
     }
 }
 
@@ -478,6 +491,16 @@ auto Primitive_builder::build() -> bool
         erhe::log::set_breadcrumb("primitive: build_centroid_points");
         build_context.build_centroid_points();
     }
+
+    // Allocate now that the final vertex and index counts are known, and hand
+    // every writer its destination. The writers flush when build_context goes
+    // out of scope just below; without a destination they drop their staged
+    // bytes, so a failed allocation cannot write into another mesh's range.
+    erhe::log::set_breadcrumb("primitive: allocate_and_bind_writers");
+    if (!build_context.allocate_and_bind_writers()) {
+        log_primitive_builder->debug("Primitive_builder::build() aborted: buffer allocation failed");
+        return false;
+    }
     return true;
 }
 
@@ -518,7 +541,8 @@ Build_context::Build_context(
                 *this,
                 build_info.buffer_info.vertex_buffer_sink,
                 stream_index,
-                sink_stream.stride
+                sink_stream.stride,
+                root.total_vertex_count
             )
         );
     }
@@ -536,6 +560,26 @@ Build_context::Build_context(
     attribute_writers.id                 = get_attribute_writer(Vertex_attribute_usage::custom, custom_attribute_id);
     attribute_writers.aniso_control      = get_attribute_writer(Vertex_attribute_usage::custom, custom_attribute_aniso_control);
     attribute_writers.valency_edge_count = get_attribute_writer(Vertex_attribute_usage::custom, custom_attribute_valency_edge_count);
+
+    // Expanded solid-wireframe writers are created here, not in
+    // build_expanded_polygon_fill(), because a writer flushes in its destructor
+    // and its destination range only exists after the build. One expanded
+    // vertex per fill-triangle corner.
+    const erhe::dataformat::Vertex_format* expanded_format = build_info.buffer_info.expanded_vertex_format;
+    if (build_info.primitive_types.fill_triangles_expanded && (expanded_format != nullptr)) {
+        for (std::size_t stream_index = 0, stream_end = expanded_format->streams.size(); stream_index < stream_end; ++stream_index) {
+            const erhe::dataformat::Vertex_stream& expanded_stream = expanded_format->streams[stream_index];
+            expanded_vertex_writers.push_back(
+                std::make_unique<Vertex_buffer_writer>(
+                    *this,
+                    build_info.buffer_info.vertex_buffer_sink,
+                    stream_index,
+                    expanded_stream.stride,
+                    root.mesh_info.index_count_fill_triangles
+                )
+            );
+        }
+    }
 
     root.calculate_bounding_volume();
     root.calculate_joint_bounding_volumes(mesh_attributes);
@@ -911,12 +955,56 @@ void Build_context::build_triangle_fill_index()
     previous_index = vertex_buffer_index;
 }
 
+auto Build_context::allocate_and_bind_writers() -> bool
+{
+    if (root.build_failed) {
+        return false;
+    }
+    root.allocate_buffers();
+    if (root.build_failed) {
+        // Out of pool memory, or streams out of lockstep. No writer is given a
+        // range, so every one of them drops its staged bytes on destruction.
+        return false;
+    }
+
+    ERHE_VERIFY(root.buffer_mesh.vertex_buffer_ranges.size() == vertex_writers.size());
+    for (std::size_t stream = 0, end = vertex_writers.size(); stream < end; ++stream) {
+        vertex_writers[stream]->set_buffer_range(root.buffer_mesh.vertex_buffer_ranges[stream]);
+    }
+    ERHE_VERIFY(root.buffer_mesh.expanded_vertex_buffer_ranges.size() == expanded_vertex_writers.size());
+    for (std::size_t stream = 0, end = expanded_vertex_writers.size(); stream < end; ++stream) {
+        expanded_vertex_writers[stream]->set_buffer_range(root.buffer_mesh.expanded_vertex_buffer_ranges[stream]);
+    }
+    index_writer.set_buffer_range(root.buffer_mesh.index_buffer_range);
+
+    // The edge-line side buffers are not written through a Vertex_buffer_writer
+    // (build_edge_lines stages raw bytes), so they are enqueued here by hand,
+    // under the same "only once the range exists" rule.
+    if ((m_edge_line_vertex_bytes_written > 0) && (root.buffer_mesh.edge_line_vertex_buffer_range.count > 0)) {
+        root.build_info.buffer_info.vertex_buffer_sink.enqueue_vertex_data(
+            root.buffer_mesh.edge_line_vertex_buffer_range,
+            std::move(m_edge_line_vertex_data)
+        );
+    }
+    if ((m_edge_line_joint_bytes_written > 0) && (root.buffer_mesh.edge_line_joint_buffer_range.count > 0)) {
+        root.build_info.buffer_info.vertex_buffer_sink.enqueue_vertex_data(
+            root.buffer_mesh.edge_line_joint_buffer_range,
+            std::move(m_edge_line_joint_data)
+        );
+    }
+    return true;
+}
+
 auto Build_context::is_ready() const -> bool
 {
-    const bool ready = 
+    // Mesh counts, not allocated ranges: allocation happens after the build,
+    // so the ranges are empty while this is being asked. The counts are what
+    // the allocation will be sized from, so the meaning is the same - "this
+    // mesh has something to build" - just available earlier.
+    const bool ready =
         !root.build_failed &&
-        (root.buffer_mesh.index_buffer_range.count != 0) &&
-        (root.buffer_mesh.vertex_buffer_ranges.front().count != 0);
+        (root.total_index_count  != 0) &&
+        (root.total_vertex_count != 0);
     return ready;
 }
 
@@ -1035,8 +1123,8 @@ void Build_context::build_expanded_polygon_fill()
     if (!root.build_info.primitive_types.fill_triangles_expanded) {
         return;
     }
-    // Nothing allocated (no expanded vertex format supplied) -> skip.
-    if (root.buffer_mesh.expanded_vertex_buffer_ranges.empty()) {
+    // No expanded vertex format supplied -> nothing to build.
+    if (expanded_vertex_writers.empty()) {
         return;
     }
     const erhe::dataformat::Vertex_format* expanded_format = root.build_info.buffer_info.expanded_vertex_format;
@@ -1049,20 +1137,7 @@ void Build_context::build_expanded_polygon_fill()
     // The packed wireframe attribute lives only in the expanded format.
     const Vertex_attribute_info wireframe_info{*expanded_format, Vertex_attribute_usage::custom, custom_attribute_wireframe};
 
-    // Writers over the expanded vertex ranges (one per expanded-format stream).
-    std::vector<std::unique_ptr<Vertex_buffer_writer>> expanded_writers;
-    for (std::size_t stream_index = 0, stream_end = expanded_format->streams.size(); stream_index < stream_end; ++stream_index) {
-        const Vertex_stream& stream = expanded_format->streams[stream_index];
-        expanded_writers.push_back(
-            std::make_unique<Vertex_buffer_writer>(
-                *this,
-                root.build_info.buffer_info.vertex_buffer_sink,
-                stream_index,
-                stream.stride,
-                root.buffer_mesh.expanded_vertex_buffer_ranges[stream_index]
-            )
-        );
-    }
+    std::vector<std::unique_ptr<Vertex_buffer_writer>>& expanded_writers = expanded_vertex_writers;
 
     const auto expanded_writer_for = [&](Vertex_attribute_usage usage, std::size_t index) -> Vertex_buffer_writer* {
         const Attribute_stream as = expanded_format->find_attribute(usage, index);
@@ -1216,9 +1291,15 @@ void Build_context::build_edge_lines()
     // interior-tangent sign, its magnitude = the edge-traversal winding tdir; see
     // the pack site below). The buffer range itself is allocated up front by
     // Build_context_root::allocate_edge_line_vertex_buffer().
-    const bool has_edge_line_vertex_buffer = (root.buffer_mesh.edge_line_vertex_buffer_range.count > 0);
-    std::vector<uint8_t> edge_line_vertex_data;
-    const std::size_t    vertex_element_size = 8 * sizeof(float); // vec4 position + vec4 normal
+    // The range is allocated AFTER the build, so this cannot ask whether one
+    // exists - it mirrors the conditions allocate_edge_line_vertex_buffer()
+    // allocates under. Staging is into a member vector that outlives this
+    // function; allocate_and_bind_writers() enqueues it once the range exists.
+    const bool has_edge_line_vertex_buffer =
+        (root.mesh_info.edge_count > 0) &&
+        (root.build_info.buffer_info.edge_line_vertex_stream != nullptr);
+    std::vector<uint8_t>& edge_line_vertex_data = m_edge_line_vertex_data;
+    const std::size_t     vertex_element_size = 8 * sizeof(float); // vec4 position + vec4 normal
     if (has_edge_line_vertex_buffer) {
         const std::size_t edge_count = root.mesh_info.edge_count;
         edge_line_vertex_data.resize(edge_count * 2 * vertex_element_size);
@@ -1228,9 +1309,16 @@ void Build_context::build_edge_lines()
     // Companion joint side buffer for skinned edge lines: uvec4 joint indices
     // + vec4 joint weights per endpoint. Allocated only when the mesh has
     // joint attributes (see Build_context_root::allocate_edge_line_joint_buffer).
-    const bool has_edge_line_joint_buffer = (root.buffer_mesh.edge_line_joint_buffer_range.count > 0);
-    std::vector<uint8_t> edge_line_joint_data;
-    const std::size_t    joint_element_size = 4 * sizeof(uint32_t) + 4 * sizeof(float); // uvec4 + vec4
+    // Same reasoning as the vertex buffer above; mirrors
+    // allocate_edge_line_joint_buffer()'s conditions, skinned meshes included.
+    const GEO::AttributesManager& edge_joint_vertex_attrs = root.mesh.vertices.attributes();
+    const bool has_edge_line_joint_buffer =
+        (root.mesh_info.edge_count > 0) &&
+        (root.build_info.buffer_info.edge_line_joint_stream != nullptr) &&
+        edge_joint_vertex_attrs.is_defined(erhe::geometry::c_joint_indices_0) &&
+        edge_joint_vertex_attrs.is_defined(erhe::geometry::c_joint_weights_0);
+    std::vector<uint8_t>& edge_line_joint_data = m_edge_line_joint_data;
+    const std::size_t     joint_element_size = 4 * sizeof(uint32_t) + 4 * sizeof(float); // uvec4 + vec4
     if (has_edge_line_joint_buffer) {
         const std::size_t edge_count = root.mesh_info.edge_count;
         edge_line_joint_data.resize(edge_count * 2 * joint_element_size);
@@ -1411,19 +1499,10 @@ void Build_context::build_edge_lines()
         }
     }
 
-    if (has_edge_line_vertex_buffer && (edge_vertex_write_offset > 0)) {
-        root.build_info.buffer_info.vertex_buffer_sink.enqueue_vertex_data(
-            root.buffer_mesh.edge_line_vertex_buffer_range,
-            std::move(edge_line_vertex_data)
-        );
-    }
-
-    if (has_edge_line_joint_buffer && (edge_joint_write_offset > 0)) {
-        root.build_info.buffer_info.vertex_buffer_sink.enqueue_vertex_data(
-            root.buffer_mesh.edge_line_joint_buffer_range,
-            std::move(edge_line_joint_data)
-        );
-    }
+    // Enqueued by allocate_and_bind_writers(), once the ranges exist. Anything
+    // staged but not written is dropped there rather than here.
+    m_edge_line_vertex_bytes_written = edge_vertex_write_offset;
+    m_edge_line_joint_bytes_written  = edge_joint_write_offset;
 }
 
 void Build_context::build_centroid_points()
@@ -1456,11 +1535,9 @@ void Build_context_root::allocate_index_range(const Primitive_type primitive_typ
     out_range.index_count    = index_count;
     next_index_range_start += index_count;
 
-    // If index buffer has not yet been allocated, no check for enough room for index range
-    ERHE_VERIFY(
-        (buffer_mesh.index_buffer_range.count == 0) ||
-        (next_index_range_start <= buffer_mesh.index_buffer_range.count)
-    );
+    // The index buffer is allocated after the build, so there is nothing to
+    // check against here. Build_context_root::allocate_buffers() makes the
+    // equivalent check once the allocation exists.
 }
 
 auto build_buffer_mesh(
