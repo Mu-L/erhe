@@ -12,6 +12,7 @@ namespace erhe::dataformat { class Vertex_format; }
 namespace erhe::primitive {
 
 class Buffer_info;
+class Buffer_mesh;
 class Element_mappings;
 class Primitive_render_shape;
 class Triangle_soup;
@@ -217,6 +218,41 @@ public:
     const Buffer_info&            buffer_info,
     const std::filesystem::path&  cache_directory,
     std::string_view              name
+) -> std::shared_ptr<Primitive_render_shape>;
+
+// The geometry path's counterpart to make_optimized_render_shape(): builds the
+// optimized variant out of the bytes a Primitive_builder run already staged,
+// instead of out of a triangle soup.
+//
+// `streams` are the CORNER-VERTEX PREFIX of each sink vertex stream, already in
+// the sink format, and `fill_indices` the fill triangle indices into it. Both
+// are consumed. The centroid-point vertices the build appends after the corners
+// are deliberately NOT included, and neither are the edge-line, corner-point,
+// centroid-point or expanded-fill index streams: the optimized variant is fill
+// triangles only, because welding merges corners across facets and every one of
+// those other streams exists per-facet precisely to keep them apart. The
+// original build has them all, and get_resolved_renderable_mesh() sends any
+// non-fill mode there.
+//
+// `source_mappings` are the ones that build produced - they index its vertex
+// buffer, which IS the corner prefix these remaps are over, so composing them
+// is correct here. (The soup path must pass `{}` instead; see
+// make_optimized_render_shape(). The two are not interchangeable.)
+//
+// `source_buffer_mesh` supplies the bounding volumes and the per-joint bounding
+// boxes. Reordering and welding move no vertex, so they are the same for both
+// builds and are copied rather than recomputed.
+//
+// Returns null when there is nothing to attach: an input optimize_indexed_mesh()
+// refuses, or an allocation that failed. There is no half-built state to unwind
+// - a variant that could not be finished is simply never returned.
+[[nodiscard]] auto make_optimized_render_shape_from_staged_build(
+    std::vector<Mesh_optimize_stream>&& streams,
+    std::vector<uint32_t>&&             fill_indices,
+    const Element_mappings&             source_mappings,
+    const Buffer_mesh&                  source_buffer_mesh,
+    const Buffer_info&                  buffer_info,
+    std::string_view                    name
 ) -> std::shared_ptr<Primitive_render_shape>;
 
 void log_mesh_optimize_statistics(std::string_view name, const Mesh_optimize_statistics& statistics);

@@ -778,6 +778,15 @@ Primitive_render_shape::Primitive_render_shape(const std::shared_ptr<Triangle_so
     m_element_mappings = std::move(element_mappings);
 }
 
+Primitive_render_shape::Primitive_render_shape(Buffer_mesh&& renderable_mesh, Element_mappings&& element_mappings)
+    : m_normal_style   {Normal_style::corner_normals}
+    , m_renderable_mesh{std::move(renderable_mesh)}
+{
+    // Set directly rather than through a build: no build produced these, they
+    // were composed onto this mesh's order from the source build's.
+    m_element_mappings = std::move(element_mappings);
+}
+
 auto Primitive_render_shape::has_buffer_mesh_triangles() const -> bool
 {
     const std::lock_guard<std::mutex> state_lock{m_state_mutex};
@@ -820,7 +829,9 @@ auto Primitive_render_shape::prepare_geometry_buffer_mesh(const Build_info& buil
         geometry->get_mesh(),
         build_info,
         pending->element_mappings,
-        normal_style
+        normal_style,
+        &pending->optimized_shape,
+        geometry->get_name()
     );
     if (!ok) {
         return false;
@@ -833,7 +844,7 @@ auto Primitive_render_shape::prepare_geometry_buffer_mesh(const Build_info& buil
     return true;
 }
 
-auto Primitive_render_shape::commit_geometry_buffer_mesh() -> bool
+auto Primitive_render_shape::commit_geometry_buffer_mesh(std::shared_ptr<Primitive_render_shape>& out_optimized_shape) -> bool
 {
     // State lock only, and the caller must hold the item host lock: the
     // per-frame readers of get_renderable_mesh() are protected by that lock,
@@ -847,14 +858,26 @@ auto Primitive_render_shape::commit_geometry_buffer_mesh() -> bool
     m_renderable_mesh  = std::move(m_pending_buffer_mesh->buffer_mesh);
     m_element_mappings = std::move(m_pending_buffer_mesh->element_mappings);
     m_normal_style     = m_pending_buffer_mesh->normal_style;
+    // The variant belongs to the Primitive, not to this shape, so it rides the
+    // same atomic swap and is handed out here for the caller to attach - which
+    // it must do BEFORE the mesh is re-registered with the draw list, since
+    // registration bakes the drawn variant's base_vertex and index ranges.
+    // Null when optimization is off, which correctly clears any variant built
+    // from the pre-finalize soup: that one describes a different build of this
+    // primitive, not a reordering of the one just committed.
+    out_optimized_shape = std::move(m_pending_buffer_mesh->optimized_shape);
     m_pending_buffer_mesh.reset();
     return true;
 }
 
-auto Primitive_render_shape::make_buffer_mesh(const Build_info& build_info, Normal_style normal_style) -> bool
+auto Primitive_render_shape::make_buffer_mesh(
+    const Build_info&                        build_info,
+    Normal_style                             normal_style,
+    std::shared_ptr<Primitive_render_shape>* out_optimized_shape
+) -> bool
 {
     const std::lock_guard<std::mutex> build_lock{m_build_mutex};
-    return make_buffer_mesh_build_locked(build_info, normal_style);
+    return make_buffer_mesh_build_locked(build_info, normal_style, out_optimized_shape);
 }
 
 auto Primitive_render_shape::make_buffer_mesh(const Buffer_info& buffer_info) -> bool
@@ -863,7 +886,11 @@ auto Primitive_render_shape::make_buffer_mesh(const Buffer_info& buffer_info) ->
     return make_buffer_mesh_build_locked(buffer_info);
 }
 
-auto Primitive_render_shape::make_buffer_mesh_build_locked(const Build_info& build_info, Normal_style normal_style) -> bool
+auto Primitive_render_shape::make_buffer_mesh_build_locked(
+    const Build_info&                        build_info,
+    Normal_style                             normal_style,
+    std::shared_ptr<Primitive_render_shape>* out_optimized_shape
+) -> bool
 {
     if (!m_geometry_published.load(std::memory_order_acquire)) {
         // The overload below takes the same build lock via its own entry
@@ -879,7 +906,9 @@ auto Primitive_render_shape::make_buffer_mesh_build_locked(const Build_info& bui
         m_geometry->get_mesh(),
         build_info,
         element_mappings,
-        normal_style
+        normal_style,
+        out_optimized_shape,
+        m_geometry->get_name()
     );
     if (!ok) {
         return false;
@@ -1239,15 +1268,32 @@ auto Primitive::make_raytrace() const -> bool
     return false;
 }
 
-auto Primitive::make_renderable_mesh(const Build_info& build_info, const Normal_style normal_style) const -> bool
+auto Primitive::make_renderable_mesh(const Build_info& build_info, const Normal_style normal_style) -> bool
 {
+    std::shared_ptr<Primitive_render_shape> optimized;
+
     if (!render_shape) {
         return false;
     }
     if (render_shape->has_buffer_mesh_triangles()) {
         return true;
     }
-    return render_shape->make_buffer_mesh(build_info, normal_style);
+    // The variant is published here, together with the build it describes, and
+    // only once it is complete - make_buffer_mesh() leaves it null unless the
+    // whole optimized build succeeded.
+    //
+    // Assigned only when there IS one. make_buffer_mesh() also has a path that
+    // never reaches the geometry builder at all (no Geometry published yet, so
+    // it falls back to the triangle-soup build), and an unconditional assign
+    // would let that path silently drop a variant somebody else attached -
+    // outside the publish/retire discipline the rest of this file protects.
+    if (!render_shape->make_buffer_mesh(build_info, normal_style, &optimized)) {
+        return false;
+    }
+    if (optimized) {
+        optimized_render_shape = std::move(optimized);
+    }
+    return true;
 }
 
 auto Primitive::make_renderable_mesh(const Buffer_info& buffer_info) const -> bool

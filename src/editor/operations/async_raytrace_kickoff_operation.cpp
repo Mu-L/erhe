@@ -180,7 +180,22 @@ void deferred_finalize_mesh_items(Mesh_operation_parameters&& parameters, const 
                         static_cast<void>(raytrace_shape->commit_real_raytrace());
                     }
                     if (primitive.render_shape) {
-                        static_cast<void>(primitive.render_shape->commit_geometry_buffer_mesh());
+                        // The optimized variant rides the same swap and is
+                        // attached here, before update_rt_primitives() below
+                        // re-registers the mesh with the draw list -
+                        // registration bakes the drawn variant's base_vertex
+                        // and index ranges. Attaching after it would leave the
+                        // draw list drawing one build from another's record.
+                        //
+                        // Assigning it also drops any variant built from the
+                        // pre-finalize triangle soup. That one has to go: it
+                        // was a reordering of the SOUP build, and the build it
+                        // now sits beside is the geometry one, with smooth
+                        // normals and tangents the soup build never had.
+                        std::shared_ptr<erhe::primitive::Primitive_render_shape> optimized;
+                        if (primitive.render_shape->commit_geometry_buffer_mesh(optimized)) {
+                            primitive.optimized_render_shape = std::move(optimized);
+                        }
                     }
                 }
                 if (scene_root == nullptr) {

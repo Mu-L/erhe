@@ -5,6 +5,8 @@
 #include "erhe_primitive/buffer_sink.hpp"
 #include "erhe_primitive/buffer_writer.hpp"
 #include "erhe_primitive/index_range.hpp"
+#include "erhe_primitive/mesh_optimizer.hpp"
+#include "erhe_primitive/primitive.hpp"
 #include "erhe_primitive/primitive_log.hpp"
 #include "erhe_log/log.hpp"
 #include "erhe_geometry/geometry.hpp"
@@ -430,14 +432,23 @@ Primitive_builder::Primitive_builder(
     const GEO::Mesh&   mesh,
     const Build_info&  build_info,
     Element_mappings&  element_mappings,
-    const Normal_style normal_style
+    const Normal_style normal_style,
+    std::string_view   name,
+    const bool         build_optimized_variant
 )
-    : m_buffer_mesh     {buffer_mesh}
-    , m_mesh            {mesh}
-    , m_build_info      {build_info}
-    , m_element_mappings{element_mappings}
-    , m_normal_style    {normal_style}
+    : m_buffer_mesh            {buffer_mesh}
+    , m_mesh                   {mesh}
+    , m_build_info             {build_info}
+    , m_element_mappings       {element_mappings}
+    , m_normal_style           {normal_style}
+    , m_name                   {name}
+    , m_build_optimized_variant{build_optimized_variant}
 {
+}
+
+auto Primitive_builder::take_optimized_render_shape() -> std::shared_ptr<Primitive_render_shape>
+{
+    return std::move(m_optimized_render_shape);
 }
 
 auto Primitive_builder::build() -> bool
@@ -446,6 +457,13 @@ auto Primitive_builder::build() -> bool
 
     log_primitive_builder->trace("Primitive_builder::build(normal_style = {})", c_str(m_normal_style));
 
+    // The optimized variant is built from these AFTER build_context is gone -
+    // its writers flush on destruction, and the second build allocates from the
+    // same pools, so the two transactions are kept apart.
+    std::vector<Mesh_optimize_stream> optimize_streams;
+    std::vector<uint32_t>             optimize_fill_indices;
+
+    {
     Build_context build_context{
         m_buffer_mesh,
         m_mesh,
@@ -492,6 +510,13 @@ auto Primitive_builder::build() -> bool
         build_context.build_centroid_points();
     }
 
+    // Snapshot BEFORE the writers are bound and flushed: this is the last point
+    // at which the staged bytes are still here to be read.
+    if (m_build_optimized_variant && m_build_info.buffer_info.optimize_meshes) {
+        erhe::log::set_breadcrumb("primitive: take_optimizable_snapshot");
+        static_cast<void>(build_context.take_optimizable_snapshot(optimize_streams, optimize_fill_indices));
+    }
+
     // Allocate now that the final vertex and index counts are known, and hand
     // every writer its destination. The writers flush when build_context goes
     // out of scope just below; without a destination they drop their staged
@@ -500,6 +525,19 @@ auto Primitive_builder::build() -> bool
     if (!build_context.allocate_and_bind_writers()) {
         log_primitive_builder->debug("Primitive_builder::build() aborted: buffer allocation failed");
         return false;
+    }
+    } // build_context flushes here
+
+    if (!optimize_streams.empty()) {
+        erhe::log::set_breadcrumb("primitive: optimized variant");
+        m_optimized_render_shape = make_optimized_render_shape_from_staged_build(
+            std::move(optimize_streams),
+            std::move(optimize_fill_indices),
+            m_element_mappings,
+            m_buffer_mesh,
+            m_build_info.buffer_info,
+            m_name
+        );
     }
     return true;
 }
@@ -953,6 +991,105 @@ void Build_context::build_triangle_fill_index()
     }
 
     previous_index = vertex_buffer_index;
+}
+
+auto Build_context::take_optimizable_snapshot(
+    std::vector<Mesh_optimize_stream>& out_streams,
+    std::vector<uint32_t>&             out_fill_indices
+) -> bool
+{
+    ERHE_PROFILE_FUNCTION();
+
+    if (root.build_failed || !root.build_info.primitive_types.fill_triangles) {
+        return false;
+    }
+    const std::size_t corner_count = root.mesh_info.vertex_count_corners;
+    const std::size_t index_count  = root.mesh_info.index_count_fill_triangles;
+    if ((corner_count == 0) || (index_count == 0)) {
+        return false;
+    }
+    // build_triangle_fill_index() skips a degenerate fan start, so the emitted
+    // count can in principle fall short of what the index range was sized for -
+    // and then triangle_to_mesh_facet would describe more triangles than the
+    // index buffer holds, which compose_element_mappings() has no way to line
+    // up. Decline rather than guess.
+    if (index_writer.triangle_indices_written != index_count) {
+        log_primitive_builder->trace(
+            "mesh optimize: {} fill indices written but {} expected; no optimized variant",
+            index_writer.triangle_indices_written,
+            index_count
+        );
+        return false;
+    }
+
+    // The corner prefix only. build_centroid_points() appends one vertex per
+    // facet after the corners, and those belong to the centroid-point draw the
+    // optimized variant does not carry.
+    std::vector<Mesh_optimize_stream> streams;
+    streams.reserve(vertex_writers.size());
+    for (const std::unique_ptr<Vertex_buffer_writer>& writer : vertex_writers) {
+        const std::size_t byte_count = corner_count * writer->stride;
+        if (writer->vertex_data.size() < byte_count) {
+            return false;
+        }
+        Mesh_optimize_stream stream;
+        stream.stride = writer->stride;
+        stream.data.assign(writer->vertex_data.begin(), writer->vertex_data.begin() + byte_count);
+        streams.push_back(std::move(stream));
+    }
+
+    // Zero the per-corner facet id. Welding merges corners across facets, which
+    // makes the id meaningless - and left in place the bitwise compare would
+    // see it differ at every facet boundary and merge nothing at all, which is
+    // the whole weld win. Nothing reads it from this variant: the ID render
+    // pass takes Mesh_variant::original.
+    const erhe::dataformat::Attribute_stream id_attribute = root.vertex_format.find_attribute(
+        erhe::dataformat::Vertex_attribute_usage::custom, erhe::dataformat::custom_attribute_id
+    );
+    if (id_attribute.attribute != nullptr) {
+        const std::size_t stream_index = static_cast<std::size_t>(id_attribute.stream - root.vertex_format.streams.data());
+        const std::size_t offset       = id_attribute.attribute->offset;
+        const std::size_t size         = erhe::dataformat::get_format_size_bytes(id_attribute.attribute->format);
+        if (stream_index < streams.size()) {
+            Mesh_optimize_stream& stream = streams[stream_index];
+            for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
+                std::fill_n(stream.data.begin() + vertex * stream.stride + offset, size, uint8_t{0});
+            }
+        }
+    }
+
+    const erhe::dataformat::Format index_type      = root.build_info.buffer_info.index_type;
+    const std::size_t              index_type_size = index_writer.index_type_size;
+    const uint8_t* const           index_base      = index_writer.triangle_fill_index_data_span.data();
+    std::vector<uint32_t>          fill_indices(index_count, 0u);
+    for (std::size_t i = 0; i < index_count; ++i) {
+        const uint8_t* const source = index_base + i * index_type_size;
+        switch (index_type) {
+            case erhe::dataformat::Format::format_8_scalar_uint: {
+                fill_indices[i] = *source;
+                break;
+            }
+            case erhe::dataformat::Format::format_16_scalar_uint: {
+                uint16_t value = 0;
+                memcpy(&value, source, sizeof(value));
+                fill_indices[i] = value;
+                break;
+            }
+            case erhe::dataformat::Format::format_32_scalar_uint: {
+                uint32_t value = 0;
+                memcpy(&value, source, sizeof(value));
+                fill_indices[i] = value;
+                break;
+            }
+            default: {
+                return false;
+            }
+        }
+    }
+
+    out_streams      = std::move(streams);
+    out_fill_indices = std::move(fill_indices);
+    return true;
 }
 
 auto Build_context::allocate_and_bind_writers() -> bool
@@ -1541,11 +1678,13 @@ void Build_context_root::allocate_index_range(const Primitive_type primitive_typ
 }
 
 auto build_buffer_mesh(
-    Buffer_mesh&      buffer_mesh,
-    const GEO::Mesh&  source_mesh,
-    const Build_info& build_info,
-    Element_mappings& element_mappings,
-    Normal_style      normal_style
+    Buffer_mesh&                             buffer_mesh,
+    const GEO::Mesh&                         source_mesh,
+    const Build_info&                        build_info,
+    Element_mappings&                        element_mappings,
+    Normal_style                             normal_style,
+    std::shared_ptr<Primitive_render_shape>* out_optimized_shape,
+    std::string_view                         name
 ) -> bool
 {
     ERHE_PROFILE_FUNCTION();
@@ -1553,8 +1692,17 @@ auto build_buffer_mesh(
     ERHE_VERIFY(element_mappings.triangle_to_mesh_facet.empty());
     ERHE_VERIFY(element_mappings.mesh_corner_to_vertex_buffer_index.empty());
     ERHE_VERIFY(element_mappings.mesh_vertex_to_vertex_buffer_index.empty());
-    Primitive_builder builder{buffer_mesh, source_mesh, build_info, element_mappings, normal_style};
-    return builder.build();
+    Primitive_builder builder{
+        buffer_mesh, source_mesh, build_info, element_mappings, normal_style, name,
+        out_optimized_shape != nullptr
+    };
+    if (!builder.build()) {
+        return false;
+    }
+    if (out_optimized_shape != nullptr) {
+        *out_optimized_shape = builder.take_optimized_render_shape();
+    }
+    return true;
 }
 
 } // namespace erhe::primitive

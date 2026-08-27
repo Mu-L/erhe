@@ -1,6 +1,9 @@
 #include "erhe_primitive/mesh_optimizer.hpp"
 
 #include "erhe_primitive/build_info.hpp"
+#include "erhe_primitive/buffer_mesh.hpp"
+#include "erhe_primitive/buffer_sink.hpp"
+#include "erhe_primitive/index_range.hpp"
 #include "erhe_primitive/primitive.hpp"
 #include "erhe_primitive/primitive_log.hpp"
 #include "erhe_primitive/triangle_soup.hpp"
@@ -12,6 +15,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <numeric>
 #include <unordered_map>
 
@@ -528,6 +532,141 @@ auto make_optimized_render_shape(
         return {};
     }
     return shape;
+}
+
+namespace {
+
+// The fill indices packed into the sink's index format. 32-bit is what
+// Mesh_memory uses, so the narrower cases exist for the CPU-buffer sinks.
+[[nodiscard]] auto pack_indices(
+    const std::vector<uint32_t>&   indices,
+    const erhe::dataformat::Format index_type
+) -> std::vector<uint8_t>
+{
+    const std::size_t    element_size = erhe::dataformat::get_format_size_bytes(index_type);
+    std::vector<uint8_t> packed(indices.size() * element_size, uint8_t{0});
+    for (std::size_t i = 0, end = indices.size(); i < end; ++i) {
+        uint8_t* const destination = packed.data() + i * element_size;
+        switch (index_type) {
+            case erhe::dataformat::Format::format_8_scalar_uint:  *destination = static_cast<uint8_t>(indices[i]); break;
+            case erhe::dataformat::Format::format_16_scalar_uint: {
+                const uint16_t value = static_cast<uint16_t>(indices[i]);
+                std::memcpy(destination, &value, sizeof(value));
+                break;
+            }
+            case erhe::dataformat::Format::format_32_scalar_uint: {
+                const uint32_t value = indices[i];
+                std::memcpy(destination, &value, sizeof(value));
+                break;
+            }
+            default: ERHE_FATAL("bad index type");
+        }
+    }
+    return packed;
+}
+
+} // anonymous namespace
+
+auto make_optimized_render_shape_from_staged_build(
+    std::vector<Mesh_optimize_stream>&& streams_in,
+    std::vector<uint32_t>&&             fill_indices_in,
+    const Element_mappings&             source_mappings,
+    const Buffer_mesh&                  source_buffer_mesh,
+    const Buffer_info&                  buffer_info,
+    const std::string_view              name
+) -> std::shared_ptr<Primitive_render_shape>
+{
+    ERHE_PROFILE_FUNCTION();
+
+    std::vector<Mesh_optimize_stream> streams      = std::move(streams_in);
+    std::vector<uint32_t>             fill_indices = std::move(fill_indices_in);
+
+    Mesh_optimize_result optimization{};
+    if (!optimize_indexed_mesh(streams, fill_indices, buffer_info.vertex_format, buffer_info.mesh_optimize_options, optimization)) {
+        return {};
+    }
+    log_mesh_optimize_statistics(name, optimization.statistics);
+
+    const std::size_t vertex_count = optimization.statistics.vertex_count_after;
+    const std::size_t index_count  = fill_indices.size();
+    if ((vertex_count == 0) || (index_count == 0)) {
+        return {};
+    }
+
+    // The source mappings index the source build's vertex buffer, which is the
+    // corner prefix these remaps are over, so this composes onto the optimized
+    // order directly.
+    Element_mappings composed = compose_element_mappings(source_mappings, optimization);
+
+    Buffer_mesh buffer_mesh;
+    {
+        // One atomic multi-pool allocation transaction per mesh - see
+        // buffer_mesh_allocation_mutex(). Same transaction shape as
+        // Build_context_root::allocate_buffers() and
+        // build_buffer_mesh_from_triangle_soup().
+        const std::lock_guard<std::mutex> allocation_lock{buffer_mesh_allocation_mutex()};
+
+        Buffer_sink_allocation index_allocation = buffer_info.index_buffer_sink.allocate_index_buffer_range(buffer_info.index_type, index_count);
+        if (index_allocation.range.count == 0) {
+            log_primitive->warn("mesh optimize {}: out of index memory for the optimized variant; rendering the source build", name);
+            return {};
+        }
+        buffer_mesh.index_buffer_range = index_allocation.range;
+        buffer_mesh.index_allocation   = std::move(index_allocation.allocation);
+
+        for (const erhe::dataformat::Vertex_stream& sink_stream : buffer_info.vertex_format.streams) {
+            Buffer_sink_allocation vertex_allocation = buffer_info.vertex_buffer_sink.allocate_vertex_buffer_range(sink_stream, vertex_count);
+            if (vertex_allocation.range.count == 0) {
+                log_primitive->warn("mesh optimize {}: out of vertex memory for the optimized variant; rendering the source build", name);
+                return {};
+            }
+            buffer_mesh.vertex_buffer_ranges.emplace_back(vertex_allocation.range);
+            buffer_mesh.vertex_allocations.emplace_back(std::move(vertex_allocation.allocation));
+        }
+    }
+
+    // Lockstep invariant: one indirect-draw vertexOffset (from stream 0) is
+    // applied to every binding, so byte_offset / stride and the block index
+    // must match across all streams. Drop the variant rather than render
+    // non-position attributes from the wrong offsets - the source build is
+    // still there and correct.
+    if (!buffer_mesh.vertex_buffer_ranges.empty()) {
+        const Buffer_range& range_0     = buffer_mesh.vertex_buffer_ranges.front();
+        const std::size_t   base_vertex = range_0.byte_offset / range_0.element_size;
+        for (std::size_t stream = 1, stream_end = buffer_mesh.vertex_buffer_ranges.size(); stream < stream_end; ++stream) {
+            const Buffer_range& range = buffer_mesh.vertex_buffer_ranges[stream];
+            if (
+                ((range.byte_offset % range.element_size) != 0)           ||
+                ((range.byte_offset / range.element_size) != base_vertex) ||
+                (range.buffer_id != range_0.buffer_id)
+            ) {
+                log_primitive->error(
+                    "mesh optimize {}: optimized variant vertex stream allocations out of lockstep - variant dropped",
+                    name
+                );
+                return {};
+            }
+        }
+    }
+
+    buffer_info.index_buffer_sink.enqueue_index_data(buffer_mesh.index_buffer_range, pack_indices(fill_indices, buffer_info.index_type));
+    for (std::size_t stream = 0, stream_end = streams.size(); stream < stream_end; ++stream) {
+        buffer_info.vertex_buffer_sink.enqueue_vertex_data(buffer_mesh.vertex_buffer_ranges[stream], std::move(streams[stream].data));
+    }
+
+    buffer_mesh.triangle_fill_indices = Index_range{
+        .primitive_type = Primitive_type::triangles,
+        .first_index    = 0,
+        .index_count    = index_count
+    };
+    buffer_mesh.vertex_input_key = buffer_info.vertex_input_key;
+    // Welding and reordering move no vertex, so the source build's volumes
+    // describe this one exactly.
+    buffer_mesh.bounding_box        = source_buffer_mesh.bounding_box;
+    buffer_mesh.bounding_sphere     = source_buffer_mesh.bounding_sphere;
+    buffer_mesh.joint_bounding_boxes = source_buffer_mesh.joint_bounding_boxes;
+
+    return std::make_shared<Primitive_render_shape>(std::move(buffer_mesh), std::move(composed));
 }
 
 void log_mesh_optimize_statistics(const std::string_view name, const Mesh_optimize_statistics& statistics)

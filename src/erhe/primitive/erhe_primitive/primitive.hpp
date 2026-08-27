@@ -190,8 +190,18 @@ public:
     // welded, so a Geometry built from it would have neither the source
     // topology nor valid facet ids. See Primitive::optimized_render_shape.
     Primitive_render_shape(const std::shared_ptr<Triangle_soup>& triangle_soup, erhe::primitive::Element_mappings&& element_mappings);
+    // The same kind of variant build, from a Buffer_mesh instead of a soup:
+    // what the geometry path produces, where the optimizer works on the bytes
+    // the build already staged and there is no soup to keep. Carries no
+    // Geometry for the same reason as the overload above.
+    Primitive_render_shape(Buffer_mesh&& renderable_mesh, erhe::primitive::Element_mappings&& element_mappings);
 
-    auto make_buffer_mesh(const Build_info& build_info, Normal_style normal_style) -> bool;
+    // `out_optimized_shape`, when non-null, receives the optimized variant of
+    // this build - null unless Buffer_info::optimize_meshes is on and the whole
+    // optimized build succeeded. It is handed out rather than stored: the
+    // variant slot belongs to the owning Primitive, which is what chooses
+    // between builds.
+    auto make_buffer_mesh(const Build_info& build_info, Normal_style normal_style, std::shared_ptr<Primitive_render_shape>* out_optimized_shape = nullptr) -> bool;
     auto make_buffer_mesh(const Buffer_info& build_info) -> bool;
     [[nodiscard]] auto has_buffer_mesh_triangles  () const -> bool;
     [[nodiscard]] auto has_edge_lines             () const -> bool;
@@ -209,11 +219,15 @@ public:
     // and commits it under the scene lock. prepare ensures Geometry exists
     // (thread-safe); commit swaps the renderable mesh + element mappings in.
     auto prepare_geometry_buffer_mesh(const Build_info& build_info, Normal_style normal_style) -> bool;
-    auto commit_geometry_buffer_mesh() -> bool;
+    // `out_optimized_shape` receives the optimized variant prepared alongside
+    // the buffer mesh, so the caller can attach it to the Primitive in the same
+    // step - and, crucially, BEFORE the mesh is re-registered with the draw
+    // list. Set to null when there is none, which clears any stale variant.
+    auto commit_geometry_buffer_mesh(std::shared_ptr<Primitive_render_shape>& out_optimized_shape) -> bool;
 
 private:
     // Caller holds m_build_mutex; see the locking note on Primitive_shape.
-    auto make_buffer_mesh_build_locked(const Build_info& build_info, Normal_style normal_style) -> bool;
+    auto make_buffer_mesh_build_locked(const Build_info& build_info, Normal_style normal_style, std::shared_ptr<Primitive_render_shape>* out_optimized_shape) -> bool;
     auto make_buffer_mesh_build_locked(const Buffer_info& buffer_info) -> bool;
     [[nodiscard]] auto has_edge_lines_state_locked() const -> bool;
 
@@ -223,6 +237,10 @@ private:
         Buffer_mesh                       buffer_mesh;
         erhe::primitive::Element_mappings element_mappings;
         Normal_style                      normal_style{Normal_style::none};
+        // Built by the same worker pass, committed by the same atomic swap:
+        // the variant describes exactly this buffer_mesh's build, so the two
+        // must never be published apart.
+        std::shared_ptr<Primitive_render_shape> optimized_shape;
     };
 
     Normal_style                         m_normal_style   {Normal_style::none};
@@ -260,7 +278,9 @@ public:
     [[nodiscard]] auto make_geometry           () const -> bool;
     // These build the SOURCE shape only. The optimized variant is built before
     // it is attached (make_optimized_render_shape()), so it is never half-built.
-    [[nodiscard]] auto make_renderable_mesh    (const Build_info& build_info, Normal_style normal_style) const -> bool;
+    // Not const: it publishes optimized_render_shape alongside the source
+    // build, and that slot is this object's.
+    [[nodiscard]] auto make_renderable_mesh    (const Build_info& build_info, Normal_style normal_style) -> bool;
     [[nodiscard]] auto make_renderable_mesh    (const erhe::primitive::Buffer_info& buffer_info) const -> bool;
     [[nodiscard]] auto make_raytrace           () const -> bool;
     // AABB proxy raytrace over the renderable-mesh bounds; no-op when a
@@ -334,6 +354,15 @@ public:
     // Publication follows the same discipline as render_shape itself: attached
     // before the primitive is drawn from, and dropped only at a main-thread
     // flush point, with the shape kept alive until in-flight frames retire it.
+    //
+    // Unlike the shapes' own slots this one has NO lock of its own, so writing
+    // it is only safe while nothing else touches this Primitive. Every writer
+    // today satisfies that: the import build loop is serial over primitives by
+    // explicit design (build_imported_buffer_meshes, whose comment says why),
+    // and the finalize commits run on the main thread with the item host lock
+    // held. A caller that builds one shared Primitive from two threads at once
+    // would tear this shared_ptr - which, before it existed, was merely
+    // duplicated work.
     std::shared_ptr<Primitive_render_shape> optimized_render_shape;
 };
 
