@@ -432,11 +432,15 @@ that never reaches the geometry path.
 
 1. **Builds.** ninja vulkan Debug + Release, VS opengl, VS null backend, VS
    vulkan-headless, Quest APK, build_tests: all green. Tests 645/645.
-   `scripts/build_ninja_win_clang.bat` FAILS and it is NOT this work:
-   `.cpm_cache/basis_universal/.../zstd/zstd.c` hits *"always_inline function
-   '_bzhi_u64' requires target feature 'bmi2'"*. That tree's last successful
-   editor.exe is from 2026-07-05, so the clang configuration has been broken
-   since long before phase 5b. Fix separately or drop it from the list.
+   `scripts/build_ninja_win_clang.bat` is **now green too** (2026-08-27), for
+   the first time since 2026-07-05. A wiped tree and a fresh configure did not
+   fix it - there were two real defects and a script bug, none of them from this
+   work: zstd's MSVC branch takes `STATIC_BMI2=1` from `__AVX2__` and calls
+   `_bzhi_u64`, which clang rejects without `-mbmi2` (`303e91e5a`); the MSVC
+   STL's `__clang__`-only vectorization trait sends a 12-byte
+   `editor::Lightmap_tile_key` into `_Find_vectorized`, which only implements
+   sizes 1/2/4/8 (`3be1daf67`); and the build script passed a bare `--target`
+   with no argument (`2f21602b9`).
 
 2. **Visual A/B: done, three scenes.** All at 0 differing viewport pixels of
    2 198 250, each against its own same-config control pair (also 0):
@@ -470,7 +474,7 @@ that never reaches the geometry path.
    one mutation-checked. Facet picking, physics collision and the glTF
    export/import round-trip are still unrun.
 
-3b. **Position-quantization byte check: NOT RUN.**
+3b. **Position-quantization byte check: DONE** - see "Phase 7 item 3b done" below.
 
 4. **Perf: NOT MEASURED, and not measurable from here.** The frame pacer reports
    `tier: "OFF"` and a zero refresh period in this configuration, so
@@ -580,6 +584,42 @@ vertex drag (phase 7 item 3 / the quantization doc's last item), the perf
 measurement (item 4), and the position-quantization byte dump (item 3b), which
 needs either a pre-change build to dump against or a RenderDoc buffer capture -
 `get_mesh_attribute_values` reads source geometry, not the GPU vertex buffer.
+
+### Phase 7 item 3b done: the position-quantization byte check (2026-08-27)
+
+There was no way to see the uploaded bytes, so the editor got one:
+**`get_mesh_buffer_info`** (pool coordinates, stride, base_vertex, the vertex
+format's attributes, the index range and its per-mode sub-ranges, the AABB, and
+the scale / offset the shader applies to a snorm16x3 position) and
+**`get_mesh_buffer_data`** (the bytes, base64 or hex). Both name the build they
+read - `original` or `optimized` - and neither falls back to the other. The
+pools are device-local, so the read copies the range into a host-visible buffer
+and waits for the device; capped at 4096 elements / 262144 bytes per call.
+
+With that, the check the plan asked for: for each GPU vertex, is the stored
+int16 triple exactly what the quantizers produce for that vertex's source
+position? Stream-0 vertex `i` is corner `i` (the geometry path emits one vertex
+per corner, corners first, then the facet centroids), so the source position is
+the position of the GEO vertex that corner `i` belongs to, read back through
+`get_mesh_attribute_values`.
+
+**4608 vertices across Chessboard, Pawn_Body_W6 and Knight_W1: zero
+mismatches**, against BOTH `meshopt_quantizeSnorm(v, 16)` and the old
+`float_to_snorm16`, and the two quantizers disagreed on none of them - which is
+the answer to the question the conversion raised (they differ only in clamp
+order, and that is unreachable inside `[-1, 1]`).
+
+The negative control that makes those zeros mean something: re-running with the
+AABB scale multiplied by 1.0001 mismatches **512 of 512**. The check is
+sensitive to a 0.01% error in the affine, so agreement is not an artifact of a
+comparison that cannot fail.
+
+Incidentally the tools now make the phase 5b invariants *observable* rather than
+documented: on Chessboard the optimized build reports 114 764 vertices against
+the original's 369 664, `triangle_fill` as its only non-empty index range, and a
+stream-2 stride of 20 against 24 - the facet id (`custom_0`,
+`format_8_vec4_unorm`) present in the original build and absent from the
+optimized one.
 
 ## Risks / notes
 
