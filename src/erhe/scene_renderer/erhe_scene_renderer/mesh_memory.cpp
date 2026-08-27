@@ -1077,7 +1077,7 @@ void bucket_primitives(
                 continue;
             }
             const erhe::primitive::Buffer_mesh* buffer_mesh =
-                primitive->get_resolved_renderable_mesh(variant_preference).second;
+                primitive->get_resolved_renderable_mesh(variant_preference, primitive_mode).second;
             if (buffer_mesh == nullptr) {
                 continue;
             }

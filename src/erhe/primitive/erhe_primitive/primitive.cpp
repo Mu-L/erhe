@@ -1274,14 +1274,29 @@ auto Primitive::has_renderable_mesh(const Mesh_variant variant) const -> bool
     return static_cast<bool>(get_render_shape(variant));
 }
 
-auto Primitive::get_resolved_renderable_mesh(const Mesh_variant preference) const -> std::pair<Mesh_variant, const Buffer_mesh*>
+auto Primitive::get_resolved_renderable_mesh(
+    const Mesh_variant  preference,
+    const Primitive_mode primitive_mode
+) const -> std::pair<Mesh_variant, const Buffer_mesh*>
 {
     // Resolve and fetch in one step. A caller that asked "is the optimized
     // build there?" and then fetched it separately could have the answer go
     // stale in between - aborting on the fetch, or silently dropping the
     // primitive from a pass.
     if ((preference == Mesh_variant::optimized) && optimized_render_shape) {
-        return {Mesh_variant::optimized, &optimized_render_shape->get_renderable_mesh()};
+        // The optimized build carries FILL TRIANGLES ONLY - welding merges
+        // corners across facets, which is exactly what edge lines, corner
+        // points, centroid points and the expanded solid-wireframe copy are
+        // built per-facet to avoid. Preferring it for one of those modes would
+        // hand the caller an empty range, and every caller reads that as "this
+        // primitive has nothing to draw" and skips it - edge lines would simply
+        // disappear. So the preference only applies to a mode the optimized
+        // build actually has; everything else resolves to the original, which
+        // has them all.
+        const Buffer_mesh& optimized_mesh = optimized_render_shape->get_renderable_mesh();
+        if (optimized_mesh.index_range(primitive_mode).index_count > 0) {
+            return {Mesh_variant::optimized, &optimized_mesh};
+        }
     }
     if (!render_shape) {
         return {Mesh_variant::original, nullptr};

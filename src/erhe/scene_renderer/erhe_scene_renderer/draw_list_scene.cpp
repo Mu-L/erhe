@@ -72,7 +72,7 @@ public:
     // and recorded on the entry. Draw lists are content rendering, so they
     // prefer the optimized variant; the ID pass does not use draw lists.
     const std::pair<erhe::primitive::Mesh_variant, const erhe::primitive::Buffer_mesh*> resolved =
-        primitive->get_resolved_renderable_mesh(erhe::primitive::Mesh_variant::optimized);
+        primitive->get_resolved_renderable_mesh(erhe::primitive::Mesh_variant::optimized, primitive_mode);
     result.variant = resolved.first;
     const erhe::primitive::Buffer_mesh* buffer_mesh = resolved.second;
     if (buffer_mesh == nullptr) {

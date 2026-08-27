@@ -285,14 +285,18 @@ public:
     // `original` as the preference means original, full stop: that is how the
     // ID renderer, ray tracing and the GPU vertex edit paths pin themselves to
     // the build with valid facet ids. `optimized` means "optimized if it is
-    // there, else original" - the content-rendering choice.
+    // there AND it has this primitive_mode, else original" - the
+    // content-rendering choice. The mode is part of the question because the
+    // optimized build is fill triangles only: resolving to it for edge lines
+    // would hand back an empty range, which every caller reads as "nothing to
+    // draw" rather than as "ask the other build".
     //
     // Lifetime of the returned pointer: it points into the resolved shape, so
     // it stays valid as long as that shape does. `original` lives as long as
     // the Primitive; a dropped `optimized` shape is retired rather than freed
     // until in-flight frames have retired it (see optimized_render_shape).
     // Take get_render_shape() instead to hold one across frames.
-    [[nodiscard]] auto get_resolved_renderable_mesh(Mesh_variant preference) const -> std::pair<Mesh_variant, const Buffer_mesh*>;
+    [[nodiscard]] auto get_resolved_renderable_mesh(Mesh_variant preference, Primitive_mode primitive_mode) const -> std::pair<Mesh_variant, const Buffer_mesh*>;
     // Null when there is no shape for the named variant. There is deliberately
     // no fallback: a silent one would blur which data a build or an edit
     // actually used. Use get_resolved_renderable_mesh() to ask for a fallback.
