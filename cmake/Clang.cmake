@@ -84,6 +84,30 @@ if (("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64") OR ("${CMAKE_SYSTEM_PROCESSO
     endif ()
 endif ()
 
+# MSVC STL vector algorithms, disabled for clang-cl only.
+#
+# <xutility> gates std::find / std::remove / std::count on
+# _Vector_alg_in_find_is_safe_elem, whose first term is
+#   #ifdef __clang__
+#   _Is_same_and_builtin_trivially_equality_comparable = is_same_v<..> && __is_trivially_equality_comparable(_Elem)
+#   #else
+#   ... = false
+#   #endif
+# The trait is true for ANY trivially equality comparable type - but
+# _Find_vectorized / _Remove_vectorized only implement sizeof 1, 2, 4 and 8 and
+# end in `static_assert(false, "unexpected size")`. So std::find over a
+# contiguous range of, say, a three-int struct compiles under cl.exe (which
+# takes the hard-coded false) and fails under clang-cl. Seen on
+# editor::Lightmap_tile_key (12 bytes) with MSVC 14.51.36231.
+#
+# This is an STL bug, not ours, and it would fire again for the next such type,
+# so turn the vector algorithms off for this configuration rather than reshaping
+# call sites around it. The clang-cl tree exists to feed clangd a native
+# compile_commands.json, so the lost vectorization costs nothing that ships.
+if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    add_compile_definitions(_USE_STD_VECTOR_ALGORITHMS=0)
+endif ()
+
 function (erhe_target_settings_toolchain target)
     # C++-only: erhe targets may contain vendored C sources (e.g. wuffs),
     # and -Woverloaded-virtual / -Wno-deprecated-copy are invalid for C.
