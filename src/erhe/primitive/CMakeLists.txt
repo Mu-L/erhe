@@ -24,6 +24,7 @@ erhe_target_sources_grouped(
     erhe_primitive/material.hpp
     erhe_primitive/mesh_optimizer.cpp
     erhe_primitive/mesh_optimizer.hpp
+    erhe_primitive/mesh_optimizer_cache.cpp
     erhe_primitive/primitive_builder.cpp
     erhe_primitive/primitive_builder.hpp
     erhe_primitive/primitive_log.cpp
@@ -49,6 +50,8 @@ target_link_libraries(${_target}
         erhe::math
         erhe::raytrace
     PRIVATE
+        erhe::file
+        erhe::hash
         erhe::log
         erhe::profile
         erhe::verify

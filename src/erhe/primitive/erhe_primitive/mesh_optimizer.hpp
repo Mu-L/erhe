@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -35,6 +36,13 @@ public:
 class Mesh_optimize_statistics
 {
 public:
+    // False when the ACMR / overdraw / fetch figures below were never taken -
+    // a cache hit replays the derivation without running meshopt_analyze*(),
+    // which costs a pass of its own and exists only for the log line. Without
+    // this flag a hit is indistinguishable from an optimization that achieved
+    // nothing at all.
+    bool measured{false};
+
     std::size_t vertex_count_before{0};
     std::size_t vertex_count_after {0};
     std::size_t triangle_count     {0};
@@ -76,6 +84,32 @@ public:
 [[nodiscard]] auto optimize_triangle_soup(
     const Triangle_soup&         source,
     const Mesh_optimize_options& options
+) -> Mesh_optimize_result;
+
+// optimize_triangle_soup() through a filesystem cache keyed by the source
+// content. Optimizing a large primitive costs on the order of 100 ms, and an
+// import re-does that on every load of the same asset, so the derivation is
+// stored and replayed instead.
+//
+// What is stored is the two REMAPS, not the optimized soup: they fully
+// determine it (gather vertices through the remap, rebuild indices as
+// permutation-ordered source triples mapped through it) and they are what
+// Element_mappings composition needs anyway. A hit therefore reproduces a
+// bit-identical Mesh_optimize_result without calling meshoptimizer at all, and
+// the entry stays small - two uint32 tables rather than whole vertex data.
+//
+// The cache never fails a load. A missing, corrupt, truncated, mismatched or
+// unwritable entry degrades to a plain optimize (and a rewrite attempt), with
+// at most a warning. `cache_directory` is created if needed; pass an empty path
+// to bypass the cache entirely.
+//
+// Concurrency: loader workers can race on the same entry. Writes go to a
+// uniquely named temporary file and are renamed into place, so a reader sees
+// either the old entry or the new one, never a half-written one.
+[[nodiscard]] auto optimize_triangle_soup_cached(
+    const Triangle_soup&         source,
+    const Mesh_optimize_options& options,
+    const std::filesystem::path& cache_directory
 ) -> Mesh_optimize_result;
 
 // Rewrites `source` - which describes the ORDER of the soup that was optimized -
@@ -132,12 +166,16 @@ public:
 // site the shape has had no such build, and its mappings are empty until the
 // deferred geometry finalize anyway.
 //
+// `cache_directory` is forwarded to optimize_triangle_soup_cached(); empty
+// bypasses the cache.
+//
 // `source_shape` is only read from. `name` appears in the statistics log line.
 [[nodiscard]] auto make_optimized_render_shape(
     const Primitive_render_shape& source_shape,
     const Element_mappings&       source_mappings,
     const Mesh_optimize_options&  options,
     const Buffer_info&            buffer_info,
+    const std::filesystem::path&  cache_directory,
     std::string_view              name
 ) -> std::shared_ptr<Primitive_render_shape>;
 

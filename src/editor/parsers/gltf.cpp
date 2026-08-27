@@ -634,6 +634,12 @@ void attach_optimized_render_shape(
     }
     ERHE_PROFILE_FUNCTION();
 
+    // Cache directory is cwd-relative, which is writable on Android too (main.cpp
+    // chdir's to the per-app internal storage). Empty bypasses the cache.
+    const std::filesystem::path cache_directory = context.mesh_memory_config->mesh_optimize_cache
+        ? std::filesystem::path{"cache"} / "mesh_optimizer"
+        : std::filesystem::path{};
+
     // The variant is a second build of the same data, so it takes the same
     // buffer_info - and therefore the same vertex format - as the source
     // build, or a skinned mesh would draw without its joints.
@@ -643,6 +649,7 @@ void attach_optimized_render_shape(
             erhe::primitive::Element_mappings{},
             erhe::primitive::Mesh_optimize_options{},
             build_info.buffer_info,
+            cache_directory,
             label
         );
     if (!optimized) {

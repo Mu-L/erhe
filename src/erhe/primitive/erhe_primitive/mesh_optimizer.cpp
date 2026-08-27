@@ -354,6 +354,7 @@ auto optimize_triangle_soup(const Triangle_soup& source, const Mesh_optimize_opt
         }
     }
 
+    result.statistics.measured = true;
     result.triangle_soup = std::move(optimized);
     result.statistics.elapsed_seconds = std::chrono::duration<float>{std::chrono::steady_clock::now() - start_time}.count();
     return result;
@@ -428,6 +429,7 @@ auto make_optimized_render_shape(
     const Element_mappings&       source_mappings,
     const Mesh_optimize_options&  options,
     const Buffer_info&            buffer_info,
+    const std::filesystem::path&  cache_directory,
     const std::string_view        name
 ) -> std::shared_ptr<Primitive_render_shape>
 {
@@ -440,7 +442,7 @@ auto make_optimized_render_shape(
         return {};
     }
 
-    Mesh_optimize_result optimization = optimize_triangle_soup(*source_soup.get(), options);
+    Mesh_optimize_result optimization = optimize_triangle_soup_cached(*source_soup.get(), options, cache_directory);
     if (!optimization.triangle_soup) {
         return {};
     }
@@ -465,6 +467,22 @@ auto make_optimized_render_shape(
 
 void log_mesh_optimize_statistics(const std::string_view name, const Mesh_optimize_statistics& statistics)
 {
+    if (!statistics.measured) {
+        // Cache hit: the derivation was replayed, so there are no before/after
+        // figures to report. Saying so beats printing zeroes that read like an
+        // optimization that did nothing.
+        log_primitive->info(
+            "mesh optimize {}: {} triangles, vertices {} -> {} ({:+.1f}%), replayed from cache",
+            name,
+            statistics.triangle_count,
+            statistics.vertex_count_before,
+            statistics.vertex_count_after,
+            (statistics.vertex_count_before > 0)
+                ? 100.0f * (static_cast<float>(statistics.vertex_count_after) - static_cast<float>(statistics.vertex_count_before)) / static_cast<float>(statistics.vertex_count_before)
+                : 0.0f
+        );
+        return;
+    }
     log_primitive->info(
         "mesh optimize {}: {} triangles, vertices {} -> {} ({:+.1f}%), ACMR {:.3f} -> {:.3f}, "
         "overdraw {:.3f} -> {:.3f}, fetch {} -> {} bytes, {:.1f} ms",

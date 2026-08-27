@@ -227,6 +227,34 @@ Two observations to carry forward, neither a correctness problem:
 - Wire `mesh_optimize_cache` boolean at the import helper. Unbounded growth is accepted for v1 (note future LRU).
 - **Verify:** load twice → second load logs hits; delete cache mid-session; change options → invalidation; Quest smoke test. Commit.
 
+## Phase 4 verification (2026-08-27, ABeautifulGame.glb)
+
+Same controlled A/B harness as phase 3, plus the window layout pinned - the
+editor rewrites `config/editor/desktop_windows.json` on exit, and a different
+layout moves the viewport, which reads as a ~96% pixel difference that has
+nothing to do with rendering. Pin the layout for any run being compared.
+
+- **Replay is correct.** Baseline (`optimize_meshes` off) vs a run served
+  entirely from cache: **0 differing viewport pixels of 2 198 250**. Cold
+  (optimize + store) vs warm (pure replay) likewise 0.
+- **Corruption degrades to a miss, never to a failed load.** With one entry
+  truncated, one filled with garbage and one emptied, the load logged 12
+  primitives replayed and 3 freshly optimized, rewrote all three entries, and
+  rendered 0 differing pixels against the baseline. No errors.
+- **Content addressing dedups across primitives**: 15 primitives produced 8
+  entries, because the black/white piece pairs are distinct glTF meshes with
+  identical geometry and therefore hash the same.
+- Per-primitive optimize time goes from ~30-190 ms to ~0 on a hit.
+
+Deviation from the plan text: the key uses `erhe::hash::hash` (FNV-1a over the
+bytes), not `erhe_hash/xxhash.hpp` - that header is a **compile-time** XXH32 for
+constexpr strings and is not a runtime bulk hasher.
+
+Note for phase 6: a cache hit does not run `meshopt_analyze*()`, so it has no
+before/after figures. `Mesh_optimize_statistics::measured` says so, and the log
+line reads "replayed from cache" rather than printing zeroes that look like an
+optimization that achieved nothing.
+
 ## Phase 5 — Geometry-path full optimization (the steady-state win)
 
 **Why full optimization here (user decision, reversing the earlier weld deferral):** in the editor, every imported glTF mesh's soup-built buffer mesh is replaced shortly after load by a geometry-path rebuild to gain edge lines — `deferred_finalize_mesh_items` (`async_raytrace_kickoff_operation.cpp:131-138`, gate fires for every fill-only soup mesh) or eager `finalize_imported_meshes` (`parsers/gltf.cpp:670-681`). The geometry path is therefore the steady-state chokepoint for BOTH imported and procedural meshes; the soup-path optimization (phase 3) covers the load-time window and soup-only consumers, and provides the cache. Split into two independently committed steps:
