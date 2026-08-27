@@ -217,7 +217,12 @@ class GLGenerator:
             'GL_ARB_sparse_texture',
             'GL_ARB_sparse_texture2',
             'GL_ARB_sparse_texture_clamp',
-            'GL_KHR_parallel_shader_compile'
+            'GL_KHR_parallel_shader_compile',
+            # ASTC internal formats. gl.xml already puts them in the
+            # InternalFormat group, so collecting this extension is all it takes
+            # for gl::Internal_format to carry them - and without them
+            # gl_helpers::convert_to_gl() has no ASTC mapping to return.
+            'GL_KHR_texture_compression_astc_ldr'
         ]
         self.script_path = os.path.dirname(os.path.realpath(__file__))
         self.outpath     = outpath

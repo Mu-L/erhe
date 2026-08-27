@@ -1030,6 +1030,8 @@ auto has_stencil(const gl::Internal_format format) -> bool
         case erhe::dataformat::Format::format_bc6h_sfloat:              return gl::Internal_format::compressed_rgb_bptc_signed_float;
         case erhe::dataformat::Format::format_bc7_unorm:                return gl::Internal_format::compressed_rgba_bptc_unorm;
         case erhe::dataformat::Format::format_bc7_srgb:                 return gl::Internal_format::compressed_srgb_alpha_bptc_unorm;
+        case erhe::dataformat::Format::format_astc_4x4_unorm:           return gl::Internal_format::compressed_rgba_astc_4x4_khr;
+        case erhe::dataformat::Format::format_astc_4x4_srgb:            return gl::Internal_format::compressed_srgb8_alpha8_astc_4x4_khr;
         case erhe::dataformat::Format::format_d16_unorm:                return gl::Internal_format::depth_component16;
         case erhe::dataformat::Format::format_x8_d24_unorm_pack32:      return gl::Internal_format::depth24_stencil8;
         case erhe::dataformat::Format::format_d32_sfloat:               return gl::Internal_format::depth_component32f;
