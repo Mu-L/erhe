@@ -23,7 +23,9 @@ enum class Primitive_mode : unsigned int {
     count             = 7
 };
 
-// Which build of a Primitive_render_shape's renderable data is meant.
+// Which build of a Primitive's renderable data is meant. Each build is a
+// separate Primitive_render_shape hanging off the Primitive, carrying its own
+// Buffer_mesh and its own Element_mappings - see Primitive.
 //
 // `original` is source order and carries valid per-corner facet ids. It is
 // ALWAYS built, which is what lets the ID renderer, picking and ray tracing
@@ -40,8 +42,6 @@ enum class Mesh_variant : uint16_t {
     optimized = 1,
     count     = 2
 };
-
-inline constexpr std::size_t mesh_variant_count = static_cast<std::size_t>(Mesh_variant::count);
 
 [[nodiscard]] auto c_str(Mesh_variant variant) -> const char*;
 

@@ -318,7 +318,7 @@ auto Mesh::get_skinned_primitive_aabb_world(const erhe::primitive::Primitive& pr
     // Per-joint bounds are the same set of vertices either way, so the
     // always-present variant is the right one to read.
     const std::vector<erhe::math::Aabb>& joint_boxes =
-        shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original).joint_bounding_boxes;
+        shape->get_renderable_mesh().joint_bounding_boxes;
     const std::size_t end = std::min(joint_boxes.size(), skin_data.joints.size());
     for (std::size_t i = 0; i < end; ++i) {
         const erhe::math::Aabb& joint_box = joint_boxes[i];

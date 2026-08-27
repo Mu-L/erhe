@@ -227,9 +227,7 @@ auto Primitive_buffer::update(
             const erhe::primitive::Primitive&   primitive   = *mesh_primitive.primitive.get();
             const erhe::primitive::Material*    material    = mesh_primitive.material.get();
             const erhe::primitive::Buffer_mesh* buffer_mesh =
-                (primitive.render_shape != nullptr)
-                    ? primitive.render_shape->get_resolved_renderable_mesh(erhe::primitive::Mesh_variant::optimized).second
-                    : nullptr;
+                primitive.get_resolved_renderable_mesh(erhe::primitive::Mesh_variant::optimized).second;
             ERHE_VERIFY(buffer_mesh != nullptr);
             const erhe::primitive::Index_range  index_range = buffer_mesh->index_range(primitive_mode);
             const uint32_t count = static_cast<uint32_t>(index_range.index_count);

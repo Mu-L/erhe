@@ -711,7 +711,7 @@ void Mesh_component_transform::enqueue_gpu_position(App_context& context, const 
     // GPU vertex edits always address the per-corner original buffer: the
     // element mappings only describe that variant, and an optimized variant is
     // invalidated by the edit rather than written through.
-    const erhe::primitive::Buffer_mesh&             buffer_mesh      = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
+    const erhe::primitive::Buffer_mesh&             buffer_mesh      = primitive.render_shape->get_renderable_mesh();
     const erhe::scene_renderer::Vertex_input_entry& vertex_input     = mesh_memory.get_vertex_input(buffer_mesh.vertex_input_key);
     const erhe::dataformat::Vertex_format&          vertex_format    = vertex_input.vertex_format;
     const erhe::dataformat::Attribute_stream        attribute_stream = vertex_format.find_attribute(erhe::dataformat::Vertex_attribute_usage::position, 0);
@@ -719,7 +719,7 @@ void Mesh_component_transform::enqueue_gpu_position(App_context& context, const 
         return;
     }
 
-    const erhe::primitive::Element_mappings& element_mappings = primitive.render_shape->get_element_mappings(erhe::primitive::Mesh_variant::original);
+    const erhe::primitive::Element_mappings& element_mappings = primitive.render_shape->get_element_mappings();
     const std::size_t                        stream_index     = static_cast<std::size_t>(attribute_stream.stream - vertex_format.streams.data());
     if (stream_index >= buffer_mesh.vertex_buffer_ranges.size()) {
         return;
@@ -807,7 +807,7 @@ void Mesh_component_transform::enqueue_gpu_edge_line_positions(App_context& cont
     if (!primitive.render_shape) {
         return;
     }
-    const erhe::primitive::Buffer_mesh&  buffer_mesh = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
+    const erhe::primitive::Buffer_mesh&  buffer_mesh = primitive.render_shape->get_renderable_mesh();
     const erhe::primitive::Buffer_range& edge_range  = buffer_mesh.edge_line_vertex_buffer_range;
     if (edge_range.count == 0) {
         return; // primitive built without edge lines
@@ -860,8 +860,8 @@ void Mesh_component_transform::update_group_normals(App_context& context, Group&
     if (!primitive.render_shape) {
         return;
     }
-    const erhe::primitive::Buffer_mesh&             buffer_mesh      = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
-    const erhe::primitive::Element_mappings&        element_mappings = primitive.render_shape->get_element_mappings(erhe::primitive::Mesh_variant::original);
+    const erhe::primitive::Buffer_mesh&             buffer_mesh      = primitive.render_shape->get_renderable_mesh();
+    const erhe::primitive::Element_mappings&        element_mappings = primitive.render_shape->get_element_mappings();
     const erhe::primitive::Normal_style             normal_style     = primitive.render_shape->get_normal_style();
     erhe::scene_renderer::Mesh_memory&              mesh_memory      = *context.mesh_memory;
     const erhe::scene_renderer::Vertex_input_entry& vertex_input     = mesh_memory.get_vertex_input(buffer_mesh.vertex_input_key);

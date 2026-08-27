@@ -571,7 +571,7 @@ void Weight_paint_tool::write_vertex_joints(const GEO::index_t vertex, const glm
     if (!primitive.render_shape) {
         return;
     }
-    const erhe::primitive::Element_mappings& element_mappings = primitive.render_shape->get_element_mappings(erhe::primitive::Mesh_variant::original);
+    const erhe::primitive::Element_mappings& element_mappings = primitive.render_shape->get_element_mappings();
     const std::vector<GEO::index_t>& vertex_corners = m_stroke_geometry->get_vertex_corners(vertex);
     for (const GEO::index_t corner : vertex_corners) {
         if (corner >= element_mappings.mesh_corner_to_vertex_buffer_index.size()) {
@@ -594,7 +594,7 @@ void Weight_paint_tool::enqueue_gpu_joint_data(const uint32_t vertex_buffer_inde
     // GPU vertex edits always address the per-corner original buffer: the
     // element mappings only describe that variant, and an optimized variant is
     // invalidated by the edit rather than written through.
-    const erhe::primitive::Buffer_mesh&             buffer_mesh   = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
+    const erhe::primitive::Buffer_mesh&             buffer_mesh   = primitive.render_shape->get_renderable_mesh();
     const erhe::scene_renderer::Vertex_input_entry& vertex_input  = mesh_memory.get_vertex_input(buffer_mesh.vertex_input_key);
     const erhe::dataformat::Vertex_format&          vertex_format = vertex_input.vertex_format;
 

@@ -781,14 +781,13 @@ void Properties::mesh_properties(erhe::scene::Mesh& mesh)
         erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
         if (primitive.render_shape) {
             shape_properties("Render shape", primitive.render_shape.get());
-            const erhe::primitive::Buffer_mesh& original_mesh = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::original);
-            buffer_mesh_properties("Renderable Buffer Mesh", &original_mesh);
-            // Inspecting a shape should show what is actually resident, so list
-            // the optimized variant separately whenever one is live.
-            if (primitive.render_shape->has_renderable_mesh(erhe::primitive::Mesh_variant::optimized)) {
-                const erhe::primitive::Buffer_mesh& optimized_mesh = primitive.render_shape->get_renderable_mesh(erhe::primitive::Mesh_variant::optimized);
-                buffer_mesh_properties("Optimized Buffer Mesh", &optimized_mesh);
-            }
+            buffer_mesh_properties("Renderable Buffer Mesh", &primitive.render_shape->get_renderable_mesh());
+        }
+        // Inspecting a primitive should show what is actually resident, so list
+        // the optimized build separately whenever one is live.
+        if (primitive.optimized_render_shape) {
+            shape_properties("Optimized render shape", primitive.optimized_render_shape.get());
+            buffer_mesh_properties("Optimized Buffer Mesh", &primitive.optimized_render_shape->get_renderable_mesh());
         }
         if (m_context.developer_mode && primitive.collision_shape) {
             shape_properties("Collision shape", primitive.collision_shape.get());
