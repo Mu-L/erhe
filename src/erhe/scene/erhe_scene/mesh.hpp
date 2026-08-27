@@ -71,6 +71,26 @@ public:
     // Public API
     void clear_primitives    ();
     void update_rt_primitives();
+    // Drops one primitive's optimized mesh variant and re-registers every mesh
+    // sharing that Primitive. Call before the FIRST GPU write of a live edit.
+    //
+    // A live edit - a vertex drag, paint, weight paint - writes the ORIGINAL
+    // buffer mesh, because Element_mappings describe only that build. The
+    // optimized build is welded, so a per-corner edit is not even expressible
+    // in it: two corners the weld merged share one output slot. A mesh still
+    // drawing the optimized variant would show nothing change until the edit
+    // commits and rebuilds the primitive. Dropping the variant is what makes
+    // the edit visible; writing through it is not an option.
+    //
+    // Re-registration is not optional, and not limited to this mesh. Draw list
+    // records BAKE the drawn variant's base_vertex and index ranges, and a
+    // Primitive is shared - glTF instances and brush instances hold the same
+    // one. A sharer left unregistered keeps drawing from ranges this drop
+    // retires and the pool later hands to another mesh.
+    //
+    // Idempotent, and free when there is no variant to drop - which is every
+    // call while mesh optimization is off.
+    void invalidate_optimized_primitive_variant(std::size_t primitive_index);
     void add_primitive       (const std::shared_ptr<erhe::primitive::Primitive>& primitive, const std::shared_ptr<erhe::primitive::Material>& material = {});
     void set_primitives      (const std::vector<Mesh_primitive>& primitives);
     // Reassign the material of one primitive. Use this instead of writing

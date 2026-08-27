@@ -591,6 +591,12 @@ void Weight_paint_tool::enqueue_gpu_joint_data(const uint32_t vertex_buffer_inde
 
     const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = stroke_mesh->get_primitives();
     const erhe::primitive::Primitive& primitive = *mesh_primitives.at(m_stroke_primitive_index).primitive.get();
+
+    // First write of this edit drops any optimized variant: the edit is
+    // expressed per corner, and the optimized build has welded corners that
+    // cannot represent it. Idempotent, so calling it per write is fine.
+    stroke_mesh->invalidate_optimized_primitive_variant(m_stroke_primitive_index);
+
     // GPU vertex edits always address the per-corner original buffer: the
     // element mappings only describe that variant, and an optimized variant is
     // invalidated by the edit rather than written through.

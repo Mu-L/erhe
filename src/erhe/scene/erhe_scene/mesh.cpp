@@ -6,6 +6,7 @@
 #include "erhe_raytrace/iscene.hpp"
 #include "erhe_scene/mesh_raytrace.hpp"
 #include "erhe_scene/node.hpp"
+#include "erhe_scene/scene.hpp"
 #include "erhe_scene/scene_host.hpp"
 #include "erhe_scene/scene_log.hpp"
 #include "erhe_scene/skin.hpp"
@@ -74,6 +75,48 @@ void Mesh::update_rt_primitives()
     // the mesh until the node next moves.
     handle_node_transform_update();
     notify_primitives_changed();
+}
+
+void Mesh::invalidate_optimized_primitive_variant(const std::size_t primitive_index)
+{
+    if (primitive_index >= m_primitives.size()) {
+        return;
+    }
+    const std::shared_ptr<erhe::primitive::Primitive>& primitive = m_primitives[primitive_index].primitive;
+    if (!primitive || !primitive->optimized_render_shape) {
+        // The common case by far, and why this is cheap enough to call per
+        // painted corner: no variant, nothing to do.
+        return;
+    }
+
+    // Drop first, re-register second: registration reads what is live, so the
+    // order decides whether the sharers pick up the original or the shape being
+    // retired. The dropped shape's GPU ranges go to the pool's retired list,
+    // which is frame-gated, so a record not yet rebuilt still addresses valid
+    // memory until it is.
+    primitive->optimized_render_shape.reset();
+
+    Scene_host* scene_host = get_scene_host();
+    Scene*      scene      = (scene_host != nullptr) ? scene_host->get_hosted_scene() : nullptr;
+    if (scene == nullptr) {
+        // Not hosted: no sharers to find and no draw lists to update.
+        notify_primitives_changed();
+        return;
+    }
+
+    for (const std::shared_ptr<Mesh_layer>& mesh_layer : scene->get_mesh_layers()) {
+        for (const std::shared_ptr<Mesh>& layer_mesh : mesh_layer->meshes) {
+            if (!layer_mesh) {
+                continue;
+            }
+            for (const Mesh_primitive& candidate : layer_mesh->get_primitives()) {
+                if (candidate.primitive.get() == primitive.get()) {
+                    layer_mesh->notify_primitives_changed();
+                    break;
+                }
+            }
+        }
+    }
 }
 
 void Mesh::add_primitive(

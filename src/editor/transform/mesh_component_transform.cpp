@@ -708,6 +708,11 @@ void Mesh_component_transform::enqueue_gpu_position(App_context& context, const 
         return;
     }
 
+    // First write of this edit drops any optimized variant: the edit is
+    // expressed per corner, and the optimized build has welded corners that
+    // cannot represent it. Idempotent, so calling it per write is fine.
+    mesh->invalidate_optimized_primitive_variant(group.primitive_index);
+
     // GPU vertex edits always address the per-corner original buffer: the
     // element mappings only describe that variant, and an optimized variant is
     // invalidated by the edit rather than written through.

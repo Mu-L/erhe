@@ -343,6 +343,11 @@ void Paint_tool::paint_vertex(
         return ;
     }
 
+    // First write of this edit drops any optimized variant: the edit is
+    // expressed per corner, and the optimized build has welded corners that
+    // cannot represent it. Idempotent, so calling it per write is fine.
+    scene_mesh.invalidate_optimized_primitive_variant(scene_mesh_primitive_index);
+
     // GPU vertex edits always address the per-corner original buffer: the
     // element mappings only describe that variant, and an optimized variant is
     // invalidated by the edit rather than written through.
