@@ -442,7 +442,9 @@ that never reaches the geometry path.
    2 198 250, each against its own same-config control pair (also 0):
    ABeautifulGame.glb, the procedural startup scene, and Bistro
    (`niagara_bistro/bistro.gltf`, 1103 primitives optimized, e.g. subset_12
-   78 756 -> 15 748 vertices, -80.0%).
+   78 756 -> 15 748 vertices, -80.0%). The Bistro figure there is the
+   PRE-format-change one; see "Phase 7 Bistro re-verification" below for the
+   post-change result, which is 3575 pixels and explained.
 
    Two things the harness now enforces, both of which produced a *passing-looking*
    result before they were found:
@@ -509,6 +511,45 @@ Also fixed here: the stale-MCP-server guard committed in `4ab0378c` went in at
 the wrong indentation and broke `scripts/mesh_ab_capture.py` outright. It had
 never run. The Bistro results above predate that commit and stand; anything run
 between it and `999724299` produced no output at all rather than a wrong number.
+
+### Phase 7 Bistro re-verification (2026-08-27, after the vertex-format change)
+
+Bistro was the one A/B scene still verified only *before* `999724299`. Re-run on
+the Release ninja-vulkan build (rebuilt from `4556ba705`; the previous
+`editor.exe` predated the format change), `ERHE_SHOT_EXPOSURE=0.001`,
+`ERHE_SHOT_FRAME=0`:
+
+| pair | differing viewport pixels of 2 198 250 |
+| --- | --- |
+| off vs off (control) | 0 |
+| on vs on (control) | 0 |
+| **off vs on** | **3575 (0.163%)** |
+
+Both sides are properly exposed (saturated-pixel fraction 0.0000) and visually
+indistinguishable: 3287 of the 3575 differ by a single LSB in one channel, and
+the differing pixels sit entirely in one region - the ivy, hanging leaves and
+light-string bulbs of the right-hand building (`x 1113..2264, y 75..720`).
+
+**It is the triangle reordering, not the welding.** With `vertex_cache` and
+`overdraw` temporarily off and `weld` + `vertex_fetch` left on, the optimized
+run is **0 differing pixels** against the same `off` baseline. So the welded,
+refetched build rasterizes bit-exactly - as it must, welding being a bitwise
+compare over the whole vertex - and what moves pixels is the *order* triangles
+are drawn in, which is exactly what the two reorder passes change. The residue
+is order-dependent shading: alpha-blended foliage and coplanar/equal-depth
+leaf cards, where "which fragment got there first" is the tie-break. That it is
+confined to Bistro's foliage and absent from ABeautifulGame and the procedural
+scene fits.
+
+Why this reads as a regression against the earlier "Bistro: 0" entry and is not
+one: before the format change the facet id was still in the weld compare, so the
+geometry path merged *nothing* and the reorder passes ran over an index buffer
+they could barely improve. Now that welding actually merges, the resulting
+triangle order genuinely differs from the source order.
+
+The facet-id removal itself was ruled out as a cause first: `a_custom_0` is read
+only under `ERHE_VARIANT_ID_RENDER` (`standard.vert:172-195`), and the optimized
+variant is never selected for ID rendering.
 
 ## Risks / notes
 
