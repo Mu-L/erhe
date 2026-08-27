@@ -31,6 +31,11 @@ constexpr unsigned int primgroup_size = 0;
 // vertex_size <= 256.
 constexpr std::size_t max_vertex_size = 256;
 
+// meshopt_generateVertexRemapMulti() takes at most this many streams. erhe's
+// sink formats are two or three, so this is a contract check, not a limit that
+// bites.
+constexpr std::size_t max_stream_count = 16;
+
 // An ordered triangle triple, used to recover which source triangle each
 // output triangle came from. The cache and overdraw passes reorder triangles
 // but never rotate or rewrite a triple - vertex cache copies (a, b, c)
@@ -86,15 +91,14 @@ public:
 }
 
 // Positions as tightly packed float3, which meshopt_optimizeOverdraw() and
-// meshopt_analyzeOverdraw() require. Returns an empty vector when the soup has
-// no position attribute or one this cannot read, in which case the overdraw
-// pass is skipped - it is an ordering heuristic, so losing it costs quality,
-// never correctness.
+// meshopt_analyzeOverdraw() require. Returns an empty vector when the vertex
+// format has no position attribute or one this cannot read, in which case the
+// overdraw pass is skipped - it is an ordering heuristic, so losing it costs
+// quality, never correctness.
 [[nodiscard]] auto make_float_positions(
-    const erhe::dataformat::Vertex_format& vertex_format,
-    const std::vector<uint8_t>&            vertex_data,
-    const std::size_t                      vertex_count,
-    const std::size_t                      stride
+    const erhe::dataformat::Vertex_format&   vertex_format,
+    const std::vector<Mesh_optimize_stream>& streams,
+    const std::size_t                        vertex_count
 ) -> std::vector<float>
 {
     const erhe::dataformat::Attribute_stream position = vertex_format.find_attribute(
@@ -103,9 +107,21 @@ public:
     if ((position.attribute == nullptr) || !is_convertible_position_format(position.attribute->format)) {
         return {};
     }
+    // Which stream the position lives in. find_attribute() hands back a pointer
+    // into vertex_format.streams, and `streams` describes those one for one, so
+    // the index is that pointer's offset into the array.
+    const std::size_t stream_index = static_cast<std::size_t>(position.stream - vertex_format.streams.data());
+    if (stream_index >= streams.size()) {
+        return {};
+    }
+    const Mesh_optimize_stream& stream = streams[stream_index];
+    const std::size_t           stride = stream.stride;
+    if (stream.data.size() < vertex_count * stride) {
+        return {};
+    }
 
     std::vector<float> positions(vertex_count * 3, 0.0f);
-    const uint8_t* const base = vertex_data.data() + position.attribute->offset;
+    const uint8_t* const base = stream.data.data() + position.attribute->offset;
     for (std::size_t vertex = 0; vertex < vertex_count; ++vertex) {
         float value[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         erhe::dataformat::convert(
@@ -124,46 +140,56 @@ public:
 
 } // anonymous namespace
 
-auto optimize_triangle_soup(const Triangle_soup& source, const Mesh_optimize_options& options) -> Mesh_optimize_result
+auto optimize_indexed_mesh(
+    std::vector<Mesh_optimize_stream>&     streams,
+    std::vector<uint32_t>&                 indices,
+    const erhe::dataformat::Vertex_format& vertex_format,
+    const Mesh_optimize_options&           options,
+    Mesh_optimize_result&                  result
+) -> bool
 {
     ERHE_PROFILE_FUNCTION();
 
     const std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
 
-    Mesh_optimize_result result{};
-
-    // Match Triangle_soup::get_vertex_count() and mesh_from_triangle_soup(),
-    // which both assume the soup has exactly one stream, bound at 0.
-    const erhe::dataformat::Vertex_stream* stream = source.vertex_format.get_stream(0);
-    if ((source.vertex_format.streams.size() != 1) || (stream == nullptr)) {
-        return result;
+    // --- Validate ---------------------------------------------------------
+    // Everything below indexes vertex_count-sized scratch arrays BY THE INDEX
+    // VALUES, so the input is checked up front rather than trusted; erhe does
+    // not validate glTF indices anywhere on the import path. Every rejection
+    // returns before a single byte of `streams` or `indices` is touched.
+    if (streams.empty() || (streams.size() != vertex_format.streams.size()) || (streams.size() > max_stream_count)) {
+        return false;
     }
-
-    const std::size_t stride = stream->stride;
-    if (
-        (source.primitive_type != Primitive_type::triangles) ||
-        (stride == 0) ||
-        (stride > max_vertex_size) ||
-        source.index_data.empty() ||
-        ((source.index_data.size() % 3) != 0)
-    ) {
-        return result;
+    std::size_t total_stride    = 0;
+    std::size_t vertex_count_in = 0;
+    for (std::size_t stream_index = 0, stream_end = streams.size(); stream_index < stream_end; ++stream_index) {
+        const Mesh_optimize_stream& stream = streams[stream_index];
+        if (
+            (stream.stride == 0) ||
+            (stream.stride > max_vertex_size) ||
+            (stream.stride != vertex_format.streams[stream_index].stride) ||
+            ((stream.data.size() % stream.stride) != 0)
+        ) {
+            return false;
+        }
+        const std::size_t stream_vertex_count = stream.data.size() / stream.stride;
+        if (stream_index == 0) {
+            vertex_count_in = stream_vertex_count;
+        } else if (stream_vertex_count != vertex_count_in) {
+            // Streams are written in lockstep by every producer; disagreeing
+            // counts mean one of them was built from something else.
+            return false;
+        }
+        total_stride += stream.stride;
     }
-
-    const std::size_t vertex_count_in = source.get_vertex_count();
-    const std::size_t index_count     = source.index_data.size();
-    const std::size_t triangle_count  = index_count / 3;
-    if (vertex_count_in == 0) {
-        return result;
+    if ((vertex_count_in == 0) || indices.empty() || ((indices.size() % 3) != 0)) {
+        return false;
     }
-
-    // erhe does not validate glTF indices anywhere on the import path, and every
-    // meshopt entry point below indexes vertex_count-sized scratch arrays by the
-    // index values - an out-of-range index is an out-of-bounds heap write once
-    // the asserts are compiled out.
-    const uint32_t max_index = *std::max_element(source.index_data.begin(), source.index_data.end());
+    const std::size_t index_count    = indices.size();
+    const std::size_t triangle_count = index_count / 3;
+    const uint32_t    max_index      = *std::max_element(indices.begin(), indices.end());
     if (static_cast<std::size_t>(max_index) >= vertex_count_in) {
-        return result;
+        return false;
     }
 
     result.statistics.vertex_count_before = vertex_count_in;
@@ -171,51 +197,60 @@ auto optimize_triangle_soup(const Triangle_soup& source, const Mesh_optimize_opt
 
     {
         const meshopt_VertexCacheStatistics before_cache = meshopt_analyzeVertexCache(
-            source.index_data.data(), index_count, vertex_count_in, cache_size, warp_size, primgroup_size
+            indices.data(), index_count, vertex_count_in, cache_size, warp_size, primgroup_size
         );
         const meshopt_VertexFetchStatistics before_fetch = meshopt_analyzeVertexFetch(
-            source.index_data.data(), index_count, vertex_count_in, stride
+            indices.data(), index_count, vertex_count_in, total_stride
         );
         result.statistics.acmr_before        = before_cache.acmr;
         result.statistics.fetch_bytes_before = before_fetch.bytes_fetched;
 
-        const std::vector<float> before_positions = make_float_positions(
-            source.vertex_format, source.vertex_data, vertex_count_in, stride
-        );
+        const std::vector<float> before_positions = make_float_positions(vertex_format, streams, vertex_count_in);
         if (!before_positions.empty()) {
             const meshopt_OverdrawStatistics before_overdraw = meshopt_analyzeOverdraw(
-                source.index_data.data(), index_count, before_positions.data(), vertex_count_in, 3 * sizeof(float)
+                indices.data(), index_count, before_positions.data(), vertex_count_in, 3 * sizeof(float)
             );
             result.statistics.overdraw_before = before_overdraw.overdraw;
         }
     }
 
     // --- Weld -------------------------------------------------------------
-    // Bitwise equality over the whole interleaved vertex, so joints and weights
-    // take part in the compare and skinned meshes are safe by construction.
-    // Unreferenced source vertices come back as no_vertex and are dropped.
+    // Bitwise equality over every stream's whole per-vertex bytes, so joints
+    // and weights take part in the compare and skinned meshes are safe by
+    // construction. Unreferenced source vertices come back as no_vertex and are
+    // dropped.
     //
     // Precondition: the compare covers every stride byte INCLUDING inter-attribute
     // and tail padding, so a producer that leaves padding uninitialized simply
     // welds fewer vertices - a silent loss of the optimization, never a wrong
-    // result. The glTF importer zero-fills (resize() on a fresh vector).
+    // result. The glTF importer and the primitive builder both zero-fill
+    // (resize() on a fresh vector) and write only attribute bytes.
     std::vector<uint32_t> weld_remap(vertex_count_in, Mesh_optimize_result::no_vertex);
     std::size_t           vertex_count_welded = vertex_count_in;
-    std::vector<uint32_t> indices(index_count);
-    std::vector<uint8_t>  vertex_data;
 
     if (options.weld) {
-        vertex_count_welded = meshopt_generateVertexRemap(
-            weld_remap.data(), source.index_data.data(), index_count, source.vertex_data.data(), vertex_count_in, stride
+        std::vector<meshopt_Stream> meshopt_streams;
+        meshopt_streams.reserve(streams.size());
+        for (const Mesh_optimize_stream& stream : streams) {
+            // size == stride: compare the whole per-vertex byte range of this
+            // stream, padding included.
+            meshopt_streams.push_back(meshopt_Stream{stream.data.data(), stream.stride, stream.stride});
+        }
+        vertex_count_welded = meshopt_generateVertexRemapMulti(
+            weld_remap.data(), indices.data(), index_count, vertex_count_in, meshopt_streams.data(), meshopt_streams.size()
         );
-        meshopt_remapIndexBuffer(indices.data(), source.index_data.data(), index_count, weld_remap.data());
-        vertex_data.resize(vertex_count_welded * stride);
-        meshopt_remapVertexBuffer(vertex_data.data(), source.vertex_data.data(), vertex_count_in, stride, weld_remap.data());
+        // In-place: unlike its neighbours meshopt_remapIndexBuffer() makes no
+        // documented in-place promise, but its implementation is an element-wise
+        // forward loop (indexgenerator.cpp), verified against the pinned v1.2.
+        // Re-check on a version bump.
+        meshopt_remapIndexBuffer(indices.data(), indices.data(), index_count, weld_remap.data());
+        for (Mesh_optimize_stream& stream : streams) {
+            std::vector<uint8_t> welded(vertex_count_welded * stream.stride);
+            meshopt_remapVertexBuffer(welded.data(), stream.data.data(), vertex_count_in, stream.stride, weld_remap.data());
+            stream.data = std::move(welded);
+        }
     } else {
         std::iota(weld_remap.begin(), weld_remap.end(), 0u);
-        indices     = source.index_data;
-        vertex_data = source.vertex_data;
-        vertex_data.resize(vertex_count_welded * stride);
     }
 
     // The triangle triples as they stand after welding, which is still source
@@ -269,7 +304,7 @@ auto optimize_triangle_soup(const Triangle_soup& source, const Mesh_optimize_opt
 
     // --- Overdraw order ---------------------------------------------------
     if (options.overdraw) {
-        const std::vector<float> positions = make_float_positions(source.vertex_format, vertex_data, vertex_count_welded, stride);
+        const std::vector<float> positions = make_float_positions(vertex_format, streams, vertex_count_welded);
         if (!positions.empty()) {
             meshopt_optimizeOverdraw(
                 indices.data(), indices.data(), index_count, positions.data(), vertex_count_welded, 3 * sizeof(float), options.overdraw_threshold
@@ -297,22 +332,26 @@ auto optimize_triangle_soup(const Triangle_soup& source, const Mesh_optimize_opt
     }
 
     // --- Vertex fetch order -----------------------------------------------
-    // The Remap form, not optimizeVertexFetch() proper: the remap is needed to
-    // compose the forward source -> output vertex mapping below.
+    // The Remap form, not optimizeVertexFetch() proper: that one is single
+    // stream by contract, and the remap is needed anyway to compose the forward
+    // source -> output vertex mapping below.
     std::vector<uint32_t> fetch_remap(vertex_count_welded, Mesh_optimize_result::no_vertex);
     std::size_t           vertex_count_out = vertex_count_welded;
     if (options.vertex_fetch) {
         vertex_count_out = meshopt_optimizeVertexFetchRemap(fetch_remap.data(), indices.data(), index_count, vertex_count_welded);
-        // In-place: unlike its neighbours meshopt_remapIndexBuffer() makes no
-        // documented in-place promise, but its implementation is an element-wise
-        // forward loop (indexgenerator.cpp), verified against the pinned v1.2.
-        // Re-check on a version bump.
         meshopt_remapIndexBuffer(indices.data(), indices.data(), index_count, fetch_remap.data());
-        std::vector<uint8_t> fetched(vertex_count_out * stride);
-        meshopt_remapVertexBuffer(fetched.data(), vertex_data.data(), vertex_count_welded, stride, fetch_remap.data());
-        vertex_data = std::move(fetched);
+        for (Mesh_optimize_stream& stream : streams) {
+            std::vector<uint8_t> fetched(vertex_count_out * stream.stride);
+            meshopt_remapVertexBuffer(fetched.data(), stream.data.data(), vertex_count_welded, stream.stride, fetch_remap.data());
+            stream.data = std::move(fetched);
+        }
     } else {
         std::iota(fetch_remap.begin(), fetch_remap.end(), 0u);
+        // The weld branch already shrank the streams; this one did not run, so
+        // trim them to the count the output is described by.
+        for (Mesh_optimize_stream& stream : streams) {
+            stream.data.resize(vertex_count_out * stream.stride);
+        }
     }
 
     // --- Compose the forward source -> output vertex remap ------------------
@@ -326,37 +365,63 @@ auto optimize_triangle_soup(const Triangle_soup& source, const Mesh_optimize_opt
             : fetch_remap[welded];
     }
 
-    std::shared_ptr<Triangle_soup> optimized = std::make_shared<Triangle_soup>();
-    optimized->vertex_format  = source.vertex_format;
-    optimized->primitive_type = source.primitive_type;
-    optimized->vertex_data    = std::move(vertex_data);
-    optimized->index_data     = std::move(indices);
-
     result.statistics.vertex_count_after = vertex_count_out;
     {
         const meshopt_VertexCacheStatistics after_cache = meshopt_analyzeVertexCache(
-            optimized->index_data.data(), index_count, vertex_count_out, cache_size, warp_size, primgroup_size
+            indices.data(), index_count, vertex_count_out, cache_size, warp_size, primgroup_size
         );
         const meshopt_VertexFetchStatistics after_fetch = meshopt_analyzeVertexFetch(
-            optimized->index_data.data(), index_count, vertex_count_out, stride
+            indices.data(), index_count, vertex_count_out, total_stride
         );
         result.statistics.acmr_after        = after_cache.acmr;
         result.statistics.fetch_bytes_after = after_fetch.bytes_fetched;
 
-        const std::vector<float> after_positions = make_float_positions(
-            optimized->vertex_format, optimized->vertex_data, vertex_count_out, stride
-        );
+        const std::vector<float> after_positions = make_float_positions(vertex_format, streams, vertex_count_out);
         if (!after_positions.empty()) {
             const meshopt_OverdrawStatistics after_overdraw = meshopt_analyzeOverdraw(
-                optimized->index_data.data(), index_count, after_positions.data(), vertex_count_out, 3 * sizeof(float)
+                indices.data(), index_count, after_positions.data(), vertex_count_out, 3 * sizeof(float)
             );
             result.statistics.overdraw_after = after_overdraw.overdraw;
         }
     }
 
-    result.statistics.measured = true;
-    result.triangle_soup = std::move(optimized);
+    result.statistics.measured        = true;
     result.statistics.elapsed_seconds = std::chrono::duration<float>{std::chrono::steady_clock::now() - start_time}.count();
+    return true;
+}
+
+auto optimize_triangle_soup(const Triangle_soup& source, const Mesh_optimize_options& options) -> Mesh_optimize_result
+{
+    ERHE_PROFILE_FUNCTION();
+
+    Mesh_optimize_result result{};
+
+    // Match Triangle_soup::get_vertex_count() and mesh_from_triangle_soup(),
+    // which both assume the soup has exactly one stream, bound at 0.
+    const erhe::dataformat::Vertex_stream* stream = source.vertex_format.get_stream(0);
+    if ((source.vertex_format.streams.size() != 1) || (stream == nullptr)) {
+        return result;
+    }
+    if (source.primitive_type != Primitive_type::triangles) {
+        return result;
+    }
+
+    // Everything else the optimizer refuses - stride, vertex counts, index
+    // range - is checked by optimize_indexed_mesh(), which is the one place
+    // those rules live.
+    std::vector<Mesh_optimize_stream> streams;
+    streams.push_back(Mesh_optimize_stream{.data = source.vertex_data, .stride = stream->stride});
+    std::vector<uint32_t> indices = source.index_data;
+    if (!optimize_indexed_mesh(streams, indices, source.vertex_format, options, result)) {
+        return Mesh_optimize_result{};
+    }
+
+    std::shared_ptr<Triangle_soup> optimized = std::make_shared<Triangle_soup>();
+    optimized->vertex_format  = source.vertex_format;
+    optimized->primitive_type = source.primitive_type;
+    optimized->vertex_data    = std::move(streams.front().data);
+    optimized->index_data     = std::move(indices);
+    result.triangle_soup      = std::move(optimized);
     return result;
 }
 

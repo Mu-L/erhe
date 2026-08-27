@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+namespace erhe::dataformat { class Vertex_format; }
+
 namespace erhe::primitive {
 
 class Buffer_info;
@@ -80,6 +82,44 @@ public:
 
     Mesh_optimize_statistics statistics;
 };
+
+// One vertex stream taking part in an optimization: the packed per-vertex
+// bytes of that stream and the stride they are packed at. Rewritten in place
+// by optimize_indexed_mesh().
+class Mesh_optimize_stream
+{
+public:
+    std::vector<uint8_t> data;
+    std::size_t          stride{0};
+};
+
+// The weld / vertex-cache / overdraw / vertex-fetch core. Both optimization
+// entry points funnel through this: optimize_triangle_soup() calls it with the
+// soup's single stream, and the geometry path calls it with one stream per sink
+// vertex stream, on the bytes the build already staged.
+//
+// `streams` and `indices` are rewritten in place, and `streams` shrinks to the
+// output vertex count. `vertex_format` is only read to locate the position
+// attribute for the overdraw pass, so it must describe `streams` one for one -
+// same count, same order, same strides.
+//
+// Returns false, leaving both arguments untouched, for an input the optimizer
+// refuses: no streams, a stride of 0 or over 256 (meshoptimizer's limit),
+// streams of disagreeing vertex counts, an index count that is not a multiple
+// of 3, or an index out of range - the last is a real hazard rather than
+// paranoia, because every meshopt entry point indexes vertex_count-sized
+// scratch arrays BY THE INDEX VALUES.
+//
+// The returned result carries the remaps, the triangle permutation and the
+// statistics. Its `triangle_soup` is always null: this function knows nothing
+// about soups, and the caller wraps the output however it needs to.
+[[nodiscard]] auto optimize_indexed_mesh(
+    std::vector<Mesh_optimize_stream>&     streams,
+    std::vector<uint32_t>&                 indices,
+    const erhe::dataformat::Vertex_format& vertex_format,
+    const Mesh_optimize_options&           options,
+    Mesh_optimize_result&                  result
+) -> bool;
 
 [[nodiscard]] auto optimize_triangle_soup(
     const Triangle_soup&         source,

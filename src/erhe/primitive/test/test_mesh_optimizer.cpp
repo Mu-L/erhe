@@ -450,3 +450,121 @@ TEST(Mesh_optimizer, a_dropped_source_vertex_composes_to_no_index)
     EXPECT_EQ(composed.mesh_vertex_to_vertex_buffer_index[1], GEO::NO_INDEX);
     EXPECT_NE(composed.mesh_vertex_to_vertex_buffer_index[2], GEO::NO_INDEX);
 }
+
+// --- optimize_indexed_mesh(), the multi-stream core -----------------------
+// The geometry path feeds it one stream per sink vertex stream, so what has to
+// hold is that splitting the SAME bytes across streams changes nothing about
+// the transformation - and that the weld still compares all of them.
+
+namespace {
+
+using erhe::primitive::Mesh_optimize_stream;
+using erhe::primitive::optimize_indexed_mesh;
+
+[[nodiscard]] auto make_split_vertex_format() -> Vertex_format
+{
+    return Vertex_format{
+        Vertex_stream{0, {{Format::format_32_vec3_float, Vertex_attribute_usage::position }}},
+        Vertex_stream{1, {{Format::format_32_vec2_float, Vertex_attribute_usage::tex_coord}}}
+    };
+}
+
+// The same vertices as make_soup(), with position and texcoord in streams of
+// their own instead of interleaved in one.
+[[nodiscard]] auto make_split_streams(const Triangle_soup& soup) -> std::vector<Mesh_optimize_stream>
+{
+    const std::size_t source_stride = soup.vertex_format.streams.front().stride;
+    const std::size_t vertex_count  = soup.vertex_data.size() / source_stride;
+    std::vector<Mesh_optimize_stream> streams;
+    streams.push_back(Mesh_optimize_stream{.data = std::vector<uint8_t>(vertex_count * 12, uint8_t{0}), .stride = 12});
+    streams.push_back(Mesh_optimize_stream{.data = std::vector<uint8_t>(vertex_count *  8, uint8_t{0}), .stride =  8});
+    for (std::size_t i = 0; i < vertex_count; ++i) {
+        std::memcpy(streams[0].data.data() + i * 12, soup.vertex_data.data() + i * source_stride + 0,  12);
+        std::memcpy(streams[1].data.data() + i *  8, soup.vertex_data.data() + i * source_stride + 12,  8);
+    }
+    return streams;
+}
+
+} // anonymous namespace
+
+TEST(Mesh_optimizer, splitting_a_vertex_across_streams_changes_nothing)
+{
+    const Triangle_soup        soup   {make_unwelded_grid(6)};
+    const Mesh_optimize_options options{};
+
+    const Mesh_optimize_result single = erhe::primitive::optimize_triangle_soup(soup, options);
+    ASSERT_TRUE(single.triangle_soup);
+
+    std::vector<Mesh_optimize_stream> streams = make_split_streams(soup);
+    std::vector<uint32_t>             indices = soup.index_data;
+    Mesh_optimize_result              multi{};
+    const Vertex_format               split_format = make_split_vertex_format();
+    ASSERT_TRUE(optimize_indexed_mesh(streams, indices, split_format, options, multi));
+
+    // Same weld (the compare covers the same bytes, just split), same triangle
+    // reordering (it reads only indices and positions), therefore same remaps.
+    EXPECT_EQ(multi.vertex_remap,          single.vertex_remap);
+    EXPECT_EQ(multi.triangle_permutation,  single.triangle_permutation);
+    EXPECT_EQ(indices,                     single.triangle_soup->index_data);
+    EXPECT_EQ(multi.statistics.vertex_count_after, single.statistics.vertex_count_after);
+
+    // And each stream carries the same per-vertex bytes the interleaved output
+    // has, at the same output slot.
+    const std::size_t out_stride = single.triangle_soup->vertex_format.streams.front().stride;
+    const std::size_t out_count  = multi.statistics.vertex_count_after;
+    ASSERT_EQ(streams[0].data.size(), out_count * 12);
+    ASSERT_EQ(streams[1].data.size(), out_count *  8);
+    for (std::size_t i = 0; i < out_count; ++i) {
+        const uint8_t* const interleaved = single.triangle_soup->vertex_data.data() + i * out_stride;
+        EXPECT_EQ(std::memcmp(streams[0].data.data() + i * 12, interleaved +  0, 12), 0);
+        EXPECT_EQ(std::memcmp(streams[1].data.data() + i *  8, interleaved + 12,  8), 0);
+    }
+}
+
+TEST(Mesh_optimizer, the_weld_compares_every_stream_not_just_the_first)
+{
+    // Two triangles whose three vertices have identical POSITIONS but differ in
+    // the second stream. A weld that only looked at stream 0 would merge them
+    // and lose the texcoord split - the hard-edge / UV-seam case.
+    const Vertex_format format = make_split_vertex_format();
+    const float positions[6][3] = {
+        {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}
+    };
+    const float texcoords[6][2] = {
+        {0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f},
+        {0.5f, 0.5f}, {0.5f, 0.5f}, {0.5f, 0.5f}
+    };
+    std::vector<Mesh_optimize_stream> streams;
+    streams.push_back(Mesh_optimize_stream{.data = std::vector<uint8_t>(6 * 12, uint8_t{0}), .stride = 12});
+    streams.push_back(Mesh_optimize_stream{.data = std::vector<uint8_t>(6 *  8, uint8_t{0}), .stride =  8});
+    for (std::size_t i = 0; i < 6; ++i) {
+        std::memcpy(streams[0].data.data() + i * 12, &positions[i][0], 12);
+        std::memcpy(streams[1].data.data() + i *  8, &texcoords[i][0],  8);
+    }
+    std::vector<uint32_t> indices{0, 1, 2, 3, 4, 5};
+
+    Mesh_optimize_result result{};
+    ASSERT_TRUE(optimize_indexed_mesh(streams, indices, format, Mesh_optimize_options{}, result));
+    EXPECT_EQ(result.statistics.vertex_count_after, 6u);
+}
+
+TEST(Mesh_optimizer, the_multi_stream_core_refuses_streams_that_disagree)
+{
+    const Vertex_format format = make_split_vertex_format();
+    std::vector<Mesh_optimize_stream> streams;
+    streams.push_back(Mesh_optimize_stream{.data = std::vector<uint8_t>(3 * 12, uint8_t{0}), .stride = 12});
+    streams.push_back(Mesh_optimize_stream{.data = std::vector<uint8_t>(2 *  8, uint8_t{0}), .stride =  8});
+    const std::vector<Mesh_optimize_stream> before  = streams;
+    std::vector<uint32_t>                   indices {0, 1, 2};
+    const std::vector<uint32_t>             indices_before = indices;
+
+    Mesh_optimize_result result{};
+    EXPECT_FALSE(optimize_indexed_mesh(streams, indices, format, Mesh_optimize_options{}, result));
+    // Refused inputs are left exactly as they were.
+    ASSERT_EQ(streams.size(), before.size());
+    for (std::size_t i = 0; i < streams.size(); ++i) {
+        EXPECT_EQ(streams[i].data, before[i].data);
+    }
+    EXPECT_EQ(indices, indices_before);
+}
