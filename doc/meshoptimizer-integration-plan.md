@@ -419,6 +419,62 @@ that never reaches the geometry path.
 4. Perf: logged ACMR/overdraw deltas and vertex-count reductions, frame time on a heavy scene measured in **steady state** (after geometry finalize, where phase 5 is the active optimization; desktop GPU timers, Quest via Perfetto), import wall time with/without cache.
 5. Flip `optimize_meshes` to `true` in `config/editor/mesh_memory.json` (cache default stays user's call); update `src/erhe/primitive/erhe_primitive/notes.md`; final commit. **Quest note:** `migrate_android_assets_to_writable()` (`erhe_file/file.cpp:629-636`) never overwrites a config file that already exists in writable storage, so a shipped default flip does not reach an existing install — verifying it on Quest requires an uninstall + clean reinstall, not `install -r`.
 
+## Phase 7 progress (2026-08-27)
+
+1. **Builds.** ninja vulkan Debug + Release, VS opengl, VS null backend, VS
+   vulkan-headless, Quest APK, build_tests: all green. Tests 645/645.
+   `scripts/build_ninja_win_clang.bat` FAILS and it is NOT this work:
+   `.cpm_cache/basis_universal/.../zstd/zstd.c` hits *"always_inline function
+   '_bzhi_u64' requires target feature 'bmi2'"*. That tree's last successful
+   editor.exe is from 2026-07-05, so the clang configuration has been broken
+   since long before phase 5b. Fix separately or drop it from the list.
+
+2. **Visual A/B: done, three scenes.** All at 0 differing viewport pixels of
+   2 198 250, each against its own same-config control pair (also 0):
+   ABeautifulGame.glb, the procedural startup scene, and Bistro
+   (`niagara_bistro/bistro.gltf`, 1103 primitives optimized, e.g. subset_12
+   78 756 -> 15 748 vertices, -80.0%).
+
+   Two things the harness now enforces, both of which produced a *passing-looking*
+   result before they were found:
+   - **A saturated viewport compares equal to another saturated viewport.**
+     Bistro is solid white at default exposure and still almost entirely clipped
+     at 0.02; 0.001 is what makes it readable. `ERHE_SHOT_EXPOSURE` sets it and
+     the diff tool reports the saturated-pixel fraction.
+   - **A leftover editor keeps port 3743**, the new one fails to bind, and every
+     RPC then drives the OLD process with the OLD config. The harness refuses to
+     start when something already answers.
+
+   And the check that makes a 0 mean anything: **mutation.** Halving the
+   optimized index buffer moved 34.0% of viewport pixels, which is what rules
+   out "the optimized variant is never selected".
+
+3. **Interaction sanity: one gap found and fixed, the rest NOT RUN.** Three call
+   sites (`mesh_component_transform.cpp`, `paint_tool.cpp`,
+   `weight_paint_tool.cpp`) carried the comment *"an optimized variant is
+   invalidated by the edit rather than written through"* - and nothing
+   invalidated anything. `Mesh::invalidate_optimized_primitive_variant()` now
+   does, re-registering every mesh sharing the Primitive (draw list records bake
+   base_vertex and index ranges, and instances share Primitives). Four tests,
+   one mutation-checked. Facet picking, physics collision and the glTF
+   export/import round-trip are still unrun.
+
+3b. **Position-quantization byte check: NOT RUN.**
+
+4. **Perf: NOT MEASURED, and not measurable from here.** The frame pacer reports
+   `tier: "OFF"` and a zero refresh period in this configuration, so
+   `get_frame_pacing_frames` yields nothing to average, and no other MCP surface
+   reports GPU frame time - which is the only place a vertex-cache / fetch win
+   would show. It needs the interactive session (Frame Pacing window, or a GPU
+   capture). What IS measured is the static side: session totals on
+   ABeautifulGame of vertices 2 138 692 -> 833 132, fetch 199 387 520 ->
+   76 520 960 bytes (-62%), ACMR 1.956 -> 0.866, overdraw 1.207 -> 1.044.
+
+5. **Flip the default: NOT DONE.** Needs the Quest step, which needs an
+   uninstall + clean reinstall (`migrate_android_assets_to_writable()` never
+   overwrites an existing config file) and a fresh user confirmation before any
+   headset launch.
+
 ## Risks / notes
 
 - Welding is bitwise-only: vertices differing in any attribute bit stay separate — correct by construction, gains vary by asset. `meshopt_generateVertexRemap` compares all `vertex_size` bytes **including padding** — verify soup strides have no non-zeroed padding bytes (assert or memset on construction) before welding.
