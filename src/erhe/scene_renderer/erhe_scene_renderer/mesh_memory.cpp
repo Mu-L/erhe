@@ -782,7 +782,10 @@ auto Mesh_memory::make_primitive_buffer_info(const Mesh_memory_queue queue) -> e
         .edge_line_vertex_stream   = &vertex_format_edge_line       .streams.front(),
         .edge_line_joint_stream    = &vertex_format_edge_line_joints.streams.front(),
         .expanded_vertex_format    = &vertex_format_not_skinned_wireframe,
-        .expanded_vertex_input_key = get_vertex_input_from_vertex_format(vertex_format_not_skinned_wireframe).key
+        .expanded_vertex_input_key = get_vertex_input_from_vertex_format(vertex_format_not_skinned_wireframe).key,
+        // Read from the owner's live config, so a Settings-window toggle
+        // reaches every build made after it.
+        .optimize_meshes           = m_mesh_memory_config.optimize_meshes
     };
 }
 
@@ -803,7 +806,10 @@ auto Mesh_memory::make_skinned_primitive_buffer_info(const Mesh_memory_queue que
         .edge_line_vertex_stream   = &vertex_format_edge_line       .streams.front(),
         .edge_line_joint_stream    = &vertex_format_edge_line_joints.streams.front(),
         .expanded_vertex_format    = &vertex_format_skinned_wireframe,
-        .expanded_vertex_input_key = get_vertex_input_from_vertex_format(vertex_format_skinned_wireframe).key
+        .expanded_vertex_input_key = get_vertex_input_from_vertex_format(vertex_format_skinned_wireframe).key,
+        // Read from the owner's live config, so a Settings-window toggle
+        // reaches every build made after it.
+        .optimize_meshes           = m_mesh_memory_config.optimize_meshes
     };
 }
 

@@ -2,6 +2,7 @@
 
 #include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_primitive/enums.hpp"
+#include "erhe_primitive/mesh_optimizer.hpp"
 
 namespace erhe::primitive {
 
@@ -42,6 +43,18 @@ public:
     // build entirely (e.g. CPU-buffer test sinks).
     const erhe::dataformat::Vertex_format* expanded_vertex_format{nullptr};
     std::size_t                            expanded_vertex_input_key{0};
+
+    // Mesh optimization for builds made through this Buffer_info. When set, a
+    // geometry-path build also produces the optimized variant of the same mesh
+    // (Primitive::optimized_render_shape) out of the bytes it already staged.
+    //
+    // It rides on Buffer_info rather than Build_info because the sink is what
+    // the second variant has to be allocated from, and because the soup path
+    // (which has no Build_info) needs the same answer. The value is read at
+    // BUILD time, so a Buffer_info made after the Settings toggle changes
+    // carries the new value - see Mesh_memory::make_primitive_buffer_info().
+    bool                  optimize_meshes      {false};
+    Mesh_optimize_options mesh_optimize_options{};
 };
 
 } // namesapce erhe::primitive

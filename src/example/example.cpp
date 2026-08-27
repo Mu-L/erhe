@@ -124,10 +124,8 @@ public:
         }()}
         , m_y_flip{m_graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
         , m_image_transfer   {m_graphics_device}
-        , m_mesh_memory{
-            erhe::codegen::load_config<Mesh_memory_config>("config/example/mesh_memory.json"),
-            m_graphics_device
-        }
+        , m_mesh_memory_config{erhe::codegen::load_config<Mesh_memory_config>("config/example/mesh_memory.json")}
+        , m_mesh_memory{m_mesh_memory_config, m_graphics_device}
         , m_program_interface_config{
             .shader_paths = {
                 std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
@@ -586,6 +584,9 @@ private:
     erhe::graphics::Command_buffer&                m_init_command_buffer;
     bool                                           m_y_flip;
     erhe::gltf::Image_transfer                     m_image_transfer;
+    // Mesh_memory keeps a reference to this one, so it must be declared before
+    // it - and therefore destroyed after it.
+    Mesh_memory_config                             m_mesh_memory_config;
     erhe::scene_renderer::Mesh_memory              m_mesh_memory;
     erhe::scene_renderer::Program_interface_config m_program_interface_config;
     erhe::scene_renderer::Program_interface        m_program_interface;

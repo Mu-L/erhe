@@ -286,7 +286,15 @@ private:
     // passed. Called from flush().
     void apply_ready_pending_frees();
 
-    Mesh_memory_config                    m_mesh_memory_config;
+    // The OWNER'S config instance, not a copy. Most of what is read from it -
+    // pool block sizes, the position format - is consumed once while the pools
+    // are being created, so a copy would have done. Mesh optimization is not:
+    // the Settings window mutates the owner's instance, and
+    // make_primitive_buffer_info() has to hand later builds the value it holds
+    // NOW. A copy made those two the same name for different values, with the
+    // toggle silently dead on one of them. The owner must therefore outlive the
+    // Mesh_memory - declare the config before it.
+    const Mesh_memory_config&             m_mesh_memory_config;
     erhe::graphics::Device&               m_graphics_device;
     std::vector<Vertex_input_entry>       m_vertex_input_entries;
     std::vector<Buffer_pool>              m_vertex_pools;
