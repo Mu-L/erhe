@@ -1,7 +1,8 @@
 """Deterministic A/B screenshot capture through the editor's MCP server.
 
     scripts/mesh_ab_capture.py <off|on|cache> <out.png>
-    ERHE_SHOT_SCENE=<path|->   scene to load ("-" = default startup scene)
+    ERHE_SHOT_SCENE=<path|->      scene to load ("-" = default startup scene)
+    ERHE_SHOT_EXPOSURE=<float>    camera exposure (default 1.0)
 
 Built for verifying the meshoptimizer work (doc/meshoptimizer-integration-plan.md),
 but nothing here is specific to it: it is the general recipe for comparing two
@@ -24,6 +25,11 @@ The MCP server is on port 3743 (not 8080). Scene choice matters: use
 res/editor/assets/ABeautifulGame.glb (no cameras, animations or skins), not
 VirtualCity.glb, whose 14 camera helper boxes clutter the centre of view.
 
+CHECK THE SHOT, not just the number. Bistro's light setup blows the viewport out
+to solid white at the default exposure, and a uniformly white viewport compares
+equal to another uniformly white viewport - a meaningless 0 that reads exactly
+like a passing A/B. Pass ERHE_SHOT_EXPOSURE=0.02 for Bistro.
+
 Leaves config/editor/mesh_memory.json modified - restore it with git checkout
 when done.
 """
@@ -33,6 +39,8 @@ REPO  = r"D:\erhe"
 EXE   = os.path.join(REPO, r"build_ninja_win_vulkan\src\editor\editor.exe")
 CFG   = os.path.join(REPO, r"config\editor\mesh_memory.json")
 SCENE = os.environ.get("ERHE_SHOT_SCENE", "res/editor/assets/ABeautifulGame.glb")
+# Bistro needs about 0.02; the default is neutral.
+EXPOSURE = float(os.environ.get("ERHE_SHOT_EXPOSURE", "1.0"))
 BASE  = "http://127.0.0.1:3743"
 
 
@@ -143,7 +151,8 @@ def frame_scene(scene):
     print("  camera to move:", cam)
     if cam:
         print("  edit_camera:", rpc("edit_camera", {"scene_name": scene, "camera_name": cam,
-                                                    "z_near": max(diag*0.001, 0.01), "z_far": diag*8.0}))
+                                                    "z_near": max(diag*0.001, 0.01), "z_far": diag*8.0,
+                                                    "exposure": EXPOSURE}))
         print("  set_node_transform:", rpc("set_node_transform", {
             "scene_name": scene, "node_name": cam, "space": "world",
             "translation": eye, "rotation_xyzw": look_at_quat(eye, c)}))
