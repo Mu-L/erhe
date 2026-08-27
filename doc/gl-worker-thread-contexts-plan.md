@@ -645,17 +645,43 @@ say so explicitly rather than leaving it implicit: this plan forbids workers
 from mapping buffers (section 4), and `init_data` is passed at storage time,
 so there is no worker-written data that postdates creation.
 
-**For textures, no -- and this is a gap.** Section 6's limited tier
-advertises `buffers, textures, samplers`, and section 4 puts
-`create_texture` / `create_texture_view` / `create_sampler` under
-`HAS_CONTEXT` (worker-legal), but the publication rule above covers only
-`Buffer_impl::allocate_storage`. There is no equivalent for texture storage
-allocation or for `glTextureSubImage*` uploads. **Decide one of the two:**
-either narrow the advertised tier to buffers only -- which costs nothing
-today, since `texture_file_loader.cpp:153` really is decode-only and nothing
-creates a texture on a worker -- or extend the publication rule to texture
-storage and upload with the same reasoning. Advertising a permission with no
-publication story is how the next crash gets designed in.
+**For textures: decided (user, 2026-08-27) -- textures stay in the limited
+tier, so the publication rule extends to cover them.** It resolves more
+simply than it first looks, because of a fact worth stating plainly:
+
+**A worker can allocate texture *storage*, but cannot *upload* pixels.**
+`Texture_create_info` (`texture.hpp:17-44`) carries **no initial pixel
+data** -- storage is allocated inside the `Texture_impl` constructor
+(`gl_texture.cpp:662`, the `texture_storage_*` / `tex_storage_*` calls at
+`:925-981`), and every pixel upload goes through
+`Blit_command_encoder_impl` (`gl_blit_command_encoder.cpp:329`, `:359`,
+`:376`, `:395`, and the compressed variants at `:484`, `:509`, `:528`),
+whose construction section 4 places under
+`ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()`.
+
+Consequences, all three of which the implementation must respect:
+
+- **The publication point for a texture is its constructor**, exactly
+  parallel to `Buffer_impl::allocate_storage`: `gl::flush()` at the end of
+  the storage-allocation branch when the calling thread's role is a worker
+  role. Same reasoning, same escalation path to a fence if it ever shows up
+  in a profile.
+- **Pixels raise no publication question at all**, because the upload runs
+  on the main thread by construction. That is a consequence of the
+  main-only blit encoder, not an accident -- if a future call site wants
+  worker-side upload, it needs its own publication rule and its own
+  decision. Do not treat this as already answered.
+- **A worker-created texture is empty until the main thread fills it.** That
+  is a real constraint on any future call site, and it should be in the
+  `Scoped_worker_context_limited` doc comment, not just here. Allocation is
+  the part worth moving off the main thread anyway; the upload is a queued
+  transfer.
+
+Note that nothing creates a texture on a worker today
+(`texture_file_loader.cpp:153` is decode-only), so this permission is
+currently unexercised -- the same status as the full tier, and it carries
+the same obligation: if it is not covered by a test, no run proves anything
+about it.
 
 The two call sites in section 9 both publish before their scope ends
 (`async_raytrace_kickoff_operation.cpp:174` enqueues to the commit queue
@@ -680,7 +706,7 @@ on them"*. Two distinct scoped **types**, not one type with a flag:
 
 | type | may create |
 |---|---|
-| `Scoped_worker_context_limited` | buffers, textures, samplers, and DSA operations on them |
+| `Scoped_worker_context_limited` | buffers, texture *storage*, samplers, and DSA operations on them |
 | `Scoped_worker_context_full`    | the above **plus** `Vertex_input_state` (a VAO) |
 
 They are separate types rather than a flag because the difference is not a
@@ -710,11 +736,17 @@ enum class Worker_context_tier { limited, full };
 //
 // Grants the calling worker thread permission -- and, on OpenGL, an actual
 // share context -- to CREATE GPU resources that GL shares across a share
-// group: buffers, textures, samplers, and DSA operations on them.
+// group: buffers, texture storage, samplers, and DSA operations on them.
 //
 // It may NOT create a Vertex_input_state (use the full tier), may not bind
 // anything, may not map a buffer, and may not prepare or record a draw.
 // Everything it may not do asserts (gl_thread_role.hpp).
+//
+// TEXTURES: this grants texture STORAGE ALLOCATION, not pixel upload.
+// Texture_create_info carries no initial data and every upload goes through
+// Blit_command_encoder, which is main-thread-only -- so a texture created
+// here is EMPTY until the main thread fills it. That is by construction,
+// not an oversight; see section 5.
 //
 // No-op on the main thread and on every backend that needs no per-thread
 // context (Vulkan, Metal, null).
@@ -969,7 +1001,24 @@ than pretending a user exists:
   constructor pre-registration; it does not create a full-tier user, and
   must not be recorded as one.
 
-### Fix the acquire wait before depending on it
+### The old provider is deleted -- do not reproduce its acquire bug
+
+**Decided (user, 2026-08-27): the new API REPLACES `Gl_context_provider`, it
+does not reuse it.** `Gl_context_provider`, `Gl_worker_context`,
+`Scoped_gl_context`, `acquire_gl_context` / `release_gl_context` and
+`provide_worker_contexts` are all **deleted**; the pool lives in `Device_impl`
+behind the API above. That settles the question section 12 flagged: there is
+no separate "fix the provider" commit, because the provider does not survive.
+The analysis below is retained as a **specification for the replacement**, not
+as a description of code to repair.
+
+The deletion is file-scoped, and the reference list is short -- verified:
+`erhe_graphics/gl/gl_context_provider.cpp` and `.hpp` go entirely, along
+with their two lines in `src/erhe/graphics/CMakeLists.txt:130-131`. The only
+other referents are `gl_device.hpp` / `gl_device.cpp` (the `m_gl_context_provider`
+member and its uses, which the new pool takes over) and
+`src/editor/transform/trs_tool.cpp` -- whose use sits inside the `#if 0`
+block section 7 already deletes, so it needs no separate handling.
 
 `Gl_context_provider::acquire_gl_context` does not block. `gl_context_provider.cpp:78-83`:
 
@@ -998,10 +1047,15 @@ lost-wakeup deadlock.** Two facts make the obvious fix wrong:
   preempted before `wait()` misses the notify and sleeps forever. The
   always-true predicate is precisely what hides this today.
 
-Use a `std::counting_semaphore`, or move the pool under `m_mutex` as a plain
-`std::deque`. Note the irony worth recording: this is the same
+**So the replacement pool must be written with a `std::counting_semaphore`
+from the start** (or a plain `std::deque` under a mutex -- the lock-free queue
+buys nothing for a 4-entry pool acquired around a globally serialized
+critical section). Note the irony worth recording: a half-fix here is the same
 invisible-to-a-profiler hang the spin already risks, except it then looks
 *idle* rather than busy.
+
+Because the provider is deleted rather than fixed, this is **not**
+independently committable ahead of the new API. It lands inside commit 6.
 
 ### Re-entrancy and taskflow subflows
 
@@ -1157,8 +1211,9 @@ instances and are **not** harmless at pool scale:
    no `SDL_RemoveEventWatch` anywhere in `src/erhe/window/`, and
    `~Context_window` (`sdl_window.cpp:888-914`) destroys the SDL window but
    leaves the watch registered with a dangling `this`. Worker contexts are
-   owned by `Gl_context_provider` inside `Device_impl` (`gl_device.hpp:172`)
-   and are destroyed with the Device, while `m_window` (`editor.cpp:4077`,
+   owned by `Device_impl` -- by the new pool that replaces
+   `Gl_context_provider` (`gl_device.hpp:172` today) -- and are destroyed
+   with the Device, while `m_window` (`editor.cpp:4077`,
    destroyed *after* `m_graphics_device` at `:4078`) is still pumping
    events. That is a shutdown use-after-free **introduced by this plan**.
    Add `SDL_RemoveEventWatch` to the destructor.
@@ -1445,8 +1500,23 @@ Phase 0 has its own gate in section 3f; run it first. Then:
    These can be driven through the editor MCP server (127.0.0.1:8080) rather
    than by hand.
 
-9. **Tests.** `build_tests`, once, at the end of the phase, with
-   `ERHE_MCP_TEST_TIMEOUT_S=1`.
+9. **The limited tier's texture permission, which nothing else exercises
+   either.** Textures are in the limited tier by decision, but no production
+   call site creates a texture on a worker, so items 1-8 prove nothing about
+   it -- the same situation as the full tier, and it earns the same
+   treatment. A targeted case: a worker task under
+   `Scoped_worker_context_limited` constructs a `Texture`, the scope exits,
+   and the main thread then uploads to it through a blit encoder and samples
+   it. Assert the texture is legible from the drawing thread, i.e. that the
+   constructor's publication flush actually published the storage.
+
+   Mutation-check the boundary the same way: attempt a pixel upload from
+   inside the worker scope and confirm the blit encoder's
+   `ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()` fires. Storage-not-upload is the
+   whole content of this permission; if it is not enforced it is not real.
+
+10. **Tests.** `build_tests`, once, at the end of the phase, with
+    `ERHE_MCP_TEST_TIMEOUT_S=1`.
 
 ## 12. Commit split
 
@@ -1463,15 +1533,11 @@ Phase 0 has its own gate in section 3f; run it first. Then:
 2. `window: fix Context_window event-watch and GL context teardown` --
    section 8's three lifetime defects, plus the worker debug callback.
    **Must land before any pool exists.**
-3. `graphics: blocking wait in Gl_context_provider::acquire` -- section 6's
-   spin fix, on its own so it is reviewable. **This commit is conditional on
-   a decision this plan has not made: does the new API reuse
-   `Gl_context_provider`, or replace it?** Commit 6 says it deletes
-   `Scoped_gl_context` and section 6 describes a fresh pool inside
-   `Device_impl`. If the provider is replaced, commit 3 fixes code that
-   commit 6 deletes -- pure waste -- and the semaphore fix belongs inside
-   commit 6 instead. If the provider is reused, say so explicitly here.
-   Decide before starting; as written one of the two commits is wasted.
+3. *(removed -- see below.)* An earlier revision had
+   `graphics: blocking wait in Gl_context_provider::acquire` here. **The new
+   API replaces the provider rather than reusing it (user decision), so that
+   commit would fix code commit 6 deletes.** The semaphore requirement moves
+   into commit 6, where the replacement pool is written.
 4. `editor: retire ERHE_PARALLEL_INIT` -- section 7, mechanical. **Merges
    with commit 5's context creation** per section 8: eager main-thread
    creation is now settled, so these cannot be separated.
@@ -1482,7 +1548,9 @@ Phase 0 has its own gate in section 3f; run it first. Then:
     before commit 6b**, which is what makes "unowned" a steady state.
 6. `graphics: limited GL worker contexts` -- sections 5, 6 and 8: the
    `Scoped_worker_context_limited` half of the API, re-entrancy, the pool,
-   the publication flush, and the deletion of `Scoped_gl_context`.
+   the publication flush, the semaphore-based acquire, and the deletion of
+   `Gl_context_provider` / `Gl_worker_context` / `Scoped_gl_context` /
+   `provide_worker_contexts` entire.
    **Merged with the call sites below.** Lazy creation is no longer an
    option (section 8), so this is the only way to avoid a commit that creates
    contexts nobody uses -- a pure regression: startup cost plus, before
