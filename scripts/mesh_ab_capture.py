@@ -3,6 +3,7 @@
     scripts/mesh_ab_capture.py <off|on|cache> <out.png>
     ERHE_SHOT_SCENE=<path|->      scene to load ("-" = default startup scene)
     ERHE_SHOT_EXPOSURE=<float>    camera exposure (default 1.0)
+    ERHE_SHOT_EXE=<path>          editor build to run (default: ninja vulkan Debug)
 
 Built for verifying the meshoptimizer work (doc/meshoptimizer-integration-plan.md),
 but nothing here is specific to it: it is the general recipe for comparing two
@@ -26,9 +27,15 @@ res/editor/assets/ABeautifulGame.glb (no cameras, animations or skins), not
 VirtualCity.glb, whose 14 camera helper boxes clutter the centre of view.
 
 CHECK THE SHOT, not just the number. Bistro's light setup blows the viewport out
-to solid white at the default exposure, and a uniformly white viewport compares
-equal to another uniformly white viewport - a meaningless 0 that reads exactly
-like a passing A/B. Pass ERHE_SHOT_EXPOSURE=0.02 for Bistro.
+to near-solid white at the default exposure, and one saturated viewport compares
+equal to another saturated viewport - a meaningless 0 that reads exactly like a
+passing A/B. ERHE_SHOT_EXPOSURE=0.001 makes it readable; 0.02 is still almost
+entirely clipped. Sanity-check any shot by the fraction of saturated pixels
+before believing a diff taken from it.
+
+Bistro in the Debug build is painfully slow, so point ERHE_SHOT_EXE at
+build_ninja_win_vulkan_release for it. Both sides of one comparison must of
+course use the same executable.
 
 Leaves config/editor/mesh_memory.json modified - restore it with git checkout
 when done.
@@ -36,7 +43,10 @@ when done.
 import json, math, os, subprocess, sys, time, urllib.request
 
 REPO  = r"D:\erhe"
-EXE   = os.path.join(REPO, r"build_ninja_win_vulkan\src\editor\editor.exe")
+# A large scene (Bistro) is painfully slow in the Debug build; point this at
+# build_ninja_win_vulkan_release for those. Both builds render the same, so an
+# A/B is valid as long as BOTH sides of it use the same executable.
+EXE   = os.environ.get("ERHE_SHOT_EXE") or os.path.join(REPO, r"build_ninja_win_vulkan\src\editor\editor.exe")
 CFG   = os.path.join(REPO, r"config\editor\mesh_memory.json")
 SCENE = os.environ.get("ERHE_SHOT_SCENE", "res/editor/assets/ABeautifulGame.glb")
 # Bistro needs about 0.02; the default is neutral.
@@ -153,6 +163,7 @@ def frame_scene(scene):
         print("  edit_camera:", rpc("edit_camera", {"scene_name": scene, "camera_name": cam,
                                                     "z_near": max(diag*0.001, 0.01), "z_far": diag*8.0,
                                                     "exposure": EXPOSURE}))
+        print("  cameras after edit:", json.dumps(rpc("get_scene_cameras", {"scene_name": scene}))[:400])
         print("  set_node_transform:", rpc("set_node_transform", {
             "scene_name": scene, "node_name": cam, "space": "world",
             "translation": eye, "rotation_xyzw": look_at_quat(eye, c)}))
