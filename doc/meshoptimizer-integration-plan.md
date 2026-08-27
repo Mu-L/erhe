@@ -326,9 +326,18 @@ Deviations from the recipe above, all deliberate:
   including padding, which is safe because the staging vectors are `resize()`d
   (zero-filled) and only attribute bytes are ever written. Enumerating
   attributes would have been more code for the same compare.
-- **The facet id bytes are zeroed BEFORE the weld**, not after. This is not
-  cosmetic: the id is per-facet, so leaving it in the compare makes every
-  corner unique across facet boundaries and the weld merges *nothing*.
+- **The optimized build has its own vertex format, without the facet id**
+  (`Buffer_info::optimized_vertex_format`, superseding an earlier revision that
+  kept the attribute and zeroed it - user correction). The id is per FACET and
+  the build is welded, so no value describes a merged vertex; the attribute does
+  not belong in that format. Dropping it means the variant cannot serve ID
+  rendering even by mistake, instead of relying on the convention that
+  `Id_renderer` asks for `original`. It also takes the id out of the weld
+  compare - which is what lets corners of different facets merge at all, and
+  leaving it in would have merged *nothing* - and 4 bytes per vertex off the
+  wire. Mesh_memory derives the optimized formats from the content ones rather
+  than repeating the literals, and the soup path builds in the same format, so
+  "an optimized variant never carries a facet id" holds on both paths.
 - **`Mesh_memory` holds a reference to the owner's `Mesh_memory_config`**
   rather than reading one of two copies. That removes the "which config
   instance" trap the plan flagged instead of documenting around it.
@@ -474,6 +483,32 @@ that never reaches the geometry path.
    uninstall + clean reinstall (`migrate_android_assets_to_writable()` never
    overwrites an existing config file) and a fresh user confirmation before any
    headset launch.
+
+### Phase 7 addendum (2026-08-27)
+
+Re-verified after the vertex-format change: ABeautifulGame and the procedural
+startup scene, control pairs and A/B all **0 differing viewport pixels of
+2 198 250**, shots properly exposed, no errors or warnings. Vertex fetch shows
+the narrower stride (Pawn_Body_Shared 14 169 600 -> 13 602 816 bytes before
+optimization, exactly 4% off a ~96-byte vertex). Builds green across the five
+configurations; tests 645/645.
+
+Two things this changed about how to read the numbers:
+
+- **`fetch_bytes_before` and `_after` are both in the OPTIMIZED format's
+  stride**, so they isolate what the passes did. The 4 bytes per vertex the
+  format change saves is a separate, known figure; folding it in would credit
+  the reordering with a win it did not produce.
+- **A second content vertex format means a second set of shader variants.** The
+  variant cache is keyed on (shader_key, vertex_format), so content shaders that
+  previously compiled once now compile for both formats while meshes of both
+  exist - which is the load window, and any mesh whose variant an edit dropped.
+  Not measured; watch for compile stutter in the phase 7 perf pass.
+
+Also fixed here: the stale-MCP-server guard committed in `4ab0378c` went in at
+the wrong indentation and broke `scripts/mesh_ab_capture.py` outright. It had
+never run. The Bistro results above predate that commit and stand; anything run
+between it and `999724299` produced no output at all rather than a wrong number.
 
 ## Risks / notes
 
