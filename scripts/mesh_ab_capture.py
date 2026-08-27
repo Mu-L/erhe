@@ -4,6 +4,7 @@
     ERHE_SHOT_SCENE=<path|->      scene to load ("-" = default startup scene)
     ERHE_SHOT_EXPOSURE=<float>    camera exposure (default 1.0)
     ERHE_SHOT_EXE=<path>          editor build to run (default: ninja vulkan Debug)
+    ERHE_SHOT_FRAME=0             keep the asset's authored camera placement
 
 Built for verifying the meshoptimizer work (doc/meshoptimizer-integration-plan.md),
 but nothing here is specific to it: it is the general recipe for comparing two
@@ -51,6 +52,12 @@ CFG   = os.path.join(REPO, r"config\editor\mesh_memory.json")
 SCENE = os.environ.get("ERHE_SHOT_SCENE", "res/editor/assets/ABeautifulGame.glb")
 # Bistro needs about 0.02; the default is neutral.
 EXPOSURE = float(os.environ.get("ERHE_SHOT_EXPOSURE", "1.0"))
+# frame_scene() costs ONE RPC PER NODE, which on a scene the size of Bistro is
+# thousands of round trips and minutes per run. Set ERHE_SHOT_FRAME=0 there: the
+# asset's authored camera is just as deterministic (it is the file's own
+# transform, identical on every run) and usually a better shot than a generic
+# 3/4 overview.
+FRAME = os.environ.get("ERHE_SHOT_FRAME", "1") != "0"
 BASE  = "http://127.0.0.1:3743"
 
 
@@ -118,6 +125,30 @@ def look_at_quat(eye, center, up=(0.0, 1.0, 0.0)):
     return [qx, qy, qz, qw]
 
 
+def viewport_camera(scene):
+    """The camera the viewport is actually rendering with."""
+    vp = rpc("get_viewports", {})
+    for v in (vp.get("viewports", []) if isinstance(vp, dict) else []):
+        for key in ("camera_name", "camera"):  # get_viewports reports "camera"
+            if isinstance(v.get(key), str) and v[key]:
+                return v[key]
+    cams = rpc("get_scene_cameras", {"scene_name": scene})
+    lst = cams.get("cameras", cams) if isinstance(cams, dict) else cams
+    for entry in (lst or []):
+        name = entry if isinstance(entry, str) else (entry.get("name") or entry.get("camera_name"))
+        if name:
+            return name
+    return None
+
+
+def set_exposure(scene):
+    cam = viewport_camera(scene)
+    print("  viewport camera:", cam)
+    if cam is None:
+        return
+    print("  exposure:", rpc("edit_camera", {"scene_name": scene, "camera_name": cam, "exposure": EXPOSURE}))
+
+
 def frame_scene(scene):
     """Point the viewport camera at the whole scene from a fixed 3/4 view."""
     nodes = rpc("get_scene_nodes", {"scene_name": scene})
@@ -161,8 +192,7 @@ def frame_scene(scene):
     print("  camera to move:", cam)
     if cam:
         print("  edit_camera:", rpc("edit_camera", {"scene_name": scene, "camera_name": cam,
-                                                    "z_near": max(diag*0.001, 0.01), "z_far": diag*8.0,
-                                                    "exposure": EXPOSURE}))
+                                                    "z_near": max(diag*0.001, 0.01), "z_far": diag*8.0}))
         print("  cameras after edit:", json.dumps(rpc("get_scene_cameras", {"scene_name": scene}))[:400])
         print("  set_node_transform:", rpc("set_node_transform", {
             "scene_name": scene, "node_name": cam, "space": "world",
@@ -191,7 +221,19 @@ if __name__ == "__main__":
         # every later run in the comparison sees the same viewport rectangle.
         os.makedirs(os.path.dirname(layout), exist_ok=True)
         shutil.copyfile(live, layout)
-    args = [EXE] if SCENE == "-" else [EXE, "--scene", SCENE]
+    # Refuse to start if something is already listening: a leftover editor keeps
+# port 3743, the new one fails to bind, and every RPC below then silently drives
+# the OLD process - with the OLD config. That produces a plausible-looking
+# measurement of the wrong thing.
+try:
+    with urllib.request.urlopen(BASE + "/health", timeout=2) as _r:
+        raise SystemExit("an editor is already serving %s - kill it first" % BASE)
+except SystemExit:
+    raise
+except Exception:
+    pass
+
+args = [EXE] if SCENE == "-" else [EXE, "--scene", SCENE]
     proc = subprocess.Popen(args, cwd=REPO)
     try:
         if not wait_health(time.time() + 150):
@@ -200,7 +242,14 @@ if __name__ == "__main__":
         act = rpc("get_active_scene", {})
         scene = act.get("active_scene") or "ABeautifulGame.glb"
         print("scene:", scene)
-        frame_scene(scene)
+        # Exposure first, and regardless of framing: a saturated viewport
+        # compares equal to another saturated one, so a shot taken at the wrong
+        # exposure yields a 0 that means nothing.
+        set_exposure(scene)
+        if FRAME:
+            frame_scene(scene)
+        else:
+            print("  framing skipped; using the asset's authored camera")
         rpc("set_ddgi", {"enabled": False})
         rpc("advance_time", {"mode": "paused"})
         time.sleep(6)
