@@ -551,6 +551,36 @@ The facet-id removal itself was ruled out as a cause first: `a_custom_0` is read
 only under `ERHE_VARIANT_ID_RENDER` (`standard.vert:172-195`), and the optimized
 variant is never selected for ID rendering.
 
+### Phase 7 interaction sanity, headless part (2026-08-27)
+
+Run twice on ABeautifulGame.glb with the Release ninja-vulkan build, once with
+`optimize_meshes` on and once off, from the same deterministic camera framing
+(`frame_scene`, DDGI off, clock paused). Optimization was confirmed active in
+the "on" run from `get_memory_usage`'s `mesh_optimization` section (ACMR
+1.956 -> 0.866 over 61 primitives), not from the log.
+
+- **Facet picking.** 52 `pick_at` probes over a 100 px grid. Every probe hit the
+  same node, mesh and **facet id** in both runs, and every facet id is inside
+  its mesh's facet count. Eight of the 52 hit *positions* differ in the sixth
+  decimal (~1e-6 m, the reordered BVH's intersection rounding); the facet and
+  the normal are identical in all 52.
+- **Physics collision.** Chessboard given a static `mesh` shape, `Pawn_Body_W6`
+  a dynamic `convex_hull`, dropped 0.20 m and settled with `advance_time`
+  seconds=4 in manual mode. The resting position is **bit-identical** on and
+  off: `[-0.110669448971748, 0.031638931483030, -0.232608526945114]`. So the
+  hull comes from the same geometry either way.
+- **glTF export/import round-trip.** `export_gltf` (52.5 MB .glb) with
+  optimization on, re-imported into a second scene: Chessboard, Pawn_Body_W6,
+  Knight_W1 and Queen_B all round-trip to **exactly** their source vertex, edge,
+  facet and corner counts. The exporter reads source geometry, not the welded
+  variant.
+
+Still unrun, and not drivable from here: the real-mouse paint and out-of-AABB
+vertex drag (phase 7 item 3 / the quantization doc's last item), the perf
+measurement (item 4), and the position-quantization byte dump (item 3b), which
+needs either a pre-change build to dump against or a RenderDoc buffer capture -
+`get_mesh_attribute_values` reads source geometry, not the GPU vertex buffer.
+
 ## Risks / notes
 
 - Welding is bitwise-only: vertices differing in any attribute bit stay separate — correct by construction, gains vary by asset. `meshopt_generateVertexRemap` compares all `vertex_size` bytes **including padding** — verify soup strides have no non-zeroed padding bytes (assert or memset on construction) before welding.
