@@ -308,6 +308,76 @@ Pass order (weld **first** — post-Phase-0 the id attribute no longer blocks cr
 - During the pre-finalize async-load window imported meshes carry no `a_custom_0` attribute at all (no `custom_attribute_id` writes in gltf_fastgltf.cpp) — window picking behavior unchanged from today.
 - **Verify (whole phase):** desktop builds; brush/procedural scenes and finalized imported scenes render identically (A/B per protocol); face/edge/vertex selection, paint tools, skinned picking, edge lines correct; log per-mesh vertex-count reduction + ACMR deltas (now expected to be materially nonzero on smooth surfaces). Commit per sub-phase.
 
+**Phase 5b done (2026-08-27).** Built as four commits: config plumbing through
+`Buffer_info`, a multi-stream refactor of the optimizer core, primitive-mode-aware
+variant resolution, and the geometry-path variant itself.
+
+Deviations from the recipe above, all deliberate:
+
+- **The optimized variant is FILL TRIANGLES ONLY**, so the corner-point,
+  edge-line and centroid-point index streams and the centroid vertex tail are
+  simply not carried, and steps 1 and 4's handling of them is moot. Welding
+  merges corners across facets, which is precisely what those streams exist
+  per-facet to avoid; the original build has them all. The weld therefore runs
+  in INDEXED mode over the fill indices (not the unindexed mode the plan text
+  specifies), so a corner no triangle references is dropped rather than kept.
+- **Whole-stride compare streams, not per-attribute subranges.** One
+  `meshopt_Stream` per sink stream with `size == stride` covers every byte
+  including padding, which is safe because the staging vectors are `resize()`d
+  (zero-filled) and only attribute bytes are ever written. Enumerating
+  attributes would have been more code for the same compare.
+- **The facet id bytes are zeroed BEFORE the weld**, not after. This is not
+  cosmetic: the id is per-facet, so leaving it in the compare makes every
+  corner unique across facet boundaries and the weld merges *nothing*.
+- **`Mesh_memory` holds a reference to the owner's `Mesh_memory_config`**
+  rather than reading one of two copies. That removes the "which config
+  instance" trap the plan flagged instead of documenting around it.
+
+Also fixed on the way, both latent before this phase:
+
+- `get_resolved_renderable_mesh()` now takes the `Primitive_mode`. It used to
+  prefer the optimized build for any mode; an empty index range reads to every
+  caller as "nothing to draw", so an edge-line pass would have dropped the
+  primitive instead of falling back. Masked today only because the edge-line
+  composition passes short-circuit into `Content_wide_line_renderer`, which
+  pins itself to the original.
+- `build_buffer_mesh()` builds the variant only when the caller passes an out
+  pointer, so the tool / preview / hotbar builders no longer run a full meshopt
+  pass and allocate a second index range plus one vertex range per stream for a
+  shape that is discarded on return.
+
+**Phase 5b verification (ABeautifulGame.glb and the procedural startup scene).**
+Layout, camera, DDGI and clock pinned per the A/B protocol:
+
+- Control pair (both optimizer off): **0 differing viewport pixels of 2 198 250**.
+- Optimizer off vs on, imported scene: **0**. Procedural startup scene: **0**.
+- **The variant is what renders**, mutation-checked: halving the optimized
+  index buffer moves 34.0% of viewport pixels. Without that check a
+  0-pixel result would equally have meant "the variant is never selected".
+- Weld on the geometry path: 141 696 -> 25 957 vertices (-81.7%), ACMR
+  3.000 -> 0.704 on the chess pieces. The soup path on the same asset welds
+  nothing (+0.0%) because the glTF is already welded - the geometry path is
+  where the win is, exactly as the phase-5 rationale predicted.
+- Procedural brushes weld nothing (+0.0%): platonic solid corners carry
+  distinct facet normals, so there is nothing to merge. Correct, not a failure.
+- Builds green: ninja vulkan, VS opengl, null backend, vulkan-headless, Quest
+  APK. Tests 641/641 (638 + 3 new multi-stream optimizer tests).
+
+Recorded risks, neither introduced here:
+
+- `make_optimized_render_shape_from_staged_build()` abandons a partial
+  multi-pool allocation transaction when one stream's allocation fails - the
+  successful ranges are released by `~Buffer_mesh` after the lock is dropped,
+  into the retired list. `build_buffer_mesh_from_triangle_soup()` and
+  `allocate_vertex_buffers()` already do the same. OOM-only.
+- `Primitive::optimized_render_shape` has no lock of its own. Every writer
+  today is either the serial import build loop or a main-thread commit; the
+  member comment now says so.
+- The snapshot duplicates the whole corner-vertex staging on top of the
+  writers' own copies, and the optimizer allocates weld and fetch temporaries
+  on top of that. A transient RSS spike on a Bistro-scale rebuild with several
+  finalize workers in flight; measure in phase 7 before deciding it matters.
+
 ## Phase 6 — Statistics surfacing (optional polish)
 
 - Aggregate per-import summary log (totals, average ACMR delta, cache hit rate) at the import helper.
