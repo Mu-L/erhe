@@ -27,4 +27,10 @@ if errorlevel 1 exit /b 1
 
 set "PATH=C:\Program Files\LLVM\bin;%PATH%"
 
-cmake --build build_ninja_win_clang --target %1
+rem With no argument, build the default (all) target: a bare "--target" with an
+rem empty value is a CMake error, not a default.
+if "%~1"=="" (
+    cmake --build build_ninja_win_clang
+) else (
+    cmake --build build_ninja_win_clang --target %1
+)
