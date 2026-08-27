@@ -1,7 +1,8 @@
 # OpenGL worker-thread GL contexts -- plan
 
 Status: PLAN ONLY, nothing implemented. Written 2026-08-27; revised the same
-day to add phase 0.
+day to add phase 0, then again to replace an interim two-tier context design
+with one worker context plus explicit per-object accessors (section 6).
 
 ## 1. The bug
 
@@ -34,16 +35,37 @@ reproduces with `controller_left.glb`.
 
 ## 2. The design (settled)
 
-Worker threads get GL contexts, but **resource-only** ones:
+Worker threads get GL contexts, and the goal is that a worker can reach
+**every** object -- safely. The invariant that makes it safe is narrower than
+"resource-only", and stating it precisely matters, because an earlier revision
+of this plan stated it too strongly and drew two boundaries in the wrong
+place as a result:
 
-1. A worker may create GL objects and upload buffer contents, **through DSA
-   entry points only**. It may never change a binding or prepare anything for
-   a draw call.
-2. Obtaining a worker context goes through an **API explicitly for that
+1. **A worker may never touch state that is SHARED with the drawing thread.**
+   Concretely, that means the `Gl_binding_state` and `OpenGL_state_tracker`
+   software caches: single instances that describe *per-context* GL state, so
+   a worker writing them corrupts the main thread's model of its own context.
+   This is the real rule, and it is what section 4's guards enforce.
+2. **Per-context GL state on the worker's own context is fine.** A worker may
+   set its own pixel-store parameters and bind its own pixel-unpack buffer,
+   because those belong to its context and nothing else reads them. What it
+   may not do is route such a change through the shared cache.
+3. **Container objects are not shared** -- VAOs, framebuffers,
+   transform-feedback objects. A worker reaches one through an explicit
+   per-object accessor (`Scoped_vertex_input_state`, `Scoped_framebuffer`;
+   section 6), which gives it an instance on its *own* context.
+4. Obtaining a worker context goes through an **API explicitly for that
    purpose**, not the existing draw-capable `Scoped_gl_context`.
-3. Anything a worker context may not do **asserts**, loudly, at the call site.
+5. Anything a worker may not do **asserts**, loudly, at the call site.
 
-### Why resource-only is sufficient (verified, do not re-derive)
+The two boundaries the stronger wording got wrong, recorded so they are not
+re-derived: it made *every* texture upload main-thread-only (the upload path
+binds a pixel-unpack buffer, which is per-context, not shared), and it made
+`blit_framebuffer` look permanently impossible on a worker (it needs an FBO,
+which is per-context -- so the worker needs *its own*, not someone else's).
+Both are legal under the rule as stated above.
+
+### Why DSA-only object creation is sufficient (verified, do not re-derive)
 
 - The worker's GL work is already DSA-clean when `use_direct_state_access` is
   true: `glCreateBuffers` (`Device_impl::create_buffer`),
@@ -85,8 +107,10 @@ That was harmless when worker contexts existed only during parallel init,
 before the render loop. It is not harmless now that the finalize runs
 concurrently with rendering.
 
-A resource-only context never runs those hooks, so no per-thread VAO and no
-thread-local state caches are needed.
+The worker context API never runs those hooks -- that is the entire
+difference from `Scoped_gl_context`. Note that the per-thread VAO machinery
+those hooks implement is not merely bypassed but **deleted** by section 6, in
+favour of per-context instances.
 
 ## 3. Phase 0 -- remove macOS OpenGL support, and make DSA mandatory
 
@@ -95,7 +119,7 @@ thread-local state caches are needed.
 macOS caps OpenGL at 4.1: no `ARB_direct_state_access`, no
 `ARB_clip_control`, no compute shaders, no SSBOs, no `ARB_debug_output`, no
 `ARB_internalformat_query2`. The whole non-DSA / pre-4.3 emulation layer in
-the GL backend exists for that one platform. The resource-only worker-context
+the GL backend exists for that one platform. The worker-context
 design cannot work there -- every non-DSA fallback binds through the shared
 `Gl_binding_state`, which is exactly the cross-thread corruption the design
 exists to prevent -- and there is no reason to keep emulating it now that
@@ -466,7 +490,7 @@ files:
 New GL-backend-internal header, `erhe_graphics/gl/gl_thread_role.hpp`:
 
 ```cpp
-enum class Gl_thread_role { none, main, worker_resource_limited, worker_resource_full };
+enum class Gl_thread_role { none, main, worker };
 
 [[nodiscard]] auto get_gl_thread_role() -> Gl_thread_role;   // thread_local
 void set_gl_thread_role(Gl_thread_role role);
@@ -478,21 +502,22 @@ makes a context current without going through the resource API gets `none` and
 trips the first guard rather than silently passing an `is_main_thread()`
 negation.
 
-Three macros, all `ERHE_VERIFY`-backed (always on, Debug and Release):
+Two macros, both `ERHE_VERIFY`-backed (always on, Debug and Release):
 
 - `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT()` -- role must not be `none`. This one
   alone converts the section 1 access violation into a legible assert at the
   call site.
 - `ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()` -- role must be `main`.
-- `ERHE_VERIFY_GL_THREAD_CAN_CREATE_VERTEX_INPUT()` -- role must be `main`
-  or `worker_resource_full`. This is the guard that makes the two tiers of
-  section 6 mean something: it is the *only* permission the full tier adds.
 
 The role is set in exactly three places: `Device_impl`'s constructor and
-`Device_impl::on_thread_enter()` set `main`; the worker context's acquire
-sets `worker_resource_limited` or `worker_resource_full` per the requested
-tier, and its release restores the *previous* role -- not unconditionally
-`none`, see the re-entrancy discussion in section 6.
+`Device_impl::on_thread_enter()` set `main`; `Scoped_worker_context`'s
+acquire sets `worker`, and its release restores the *previous* role -- not
+unconditionally `none`, see the re-entrancy discussion in section 6.
+
+There is deliberately **no third role for container-object access**. An
+earlier revision split the worker role in two to police a `limited` / `full`
+context tier; section 6 replaced that with per-object scoped accessors, which
+express the same permission at the granularity it actually varies.
 
 ### Guard placement
 
@@ -512,23 +537,36 @@ tier, and its release restores the *previous* role -- not unconditionally
   `on_thread_enter`, `on_thread_exit`;
 - `Vertex_input_state_tracker::execute`, `set_index_buffer`,
   `set_vertex_buffer`;
-- `Vertex_input_state_impl::on_thread_enter` / `on_thread_exit` for as long
-  as they exist. Section 6 retires the bulk sweep in `on_thread_enter` in
-  favour of lazy per-object adoption, and the worker path never calls
-  `on_thread_exit`; whatever survives that stays draw-capable-only;
-- the top of `Render_command_encoder_impl`, `Compute_command_encoder_impl` and
-  `Blit_command_encoder_impl` construction, and `Render_pass_impl` start/end.
+- nothing for `Vertex_input_state_impl::on_thread_enter` / `on_thread_exit`
+  or their `Render_pass_impl` twins: section 6 **deletes** all four, along
+  with the static registries and `m_owner_thread`, in favour of per-context
+  instances;
+- the top of `Render_command_encoder_impl` and `Compute_command_encoder_impl`
+  construction, and `Render_pass_impl` start/end.
 
-`ERHE_VERIFY_GL_THREAD_CAN_CREATE_VERTEX_INPUT()`:
-- `Device_impl::create_vertex_array` (`gl_device.cpp:2153`; moved out of the
-  `HAS_CONTEXT` list above -- a VAO is a container object, so `HAS_CONTEXT`
-  is the wrong question for it);
-- `Vertex_input_state_impl::create` and `reset` (both were listed under
-  `DRAW_CAPABLE` in the single-tier revision of this plan; the full tier is
-  exactly the permission to reach them off the main thread). `create` is
-  called from both constructors (`gl_vertex_input_state.cpp:321`, `:332`),
-  so this is where a limited-tier worker constructing a
-  `Vertex_input_state` is caught.
+`Blit_command_encoder_impl` is **not** guarded at construction. An earlier
+revision put it there, which made every texture upload main-thread-only by
+side effect rather than by decision. Section 6 splits it per method:
+
+- the texture upload / copy paths take `HAS_CONTEXT` -- after phase 0 they
+  touch only per-context pixel-unpack and pixel-store state
+  (`gl_blit_command_encoder.cpp:307-311`, `:466`), because the
+  `Gl_binding_state::push_texture` scratch-unit guard at `:246-249` lives in
+  the `#if defined(__APPLE__)` arm (`:224`) that phase 0 deletes, and the
+  surviving arm emplaces `texture_guard` only `if (!use_dsa)`;
+- `blit_framebuffer` takes `HAS_CONTEXT` **and** requires a
+  `Scoped_framebuffer` for each of its two render passes;
+- the readback / pack paths (`:607-611`) keep `DRAW_CAPABLE`, since nothing
+  needs them off the main thread today.
+
+**Container objects** -- `Device_impl::create_vertex_array`
+(`gl_device.cpp:2153`), `Vertex_input_state_impl::create` / `reset`, and
+`Render_pass_impl::create` / `reset` -- take plain
+`ERHE_VERIFY_GL_THREAD_HAS_CONTEXT()`. What makes them safe off the main
+thread is not a role but the per-object accessor of section 6: they are
+reached *through* `Scoped_vertex_input_state` / `Scoped_framebuffer`, which
+is what guarantees the object being created belongs to the calling thread's
+own context.
 
 After phase 0 there are no non-DSA fallbacks left to guard -- the emulation
 that would have taken the binding path is gone rather than merely asserted
@@ -655,33 +693,26 @@ data** -- storage is allocated inside the `Texture_impl` constructor
 (`gl_texture.cpp:662`, the `texture_storage_*` / `tex_storage_*` calls at
 `:925-981`), and every pixel upload goes through
 `Blit_command_encoder_impl` (`gl_blit_command_encoder.cpp:329`, `:359`,
-`:376`, `:395`, and the compressed variants at `:484`, `:509`, `:528`),
-whose construction section 4 places under
-`ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()`.
+`:376`, `:395`, and the compressed variants at `:484`, `:509`, `:528`).
 
-Consequences, all three of which the implementation must respect:
+Two publication points, then, not one:
 
-- **The publication point for a texture is its constructor**, exactly
-  parallel to `Buffer_impl::allocate_storage`: `gl::flush()` at the end of
-  the storage-allocation branch when the calling thread's role is a worker
-  role. Same reasoning, same escalation path to a fence if it ever shows up
-  in a profile.
-- **Pixels raise no publication question at all**, because the upload runs
-  on the main thread by construction. That is a consequence of the
-  main-only blit encoder, not an accident -- if a future call site wants
-  worker-side upload, it needs its own publication rule and its own
-  decision. Do not treat this as already answered.
-- **A worker-created texture is empty until the main thread fills it.** That
-  is a real constraint on any future call site, and it should be in the
-  `Scoped_worker_context_limited` doc comment, not just here. Allocation is
-  the part worth moving off the main thread anyway; the upload is a queued
-  transfer.
+- **Storage allocation**: `gl::flush()` at the end of the `Texture_impl`
+  constructor's storage branch when the calling thread's role is `worker`,
+  exactly parallel to `Buffer_impl::allocate_storage`. Same reasoning, same
+  escalation path to a fence if it ever shows up in a profile.
+- **Pixel upload**: the same rule at the end of each upload method, for the
+  same reason. Section 6 makes worker-side upload legal (the DSA path
+  touches only per-context pixel state after phase 0), so this is a live
+  case, not a hypothetical -- an earlier revision of this plan said pixels
+  raised no publication question because the upload was main-thread-only,
+  and that is no longer true.
 
-Note that nothing creates a texture on a worker today
-(`texture_file_loader.cpp:153` is decode-only), so this permission is
-currently unexercised -- the same status as the full tier, and it carries
-the same obligation: if it is not covered by a test, no run proves anything
-about it.
+Nothing creates or uploads a texture on a worker today
+(`texture_file_loader.cpp:153` is decode-only), so both rules are
+precautionary until a call site appears -- but the decode-then-upload path
+is the obvious first user, and the rule should be in place before it lands
+rather than after it misbehaves.
 
 The two call sites in section 9 both publish before their scope ends
 (`async_raytrace_kickoff_operation.cpp:174` enqueues to the commit queue
@@ -691,315 +722,241 @@ release)` as the last statement *inside* the lambda, before the scoped
 destructor runs). So publication-point flushing is the only placement that
 covers them.
 
-## 6. Phase 3 -- the worker resource context API
+## 6. Phase 3 -- the worker context API and per-object access
 
 The call sites (`deferred_finalize_mesh_items`,
 `build_imported_buffer_meshes`, the lightmap partitioner) are **backend-shared
 code**, so the API must exist on every backend and be a no-op on the ones that
 do not need it.
 
-### Two tiers, two types
+### One context API, plus explicit per-object access
 
-The user's requirement: *"We do need separate scoped GL contexts - one which
-can create vertex input state, and lesser which can create buffers and operate
-on them"*. Two distinct scoped **types**, not one type with a flag:
+**Decided (user, 2026-08-27), replacing the two-tier split an earlier
+revision of this section described:** there is **one** worker-context API,
+not a `limited` / `full` pair. The goal is that **workers can reach every
+object, safely** -- and access to the objects that are not shared is granted
+per *object*, through explicit scoped accessors, rather than by tiering the
+context.
 
-| type | may create |
-|---|---|
-| `Scoped_worker_context_limited` | buffers, texture *storage*, samplers, and DSA operations on them |
-| `Scoped_worker_context_full`    | the above **plus** `Vertex_input_state` (a VAO) |
+Why the tier split was the wrong shape, recorded so it is not re-proposed:
 
-They are separate types rather than a flag because the difference is not a
-quantity, it is a different *lifetime contract*. The limited tier touches only
-objects that GL shares across a share group, so an object it creates is the
-same object on the drawing thread and its obligations end when the scope ends.
-The full tier touches a **container object**, which is not shared, so it
-carries an ownership hand-back obligation (below). A `bool` on one type would
-let a call site opt into that obligation by accident.
+- It encoded container-object access in the *context type*, but which
+  container objects a worker needs is a property of the **work**, not of the
+  context. A tier cannot express "this task needs *this* framebuffer".
+- The `full` tier had no call site at all (below), so it was a permission
+  invented to fill out a taxonomy.
+- The `limited` tier's boundary turned out not to be where the code actually
+  draws it. It excluded texture upload on the grounds that
+  `Blit_command_encoder` is main-thread-only -- but that is this plan's own
+  blanket guard, not a GL constraint, and after phase 0 the DSA upload path
+  touches no shared state at all (see "What this unblocks").
 
-`erhe_graphics/scoped_worker_context.hpp`:
+So: `Scoped_worker_context` grants a worker a share context and the right to
+create and operate on **shared** objects (buffers, textures, samplers) via
+DSA. Access to a **container** object is a second, separate, explicit step.
+
+### The container-object problem, and the two places it already exists
+
+GL share contexts share *object* state -- buffers, textures, samplers,
+programs -- but **container objects are not shared**: vertex array objects,
+framebuffers and transform-feedback objects are per-context. A VAO created on
+a worker context is not the same object on the drawing thread.
+
+The tree already has this problem twice, in **structurally identical** form:
+
+| | `Vertex_input_state_impl` | `Render_pass_impl` |
+|---|---|---|
+| GL object | `std::optional<Gl_vertex_array>` | `std::optional<Gl_framebuffer>` (x2) |
+| owner | `std::thread::id m_owner_thread` | `std::thread::id m_owner_thread` |
+| registry | `static s_all_vertex_input_states` | `static s_all_framebuffers` |
+| migration | `on_thread_enter` / `on_thread_exit`, whole-set | `on_thread_enter` / `on_thread_exit`, whole-set |
+
+(`gl_vertex_input_state.hpp:29-53`, `gl_render_pass.hpp:19-70`,
+`gl_render_pass.cpp:249-276`.) That two independent types converged on the
+same shape is the argument for solving it once, in a shared mechanism, rather
+than twice.
+
+### The API
 
 ```cpp
 namespace erhe::graphics {
 
-// id < 0 is the empty token. Deliberately NOT 0: the existing
-// Gl_worker_context uses id 0 for both "main-thread no-op" and "worker
-// context #0" (gl_context_provider.cpp:54-55 enqueues {i, context.get()};
-// :100 verifies id == 0 for the no-op), so its release-on-wrong-thread
-// check passes vacuously for the real context #0. A fresh API should not
-// inherit that.
-class Worker_context_token { public: int id{-1}; };
+class Worker_context_token { public: int id{-1}; };   // id < 0 is the empty token
 
-enum class Worker_context_tier { limited, full };
+// Grants the calling worker thread a share context: create and operate on
+// SHARED objects (buffers, textures, samplers) via DSA. Does NOT by itself
+// grant access to any container object -- take a Scoped_vertex_input_state
+// or Scoped_framebuffer for that. No-op on the main thread and on every
+// backend that needs no per-thread context (Vulkan, Metal, null).
+// RE-ENTRANT: nested construction on one thread refcounts.
+class Scoped_worker_context final { /* ... as before ... */ };
 
-// LIMITED TIER.
-//
-// Grants the calling worker thread permission -- and, on OpenGL, an actual
-// share context -- to CREATE GPU resources that GL shares across a share
-// group: buffers, texture storage, samplers, and DSA operations on them.
-//
-// It may NOT create a Vertex_input_state (use the full tier), may not bind
-// anything, may not map a buffer, and may not prepare or record a draw.
-// Everything it may not do asserts (gl_thread_role.hpp).
-//
-// TEXTURES: this grants texture STORAGE ALLOCATION, not pixel upload.
-// Texture_create_info carries no initial data and every upload goes through
-// Blit_command_encoder, which is main-thread-only -- so a texture created
-// here is EMPTY until the main thread fills it. That is by construction,
-// not an oversight; see section 5.
-//
-// No-op on the main thread and on every backend that needs no per-thread
-// context (Vulkan, Metal, null).
-//
-// RE-ENTRANT: nested construction on one thread refcounts and does not
-// acquire a second context (see "Re-entrancy and taskflow subflows").
-class Scoped_worker_context_limited final
+// Ensures this Vertex_input_state has a VAO on the CALLING THREAD'S CURRENT
+// CONTEXT, and yields its name. Asserts if no context is current (role
+// `none`). Cheap and idempotent after the first use on a given context.
+class Scoped_vertex_input_state final
 {
 public:
-    explicit Scoped_worker_context_limited(Device& device);
-    ~Scoped_worker_context_limited() noexcept;
-    Scoped_worker_context_limited (const Scoped_worker_context_limited&) = delete;
-    void operator=                (const Scoped_worker_context_limited&) = delete;
-    Scoped_worker_context_limited (Scoped_worker_context_limited&&)      = delete;
-    void operator=                (Scoped_worker_context_limited&&)      = delete;
-
-private:
-    Device&              m_device;
-    Worker_context_token m_token;
+    Scoped_vertex_input_state(Device& device, Vertex_input_state& state);
+    ~Scoped_vertex_input_state() noexcept;
+    [[nodiscard]] auto gl_name() const -> unsigned int;
+    // non-copyable, non-movable
 };
 
-// FULL TIER.
-//
-// Everything the limited tier grants, PLUS creating a Vertex_input_state.
-//
-// A VAO is a GL CONTAINER object and is therefore NOT shared across the
-// share group: the VAO this scope creates does not exist on the drawing
-// thread. On scope exit this type hands every Vertex_input_state created
-// inside it back to the unowned pool, and the drawing thread creates its own
-// VAO for that state on first use. See "The full tier and VAO ownership".
-//
-// Still may not bind, map or draw. Same re-entrancy rules.
-//
-// A nested Scoped_worker_context_limited inside a full scope is legal: it
-// refcounts onto the same context and does not narrow the outer permission.
-// The reverse -- a full scope nested inside a limited one -- ASSERTS. It
-// would silently widen the outer scope's contract, and the outer scope's
-// release does not perform the hand-back.
-class Scoped_worker_context_full final
+// The same, for a Render_pass's framebuffer(s).
+class Scoped_framebuffer final
 {
 public:
-    explicit Scoped_worker_context_full(Device& device);
-    ~Scoped_worker_context_full() noexcept;
-    Scoped_worker_context_full (const Scoped_worker_context_full&) = delete;
-    void operator=             (const Scoped_worker_context_full&) = delete;
-    Scoped_worker_context_full (Scoped_worker_context_full&&)      = delete;
-    void operator=             (Scoped_worker_context_full&&)      = delete;
-
-private:
-    Device&              m_device;
-    Worker_context_token m_token;
+    Scoped_framebuffer(Device& device, Render_pass& render_pass);
+    ~Scoped_framebuffer() noexcept;
+    [[nodiscard]] auto gl_name                    () const -> unsigned int;
+    [[nodiscard]] auto gl_multisample_resolve_name() const -> unsigned int;
 };
 
 }
 ```
 
-backed by `Device` methods forwarding to `Device_impl`:
+Both accessors are **no-ops on every backend but GL**, where container
+objects do not exist as a concept. On the main thread they are also
+effectively free -- the object is already present on the main context.
 
-```cpp
-[[nodiscard]] auto supports_worker_contexts() const -> bool;
-[[nodiscard]] auto acquire_worker_context(Worker_context_tier tier) -> Worker_context_token;
-void               release_worker_context(Worker_context_token token);
-```
+### The one real fork: per-context instances, not migration
 
-The tier is a parameter of the *device* call, not a property of the context,
-because both tiers draw from the same pool: the tier selects the thread role
-installed and the release work performed, not which context is handed out.
+This is the decision that determines whether the rest is simple or a
+minefield. **Recommendation: per-context instances.** Stated as a fork so it
+can be overruled cheaply, because everything below depends on it.
 
-- **Vulkan / Metal / null**: `supports_...` returns `true`, acquire/release
-  return and ignore an empty token, both tiers identical. No cost, and no
-  `#if` at the call sites.
-- **GL**: acquire dequeues from the pool, `make_current()`s, and sets the
-  thread role to `worker_resource_limited` or `worker_resource_full`. Release
-  restores the previous role, `clear_current()`s and re-enqueues. Neither
-  tier may call `OpenGL_state_tracker::on_thread_enter` /
-  `on_thread_exit` -- that is the entire difference from `Scoped_gl_context`,
-  and the reason this is a separate API rather than a flag on the old one.
-  The full tier's release does the VAO hand-back below **instead of**, not by
-  way of, `on_thread_exit`.
+**(a) Migration** -- one GL object, ownership moves between contexts. This is
+what the tree does today, and what an earlier revision of this plan tried to
+build the `full` tier on. It requires: mutual exclusion (the main thread must
+not touch the object while a worker holds it), a hand-back on scope exit, and
+a re-adoption point. The review of that design found it fails on all three --
+there is no re-adoption point (`on_thread_exit` is never called on the main
+thread), the hooks are whole-set rather than per-object, and the hand-back
+trips this plan's own draw-capable guard while racing the shared binding
+cache. Those are not incidental defects; they are what "one object, two
+threads" costs.
 
-### The full tier and VAO ownership
+**(b) Per-context instances** -- the logical object holds a small map from
+*context* to GL name, and each context lazily creates its own on first use.
+There is no ownership, no hand-back, no exclusion, and no migration: two
+threads using the same `Vertex_input_state` concurrently each touch their own
+VAO. The static registry and the `on_thread_enter` / `on_thread_exit` sweeps
+are **deleted outright** from both `Vertex_input_state_impl` and
+`Render_pass_impl`, along with `m_owner_thread`.
 
-This is the one hard fact the full tier has to answer, and the existing
-machinery does not answer it as written. Decision: **reuse the existing
-per-thread migration** (`Vertex_input_state_impl::on_thread_enter` /
-`on_thread_exit`, `gl_vertex_input_state.cpp:24` and `:47`), the same path
-`m_default_vertex_input_state` already rides (`gl_device.hpp:176-181`) --
-but three properties of that machinery have to change first. All three were
-verified against the tree; none are hypothetical.
+The cost of (b) is memory, and it is negligible: with a 4-context pool plus
+main, that is 5 VAOs per vertex format -- nine formats, so 45 VAOs -- and 5
+framebuffers per render pass. Against that it deletes an entire class of
+concurrency bug, and with it review findings C2, C3, M5 and M6.
 
-**1. There is no re-adoption point on the main thread.** The main thread
-calls `on_thread_enter()` exactly once, at `editor.cpp:2573`, and **never
-calls `on_thread_exit()`**. `Vertex_input_state_impl::create()` is reached
-only from the two constructors (`:321`, `:332`) and from `on_thread_enter`
-(`:43`). So a state that a worker `reset()`s on scope exit goes unowned and
-stays unowned forever: the main thread never re-enters to adopt it, and the
-next `update()` or `gl_name()` on it trips
-`ERHE_VERIFY(m_gl_vertex_array.has_value())` (`:390`).
+What (b) requires that does not exist yet:
 
-  One correction to the symptom: `gl_name()` (`:511-518`) does **not** trip
-  `ERHE_VERIFY(m_gl_vertex_array.has_value())` -- it returns `0`. What it
-  trips first is `ERHE_VERIFY(m_owner_thread == std::this_thread::get_id())`
-  at **`:513`**. `update()` trips `:389`, then `:390`. Any lazy-adoption
-  design has to remove or invert the `:513` verify, so it is named here.
+- **A context identity.** A small dense index assigned at context creation
+  (main = 0, pool entries 1..N), stored thread-locally, so the per-object map
+  is an array lookup rather than a hash on `thread::id`. Thread ids are the
+  wrong key -- taskflow reuses threads across contexts.
+- **A short mutex per object**, guarding only the map, not the GL work.
+- **Deferred destruction, which is the genuinely hard part.** See below.
 
-  Fix: make adoption **lazy and per-object** rather than a once-at-startup
-  sweep, and retire the bulk sweep in `on_thread_enter`. **But it cannot be
-  done inside `gl_name()`**, for four reasons, all verified:
+### Destruction is the remaining hard problem -- do not gloss it
 
-  1. **Self-deadlock through the constructor.** `s_mutex` is a plain
-     `std::mutex` (`gl_vertex_input_state.hpp:52`). Both constructors take it
-     (`:317`, `:328`) and then call `create()` (`:321`, `:332`) ->
-     `update()` (`:382`) -> `gl_name()` (`:391`, `:400`, ...). A `gl_name()`
-     that takes `s_mutex` deadlocks on construction. One that does not takes
-     the lock races the registry.
-  2. **`gl_name()` is `const`, and is reached through a `const
-     Vertex_input_state*`** -- `Vertex_input_state_tracker::execute` holds
-     `const Vertex_input_state* const effective_state` and calls
-     `...->get_impl().gl_name()` (`gl_state_tracker.cpp:499`). Creating from
-     there needs `mutable` state plus a const-qualified mutation.
-  3. **It is a per-draw hot path.** `execute()` runs on every pipeline bind;
-     a mutex acquisition there is not free.
-  4. It would put GPU object creation behind an accessor that every caller
-     reasonably reads as a getter.
+A per-context GL object must be deleted **on its own context**. When a
+`Vertex_input_state` or `Render_pass` is destroyed on the main thread while
+worker contexts still hold instances of it, those instances cannot be deleted
+from the destroying thread. Options, to be decided when implementing:
 
-  **Adopt at a single explicit re-adoption point on the drawing thread
-  instead**, called from a place that already runs per frame and already
-  holds the right thread. `Vertex_input_state_tracker::execute` is the
-  natural site *if* the adoption call is a separate, non-`const`, explicitly
-  named step ahead of the `gl_name()` read -- not folded into the getter.
-  Settle the exact site when implementing 6b; what is settled here is that
-  `gl_name()` is not it.
+1. **Per-context deferred-delete queue**, drained at the top of the next
+   `acquire` for that context (and at context teardown). Bounded, simple,
+   and the deletion happens on the right context by construction.
+2. **Leak until context destruction.** The pool is fixed at 4 and the
+   contexts live for the process, so the bound is
+   *objects-destroyed x contexts*. For VAOs and FBOs that is small, but it
+   is unbounded in principle if a workload churns render passes.
 
-  Two things that are **not** obstacles, checked so nobody re-opens them:
-  `Vertex_input_state_tracker::m_last_state` caching is fine (the early
-  return at `gl_state_tracker.cpp:506-508` happens *after*
-  `bind_vertex_array(name)`, and the cached vectors are tied to the instance,
-  not the name); and a recreated VAO does **not** need its recorded buffer
-  bindings to survive, because `set_vertex_buffer` / `set_index_buffer` are
-  re-issued per draw from `Render_command_encoder_impl`
-  (`gl_render_command_encoder.cpp:118`, `:123`) and `update()` re-establishes
-  only attribute formats, enables and divisors. Recreate-on-another-thread is
-  sound in principle; only the mechanism had to change.
+(1) is preferred; (2) is acceptable only with a written bound. This is the
+mirror image of the `on_*_deleted` problem in section 4: worker-side
+destruction of GL objects must be routed, not merely forbidden.
 
-**2. `on_thread_enter` / `on_thread_exit` are whole-set, not per-object.**
-(`on_thread_exit`'s `bind_vertex_array(0)` is at `:51`.)
-`on_thread_enter` claims *every* state whose `m_owner_thread` is default
-(`:41-43`); `on_thread_exit` `reset()`s *every* state this thread owns
-(`:65-67`) and additionally does `gl::bind_vertex_array(0)` (`:50`). A
-full-tier worker calling them would adopt every incidentally-unowned VAO in
-the process -- including the pre-registered format VAOs and
-`m_default_vertex_input_state` -- and destroy them on scope exit.
+Note that the same argument applies to `~Gl_vertex_array` /
+`~Gl_framebuffer` calling `Gl_binding_state::on_*_deleted`
+(`gl_objects.cpp:315-323`): a worker-context instance must carry a **null
+`binding_state`**, both because the destructor would otherwise write the
+shared software cache from a worker, and because container-object names are
+per-context so the scrub would be wrong anyway. The destructor already
+guards on null and the move constructor already supports it
+(`gl_objects.cpp:325-328`), so this is a constructor argument, not new
+machinery.
 
-  Fix: the full tier's release must hand back **only the states created
-  inside that scope**. Track them per-scope -- the thread-local depth record
-  already needed for re-entrancy is the natural place -- and `reset()`
-  exactly those. Do not call the static `on_thread_exit` from the worker
-  path at all.
+### What this unblocks
 
-  **`Render_pass_impl` has the identical whole-set pattern** over
-  `s_all_framebuffers` (`gl_render_pass.cpp:249-276`) -- framebuffers being
-  the other non-shared container object -- and
-  `OpenGL_state_tracker::on_thread_enter` / `on_thread_exit` fan out to it
-  and to `Gpu_timer_impl` as well as to `Vertex_input_state_impl`
-  (`gl_state_tracker.cpp:729-744`). Commit 6b retires only the
-  `Vertex_input_state` sweep. That is correct **only so long as nothing ever
-  creates a `Render_pass` on a worker** -- which is the tier table's own
-  logic, applied to the other container object. Say so, and put a
-  `Render_pass_impl` construction under the draw-capable guard so the
-  assumption is enforced rather than assumed.
+The per-object accessors remove the constraints the tier design had to
+accept, which is the point of the change:
 
-**2b. The hand-back itself would trip this plan's own draw-capable guard,
-and race the shared binding cache.** `reset()` (`:355-366`) does
-`m_gl_vertex_array.reset()`, running `~Gl_vertex_array`
-(`gl_objects.cpp:315-323`), which calls
-`m_binding_state->on_vertex_array_deleted(m_gl_name)` whenever
-`m_binding_state` is non-null -- and `Device_impl::create_vertex_array`
-always passes `&m_gl_binding_state` (`gl_device.cpp:2163`). Section 4 puts
-all seven `on_*_deleted` hooks under `ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()`,
-so **every hand-back asserts** -- on the one path verification item 7 exists
-to exercise. The two sections contradict each other as written.
+- **`Vertex_input_state` on a worker** -- take `Scoped_vertex_input_state`.
+  No hand-back, no migration.
+- **Framebuffers, and therefore `blit_framebuffer`, on a worker** -- take
+  `Scoped_framebuffer`. An earlier revision called this "hard-blocked,
+  can never be worker-legal" on the grounds that an FBO name is meaningless
+  on a worker context. That is true of the *name*, and false of the
+  *operation*: the worker simply needs its own FBO for that render pass,
+  which is exactly what the accessor provides.
+- **Texture upload on a worker.** Section 4's blanket
+  `ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()` on `Blit_command_encoder_impl`
+  construction should be **split onto the individual methods**. After phase 0
+  the DSA upload path touches no shared state: the
+  `Gl_binding_state::push_texture` scratch-unit guard at
+  `gl_blit_command_encoder.cpp:246-249` is inside the `#if defined(__APPLE__)`
+  arm at `:224` that phase 0 deletes, and in the surviving `#else` arm
+  `texture_guard` is emplaced only `if (!use_dsa)` -- never, once DSA is
+  mandatory. What remains is `gl::bind_buffer(pixel_unpack_buffer, ...)` and
+  three `gl::pixel_store_i(unpack_*)` calls (`:307-311`, `:466`), which are
+  **per-context** state that a worker sets on its own context.
 
-  The assert is the lesser problem. `Gl_binding_state::on_vertex_array_deleted`
-  (`gl_binding_state.cpp:533-539`) writes `m_bound_vertex_array` and walks
-  the `m_vertex_array_stack` vector with no synchronization, from a worker,
-  while the main thread renders -- a real data race on a `std::vector`, not a
-  stale cache. And because **VAO names are per-context**, the worker's VAO
-  can legitimately carry the same numeric name as one the main context has
-  bound, so the scrub is semantically wrong even when it does not race.
+  So the guard becomes per-method: the texture upload and copy paths take
+  `HAS_CONTEXT`; `blit_framebuffer` additionally requires a
+  `Scoped_framebuffer` for each of its two render passes; the readback /
+  pack paths (`:607-611`) keep `DRAW_CAPABLE` until something needs
+  otherwise, since nothing does today.
 
-  Fix: **worker-created GL objects carry a null `binding_state`.**
-  `~Gl_vertex_array` already guards on it, and the move constructor already
-  supports null (`gl_objects.cpp:325-328`), so this is a constructor
-  argument, not new machinery. Do **not** relax the guard. The same question
-  applies to every `Gl_*` object a worker can create -- answer it once, for
-  all of them, when implementing.
+### Consequences for the rest of the plan
 
-**3. The destructor leaks a dangling pointer into the static registry.**
-`~Vertex_input_state_impl` (`:335-347`) early-returns when
-`!m_gl_vertex_array.has_value()` **before** erasing `this` from
-`s_all_vertex_input_states`. Today an unowned state is a startup-only
-transient, so this never bites. Once hand-back makes "unowned" a normal
-steady state, destroying a handed-back state leaves a dangling pointer that
-the next sweep dereferences.
+- **`Gl_thread_role` loses the tier values**: `{ none, main, worker }`. The
+  `ERHE_VERIFY_GL_THREAD_CAN_CREATE_VERTEX_INPUT()` macro is **removed** --
+  it existed only to police the tier boundary. `create_vertex_array` and
+  `Vertex_input_state_impl::create` return to `HAS_CONTEXT`; what makes them
+  safe is now the accessor, not a role.
+- **The full-tier test (section 11 item 7) is replaced** by tests of the two
+  accessors, which *do* have call sites and a real mechanism to check.
+- **Section 5's publication rule is unchanged** for buffers and textures.
+  Container objects need no publication: they are never shared, so there is
+  nothing to publish.
 
-  Fix: erase from the registry unconditionally. It belongs in its own commit
-  landing **before** the full tier -- it is a pre-existing latent bug, not
-  one this plan introduces. **It is not quite a one-line change:** the early
-  return also skips *taking* `s_mutex` (the lock is at `:341`, after the
-  return at `:337-339`), so removing it changes the locking of every
-  destruction -- including those during `Device_impl` teardown, when
-  `m_default_vertex_input_state` is destroyed (`gl_device.hpp:176-181`).
-  Verify no destructor can run with `s_mutex` already held on that thread.
+### Does anything create a container object on a worker today?
 
-Consequence for the thread-role guard (section 4): `Vertex_input_state_impl`
-construction is legal under role `worker_resource_full`, and asserts under
-`worker_resource_limited` and `none`.
+**No** -- and that is still worth stating, because it sets what the initial
+commits can verify. `Mesh_memory`'s constructor pre-registers an entry for
+every format up front on the main thread (`mesh_memory.cpp:404-413`, the call
+at `:412`, looping `get_all_vertex_formats()` -- all nine member formats,
+`:416-429`). Every caller passes one of those members (`mesh_memory.cpp:800`,
+`:804`, `:809`, `:826`, `:830`, `:835`; `lightmap_baker.cpp:1417`, `:3268`),
+and the lookup at `:726-731` compares by value, so it always hits and the
+`emplace_back` at `:734` is unreachable from a worker.
 
-### Does the full tier have a call site?
-
-**Today, no.** Verified: the `Mesh_memory` constructor pre-registers an entry
-for every format up front on the main thread (`mesh_memory.cpp:404-413`,
-the call itself at `:412`), looping `get_all_vertex_formats()` -- which
-returns all nine member formats, `:416-429` -- and calling
-`get_vertex_input_from_vertex_format`. Every caller in
-the tree passes one of those members (`mesh_memory.cpp:800`, `:804`, `:809`,
-`:826`, `:830`, `:835`; `lightmap_baker.cpp:1417`, `:3268`), the lookup at
-`:726-731` compares by value, so it always hits and the `emplace_back` at
-`:734` is unreachable from a worker. Section 9 records the same correction.
+The difference from the tier design is that this is no longer a problem. The
+accessors are not a speculative permission: they are the mechanism the
+*existing* main-thread code should use too, so they are exercised on every
+frame by the drawing thread, not only by a hypothetical worker. Adopting them
+main-thread-first is what makes them testable before any worker call site
+exists.
 
 **While asserting that invariant, fix the other half of it.**
-`get_vertex_input_from_vertex_format` is also **not thread-safe on its read
-path**: it walks the `m_vertex_input_entries` vector from workers with
-nothing preventing a main-thread `emplace_back`. Nothing appends after
-construction today -- which is exactly the unenforced coupling the section 9
-hoist exists to remove. So the assert should be twofold: the miss path is
-only ever taken on the main thread, **and** the vector is never grown after
-construction.
-
-The user's decision is to **specify and implement the full tier now anyway**.
-That is a deliberate call, so the plan states the consequence plainly rather
-than pretending a user exists:
-
-- The full tier ships with **no production call site**, therefore no
-  end-to-end coverage from the repro or from any asset load.
-- It must therefore carry its own test. Verification (section 11) gains a
-  targeted case: a worker task under `Scoped_worker_context_full` that
-  constructs a `Vertex_input_state`, exits the scope, and then has the
-  drawing thread bind and draw with it. That test is the *only* thing
-  exercising the hand-back path, so it is not optional.
-- The hygiene hoist in section 9 removes the latent dependency on
-  constructor pre-registration; it does not create a full-tier user, and
-  must not be recorded as one.
+`get_vertex_input_from_vertex_format` is **not thread-safe on its read path**:
+it walks the `m_vertex_input_entries` vector from workers with nothing
+preventing a main-thread `emplace_back`. Nothing appends after construction
+today -- exactly the unenforced coupling the section 9 hoist exists to
+remove. Assert both halves: the miss path is only ever taken on the main
+thread, **and** the vector is never grown after construction.
 
 ### The old provider is deleted -- do not reproduce its acquire bug
 
@@ -1461,27 +1418,35 @@ Phase 0 has its own gate in section 3f; run it first. Then:
    glTF, exit. No use-after-free from the SDL event watch, no leaked
    contexts.
 
-7. **The full tier's hand-back, which nothing else exercises.** The full
-   tier has no production call site (section 6), so items 1-6 above prove
-   nothing about it. A dedicated test is mandatory, not optional: a worker
-   task under `Scoped_worker_context_full` constructs a
-   `Vertex_input_state`, the scope exits, and the drawing thread then binds
-   and draws with that state.
+7. **The per-object accessors.** Unlike the tier design they replace, these
+   have a real mechanism to check and a main-thread call site from day one,
+   so this is not a test propping up otherwise-dead code.
 
-   **Do not test this by comparing VAO names.** VAOs are container objects
-   with a **per-context name space**: both contexts allocate names from 1
-   upward, so a correctly re-created VAO on the drawing thread will very
-   often carry the *same* numeric name as the worker's. A
-   names-must-differ criterion produces false failures, and passes for the
-   wrong reason when it passes. Test the mechanism: assert the state is
-   observably **unowned** between scope exit and first drawing-thread use,
-   and that `m_owner_thread` equals the drawing thread's id afterwards.
-
-   Mutation-check the tier boundary too: construct a `Vertex_input_state`
-   under `Scoped_worker_context_limited` and confirm
-   `ERHE_VERIFY_GL_THREAD_CAN_CREATE_VERTEX_INPUT()` fires. Without this,
-   the two types are indistinguishable at runtime and the split is
-   documentation only.
+   - **Same object, two contexts, concurrently.** A worker under
+     `Scoped_worker_context` takes `Scoped_vertex_input_state` on a state the
+     main thread is *also* drawing with, in the same frame. Both must
+     succeed, and the two GL names must be **different objects on different
+     contexts** -- which cannot be checked by comparing the numeric names.
+     Container objects have a **per-context name space**, so both contexts
+     allocate from 1 upward and equal names are expected, not a failure.
+     Check the per-context map instead: two entries, two distinct context
+     indices.
+   - **The same for `Scoped_framebuffer`**, and then a worker-side
+     `blit_framebuffer` between two render passes it holds accessors for.
+     That is the operation an earlier revision of this plan wrongly called
+     impossible, so it is worth proving directly.
+   - **Idempotence and cost.** Re-entering an accessor for an object already
+     present on the current context must not create a second GL object, and
+     must not take the GL driver path at all.
+   - **Destruction.** Destroy a `Vertex_input_state` and a `Render_pass` on
+     the main thread while worker contexts hold instances, then re-acquire
+     each worker context and confirm the deferred-delete queue drained --
+     under ASan, and with a GL object-count check, since a leak here is
+     silent.
+   - **Mutation-check the guard**: reach `Vertex_input_state_impl::create`
+     from a worker *without* an accessor and confirm
+     `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT()` fires. Without this the accessor
+     is a convention rather than a mechanism.
 
 8. **The worker call sites section 9 originally missed.** Items 1-6 load
    scenes and render; none performs a mesh edit, so none would have caught
@@ -1500,20 +1465,16 @@ Phase 0 has its own gate in section 3f; run it first. Then:
    These can be driven through the editor MCP server (127.0.0.1:8080) rather
    than by hand.
 
-9. **The limited tier's texture permission, which nothing else exercises
-   either.** Textures are in the limited tier by decision, but no production
-   call site creates a texture on a worker, so items 1-8 prove nothing about
-   it -- the same situation as the full tier, and it earns the same
-   treatment. A targeted case: a worker task under
-   `Scoped_worker_context_limited` constructs a `Texture`, the scope exits,
-   and the main thread then uploads to it through a blit encoder and samples
-   it. Assert the texture is legible from the drawing thread, i.e. that the
-   constructor's publication flush actually published the storage.
+9. **Worker-side texture create and upload.** Nothing does this today, so
+   items 1-8 prove nothing about it. A worker under `Scoped_worker_context`
+   creates a `Texture`, uploads pixels to it through a blit encoder, and the
+   main thread then samples it and reads back the expected texels. That
+   covers both publication points of section 5 at once; if either flush is
+   missing, this is what catches it.
 
-   Mutation-check the boundary the same way: attempt a pixel upload from
-   inside the worker scope and confirm the blit encoder's
-   `ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()` fires. Storage-not-upload is the
-   whole content of this permission; if it is not enforced it is not real.
+   Set the pixel-store state on the worker explicitly rather than relying on
+   defaults -- it is per-context, so a worker context does **not** inherit
+   whatever the main thread last set.
 
 10. **Tests.** `build_tests`, once, at the end of the phase, with
     `ERHE_MCP_TEST_TIMEOUT_S=1`.
@@ -1542,34 +1503,44 @@ Phase 0 has its own gate in section 3f; run it first. Then:
    with commit 5's context creation** per section 8: eager main-thread
    creation is now settled, so these cannot be separated.
 5. `scene: build brush Build_info on the main thread` -- section 9, hygiene.
-5b. `graphics: erase Vertex_input_state_impl from the registry
-    unconditionally` -- section 6's VAO fix 3. A one-line pre-existing
-    dangling-pointer fix, standalone and independently correct. **Must land
-    before commit 6b**, which is what makes "unowned" a steady state.
-6. `graphics: limited GL worker contexts` -- sections 5, 6 and 8: the
-   `Scoped_worker_context_limited` half of the API, re-entrancy, the pool,
-   the publication flush, the semaphore-based acquire, and the deletion of
-   `Gl_context_provider` / `Gl_worker_context` / `Scoped_gl_context` /
-   `provide_worker_contexts` entire.
+5b. `graphics: per-context container objects` -- section 6's fork, applied
+    to **both** `Vertex_input_state_impl` and `Render_pass_impl`: the
+    context-index key, the per-object map, the short per-object mutex, and
+    the deletion of `m_owner_thread`, the static registries and all four
+    `on_thread_enter` / `on_thread_exit` sweeps.
+
+    **This is the load-bearing commit, and it is behaviour-neutral on its
+    own** -- with one context in existence, a per-context map of size one
+    behaves exactly as the current single object does, and the main thread's
+    lone `on_thread_enter` (`editor.cpp:2573`) was already a no-op because
+    every object is constructed on the main thread. That is what makes a
+    large refactor bisectable: it lands and is exercised by every frame
+    before any worker context exists to stress it.
+
+    It also subsumes the standalone registry-erase fix an earlier revision
+    had here -- `~Vertex_input_state_impl`'s early return before erasing
+    itself from `s_all_vertex_input_states` (`gl_vertex_input_state.cpp:337-346`)
+    stops being a bug when the registry stops existing. If this commit slips,
+    land that one-line fix separately; it is independently correct.
+5c. `graphics: per-object scoped accessors` -- `Scoped_vertex_input_state`
+    and `Scoped_framebuffer`, no-ops on non-GL backends, plus the deferred
+    per-context delete queues. **Adopt them main-thread-first**: convert the
+    existing drawing-thread call sites in the same commit, so the mechanism
+    is exercised on every frame rather than only by a future worker.
+6. `graphics: GL worker contexts` -- sections 5, 6 and 8: `Scoped_worker_context`,
+   re-entrancy, the pool, the publication flush, the semaphore-based acquire,
+   and the deletion of `Gl_context_provider` / `Gl_worker_context` /
+   `Scoped_gl_context` / `provide_worker_contexts` entire.
    **Merged with the call sites below.** Lazy creation is no longer an
    option (section 8), so this is the only way to avoid a commit that creates
    contexts nobody uses -- a pure regression: startup cost plus, before
    commit 2, a shutdown crash.
-6b. `graphics: lazy per-object VAO adoption` -- section 6's VAO fixes 1 and
-    2: `gl_name()` / `update()` create on demand, the `on_thread_enter`
-    bulk sweep retires. Behaviour-neutral on its own (the main thread's
-    single `on_thread_enter` becomes a no-op because every state is already
-    owned), which is exactly why it is separable and bisectable.
-6c. `graphics: full GL worker contexts` --
-    `Scoped_worker_context_full`, the per-scope created-state tracking, the
-    hand-back on release, and
-    `ERHE_VERIFY_GL_THREAD_CAN_CREATE_VERTEX_INPUT()`. Depends on 5b and
-    6b. Ships with **no production call site**, so it must carry
-    verification item 7 in the same commit -- otherwise this commit adds
-    untested code to the tree with nothing that would notice it breaking.
-7. `editor: take a worker resource context where GPU allocation runs off the
-   main thread` -- section 9's three call sites and the budgeted fallbacks.
-   All three take the **limited** tier.
+6b. `graphics: split the Blit_command_encoder guard per method` -- section 4:
+    upload and copy take `HAS_CONTEXT`, `blit_framebuffer` additionally
+    requires `Scoped_framebuffer`, readback keeps `DRAW_CAPABLE`. Depends on
+    5c. Separable and independently reviewable.
+7. `editor: take a worker context where GPU allocation runs off the main
+   thread` -- section 9's call sites and the budgeted fallbacks.
 8. `editor: print a callstack for structured exceptions` -- see below.
 
 Section 10's `Mesh_memory` pool-vector race gets its own commit or an
