@@ -36,7 +36,14 @@
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
 #include "erhe_scene/trs_transform.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_scene_renderer/primitive_buffer.hpp"
+#include "erhe_dataformat/dataformat.hpp"
+#include "erhe_dataformat/vertex_format.hpp"
+#include "erhe_graphics/blit_command_encoder.hpp"
+#include "erhe_graphics/buffer.hpp"
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/device.hpp"
 
 #include <fmt/format.h>
 #include <glm/glm.hpp>
@@ -46,17 +53,198 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace editor {
 
 using namespace mcp_server_detail;
+
+namespace {
+
+// Reads a byte range out of a mesh pool buffer. The pools are device-local, so
+// the bytes have to come back through a host-visible staging buffer: record one
+// buffer-to-buffer copy on the readback thread slot, submit, wait, map. Same
+// shape as Ray_trace_renderer::read_output_rgba8, minus the layout transitions
+// only a texture needs. No pool usage bit has to be widened for this - every
+// Vulkan buffer is created with TRANSFER_SRC (vulkan_buffer.cpp).
+//
+// This runs on the main thread inside the MCP request tick and wait_idle()
+// stalls the device, which is why the caller caps how much it reads. It is a
+// debugging surface, not a per-frame one.
+[[nodiscard]] auto read_gpu_buffer_bytes(
+    erhe::graphics::Device&       graphics_device,
+    const erhe::graphics::Buffer& source_buffer,
+    const std::size_t             byte_offset,
+    const std::size_t             byte_count,
+    std::vector<uint8_t>&         out_bytes
+) -> bool
+{
+    using namespace erhe::graphics;
+
+    Buffer readback{
+        graphics_device,
+        Buffer_create_info{
+            .capacity_byte_count                    = byte_count,
+            .memory_allocation_create_flag_bit_mask = Memory_allocation_create_flag_bit_mask::mapped,
+            .usage                                  = Buffer_usage::transfer_dst | Buffer_usage::storage,
+            .required_memory_property_bit_mask      = Memory_property_flag_bit_mask::host_read | Memory_property_flag_bit_mask::host_write,
+            .preferred_memory_property_bit_mask     = Memory_property_flag_bit_mask::host_coherent | Memory_property_flag_bit_mask::host_persistent,
+            .debug_label                            = erhe::utility::Debug_label{"MCP mesh buffer readback"}
+        }
+    };
+
+    constexpr unsigned int readback_thread_slot = 7;
+    Command_buffer& command_buffer = graphics_device.get_command_buffer(readback_thread_slot);
+    command_buffer.begin();
+    {
+        Blit_command_encoder blit = graphics_device.make_blit_command_encoder(command_buffer);
+        blit.copy_from_buffer(
+            &source_buffer,
+            static_cast<std::uintptr_t>(byte_offset),
+            &readback,
+            0,
+            static_cast<std::uintptr_t>(byte_count)
+        );
+    }
+    command_buffer.end();
+
+    Command_buffer* command_buffers[] = { &command_buffer };
+    graphics_device.submit_command_buffers(std::span<Command_buffer* const>{command_buffers});
+    graphics_device.wait_idle();
+
+    const std::span<std::byte> mapped = readback.map_bytes(0, byte_count);
+    if (mapped.size() < byte_count) {
+        return false;
+    }
+    out_bytes.resize(byte_count);
+    std::memcpy(out_bytes.data(), mapped.data(), byte_count);
+    readback.unmap();
+    return true;
+}
+
+[[nodiscard]] auto encode_base64(const std::vector<uint8_t>& bytes) -> std::string
+{
+    static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((bytes.size() + 2) / 3) * 4);
+    std::size_t i = 0;
+    while ((i + 2) < bytes.size()) {
+        const uint32_t triple = (uint32_t{bytes[i]} << 16) | (uint32_t{bytes[i + 1]} << 8) | uint32_t{bytes[i + 2]};
+        out += alphabet[(triple >> 18) & 0x3fu];
+        out += alphabet[(triple >> 12) & 0x3fu];
+        out += alphabet[(triple >>  6) & 0x3fu];
+        out += alphabet[ triple        & 0x3fu];
+        i += 3;
+    }
+    const std::size_t remainder = bytes.size() - i;
+    if (remainder == 1) {
+        const uint32_t triple = uint32_t{bytes[i]} << 16;
+        out += alphabet[(triple >> 18) & 0x3fu];
+        out += alphabet[(triple >> 12) & 0x3fu];
+        out += "==";
+    } else if (remainder == 2) {
+        const uint32_t triple = (uint32_t{bytes[i]} << 16) | (uint32_t{bytes[i + 1]} << 8);
+        out += alphabet[(triple >> 18) & 0x3fu];
+        out += alphabet[(triple >> 12) & 0x3fu];
+        out += alphabet[(triple >>  6) & 0x3fu];
+        out += '=';
+    }
+    return out;
+}
+
+[[nodiscard]] auto encode_hex(const std::vector<uint8_t>& bytes) -> std::string
+{
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (const uint8_t byte : bytes) {
+        out += digits[(byte >> 4) & 0x0fu];
+        out += digits[ byte       & 0x0fu];
+    }
+    return out;
+}
+
+[[nodiscard]] auto parse_mesh_variant(const std::string& text, erhe::primitive::Mesh_variant& out_variant) -> bool
+{
+    if (text == "original") {
+        out_variant = erhe::primitive::Mesh_variant::original;
+        return true;
+    }
+    if (text == "optimized") {
+        out_variant = erhe::primitive::Mesh_variant::optimized;
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] auto buffer_range_json(const erhe::primitive::Buffer_range& range) -> json
+{
+    return json{
+        {"pool_id",      range.pool_id},
+        {"buffer_id",    range.buffer_id},
+        {"byte_offset",  range.byte_offset},
+        {"count",        range.count},
+        {"element_size", range.element_size},
+        {"byte_size",    range.get_byte_size()}
+    };
+}
+
+[[nodiscard]] auto index_range_json(const erhe::primitive::Index_range& range) -> json
+{
+    return json{
+        {"first_index", range.first_index},
+        {"index_count", range.index_count}
+    };
+}
+
+// Node -> the Buffer_mesh of one build of one primitive. Deliberately uses
+// get_renderable_mesh(), not get_resolved_renderable_mesh(): these tools report
+// what a named build actually holds, so a silent fallback to the other one
+// would defeat the purpose.
+// The primitive comes back too: it owns the returned Buffer_mesh, and holding
+// it keeps that pointer valid for the rest of the call.
+[[nodiscard]] auto resolve_buffer_mesh(
+    const std::shared_ptr<erhe::scene::Node>&    node,
+    const std::size_t                            primitive_index,
+    const erhe::primitive::Mesh_variant          variant,
+    const std::string&                           variant_name,
+    std::shared_ptr<erhe::primitive::Primitive>& out_primitive,
+    std::string&                                 out_error
+) -> const erhe::primitive::Buffer_mesh*
+{
+    const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
+    if (!mesh) {
+        out_error = "Node has no mesh: " + node->get_name();
+        return nullptr;
+    }
+    const std::vector<erhe::scene::Mesh_primitive>& primitives = mesh->get_primitives();
+    if (primitive_index >= primitives.size()) {
+        out_error = "primitive_index out of range (mesh has " + std::to_string(primitives.size()) + ")";
+        return nullptr;
+    }
+    const std::shared_ptr<erhe::primitive::Primitive>& primitive = primitives[primitive_index].primitive;
+    if (!primitive) {
+        out_error = "Primitive is null at primitive_index " + std::to_string(primitive_index);
+        return nullptr;
+    }
+    const erhe::primitive::Buffer_mesh* buffer_mesh = primitive->get_renderable_mesh(variant);
+    if (buffer_mesh == nullptr) {
+        out_error = "Primitive has no " + variant_name + " renderable mesh";
+        return nullptr;
+    }
+    out_primitive = primitive;
+    return buffer_mesh;
+}
+
+} // anonymous namespace
 
 auto Mcp_server::action_set_mesh_component_mode(const json& args) -> std::string
 {
@@ -1207,5 +1395,207 @@ auto Mcp_server::query_transform_state(const json& args) -> std::string
     return make_json_content(result).dump();
 }
 
+
+auto Mcp_server::query_mesh_buffer_info(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    Scene_root* sr = find_scene(scene_name);
+    if (sr == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    const std::shared_ptr<erhe::scene::Node> node = find_node_in_scene(*sr, args, "node_id", "node_name");
+    if (!node) {
+        return make_error_content("Node not found (give node_id or node_name)");
+    }
+    const std::size_t primitive_index = args.value("primitive_index", std::size_t{0});
+    const std::string variant_name    = args.value("variant", "original");
+    erhe::primitive::Mesh_variant variant{erhe::primitive::Mesh_variant::original};
+    if (!parse_mesh_variant(variant_name, variant)) {
+        return make_error_content("variant must be original or optimized");
+    }
+    std::shared_ptr<erhe::primitive::Primitive> primitive;
+    std::string                                 error;
+    const erhe::primitive::Buffer_mesh* buffer_mesh = resolve_buffer_mesh(node, primitive_index, variant, variant_name, primitive, error);
+    if (buffer_mesh == nullptr) {
+        return make_error_content(error);
+    }
+    erhe::scene_renderer::Mesh_memory* mesh_memory = m_context.mesh_memory;
+    if (mesh_memory == nullptr) {
+        return make_error_content("Mesh_memory is not available");
+    }
+
+    const erhe::dataformat::Vertex_format& vertex_format = mesh_memory->get_vertex_input(buffer_mesh->vertex_input_key).vertex_format;
+
+    json streams = json::array();
+    for (std::size_t stream_index = 0, end = buffer_mesh->vertex_buffer_ranges.size(); stream_index < end; ++stream_index) {
+        const erhe::primitive::Buffer_range& range = buffer_mesh->vertex_buffer_ranges[stream_index];
+        json stream_json = buffer_range_json(range);
+        stream_json["stream"]      = stream_index;
+        stream_json["base_vertex"] = buffer_mesh->base_vertex(stream_index);
+        json attributes = json::array();
+        if (stream_index < vertex_format.streams.size()) {
+            const erhe::dataformat::Vertex_stream& stream = vertex_format.streams[stream_index];
+            stream_json["binding"] = stream.binding;
+            stream_json["stride"]  = stream.stride;
+            for (const erhe::dataformat::Vertex_attribute& attribute : stream.attributes) {
+                attributes.push_back({
+                    {"usage",       erhe::dataformat::c_str(attribute.usage_type)},
+                    {"usage_index", attribute.usage_index},
+                    {"format",      erhe::dataformat::c_str(attribute.format)},
+                    {"offset",      attribute.offset},
+                    {"size",        erhe::dataformat::get_format_size_bytes(attribute.format)}
+                });
+            }
+        }
+        stream_json["attributes"] = attributes;
+        streams.push_back(stream_json);
+    }
+
+    // The affine the vertex shader applies to a snorm16x3 position, recomputed
+    // from this primitive's AABB exactly as Primitive_buffer does - so a caller
+    // reading the bytes can reproduce the decoded position without guessing at
+    // the convention.
+    const erhe::scene_renderer::Position_quantization quantization = erhe::scene_renderer::get_position_quantization(buffer_mesh->bounding_box);
+    const erhe::dataformat::Vertex_position_encoding  position_encoding = erhe::dataformat::get_vertex_position_encoding(&vertex_format);
+
+    json index_range = buffer_range_json(buffer_mesh->index_buffer_range);
+    index_range["base_index"] = buffer_mesh->base_index();
+
+    return make_json_content({
+        {"node",             node->get_name()},
+        {"node_id",          node->get_id()},
+        {"primitive_index",  primitive_index},
+        {"variant",          variant_name},
+        {"has_optimized",    primitive->has_renderable_mesh(erhe::primitive::Mesh_variant::optimized)},
+        {"vertex_input_key", buffer_mesh->vertex_input_key},
+        {"vertex_streams",   streams},
+        {"index_range",      index_range},
+        {"index_ranges", {
+            {"triangle_fill",     index_range_json(buffer_mesh->triangle_fill_indices)},
+            {"edge_lines",        index_range_json(buffer_mesh->edge_line_indices)},
+            {"corner_points",     index_range_json(buffer_mesh->corner_point_indices)},
+            {"polygon_centroids", index_range_json(buffer_mesh->polygon_centroid_indices)}
+        }},
+        {"bounding_box", {
+            {"min", {buffer_mesh->bounding_box.min.x, buffer_mesh->bounding_box.min.y, buffer_mesh->bounding_box.min.z}},
+            {"max", {buffer_mesh->bounding_box.max.x, buffer_mesh->bounding_box.max.y, buffer_mesh->bounding_box.max.z}}
+        }},
+        {"position_encoding", erhe::dataformat::c_str(position_encoding)},
+        {"position_quantization", {
+            {"scale",  {quantization.scale.x,  quantization.scale.y,  quantization.scale.z}},
+            {"offset", {quantization.offset.x, quantization.offset.y, quantization.offset.z}}
+        }}
+    }).dump();
+}
+
+auto Mcp_server::query_mesh_buffer_data(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    Scene_root* sr = find_scene(scene_name);
+    if (sr == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    const std::shared_ptr<erhe::scene::Node> node = find_node_in_scene(*sr, args, "node_id", "node_name");
+    if (!node) {
+        return make_error_content("Node not found (give node_id or node_name)");
+    }
+    const std::size_t primitive_index = args.value("primitive_index", std::size_t{0});
+    const std::string variant_name    = args.value("variant", "original");
+    erhe::primitive::Mesh_variant variant{erhe::primitive::Mesh_variant::original};
+    if (!parse_mesh_variant(variant_name, variant)) {
+        return make_error_content("variant must be original or optimized");
+    }
+    const std::string buffer_kind = args.value("buffer", "vertex");
+    if ((buffer_kind != "vertex") && (buffer_kind != "index")) {
+        return make_error_content("buffer must be vertex or index");
+    }
+    const std::string encoding = args.value("encoding", "base64");
+    if ((encoding != "base64") && (encoding != "hex")) {
+        return make_error_content("encoding must be base64 or hex");
+    }
+    std::shared_ptr<erhe::primitive::Primitive> primitive;
+    std::string                                 error;
+    const erhe::primitive::Buffer_mesh* buffer_mesh = resolve_buffer_mesh(node, primitive_index, variant, variant_name, primitive, error);
+    if (buffer_mesh == nullptr) {
+        return make_error_content(error);
+    }
+    erhe::scene_renderer::Mesh_memory* mesh_memory     = m_context.mesh_memory;
+    erhe::graphics::Device*            graphics_device = m_context.graphics_device;
+    if ((mesh_memory == nullptr) || (graphics_device == nullptr)) {
+        return make_error_content("Mesh_memory or graphics device is not available");
+    }
+
+    const std::size_t                    stream_index = args.value("stream", std::size_t{0});
+    erhe::graphics::Buffer*              source_buffer{nullptr};
+    const erhe::primitive::Buffer_range* range        {nullptr};
+    if (buffer_kind == "vertex") {
+        if (stream_index >= buffer_mesh->vertex_buffer_ranges.size()) {
+            return make_error_content(
+                "stream out of range (this build has " + std::to_string(buffer_mesh->vertex_buffer_ranges.size()) + " vertex streams)"
+            );
+        }
+        range         = &buffer_mesh->vertex_buffer_ranges[stream_index];
+        source_buffer = mesh_memory->get_vertex_buffer(*range);
+    } else {
+        range         = &buffer_mesh->index_buffer_range;
+        source_buffer = mesh_memory->get_index_buffer(*range);
+    }
+    if (source_buffer == nullptr) {
+        return make_error_content("Buffer range does not resolve to a pool buffer");
+    }
+    if ((range->count == 0) || (range->element_size == 0)) {
+        return make_error_content("Buffer range is empty");
+    }
+
+    // Both an element cap and a byte cap: the read stalls the device
+    // (wait_idle) on the main thread inside the MCP request tick, and the reply
+    // carries every byte as text.
+    constexpr std::size_t max_element_count = 4096;
+    constexpr std::size_t max_byte_count    = 256 * 1024;
+    const std::size_t first_element = args.value("first_element", std::size_t{0});
+    if (first_element >= range->count) {
+        return make_error_content("first_element out of range (range has " + std::to_string(range->count) + " elements)");
+    }
+    const std::size_t available = range->count - first_element;
+    const std::size_t requested = args.value("element_count", std::min(available, max_element_count));
+    if (requested == 0) {
+        return make_error_content("element_count must be greater than zero");
+    }
+    if (requested > max_element_count) {
+        return make_error_content("too many elements (max " + std::to_string(max_element_count) + " per call)");
+    }
+    const std::size_t element_count = std::min(requested, available);
+    const std::size_t byte_count    = element_count * range->element_size;
+    if (byte_count > max_byte_count) {
+        return make_error_content(
+            "too many bytes (" + std::to_string(byte_count) + "; max " + std::to_string(max_byte_count) + " per call) - lower element_count"
+        );
+    }
+    const std::size_t byte_offset = range->byte_offset + first_element * range->element_size;
+
+    std::vector<uint8_t> bytes;
+    if (!read_gpu_buffer_bytes(*graphics_device, *source_buffer, byte_offset, byte_count, bytes)) {
+        return make_error_content("Buffer readback failed");
+    }
+
+    json result{
+        {"node",            node->get_name()},
+        {"node_id",         node->get_id()},
+        {"primitive_index", primitive_index},
+        {"variant",         variant_name},
+        {"buffer",          buffer_kind},
+        {"first_element",   first_element},
+        {"element_count",   element_count},
+        {"element_size",    range->element_size},
+        {"byte_offset",     byte_offset},
+        {"byte_count",      byte_count},
+        {"encoding",        encoding},
+        {"data",            (encoding == "base64") ? encode_base64(bytes) : encode_hex(bytes)}
+    };
+    if (buffer_kind == "vertex") {
+        result["stream"] = stream_index;
+    }
+    return make_json_content(result).dump();
+}
 
 } // namespace editor

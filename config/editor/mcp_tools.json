@@ -4176,6 +4176,106 @@
     "name": "get_mesh_attribute_values"
   },
   {
+    "description": "Describe a primitive's GPU vertex / index buffer ranges without reading them: per stream the pool id, buffer id, byte offset, element count, stride and base_vertex; the index range and its per-mode sub-ranges (triangle fill, edge lines, corner points, polygon centroids); the vertex format's attributes with their offsets and formats; and the primitive's AABB with the position encoding and the exact scale / offset the vertex shader applies to a snorm16x3 position. Use this before get_mesh_buffer_data: it is what says which stream and byte offset to read, and how to decode what comes back.",
+    "inputSchema": {
+      "properties": {
+        "node_id": {
+          "description": "Node ID (preferred over node_name when both given)",
+          "type": "integer"
+        },
+        "node_name": {
+          "description": "Node name (used when node_id is absent)",
+          "type": "string"
+        },
+        "primitive_index": {
+          "description": "Mesh primitive index (default 0)",
+          "type": "integer"
+        },
+        "scene_name": {
+          "description": "Name of the scene",
+          "type": "string"
+        },
+        "variant": {
+          "description": "Which BUILD to report: original (authored vertex and triangle order, valid facet ids) or optimized (the meshoptimizer weld/reorder build, fill triangles only). There is no fallback - asking for a build the primitive does not have is an error, so the answer always names the data it read.",
+          "enum": [
+            "original",
+            "optimized"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene_name"
+      ],
+      "type": "object"
+    },
+    "name": "get_mesh_buffer_info"
+  },
+  {
+    "description": "Read raw bytes out of a primitive's GPU vertex or index buffer, base64 (default) or hex. The range is copied into a host-visible buffer and the device is waited on, so it is capped at 4096 elements and 262144 bytes per call - page through with first_element. It reports the bytes the GPU currently holds: geometry built in the same frame may not be uploaded yet (Mesh_memory::flush runs once per frame), so read it a frame after a build. Pair with get_mesh_buffer_info for the stride, attribute offsets and position quantization needed to decode.",
+    "inputSchema": {
+      "properties": {
+        "buffer": {
+          "description": "Which buffer to read (default vertex)",
+          "enum": [
+            "vertex",
+            "index"
+          ],
+          "type": "string"
+        },
+        "element_count": {
+          "description": "Elements to read, vertices or indices (default: the rest of the range, capped). Max 4096 elements and 262144 bytes.",
+          "type": "integer"
+        },
+        "encoding": {
+          "description": "How the bytes come back (default base64)",
+          "enum": [
+            "base64",
+            "hex"
+          ],
+          "type": "string"
+        },
+        "first_element": {
+          "description": "First element to read, relative to the start of this primitive's range (default 0)",
+          "type": "integer"
+        },
+        "node_id": {
+          "description": "Node ID (preferred over node_name when both given)",
+          "type": "integer"
+        },
+        "node_name": {
+          "description": "Node name (used when node_id is absent)",
+          "type": "string"
+        },
+        "primitive_index": {
+          "description": "Mesh primitive index (default 0)",
+          "type": "integer"
+        },
+        "scene_name": {
+          "description": "Name of the scene",
+          "type": "string"
+        },
+        "stream": {
+          "description": "Vertex stream index (default 0; stream 0 carries the position at attribute offset 0). Ignored when buffer is index.",
+          "type": "integer"
+        },
+        "variant": {
+          "description": "Which BUILD to report: original (authored vertex and triangle order, valid facet ids) or optimized (the meshoptimizer weld/reorder build, fill triangles only). There is no fallback - asking for a build the primitive does not have is an error, so the answer always names the data it read.",
+          "enum": [
+            "original",
+            "optimized"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene_name"
+      ],
+      "type": "object"
+    },
+    "name": "get_mesh_buffer_data"
+  },
+  {
     "description": "Clear the entire mesh-component selection",
     "inputSchema": {
       "properties": {},

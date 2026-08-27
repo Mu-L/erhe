@@ -287,6 +287,8 @@ private:
     auto action_debug_region_select           (const nlohmann::json& args) -> std::string;
     auto query_mesh_geometry_info             (const nlohmann::json& args) -> std::string;
     auto query_mesh_attribute_values          (const nlohmann::json& args) -> std::string;
+    auto query_mesh_buffer_info               (const nlohmann::json& args) -> std::string;
+    auto query_mesh_buffer_data               (const nlohmann::json& args) -> std::string;
     auto action_clear_mesh_component_selection(const nlohmann::json& args) -> std::string;
     auto action_set_edge_sharpness            (const nlohmann::json& args) -> std::string;
     auto action_catmull_clark                 (const nlohmann::json& args) -> std::string;
