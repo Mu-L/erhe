@@ -1,4 +1,5 @@
 #include "erhe_primitive/mesh_optimizer.hpp"
+#include "erhe_primitive/build_info.hpp"
 #include "erhe_primitive/triangle_soup.hpp"
 #include "erhe_dataformat/vertex_format.hpp"
 
@@ -21,6 +22,7 @@ using erhe::dataformat::Vertex_format;
 using erhe::dataformat::Vertex_stream;
 using erhe::primitive::Mesh_optimize_options;
 using erhe::primitive::Mesh_optimize_result;
+using erhe::primitive::Element_mappings;
 using erhe::primitive::Triangle_soup;
 
 class Test_vertex
@@ -345,4 +347,106 @@ TEST(Mesh_optimizer, refuses_input_it_cannot_describe)
         soup.vertex_format.streams.emplace_back(1);
         EXPECT_EQ(optimize_triangle_soup(soup, Mesh_optimize_options{}).triangle_soup, nullptr);
     }
+}
+
+// Composition of Element_mappings onto the optimized order. Nothing reads the
+// optimized build's mappings today - every consumer pins to `original` - so
+// these tests are what keeps the composition honest until one does.
+
+TEST(Mesh_optimizer, composed_corner_mappings_point_at_equal_vertex_data)
+{
+    const Triangle_soup soup = make_unwelded_grid(8);
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+
+    // A source mapping that names, for each corner of each triangle, the soup
+    // vertex that corner uses - the shape parse_triangles() produces.
+    Element_mappings source{};
+    source.mesh_corner_to_vertex_buffer_index = soup.index_data;
+
+    const Element_mappings composed = erhe::primitive::compose_element_mappings(source, result);
+    ASSERT_EQ(composed.mesh_corner_to_vertex_buffer_index.size(), soup.index_data.size());
+
+    // Each corner must now name a vertex of the OPTIMIZED soup carrying the
+    // same data the source vertex did. That is the whole point: the mapping
+    // has to describe the order of the build it is paired with.
+    for (std::size_t corner = 0, end = soup.index_data.size(); corner < end; ++corner) {
+        const uint32_t output_vertex = composed.mesh_corner_to_vertex_buffer_index[corner];
+        ASSERT_NE(output_vertex, GEO::NO_INDEX) << "corner " << corner;
+        ASSERT_LT(output_vertex, result.triangle_soup->get_vertex_count());
+        EXPECT_EQ(vertex_bytes(*result.triangle_soup, output_vertex), vertex_bytes(soup, soup.index_data[corner]))
+            << "corner " << corner;
+    }
+}
+
+TEST(Mesh_optimizer, composed_facet_mappings_follow_the_triangle_permutation)
+{
+    const Triangle_soup soup = make_unwelded_grid(8);
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+
+    const std::size_t triangle_count = soup.index_data.size() / 3;
+
+    // Give every source triangle a distinguishable facet, with one degenerate
+    // NO_INDEX entry that has to survive the composition rather than be
+    // turned into a real facet.
+    Element_mappings source{};
+    source.triangle_to_mesh_facet.resize(triangle_count);
+    for (std::size_t triangle = 0; triangle < triangle_count; ++triangle) {
+        source.triangle_to_mesh_facet[triangle] = static_cast<uint32_t>(triangle * 7 + 1);
+    }
+    source.triangle_to_mesh_facet[triangle_count / 2] = GEO::NO_INDEX;
+
+    const Element_mappings composed = erhe::primitive::compose_element_mappings(source, result);
+    ASSERT_EQ(composed.triangle_to_mesh_facet.size(), triangle_count);
+
+    std::size_t no_index_count = 0;
+    for (std::size_t triangle = 0; triangle < triangle_count; ++triangle) {
+        const uint32_t source_triangle = result.triangle_permutation[triangle];
+        EXPECT_EQ(composed.triangle_to_mesh_facet[triangle], source.triangle_to_mesh_facet[source_triangle])
+            << "output triangle " << triangle;
+        if (composed.triangle_to_mesh_facet[triangle] == GEO::NO_INDEX) {
+            ++no_index_count;
+        }
+    }
+    // The permutation is a bijection, so the one degenerate entry moves - it
+    // does not multiply and it does not disappear.
+    EXPECT_EQ(no_index_count, 1u);
+}
+
+TEST(Mesh_optimizer, composing_empty_mappings_yields_empty_mappings)
+{
+    // The soup import path has no mappings at all until geometry is parsed, so
+    // composing must not invent tables sized after the optimization.
+    const Triangle_soup soup = make_unwelded_grid(4);
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+
+    const Element_mappings composed = erhe::primitive::compose_element_mappings(Element_mappings{}, result);
+    EXPECT_TRUE(composed.triangle_to_mesh_facet.empty());
+    EXPECT_TRUE(composed.mesh_corner_to_vertex_buffer_index.empty());
+    EXPECT_TRUE(composed.mesh_vertex_to_vertex_buffer_index.empty());
+}
+
+TEST(Mesh_optimizer, a_dropped_source_vertex_composes_to_no_index)
+{
+    // Welding drops a vertex no triangle references. A mapping that still
+    // names it must come back as NO_INDEX, not as an index into nothing.
+    Triangle_soup soup = make_unwelded_grid(4);
+    const std::size_t stride = soup.vertex_format.streams.front().stride;
+    const uint32_t unreferenced = static_cast<uint32_t>(soup.get_vertex_count());
+    soup.vertex_data.resize(soup.vertex_data.size() + stride, uint8_t{0});
+
+    const Mesh_optimize_result result = optimize_triangle_soup(soup, Mesh_optimize_options{});
+    ASSERT_NE(result.triangle_soup, nullptr);
+    ASSERT_EQ(result.vertex_remap[unreferenced], Mesh_optimize_result::no_vertex);
+
+    Element_mappings source{};
+    source.mesh_vertex_to_vertex_buffer_index = {unreferenced, GEO::NO_INDEX, soup.index_data.front()};
+
+    const Element_mappings composed = erhe::primitive::compose_element_mappings(source, result);
+    ASSERT_EQ(composed.mesh_vertex_to_vertex_buffer_index.size(), 3u);
+    EXPECT_EQ(composed.mesh_vertex_to_vertex_buffer_index[0], GEO::NO_INDEX);
+    EXPECT_EQ(composed.mesh_vertex_to_vertex_buffer_index[1], GEO::NO_INDEX);
+    EXPECT_NE(composed.mesh_vertex_to_vertex_buffer_index[2], GEO::NO_INDEX);
 }

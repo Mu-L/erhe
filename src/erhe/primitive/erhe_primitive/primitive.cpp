@@ -769,6 +769,15 @@ Primitive_render_shape::Primitive_render_shape(const std::shared_ptr<Triangle_so
 {
 }
 
+Primitive_render_shape::Primitive_render_shape(const std::shared_ptr<Triangle_soup>& triangle_soup, Element_mappings&& element_mappings)
+    : Primitive_shape{triangle_soup}
+    , m_normal_style {Normal_style::corner_normals}
+{
+    // Set directly rather than through a build: no build produced these, they
+    // were composed onto this soup's order from another shape's.
+    m_element_mappings = std::move(element_mappings);
+}
+
 auto Primitive_render_shape::has_buffer_mesh_triangles() const -> bool
 {
     const std::lock_guard<std::mutex> state_lock{m_state_mutex};

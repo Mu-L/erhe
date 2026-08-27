@@ -180,6 +180,16 @@ public:
     explicit Primitive_render_shape(const std::shared_ptr<erhe::geometry::Geometry>& geometry);
     explicit Primitive_render_shape(Buffer_mesh&& renderable_mesh);
     explicit Primitive_render_shape(const std::shared_ptr<Triangle_soup>& triangle_soup);
+    // A variant build: a soup that is a REORDERING of another shape's, with the
+    // Element_mappings already composed to describe that new order
+    // (compose_element_mappings()). Mappings normally arrive from a build, and
+    // this build has none to derive them from - the order they describe was
+    // decided by the optimizer, not here.
+    //
+    // Carries no Geometry and must never be asked to make one: its soup is
+    // welded, so a Geometry built from it would have neither the source
+    // topology nor valid facet ids. See Primitive::optimized_render_shape.
+    Primitive_render_shape(const std::shared_ptr<Triangle_soup>& triangle_soup, erhe::primitive::Element_mappings&& element_mappings);
 
     auto make_buffer_mesh(const Build_info& build_info, Normal_style normal_style) -> bool;
     auto make_buffer_mesh(const Buffer_info& build_info) -> bool;
@@ -248,6 +258,8 @@ public:
     [[nodiscard]] auto has_raytrace_triangles  () const -> bool;
     [[nodiscard]] auto has_real_raytrace       () const -> bool;
     [[nodiscard]] auto make_geometry           () const -> bool;
+    // These build the SOURCE shape only. The optimized variant is built before
+    // it is attached (make_optimized_render_shape()), so it is never half-built.
     [[nodiscard]] auto make_renderable_mesh    (const Build_info& build_info, Normal_style normal_style) const -> bool;
     [[nodiscard]] auto make_renderable_mesh    (const erhe::primitive::Buffer_info& buffer_info) const -> bool;
     [[nodiscard]] auto make_raytrace           () const -> bool;

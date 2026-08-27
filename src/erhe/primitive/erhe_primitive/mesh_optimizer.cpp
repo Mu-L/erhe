@@ -1,5 +1,7 @@
 #include "erhe_primitive/mesh_optimizer.hpp"
 
+#include "erhe_primitive/build_info.hpp"
+#include "erhe_primitive/primitive.hpp"
 #include "erhe_primitive/primitive_log.hpp"
 #include "erhe_primitive/triangle_soup.hpp"
 #include "erhe_dataformat/dataformat.hpp"
@@ -355,6 +357,110 @@ auto optimize_triangle_soup(const Triangle_soup& source, const Mesh_optimize_opt
     result.triangle_soup = std::move(optimized);
     result.statistics.elapsed_seconds = std::chrono::duration<float>{std::chrono::steady_clock::now() - start_time}.count();
     return result;
+}
+
+namespace {
+
+// One member of an Element_mappings that indexes VERTEX BUFFER slots, composed
+// through the source -> output vertex remap. A source slot that welding dropped
+// - nothing referenced it - has no output slot, so it becomes NO_INDEX rather
+// than an index into nothing.
+[[nodiscard]] auto compose_vertex_buffer_indices(
+    const std::vector<uint32_t>& source,
+    const std::vector<uint32_t>& vertex_remap
+) -> std::vector<uint32_t>
+{
+    std::vector<uint32_t> composed;
+    composed.resize(source.size());
+    for (std::size_t i = 0, end = source.size(); i < end; ++i) {
+        const uint32_t source_vertex = source[i];
+        if (source_vertex == GEO::NO_INDEX) {
+            composed[i] = GEO::NO_INDEX;
+            continue;
+        }
+        // Composing against a remap that does not cover this index would mean
+        // the mappings describe a different soup than the one optimized.
+        ERHE_VERIFY(source_vertex < vertex_remap.size());
+        const uint32_t output_vertex = vertex_remap[source_vertex];
+        composed[i] = (output_vertex == Mesh_optimize_result::no_vertex) ? GEO::NO_INDEX : output_vertex;
+    }
+    return composed;
+}
+
+} // anonymous namespace
+
+auto compose_element_mappings(
+    const Element_mappings&     source,
+    const Mesh_optimize_result& optimization
+) -> Element_mappings
+{
+    ERHE_PROFILE_FUNCTION();
+
+    Element_mappings composed;
+
+    if (!source.triangle_to_mesh_facet.empty()) {
+        // The permutation names, for each OUTPUT triangle, the source triangle
+        // it came from - so the output table is indexed by output triangle and
+        // reads the source table at that source triangle.
+        const std::vector<uint32_t>& permutation = optimization.triangle_permutation;
+        composed.triangle_to_mesh_facet.resize(permutation.size());
+        for (std::size_t triangle = 0, end = permutation.size(); triangle < end; ++triangle) {
+            const uint32_t source_triangle = permutation[triangle];
+            ERHE_VERIFY(source_triangle < source.triangle_to_mesh_facet.size());
+            composed.triangle_to_mesh_facet[triangle] = source.triangle_to_mesh_facet[source_triangle];
+        }
+    }
+
+    composed.mesh_corner_to_vertex_buffer_index = compose_vertex_buffer_indices(
+        source.mesh_corner_to_vertex_buffer_index,
+        optimization.vertex_remap
+    );
+    composed.mesh_vertex_to_vertex_buffer_index = compose_vertex_buffer_indices(
+        source.mesh_vertex_to_vertex_buffer_index,
+        optimization.vertex_remap
+    );
+
+    return composed;
+}
+
+auto make_optimized_render_shape(
+    const Primitive_render_shape& source_shape,
+    const Element_mappings&       source_mappings,
+    const Mesh_optimize_options&  options,
+    const Buffer_info&            buffer_info,
+    const std::string_view        name
+) -> std::shared_ptr<Primitive_render_shape>
+{
+    ERHE_PROFILE_FUNCTION();
+
+    const std::shared_ptr<Triangle_soup>& source_soup = source_shape.get_triangle_soup();
+    if (!source_soup) {
+        // Procedural primitives are built from Geometry and carry no soup.
+        // Optimizing those is the geometry path, not this one.
+        return {};
+    }
+
+    Mesh_optimize_result optimization = optimize_triangle_soup(*source_soup.get(), options);
+    if (!optimization.triangle_soup) {
+        return {};
+    }
+    log_mesh_optimize_statistics(name, optimization.statistics);
+
+    // The caller's mappings describe the source order; the variant needs the
+    // same correspondence expressed in the optimized order. Empty composes to
+    // empty, which is what the import path passes - see the note on the
+    // declaration for why these are not read off the shape.
+    Element_mappings composed = compose_element_mappings(source_mappings, optimization);
+
+    std::shared_ptr<Primitive_render_shape> shape = std::make_shared<Primitive_render_shape>(
+        optimization.triangle_soup,
+        std::move(composed)
+    );
+    if (!shape->make_buffer_mesh(buffer_info)) {
+        log_primitive->warn("mesh optimize {}: the optimized buffer mesh did not build; rendering the source build", name);
+        return {};
+    }
+    return shape;
 }
 
 void log_mesh_optimize_statistics(const std::string_view name, const Mesh_optimize_statistics& statistics)
