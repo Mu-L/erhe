@@ -470,6 +470,25 @@ set_source_files_properties(
     "${basis_universal_SOURCE_DIR}/zstd/zstd.c"
     PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
+if (CMAKE_C_COMPILER_ID MATCHES "Clang")
+    # zstd picks its BMI2 path at compile time. The MSVC branch is
+    #   #elif defined(_MSC_VER) && defined(__AVX2__) -> STATIC_BMI2 1
+    # ("MSVC does not have a BMI2 specific flag, but every CPU that supports
+    # AVX2 also supports BMI2"), and BIT_getLowerBits then calls _bzhi_u64.
+    # clang-cl defines _MSC_VER, and Clang.cmake gives the whole build an AVX2
+    # baseline (-mavx2 ...) for Jolt ABI / PCH consistency - so __AVX2__ IS
+    # defined, but that flag list carries -mbmi (BMI1), not -mbmi2, and clang
+    # rejects the intrinsic outright: "always_inline function '_bzhi_u64'
+    # requires target feature 'bmi2'". cl.exe never reaches the branch, because
+    # nothing defines __AVX2__ there.
+    # Turning the static path off - rather than widening the ISA baseline with
+    # -mbmi2 - leaves zstd on the runtime dispatch clang selects anyway through
+    # DYNAMIC_BMI2, and changes the code generated for no other file.
+    set_source_files_properties(
+        "${basis_universal_SOURCE_DIR}/zstd/zstd.c"
+        PROPERTIES COMPILE_DEFINITIONS "STATIC_BMI2=0"
+    )
+endif ()
 if (MSVC)
     # Third-party source: exempt from warnings-as-errors; C4828 fires on a
     # non-UTF-8 byte inside a basis_universal comment under /utf-8. The
