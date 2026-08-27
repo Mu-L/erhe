@@ -383,6 +383,33 @@ Recorded risks, neither introduced here:
 - Aggregate per-import summary log (totals, average ACMR delta, cache hit rate) at the import helper.
 - Optionally expose a running `Mesh_optimize_statistics` accumulator via the wrapper for the editor debug UI / MCP `get_memory_usage`-style tool (`src/editor/mcp/mcp_server.cpp`). Logs are the acceptance mechanism; keep this small. Commit.
 
+**Phase 6 done (2026-08-27).** `log_mesh_optimize_statistics()` accumulates into
+a process-wide `Mesh_optimize_totals`; `log_mesh_optimize_totals()` prints one
+summary line; `get_memory_usage` gained a `mesh_optimization` section. ACMR and
+overdraw are averaged TRIANGLE-WEIGHTED - they are per-triangle costs, so a
+per-primitive mean would let a 4-triangle gizmo count as much as a
+92 000-triangle chessboard. Cache hits contribute vertex counts but no ACMR /
+overdraw / fetch figures, since they never ran `meshopt_analyze*()`.
+
+Read the aggregate from `get_memory_usage`, not from the log: the geometry-path
+optimizations land asynchronously in the deferred finalize tasks, and there is
+no point in the log at which they are all in. The line
+`finalize_imported_meshes` prints is the import-time (soup path) picture only.
+
+Geometry-path log lines now carry a name. They were blank because the Geometry
+on that path is derived from an imported soup and comes out unnamed;
+`prepare_geometry_buffer_mesh()` takes the scene mesh's name instead.
+
+**This settles the open question of whether overdraw earns its vertex-fetch
+cost.** On ABeautifulGame the import-time totals show fetch **+5.9%** - the asset
+is already welded, so reordering is all that happens, which is the effect the
+phase-3 note recorded. The session total after the geometry finalize is fetch
+199 387 520 -> 76 520 960 bytes (**-62%**), vertices 2 138 692 -> 833 132,
+ACMR 1.956 -> 0.866, overdraw 1.207 -> 1.044. The weld's fetch win on the
+corner-per-vertex geometry build dwarfs what overdraw reordering trades away, so
+keep overdraw on. Re-check per asset if a scene ever ships pre-welded geometry
+that never reaches the geometry path.
+
 ## Phase 7 — Verification sweep + flag flip
 
 1. Builds: `scripts/build_ninja_win_vulkan.bat`, `scripts/build_ninja_win_clang.bat`, VS opengl + vulkan-headless, `scripts/build_and_run_tests.bat`, `build_android.bat quest` (Quest launch requires fresh user prompt + confirmation).
