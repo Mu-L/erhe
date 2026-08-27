@@ -372,16 +372,36 @@ Mesh_memory::Mesh_memory(
         .min_attribute_alignment = device_info.min_vertex_attribute_alignment,
         .min_stride_alignment    = std::max(device_info.min_vertex_stream_stride_alignment, std::size_t{4})
     };
-    erhe::dataformat::Vertex_format* const all_formats[] = {
-        &vertex_format_empty,
-        &vertex_format_skinned,
-        &vertex_format_not_skinned,
-        &vertex_format_not_skinned_wireframe,
-        &vertex_format_skinned_wireframe,
-        &vertex_format_edge_line,
-        &vertex_format_edge_line_joints
+    // The optimized content formats are the content formats minus the per-corner
+    // facet id, derived here rather than written out again so an edit to the
+    // source format cannot leave them behind. Done BEFORE the repack below, so
+    // their offsets and strides are recomputed for the shortened attribute list.
+    const auto without_facet_id = [](const erhe::dataformat::Vertex_format& source) -> erhe::dataformat::Vertex_format
+    {
+        erhe::dataformat::Vertex_format optimized = source;
+        for (erhe::dataformat::Vertex_stream& stream : optimized.streams) {
+            std::vector<erhe::dataformat::Vertex_attribute>& attributes = stream.attributes;
+            attributes.erase(
+                std::remove_if(
+                    attributes.begin(),
+                    attributes.end(),
+                    [](const erhe::dataformat::Vertex_attribute& attribute) {
+                        return (attribute.usage_type  == erhe::dataformat::Vertex_attribute_usage::custom) &&
+                               (attribute.usage_index == erhe::dataformat::custom_attribute_id);
+                    }
+                ),
+                attributes.end()
+            );
+            // No stream of these formats consists of the id alone, and an empty
+            // stream would allocate a zero stride the pools cannot serve.
+            ERHE_VERIFY(!attributes.empty());
+        }
+        return optimized;
     };
-    for (erhe::dataformat::Vertex_format* format : all_formats) {
+    vertex_format_not_skinned_optimized = without_facet_id(vertex_format_not_skinned);
+    vertex_format_skinned_optimized     = without_facet_id(vertex_format_skinned);
+
+    for (erhe::dataformat::Vertex_format* format : get_all_vertex_formats()) {
         format->repack(packing);
         // Buffer_pool documents that it relies on this but cannot check it: it takes
         // any Vertex_stream, and is_compatible() is pointer identity. Check it here,
@@ -389,15 +409,23 @@ Mesh_memory::Mesh_memory(
         for (const erhe::dataformat::Vertex_stream& stream : format->streams) {
             ERHE_VERIFY((stream.stride % 4) == 0);
         }
+        get_vertex_input_from_vertex_format(*format);
     }
+}
 
-    get_vertex_input_from_vertex_format(vertex_format_empty);
-    get_vertex_input_from_vertex_format(vertex_format_skinned);
-    get_vertex_input_from_vertex_format(vertex_format_not_skinned);
-    get_vertex_input_from_vertex_format(vertex_format_not_skinned_wireframe);
-    get_vertex_input_from_vertex_format(vertex_format_skinned_wireframe);
-    get_vertex_input_from_vertex_format(vertex_format_edge_line);
-    get_vertex_input_from_vertex_format(vertex_format_edge_line_joints);
+auto Mesh_memory::get_all_vertex_formats() -> std::vector<erhe::dataformat::Vertex_format*>
+{
+    return {
+        &vertex_format_empty,
+        &vertex_format_skinned,
+        &vertex_format_not_skinned,
+        &vertex_format_not_skinned_wireframe,
+        &vertex_format_skinned_wireframe,
+        &vertex_format_not_skinned_optimized,
+        &vertex_format_skinned_optimized,
+        &vertex_format_edge_line,
+        &vertex_format_edge_line_joints
+    };
 }
 
 Mesh_memory::~Mesh_memory() noexcept = default;
@@ -469,16 +497,7 @@ auto Mesh_memory::allocate_vertex_buffer_range(
     // size and the format's fattest stream, then converted to bytes with
     // this stream's own stride.
     std::size_t block_size_bytes = static_cast<std::size_t>(m_mesh_memory_config.vertex_pool_block_size_mb) * mega;
-    const erhe::dataformat::Vertex_format* const formats[] = {
-        &vertex_format_empty,
-        &vertex_format_skinned,
-        &vertex_format_not_skinned,
-        &vertex_format_not_skinned_wireframe,
-        &vertex_format_skinned_wireframe,
-        &vertex_format_edge_line,
-        &vertex_format_edge_line_joints
-    };
-    for (const erhe::dataformat::Vertex_format* format : formats) {
+    for (const erhe::dataformat::Vertex_format* format : get_all_vertex_formats()) {
         const bool owns_stream = std::any_of(
             format->streams.begin(), format->streams.end(),
             [&vertex_stream](const erhe::dataformat::Vertex_stream& stream) { return &stream == &vertex_stream; }
@@ -785,7 +804,9 @@ auto Mesh_memory::make_primitive_buffer_info(const Mesh_memory_queue queue) -> e
         .expanded_vertex_input_key = get_vertex_input_from_vertex_format(vertex_format_not_skinned_wireframe).key,
         // Read from the owner's live config, so a Settings-window toggle
         // reaches every build made after it.
-        .optimize_meshes           = m_mesh_memory_config.optimize_meshes
+        .optimize_meshes            = m_mesh_memory_config.optimize_meshes,
+        .optimized_vertex_format    = &vertex_format_not_skinned_optimized,
+        .optimized_vertex_input_key = get_vertex_input_from_vertex_format(vertex_format_not_skinned_optimized).key
     };
 }
 
@@ -809,7 +830,9 @@ auto Mesh_memory::make_skinned_primitive_buffer_info(const Mesh_memory_queue que
         .expanded_vertex_input_key = get_vertex_input_from_vertex_format(vertex_format_skinned_wireframe).key,
         // Read from the owner's live config, so a Settings-window toggle
         // reaches every build made after it.
-        .optimize_meshes           = m_mesh_memory_config.optimize_meshes
+        .optimize_meshes            = m_mesh_memory_config.optimize_meshes,
+        .optimized_vertex_format    = &vertex_format_skinned_optimized,
+        .optimized_vertex_input_key = get_vertex_input_from_vertex_format(vertex_format_skinned_optimized).key
     };
 }
 

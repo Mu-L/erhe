@@ -54,6 +54,11 @@ public:
     float acmr_after         {0.0f};
     float overdraw_before    {0.0f}; // meshopt_analyzeOverdraw().overdraw
     float overdraw_after     {0.0f};
+    // Both measured against the OPTIMIZED format's stride, so they isolate what
+    // the passes did. The optimized build is also 4 bytes per vertex narrower
+    // than the source one (it drops the facet id), and crediting the reordering
+    // with that would overstate it - the format change is a separate, known
+    // saving.
     std::size_t fetch_bytes_before{0}; // meshopt_analyzeVertexFetch().bytes_fetched
     std::size_t fetch_bytes_after {0};
 
@@ -224,8 +229,10 @@ public:
 // optimized variant out of the bytes a Primitive_builder run already staged,
 // instead of out of a triangle soup.
 //
-// `streams` are the CORNER-VERTEX PREFIX of each sink vertex stream, already in
-// the sink format, and `fill_indices` the fill triangle indices into it. Both
+// `streams` are the CORNER-VERTEX PREFIX of each vertex stream, already gathered
+// into Buffer_info::optimized_vertex_format (the content format minus the
+// per-corner facet id - see there for why), and `fill_indices` the fill triangle
+// indices into it. Both
 // are consumed. The centroid-point vertices the build appends after the corners
 // are deliberately NOT included, and neither are the edge-line, corner-point,
 // centroid-point or expanded-fill index streams: the optimized variant is fill

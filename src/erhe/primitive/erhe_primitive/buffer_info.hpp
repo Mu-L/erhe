@@ -55,6 +55,21 @@ public:
     // carries the new value - see Mesh_memory::make_primitive_buffer_info().
     bool                  optimize_meshes      {false};
     Mesh_optimize_options mesh_optimize_options{};
+
+    // Vertex format the optimized variant is BUILT IN - the same content
+    // attributes as vertex_format minus the per-corner facet id, which a welded
+    // build cannot carry a meaningful value for (corners of different facets
+    // merge into one vertex). Dropping the attribute, rather than keeping a
+    // meaningless value in it, is what makes the optimized build unusable for
+    // ID rendering by construction; it also takes those bytes out of the weld
+    // compare and off the wire.
+    //
+    // A different format means a different Vertex_input_state, hence
+    // optimized_vertex_input_key. Null disables the optimized build entirely -
+    // which is the right answer for a sink that has no second format to offer
+    // (CPU-buffer test sinks, the raytrace build).
+    const erhe::dataformat::Vertex_format* optimized_vertex_format{nullptr};
+    std::size_t                            optimized_vertex_input_key{0};
 };
 
 } // namesapce erhe::primitive

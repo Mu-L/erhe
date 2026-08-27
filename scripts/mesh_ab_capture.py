@@ -222,18 +222,18 @@ if __name__ == "__main__":
         os.makedirs(os.path.dirname(layout), exist_ok=True)
         shutil.copyfile(live, layout)
     # Refuse to start if something is already listening: a leftover editor keeps
-# port 3743, the new one fails to bind, and every RPC below then silently drives
-# the OLD process - with the OLD config. That produces a plausible-looking
-# measurement of the wrong thing.
-try:
-    with urllib.request.urlopen(BASE + "/health", timeout=2) as _r:
-        raise SystemExit("an editor is already serving %s - kill it first" % BASE)
-except SystemExit:
-    raise
-except Exception:
-    pass
+    # port 3743, the new one fails to bind, and every RPC below then silently
+    # drives the OLD process - with the OLD config. That produces a
+    # plausible-looking measurement of the wrong thing.
+    try:
+        with urllib.request.urlopen(BASE + "/health", timeout=2) as _r:
+            raise SystemExit("an editor is already serving %s - kill it first" % BASE)
+    except SystemExit:
+        raise
+    except Exception:
+        pass
 
-args = [EXE] if SCENE == "-" else [EXE, "--scene", SCENE]
+    args = [EXE] if SCENE == "-" else [EXE, "--scene", SCENE]
     proc = subprocess.Popen(args, cwd=REPO)
     try:
         if not wait_health(time.time() + 150):

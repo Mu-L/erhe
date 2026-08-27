@@ -133,6 +133,11 @@ public:
     ~Mesh_memory() noexcept;
 
     auto get_vertex_input_from_vertex_format(const erhe::dataformat::Vertex_format& vertex_format) -> const Vertex_input_entry&;
+    // Every Vertex_format this Mesh_memory owns, in one place. Three separate
+    // things need the complete list - repacking, lockstep block sizing and
+    // vertex-input registration - and a format missing from any one of them
+    // fails silently and differently, so they all read it from here.
+    [[nodiscard]] auto get_all_vertex_formats() -> std::vector<erhe::dataformat::Vertex_format*>;
     auto get_empty_vertex_input() -> const Vertex_input_entry&;
 
     [[nodiscard]] auto get_vertex_input(size_t vertex_input_key) const -> const Vertex_input_entry&;
@@ -237,6 +242,27 @@ public:
     // Allocated only for meshes that carry joint attributes; lives in
     // its own Buffer_pool keyed on this stream.
     erhe::dataformat::Vertex_format vertex_format_edge_line_joints;
+
+    // Content formats with the per-corner facet id attribute REMOVED, used for
+    // the meshoptimizer variant of a mesh.
+    //
+    // The id is per facet, and the optimized build is welded - corners from
+    // different facets merge into one vertex, which no single facet id
+    // describes. Dropping the attribute rather than keeping a meaningless value
+    // in it makes the optimized build unusable for ID rendering BY
+    // CONSTRUCTION: Id_renderer asks for Mesh_variant::original, and a variant
+    // that lost the attribute could not answer even if something asked it.
+    // It also takes the id bytes out of the weld compare, which is what lets
+    // corners of different facets merge at all, and off the wire.
+    //
+    // Derived from vertex_format_not_skinned / vertex_format_skinned in the
+    // constructor rather than written out again, so an edit to those cannot
+    // leave these behind. A distinct Vertex_format means distinct Vertex_stream
+    // objects, so these get their own Buffer_pools (is_compatible() is pointer
+    // identity) - which is what keeps the lockstep invariant intact across the
+    // two formats.
+    erhe::dataformat::Vertex_format vertex_format_not_skinned_optimized;
+    erhe::dataformat::Vertex_format vertex_format_skinned_optimized;
 
     // A retired-range batch whose frame has completed but which may still be
     // the target of a queued LOADER write: freeing it would let the range be

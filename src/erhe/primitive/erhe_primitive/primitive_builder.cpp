@@ -1000,7 +1000,11 @@ auto Build_context::take_optimizable_snapshot(
 {
     ERHE_PROFILE_FUNCTION();
 
-    if (root.build_failed || !root.build_info.primitive_types.fill_triangles) {
+    if (
+        root.build_failed ||
+        !root.build_info.primitive_types.fill_triangles ||
+        (root.build_info.buffer_info.optimized_vertex_format == nullptr)
+    ) {
         return false;
     }
     const std::size_t corner_count = root.mesh_info.vertex_count_corners;
@@ -1022,40 +1026,59 @@ auto Build_context::take_optimizable_snapshot(
         return false;
     }
 
-    // The corner prefix only. build_centroid_points() appends one vertex per
+    // The staged bytes are in the SOURCE format; the variant is built in the
+    // optimized one, which is the same content attributes minus the per-corner
+    // facet id. So this is a per-attribute gather rather than a block copy:
+    // for every attribute the optimized format keeps, copy its bytes from
+    // wherever the source format put them.
+    //
+    // Dropping the id is not cosmetic. It is per FACET, and welding merges
+    // corners across facets, so no single value describes the merged vertex -
+    // and leaving it in would make every corner unique across facet boundaries
+    // to the bitwise weld compare, merging nothing at all. Losing the attribute
+    // also means the variant cannot be used for ID rendering even by mistake.
+    //
+    // Only the corner prefix: build_centroid_points() appends one vertex per
     // facet after the corners, and those belong to the centroid-point draw the
     // optimized variant does not carry.
+    const erhe::dataformat::Vertex_format& optimized_format = *root.build_info.buffer_info.optimized_vertex_format;
+    if (optimized_format.streams.size() != root.vertex_format.streams.size()) {
+        // The two formats are meant to differ only in attributes, never in
+        // stream count - a mismatch means the sink offered an unrelated format.
+        return false;
+    }
+
     std::vector<Mesh_optimize_stream> streams;
-    streams.reserve(vertex_writers.size());
-    for (const std::unique_ptr<Vertex_buffer_writer>& writer : vertex_writers) {
-        const std::size_t byte_count = corner_count * writer->stride;
-        if (writer->vertex_data.size() < byte_count) {
+    streams.reserve(optimized_format.streams.size());
+    for (std::size_t stream_index = 0, stream_end = optimized_format.streams.size(); stream_index < stream_end; ++stream_index) {
+        const erhe::dataformat::Vertex_stream& optimized_stream = optimized_format.streams[stream_index];
+        const Vertex_buffer_writer&            writer           = *vertex_writers.at(stream_index).get();
+        if (writer.vertex_data.size() < corner_count * writer.stride) {
             return false;
         }
         Mesh_optimize_stream stream;
-        stream.stride = writer->stride;
-        stream.data.assign(writer->vertex_data.begin(), writer->vertex_data.begin() + byte_count);
-        streams.push_back(std::move(stream));
-    }
-
-    // Zero the per-corner facet id. Welding merges corners across facets, which
-    // makes the id meaningless - and left in place the bitwise compare would
-    // see it differ at every facet boundary and merge nothing at all, which is
-    // the whole weld win. Nothing reads it from this variant: the ID render
-    // pass takes Mesh_variant::original.
-    const erhe::dataformat::Attribute_stream id_attribute = root.vertex_format.find_attribute(
-        erhe::dataformat::Vertex_attribute_usage::custom, erhe::dataformat::custom_attribute_id
-    );
-    if (id_attribute.attribute != nullptr) {
-        const std::size_t stream_index = static_cast<std::size_t>(id_attribute.stream - root.vertex_format.streams.data());
-        const std::size_t offset       = id_attribute.attribute->offset;
-        const std::size_t size         = erhe::dataformat::get_format_size_bytes(id_attribute.attribute->format);
-        if (stream_index < streams.size()) {
-            Mesh_optimize_stream& stream = streams[stream_index];
+        stream.stride = optimized_stream.stride;
+        stream.data.assign(corner_count * optimized_stream.stride, uint8_t{0});
+        for (const erhe::dataformat::Vertex_attribute& optimized_attribute : optimized_stream.attributes) {
+            const erhe::dataformat::Attribute_stream source = root.vertex_format.find_attribute(
+                optimized_attribute.usage_type, optimized_attribute.usage_index
+            );
+            if ((source.attribute == nullptr) || (source.attribute->format != optimized_attribute.format)) {
+                // The optimized format asks for something this build did not
+                // stage, or stages differently. Decline rather than ship a
+                // variant with an attribute left at zero.
+                return false;
+            }
+            const std::size_t size = erhe::dataformat::get_format_size_bytes(optimized_attribute.format);
             for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
-                std::fill_n(stream.data.begin() + vertex * stream.stride + offset, size, uint8_t{0});
+                memcpy(
+                    stream.data.data()        + vertex * optimized_stream.stride + optimized_attribute.offset,
+                    writer.vertex_data.data() + vertex * writer.stride           + source.attribute->offset,
+                    size
+                );
             }
         }
+        streams.push_back(std::move(stream));
     }
 
     const erhe::dataformat::Format index_type      = root.build_info.buffer_info.index_type;

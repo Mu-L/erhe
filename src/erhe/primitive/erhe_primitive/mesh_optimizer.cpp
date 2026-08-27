@@ -511,6 +511,25 @@ auto make_optimized_render_shape(
         // Optimizing those is the geometry path, not this one.
         return {};
     }
+    if (buffer_info.optimized_vertex_format == nullptr) {
+        return {};
+    }
+
+    // Built in the optimized format, exactly like the geometry path's variant:
+    // "an optimized variant never carries a facet id" has to hold on BOTH paths
+    // or it is not an invariant, just a habit. The soup carries no facet id to
+    // begin with, so this costs nothing here beyond the narrower stride.
+    const Buffer_info optimized_buffer_info{
+        .normal_style       = buffer_info.normal_style,
+        .index_type         = buffer_info.index_type,
+        .vertex_format      = *buffer_info.optimized_vertex_format,
+        .vertex_buffer_sink = buffer_info.vertex_buffer_sink,
+        .index_buffer_sink  = buffer_info.index_buffer_sink,
+        .vertex_input_key   = buffer_info.optimized_vertex_input_key
+        // The edge-line streams and the expanded format are deliberately left
+        // null: this build is fill triangles only, and a soup build reads
+        // none of them.
+    };
 
     Mesh_optimize_result optimization = optimize_triangle_soup_cached(*source_soup.get(), options, cache_directory);
     if (!optimization.triangle_soup) {
@@ -528,7 +547,7 @@ auto make_optimized_render_shape(
         optimization.triangle_soup,
         std::move(composed)
     );
-    if (!shape->make_buffer_mesh(buffer_info)) {
+    if (!shape->make_buffer_mesh(optimized_buffer_info)) {
         log_primitive->warn("mesh optimize {}: the optimized buffer mesh did not build; rendering the source build", name);
         return {};
     }
@@ -582,8 +601,16 @@ auto make_optimized_render_shape_from_staged_build(
     std::vector<Mesh_optimize_stream> streams      = std::move(streams_in);
     std::vector<uint32_t>             fill_indices = std::move(fill_indices_in);
 
+    // Everything below is in the OPTIMIZED format: the caller gathered the
+    // staged bytes into it, the weld compares its strides, and the allocation
+    // and vertex input key come from it.
+    if (buffer_info.optimized_vertex_format == nullptr) {
+        return {};
+    }
+    const erhe::dataformat::Vertex_format& vertex_format = *buffer_info.optimized_vertex_format;
+
     Mesh_optimize_result optimization{};
-    if (!optimize_indexed_mesh(streams, fill_indices, buffer_info.vertex_format, buffer_info.mesh_optimize_options, optimization)) {
+    if (!optimize_indexed_mesh(streams, fill_indices, vertex_format, buffer_info.mesh_optimize_options, optimization)) {
         return {};
     }
     log_mesh_optimize_statistics(name, optimization.statistics);
@@ -615,7 +642,7 @@ auto make_optimized_render_shape_from_staged_build(
         buffer_mesh.index_buffer_range = index_allocation.range;
         buffer_mesh.index_allocation   = std::move(index_allocation.allocation);
 
-        for (const erhe::dataformat::Vertex_stream& sink_stream : buffer_info.vertex_format.streams) {
+        for (const erhe::dataformat::Vertex_stream& sink_stream : vertex_format.streams) {
             Buffer_sink_allocation vertex_allocation = buffer_info.vertex_buffer_sink.allocate_vertex_buffer_range(sink_stream, vertex_count);
             if (vertex_allocation.range.count == 0) {
                 log_primitive->warn("mesh optimize {}: out of vertex memory for the optimized variant; rendering the source build", name);
@@ -660,7 +687,7 @@ auto make_optimized_render_shape_from_staged_build(
         .first_index    = 0,
         .index_count    = index_count
     };
-    buffer_mesh.vertex_input_key = buffer_info.vertex_input_key;
+    buffer_mesh.vertex_input_key = buffer_info.optimized_vertex_input_key;
     // Welding and reordering move no vertex, so the source build's volumes
     // describe this one exactly.
     buffer_mesh.bounding_box        = source_buffer_mesh.bounding_box;
