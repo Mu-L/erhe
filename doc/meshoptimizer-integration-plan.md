@@ -20,7 +20,94 @@ Key architecture facts (verified, corrected by independent review):
 - Stale foothold: `#meshoptimizer` comment at `src/editor/CMakeLists.txt:1032`.
 - Android cwd is per-app writable internal storage (`SDL_GetAndroidInternalStoragePath` + `chdir` in main.cpp) — cwd-relative cache dir works there.
 
+## Decision (2026-08-27): where the variants live — `Primitive`
+
+**Settled. Do not re-litigate.** Three placements were compared after the
+`Mesh_variant` plumbing (84937fee5) landed but before anything constructed an
+optimized variant — the cheapest possible moment to change course.
+
+| | **A** — inside the shape (as committed) | **B** — variant sets on `erhe::scene::Mesh` | **C** — variant shapes on `Primitive` (**chosen**) |
+|---|---|---|---|
+| Storage | `std::array<Buffer_mesh, 2>` in `Primitive_render_shape` + `std::array<Element_mappings, 2>` in `Primitive_shape` | several `std::vector<Mesh_primitive>` on `Mesh` | `Primitive` holds the source `Primitive_render_shape` plus one `shared_ptr<Primitive_render_shape>` per extra variant |
+| Shape internals | two parallel arrays; every internal access indexes by variant | revert to pre-meshoptimizer | revert to pre-meshoptimizer — pure deletion, incl. no-arg `get_triangle_soup()` / `get_element_mappings()` |
+| Mappings↔mesh pairing | by matching array index — enforced by discipline | per variant primitive | in the same object as the mesh it describes — by construction |
+| Cost when optimization is off | a second empty `Buffer_mesh` **and** `Element_mappings` in *every* `Primitive_render_shape` | one null pointer per `Primitive` | one null pointer per `Primitive` |
+| Shared-primitive dedup | per `Primitive` (implicit) | per `Primitive` via the variant pointer table | per `Primitive` — the table *is* the dedup, explicitly |
+| Per-instance state | untouched | `material` + `lightmap_uv_scale_offset` duplicated per set, and must be kept in sync through `set_primitive_material` / `set_primitive_lightmap_uv_scale_offset` / re-registration | untouched |
+| Draw-list key `(object_index, mesh_primitive_index)` | unaffected | one set per LOD level may change primitive count/order — the key stops meaning one thing | unaffected |
+| Selection points | ~21 renderable-mesh sites name a variant | same ~21, moved to `Mesh` | the same ~21, unchanged from 84937fee5 |
+| Geometry / raytrace / collision / export sites | unaffected | unaffected | unaffected — all 36 `render_shape->get_geometry*()` sites plus `get_shape_for_raytrace()` keep pointing at the source shape |
+| Per-instance LOD selection | no | yes | no (stays a later `Mesh`-level index that selects among these shapes) |
+
+**Chosen: C.** It is the only one of the three that makes `Element_mappings`
+live in the same object as the `Buffer_mesh` it describes *and* costs nothing
+when optimization is off *and* leaves `Mesh` / `Mesh_primitive` / the draw-list
+key alone. It reverts `Primitive_shape` and `Primitive_render_shape` to their
+pre-meshoptimizer shape by deletion rather than by rewriting them, because the
+optimized variant becomes an ordinary geometry-less render shape — a category
+that already exists and is already in use (`Primitive_render_shape(Buffer_mesh&&)`,
+primitive.cpp:766, for scene_builder's instanced cubes), so the variant is not a
+new invalid-state category needing a guard. `Primitive` is also already the
+dedup unit for sharing — glTF import dedups `Primitive` slots
+(gltf_fastgltf.cpp:2316-2345) and brushes share `Primitive` objects — so hanging
+the variants there satisfies "shared primitives are optimized once, as one"
+directly, with the originals never mutated, exactly as required. B was rejected
+because `Mesh` is per-instance while the optimized variant's selection is
+per-*pass*: it would duplicate per-instance primitive state across sets for a
+choice no instance ever makes differently, and it is the only option that puts
+the draw-list key at risk. A was rejected because it pays for the second variant
+in every primitive whether or not optimization is on, and pairs each mesh with
+its mappings by matching array indices rather than by ownership.
+
+Consequences to design against under C:
+
+- **Cross-variant publication is no longer one mutex.** Today
+  `commit_geometry_buffer_mesh()` swaps mesh + mappings for all variants under a
+  single state mutex. Under C each shape carries its own. The discipline is:
+  attach/publish the optimized shape only *after* the source commit succeeds,
+  and on invalidate detach the optimized shape *first*. A renderer therefore
+  never sees a stale optimized mesh beside a committed new source one. (This is
+  the one thing A got for free.)
+- **`Primitive` owns variant construction.** `make_renderable_mesh()` builds the
+  source shape and, when the requested variant set asks for it, creates and
+  builds the optimized shape. The requested set stays caller-prepared in
+  `Build_info`/`Buffer_info` as already planned.
+- **The optimized shape holds the optimized soup and its own composed
+  mappings.** That removes `m_optimized_triangle_soup` and the variant-aware
+  `get_triangle_soup(Mesh_variant)` from the plan entirely: each shape has one
+  soup, one mappings instance, one `Buffer_mesh`. Export and the ERHE_geometry
+  round-trip use the source shape's no-arg accessor, unchanged.
+- **The optimized shape must never build its own `Geometry` or raytrace.**
+  Nothing reaches it to try: every geometry, raytrace, collision and export site
+  goes through `primitive.render_shape` / `get_shape_for_raytrace()`, neither of
+  which is variant-selected.
+- **Invalidate-on-edit** drops the optimized shape pointer (frame-safe release —
+  in-flight frames may still reference it) and re-registers all meshes sharing
+  the primitive, per the existing `collect_meshes_sharing_primitives` /
+  `Scene_commit_queue` precedent. Ray tracing is unaffected (BLAS is built from
+  the source shape per the 2026-08-26 amendment), so no BLAS eviction is needed.
+- **First-optimization-wins** uses the same publish-once discipline as
+  `m_geometry_published`: two loader workers may ask for the same variant at
+  once.
+
+Effect on what is committed: 84937fee5 is **not** reverted. Its selection-point
+half — the ~21 sites that name a variant, `bucket_primitives()`'s variant
+preference, the chosen `Buffer_mesh*` riding on the bucket entry, and
+`Draw_list_entry` recording the variant it was baked from — is required by every
+design and is kept as-is. Only its storage half is replaced: the two
+`std::array`s and the `m_has_optimized` flag come out of `Primitive_shape` /
+`Primitive_render_shape`, the no-arg `get_triangle_soup()` /
+`get_element_mappings()` come back, and `Primitive` gains the variant table with
+`get_resolved_renderable_mesh(preference)`'s resolve-and-fetch-under-one-lock
+contract moving up to it.
+
 ## Architecture: source / optimized asset split
+
+> The bullets below describe the placement as first implemented (Design A,
+> commit 84937fee5). The decision above supersedes where the variants are
+> **stored**; the selection points, the `Build_info` variant set, the
+> renderer-side choice and the invalidate-on-edit rules they describe are
+> unchanged. Read the decision first.
 
 - Explicit variant enum: `Mesh_variant { original, optimized }`. (A dedicated minimal `id_renderer` variant — position+id only, allowing the full original variant to be dropped — is documented **future work**, not v1.)
 - `Primitive_shape` keeps the **source** `Triangle_soup` untouched, plus an **optimized** `Triangle_soup` derived from it (`m_optimized_triangle_soup`; null when optimization is off). Single accessor `get_triangle_soup(Mesh_variant)`: `original` → source soup, `optimized` → optimized soup or null (no silent fallback that could blur which data a build used). Export and the ERHE_geometry round-trip use `get_triangle_soup(Mesh_variant::original)`. (Naming rule: avoid "renderable" in new names — `Primitive_render_shape` already carries that meaning.)
