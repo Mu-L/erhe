@@ -804,7 +804,11 @@ auto Primitive_render_shape::has_edge_lines_state_locked() const -> bool
     return m_renderable_mesh.index_range(Primitive_mode::edge_lines).index_count > 0;
 }
 
-auto Primitive_render_shape::prepare_geometry_buffer_mesh(const Build_info& build_info, const Normal_style normal_style) -> bool
+auto Primitive_render_shape::prepare_geometry_buffer_mesh(
+    const Build_info&      build_info,
+    const Normal_style     normal_style,
+    const std::string_view name
+) -> bool
 {
     const std::lock_guard<std::mutex> build_lock{m_build_mutex};
     {
@@ -831,7 +835,7 @@ auto Primitive_render_shape::prepare_geometry_buffer_mesh(const Build_info& buil
         pending->element_mappings,
         normal_style,
         &pending->optimized_shape,
-        geometry->get_name()
+        name.empty() ? geometry->get_name() : name
     );
     if (!ok) {
         return false;

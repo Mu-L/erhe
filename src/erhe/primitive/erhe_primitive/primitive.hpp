@@ -218,7 +218,12 @@ public:
     // lines, corner / centroid points, element mappings) aside on a worker
     // and commits it under the scene lock. prepare ensures Geometry exists
     // (thread-safe); commit swaps the renderable mesh + element mappings in.
-    auto prepare_geometry_buffer_mesh(const Build_info& build_info, Normal_style normal_style) -> bool;
+    // `name` labels this shape in the optimization log line. It is a parameter
+    // rather than the Geometry's own name because on this path there is none:
+    // the Geometry is derived from an imported triangle soup and comes out
+    // unnamed, so the caller passes the scene mesh's name instead. Empty falls
+    // back to the Geometry name, which is what the procedural paths have.
+    auto prepare_geometry_buffer_mesh(const Build_info& build_info, Normal_style normal_style, std::string_view name = {}) -> bool;
     // `out_optimized_shape` receives the optimized variant prepared alongside
     // the buffer mesh, so the caller can attach it to the Primitive in the same
     // step - and, crucially, BEFORE the mesh is re-registered with the draw

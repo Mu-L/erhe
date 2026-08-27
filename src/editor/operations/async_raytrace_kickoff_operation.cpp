@@ -129,7 +129,7 @@ void deferred_finalize_mesh_items(Mesh_operation_parameters&& parameters, const 
             }
             const std::shared_ptr<erhe::primitive::Primitive_render_shape>& render_shape = primitive.render_shape;
             if (render_shape && render_shape->has_buffer_mesh_triangles() && !render_shape->has_edge_lines()) {
-                if (!render_shape->prepare_geometry_buffer_mesh(mesh_build_info, erhe::primitive::Normal_style::corner_normals)) {
+                if (!render_shape->prepare_geometry_buffer_mesh(mesh_build_info, erhe::primitive::Normal_style::corner_normals, scene_mesh->get_name())) {
                     log_operations->warn(
                         "Deferred finalize: could not build full buffer mesh for '{}' (out of GPU mesh memory?)",
                         scene_mesh->get_name()

@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <mutex>
 #include <numeric>
 #include <unordered_map>
 
@@ -669,8 +670,107 @@ auto make_optimized_render_shape_from_staged_build(
     return std::make_shared<Primitive_render_shape>(std::move(buffer_mesh), std::move(composed));
 }
 
+auto Mesh_optimize_totals::acmr_before() const -> float
+{
+    return (triangle_count > 0) ? static_cast<float>(acmr_before_weighted / static_cast<double>(triangle_count)) : 0.0f;
+}
+
+auto Mesh_optimize_totals::acmr_after() const -> float
+{
+    return (triangle_count > 0) ? static_cast<float>(acmr_after_weighted / static_cast<double>(triangle_count)) : 0.0f;
+}
+
+auto Mesh_optimize_totals::overdraw_before() const -> float
+{
+    return (triangle_count > 0) ? static_cast<float>(overdraw_before_weighted / static_cast<double>(triangle_count)) : 0.0f;
+}
+
+auto Mesh_optimize_totals::overdraw_after() const -> float
+{
+    return (triangle_count > 0) ? static_cast<float>(overdraw_after_weighted / static_cast<double>(triangle_count)) : 0.0f;
+}
+
+namespace {
+
+// Process-wide, because that is the scope the question is asked at: primitives
+// are optimized from loader workers, from the deferred finalize tasks and from
+// the main thread, and no one of those owns the answer.
+std::mutex           g_totals_mutex;
+Mesh_optimize_totals g_totals;
+
+} // anonymous namespace
+
+auto get_mesh_optimize_totals() -> Mesh_optimize_totals
+{
+    const std::lock_guard<std::mutex> lock{g_totals_mutex};
+    return g_totals;
+}
+
+void reset_mesh_optimize_totals()
+{
+    const std::lock_guard<std::mutex> lock{g_totals_mutex};
+    g_totals = Mesh_optimize_totals{};
+}
+
+void log_mesh_optimize_totals()
+{
+    const Mesh_optimize_totals totals = get_mesh_optimize_totals();
+    if (totals.primitive_count == 0) {
+        return;
+    }
+    log_primitive->info(
+        "mesh optimize totals: {} primitives ({} measured, {} replayed from cache), "
+        "vertices {} -> {} ({:+.1f}%), {} triangles, ACMR {:.3f} -> {:.3f}, overdraw {:.3f} -> {:.3f}, "
+        "fetch {} -> {} bytes ({:+.1f}%), {:.1f} ms total",
+        totals.primitive_count,
+        totals.measured_count,
+        totals.replayed_count,
+        totals.vertex_count_before,
+        totals.vertex_count_after,
+        (totals.vertex_count_before > 0)
+            ? 100.0f * (static_cast<float>(totals.vertex_count_after) - static_cast<float>(totals.vertex_count_before)) / static_cast<float>(totals.vertex_count_before)
+            : 0.0f,
+        totals.triangle_count,
+        totals.acmr_before(),
+        totals.acmr_after(),
+        totals.overdraw_before(),
+        totals.overdraw_after(),
+        totals.fetch_bytes_before,
+        totals.fetch_bytes_after,
+        (totals.fetch_bytes_before > 0)
+            ? 100.0f * (static_cast<float>(totals.fetch_bytes_after) - static_cast<float>(totals.fetch_bytes_before)) / static_cast<float>(totals.fetch_bytes_before)
+            : 0.0f,
+        1000.0 * totals.elapsed_seconds
+    );
+}
+
 void log_mesh_optimize_statistics(const std::string_view name, const Mesh_optimize_statistics& statistics)
 {
+    {
+        const std::lock_guard<std::mutex> lock{g_totals_mutex};
+        ++g_totals.primitive_count;
+        g_totals.vertex_count_before += statistics.vertex_count_before;
+        g_totals.vertex_count_after  += statistics.vertex_count_after;
+        if (statistics.measured) {
+            // A cache hit contributes its vertex counts (the derivation is the
+            // same one) but no ACMR / overdraw / fetch figures - it never ran
+            // meshopt_analyze*(). Folding zeroes in would drag the weighted
+            // means towards nothing.
+            ++g_totals.measured_count;
+            g_totals.triangle_count           += statistics.triangle_count;
+            g_totals.fetch_bytes_before       += statistics.fetch_bytes_before;
+            g_totals.fetch_bytes_after        += statistics.fetch_bytes_after;
+            const double triangles = static_cast<double>(statistics.triangle_count);
+            g_totals.acmr_before_weighted     += static_cast<double>(statistics.acmr_before)     * triangles;
+            g_totals.acmr_after_weighted      += static_cast<double>(statistics.acmr_after)      * triangles;
+            g_totals.overdraw_before_weighted += static_cast<double>(statistics.overdraw_before) * triangles;
+            g_totals.overdraw_after_weighted  += static_cast<double>(statistics.overdraw_after)  * triangles;
+            g_totals.elapsed_seconds          += static_cast<double>(statistics.elapsed_seconds);
+        } else {
+            ++g_totals.replayed_count;
+        }
+    }
+
     if (!statistics.measured) {
         // Cache hit: the derivation was replayed, so there are no before/after
         // figures to report. Saying so beats printing zeroes that read like an

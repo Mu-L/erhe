@@ -51,6 +51,7 @@
 #include "erhe_item/item.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_primitive/material.hpp"
+#include "erhe_primitive/mesh_optimizer.hpp"
 #include "erhe_scene/animation.hpp"
 #include "erhe_scene/mesh.hpp"
 
@@ -275,6 +276,29 @@ auto Mcp_server::query_memory_usage(const json& args) -> std::string
         result["device_memory"] = {
             {"device_local_budget", budget.device_local_budget},
             {"device_local_usage",  budget.device_local_usage}
+        };
+    }
+
+    // Mesh optimization: what the optimized variants cost and bought, session
+    // wide. This is where to ask rather than the log, because the geometry-path
+    // optimizations land asynchronously (the deferred finalize tasks) and there
+    // is no point in the log at which they are all in.
+    {
+        const erhe::primitive::Mesh_optimize_totals totals = erhe::primitive::get_mesh_optimize_totals();
+        result["mesh_optimization"] = {
+            {"primitive_count",     totals.primitive_count},
+            {"measured_count",      totals.measured_count},
+            {"replayed_count",      totals.replayed_count},
+            {"vertex_count_before", totals.vertex_count_before},
+            {"vertex_count_after",  totals.vertex_count_after},
+            {"triangle_count",      totals.triangle_count},
+            {"acmr_before",         totals.acmr_before()},
+            {"acmr_after",          totals.acmr_after()},
+            {"overdraw_before",     totals.overdraw_before()},
+            {"overdraw_after",      totals.overdraw_after()},
+            {"fetch_bytes_before",  totals.fetch_bytes_before},
+            {"fetch_bytes_after",   totals.fetch_bytes_after},
+            {"elapsed_seconds",     totals.elapsed_seconds}
         };
     }
 

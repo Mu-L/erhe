@@ -6229,7 +6229,7 @@
     "name": "debug_set_item_tree_hover"
   },
   {
-    "description": "Report where loaded content's memory sits: per-pool mesh vertex/index bytes (capacity only ever grows because pool blocks are never destroyed, so 'used_bytes' is the figure that drops when meshes are released), estimated texture bytes and count, the driver memory budget (Vulkan only), the cached bottom-level acceleration structure count, undo/redo entry counts, and the loaded asset containers. Mesh and texture releases are frame-deferred, so advance a few frames before sampling after a removal. See doc/reloadable-asset-loads.md.",
+    "description": "Report where loaded content's memory sits: per-pool mesh vertex/index bytes (capacity only ever grows because pool blocks are never destroyed, so 'used_bytes' is the figure that drops when meshes are released), estimated texture bytes and count, the driver memory budget (Vulkan only), the cached bottom-level acceleration structure count, mesh optimization totals (mesh_optimization: how many primitives were optimized, how many of those replayed from the disk cache, vertex counts and vertex-fetch bytes before and after, and triangle-weighted ACMR and overdraw before and after - session-wide and cumulative, and the right place to read them because geometry-path optimizations land asynchronously after a load), undo/redo entry counts, and the loaded asset containers. Mesh and texture releases are frame-deferred, so advance a few frames before sampling after a removal. See doc/reloadable-asset-loads.md.",
     "inputSchema": {
       "properties": {},
       "required": [],

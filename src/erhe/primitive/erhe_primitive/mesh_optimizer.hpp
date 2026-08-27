@@ -255,6 +255,46 @@ public:
     std::string_view                    name
 ) -> std::shared_ptr<Primitive_render_shape>;
 
+// Running totals over every primitive log_mesh_optimize_statistics() has been
+// called for since the last reset. Per-primitive lines answer "what did this
+// mesh gain"; this answers "what did the session gain", which is the figure
+// phase 7 measures and the one a 30-line log makes you sum by hand.
+//
+// The averages are TRIANGLE-WEIGHTED, not per-primitive: ACMR and overdraw are
+// per-triangle costs, so a mean over primitives would let a 4-triangle gizmo
+// count as much as a 92 000-triangle chessboard.
+class Mesh_optimize_totals
+{
+public:
+    std::size_t primitive_count      {0}; // primitives optimized
+    std::size_t measured_count       {0}; // of those, ones that ran the analysis
+    std::size_t replayed_count       {0}; // of those, cache hits (no figures)
+    std::size_t vertex_count_before  {0};
+    std::size_t vertex_count_after   {0};
+    std::size_t triangle_count       {0}; // over measured primitives only
+    std::size_t fetch_bytes_before   {0};
+    std::size_t fetch_bytes_after    {0};
+    double      acmr_before_weighted {0.0}; // sum of acmr * triangle_count
+    double      acmr_after_weighted  {0.0};
+    double      overdraw_before_weighted{0.0};
+    double      overdraw_after_weighted {0.0};
+    double      elapsed_seconds      {0.0};
+
+    // Triangle-weighted means, 0 when nothing measured.
+    [[nodiscard]] auto acmr_before    () const -> float;
+    [[nodiscard]] auto acmr_after     () const -> float;
+    [[nodiscard]] auto overdraw_before() const -> float;
+    [[nodiscard]] auto overdraw_after () const -> float;
+};
+
+// Thread safe: primitives are optimized on loader workers.
+[[nodiscard]] auto get_mesh_optimize_totals() -> Mesh_optimize_totals;
+void reset_mesh_optimize_totals();
+// One summary line for the totals above. Logs nothing when no primitive has
+// been optimized, so a session with the feature off stays silent.
+void log_mesh_optimize_totals();
+
+// Also accumulates into the running totals - see get_mesh_optimize_totals().
 void log_mesh_optimize_statistics(std::string_view name, const Mesh_optimize_statistics& statistics);
 
 } // namespace erhe::primitive

@@ -785,6 +785,12 @@ void finalize_imported_meshes(
         defer_edge_lines,
         defer_raytrace
     );
+    // Session totals, not this import's: primitives are shared and deduped
+    // across imports, and the geometry-path optimizations of THIS import have
+    // not run yet - the deferred finalize tasks do them later, with no point at
+    // which they are all in. Ask get_memory_usage for the figure after a load
+    // has settled.
+    erhe::primitive::log_mesh_optimize_totals();
 }
 
 auto make_import_gltf_operation(
