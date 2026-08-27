@@ -25,6 +25,7 @@
 
 #include "scene/generated/gltf_source_reference.hpp"
 #include "config/generated/editor_settings_config.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config.hpp"
 
 #include "items.hpp"
 
@@ -36,6 +37,7 @@
 #include "erhe_verify/verify.hpp"
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_primitive/build_info.hpp"
+#include "erhe_primitive/mesh_optimizer.hpp"
 #include "erhe_primitive/primitive.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
@@ -596,6 +598,59 @@ void build_imported_buffer_meshes(
     );
 }
 
+// Attaches the optimized mesh variant to one imported primitive, per
+// doc/meshoptimizer-integration-plan.md phase 3. Off by default
+// (Mesh_memory_config::optimize_meshes).
+//
+// MUST be called before the owning mesh is registered with the draw list -
+// see the call site. Registration bakes the drawn variant's base_vertex and
+// index ranges, so attaching afterwards desynchronises the draw from the
+// per-primitive record.
+//
+// Dedup is implicit and idempotent: a Primitive already carrying an optimized
+// shape is skipped, which covers both the parse sharing one Primitive across
+// every instancing node and this being reached more than once for the same
+// primitive. That is what keeps a city-sized import from optimizing a shared
+// primitive once per instance.
+//
+// Attached only once the variant is COMPLETE (make_optimized_render_shape
+// builds it before returning it), so a renderer never sees a shape without a
+// mesh. The source mappings are deliberately not passed: at this point they
+// are empty - geometry is parsed later, by the deferred finalize - and the
+// builder-produced mappings that replace them index the built vertex buffer
+// rather than the soup, so they must never be composed through a soup remap.
+void attach_optimized_render_shape(
+    App_context&                       context,
+    const erhe::primitive::Build_info& build_info,
+    erhe::primitive::Primitive&        primitive,
+    const std::string_view             label
+)
+{
+    if ((context.mesh_memory_config == nullptr) || !context.mesh_memory_config->optimize_meshes) {
+        return;
+    }
+    if (!primitive.render_shape || primitive.optimized_render_shape) {
+        return;
+    }
+    ERHE_PROFILE_FUNCTION();
+
+    // The variant is a second build of the same data, so it takes the same
+    // buffer_info - and therefore the same vertex format - as the source
+    // build, or a skinned mesh would draw without its joints.
+    std::shared_ptr<erhe::primitive::Primitive_render_shape> optimized =
+        erhe::primitive::make_optimized_render_shape(
+            *primitive.render_shape.get(),
+            erhe::primitive::Element_mappings{},
+            erhe::primitive::Mesh_optimize_options{},
+            build_info.buffer_info,
+            label
+        );
+    if (!optimized) {
+        return;
+    }
+    primitive.optimized_render_shape = std::move(optimized);
+}
+
 void finalize_imported_meshes(
     App_context&                                   context,
     const erhe::primitive::Build_info&             build_info,
@@ -651,8 +706,10 @@ void finalize_imported_meshes(
         // identical.
         const erhe::primitive::Build_info& mesh_build_info = mesh->skin ? skinned_build_info : build_info;
         std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_mutable_primitives();
+        std::size_t primitive_index = 0;
         for (erhe::scene::Mesh_primitive& mesh_primitive : mesh_primitives) {
             erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
+            const std::size_t this_primitive_index = primitive_index++;
             // glTF arrives with facets + vertices but no edges. Build edges
             // (and the smooth vertex normals used for wireframe bias) so
             // the content wide-line renderer has something to draw.
@@ -685,6 +742,20 @@ void finalize_imported_meshes(
                     mesh->get_name()
                 );
             }
+            // Attach the optimized variant here - after the source build, and
+            // crucially BEFORE mesh->update_rt_primitives() below registers the
+            // mesh with the draw list. Registration BAKES base_vertex and the
+            // index ranges of whichever variant is live at that moment, so a
+            // variant attached afterwards leaves the draw list drawing the
+            // source mesh while the per-primitive record is written from the
+            // optimized one - mismatched base_vertex and, with quantized
+            // positions, a decode AABB belonging to the other mesh.
+            attach_optimized_render_shape(
+                context,
+                mesh_build_info,
+                primitive,
+                fmt::format("{}[{}]", mesh->get_name(), this_primitive_index)
+            );
             if (defer_raytrace) {
                 // Proxy over the renderable-mesh bounds so picking works the
                 // moment the scene appears; replaced by the real triangle

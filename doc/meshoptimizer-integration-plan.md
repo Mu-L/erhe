@@ -186,6 +186,37 @@ contract moving up to it.
 - Per-primitive log line via `log_primitive` (info): counts, ACMR/overdraw/fetch before→after, weld delta, elapsed.
 - **Verify:** all desktop builds; load a glTF scene with flag forced on; identical rendering; picking/paint/weight-paint on imported meshes **during the pre-finalize window or on a soup-only consumer** (steady state replaces the composed mappings with builder-produced ones at finalize, so testing after finalize passes vacuously); physics; glTF re-export produces **source** data byte-equivalent to a no-optimization export. Commit.
 
+## Phase 3 verification (2026-08-27, ABeautifulGame.glb)
+
+Controlled A/B on `res/editor/assets/ABeautifulGame.glb` — a scene chosen for
+having no cameras, no animations and no skins, at a camera framing pinned over
+MCP with DDGI off and the simulation clock paused (the harness is
+`shot.py`; see `feedback_ab_screenshot_control_run`):
+
+| comparison | viewport pixels differing | |
+|---|---|---|
+| off vs off (control) | 0 / 2 198 250 | runs are bit-reproducible |
+| off vs **on** | **0 / 2 198 250** | optimized variant renders identically |
+
+Not vacuous: the `on` run optimized **15 primitives**, e.g. `Bishop_Shared[0]`
+74 768 triangles, ACMR 0.769 → 0.720, overdraw 1.152 → 1.035.
+
+Two observations to carry forward, neither a correctness problem:
+
+- **Sharing dedup is doing real work.** The asset has 15 distinct meshes
+  referenced by 49 mesh-carrying nodes, and exactly 15 optimizations ran — the
+  other 34 instances reused the shared `Primitive`'s variant, which is the
+  behaviour the "optimize shared primitives once" requirement asks for.
+- **Vertex fetch got *worse* on this asset** (2 795 008 → 3 064 576 bytes) while
+  ACMR and overdraw improved, and the weld merged nothing (+0.0% vertices)
+  because the asset is already welded. Overdraw reordering trades fetch
+  locality away, and on an already-optimized asset there is nothing for the
+  weld to win back. Worth deciding in phase 6/7 whether overdraw earns its
+  fetch cost, ideally per-asset rather than globally — do not treat the
+  increase as a bug on sight.
+- **Cost is not negligible**: ~190 ms for a 74 k-triangle primitive, ~370 ms of
+  the load for this small scene. That is the case for the phase 4 cache.
+
 ## Phase 4 — Filesystem cache (soup path only)
 
 - New `optimize_triangle_soup_cached(source, options, cache_dir)` in `mesh_optimizer.cpp` (soup path only in v1 — the geometry path runs its passes uncached at build/finalize time, a deliberate cost decision recorded in phase 5b; say so in a comment).
