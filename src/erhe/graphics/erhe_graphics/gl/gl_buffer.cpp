@@ -282,7 +282,7 @@ void Buffer_impl::allocate_storage(const void* init_data)
     ERHE_VERIFY(m_capacity_byte_count > 0);
 }
 
-void Buffer_impl::publish_from_worker()
+void Buffer_impl::publish_from_worker() const
 {
     ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::worker);
     m_publication_sync.publish_from_worker();

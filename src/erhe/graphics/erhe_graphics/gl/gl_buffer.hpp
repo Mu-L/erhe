@@ -40,7 +40,12 @@ public:
     // main thread calls wait_publication() - a server-side glWaitSync, once
     // per object - before its first use of the buffer; null sync (main-
     // thread-created buffer, or already consumed) is a fast no-op.
-    void wait_publication() const;
+    // publish_from_worker() is the producer half: fence-then-flush on the
+    // creating worker context (the flush is what submits the fence);
+    // called at storage allocation and by worker-side buffer writes
+    // (blit-encoder fill / copy).
+    void publish_from_worker() const;
+    void wait_publication   () const;
 
     template <typename T>
     [[nodiscard]]
@@ -60,9 +65,6 @@ public:
 
 private:
     void allocate_storage(const void* init_data = nullptr);
-    // Producer half of the publication contract: fence-then-flush on the
-    // creating worker context (the flush is what submits the fence).
-    void publish_from_worker();
     [[nodiscard]] auto get_gl_storage_mask() const -> gl::Buffer_storage_mask;
     [[nodiscard]] auto get_gl_access_mask () const -> gl::Map_buffer_access_mask;
 

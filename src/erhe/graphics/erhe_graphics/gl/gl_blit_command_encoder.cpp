@@ -4,6 +4,8 @@
 #include "erhe_graphics/gl/gl_render_pass.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
 #include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_gl/gl_helpers.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_dataformat/dataformat.hpp"
@@ -18,11 +20,10 @@ namespace erhe::graphics {
 Blit_command_encoder_impl::Blit_command_encoder_impl(Device& device, Command_buffer& command_buffer)
     : Command_encoder_impl{device, command_buffer}
 {
-    // Transitional: guarding at construction makes every upload/copy path
-    // main-thread-only as a side effect. A later commit splits the guard per
-    // method (upload/copy HAS_CONTEXT, blit via Scoped_framebuffer, readback
-    // DRAW_CAPABLE) once the per-object accessors exist.
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    // Guards are per METHOD (plan section 4): upload and copy take
+    // HAS_CONTEXT, blit_framebuffer additionally adopts per-context
+    // framebuffers through Scoped_framebuffer, and readback (texture ->
+    // buffer) keeps DRAW_CAPABLE. Construction itself needs no context.
 }
 
 Blit_command_encoder_impl::~Blit_command_encoder_impl() noexcept = default;
@@ -36,8 +37,15 @@ void Blit_command_encoder_impl::blit_framebuffer(
     glm::ivec2         destination_origin
 )
 {
-    const GLuint           src_name   = source_renderpass.get_impl().gl_name();
-    const GLuint           dst_name   = destination_renderpass.get_impl().gl_name();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    // Framebuffers are per-context container objects: adopt both passes on
+    // the calling thread's current context and use the resolved names -
+    // gl_name() is a getter, never an adoption point, and would read an
+    // empty slot on a context that has not adopted yet.
+    const Scoped_framebuffer scoped_source_framebuffer     {m_device, source_renderpass};
+    const Scoped_framebuffer scoped_destination_framebuffer{m_device, destination_renderpass};
+    const GLuint           src_name   = scoped_source_framebuffer.gl_name();
+    const GLuint           dst_name   = scoped_destination_framebuffer.gl_name();
     const gl::Color_buffer src_buffer = src_name != 0 ? gl::Color_buffer::color_attachment0 : gl::Color_buffer::back;
     const gl::Color_buffer dst_buffer = dst_name != 0 ? gl::Color_buffer::color_attachment0 : gl::Color_buffer::back;
 
@@ -57,6 +65,19 @@ void Blit_command_encoder_impl::blit_framebuffer(
         gl::Clear_buffer_mask::color_buffer_bit, // mask
         gl::Blit_framebuffer_filter::nearest     // filter
     );
+
+    // Publication (plan section 5): a worker-side blit writes the shared
+    // texture attached to the destination framebuffer - publish it so the
+    // main thread can wait before sampling. The reverse direction (a
+    // main-rendered SOURCE consumed by a worker blit) is a stated design
+    // rule with no call site yet: whichever commit adds one must hand the
+    // worker a main-side fence with the source.
+    if (get_gl_thread_role() == Gl_thread_role::worker) {
+        const Texture* const destination_texture = destination_renderpass.get_descriptor().color_attachments[0].texture;
+        if (destination_texture != nullptr) {
+            destination_texture->get_impl().publish_from_worker();
+        }
+    }
 }
 
 // Texture to texture copy, single level, single array slice
@@ -72,6 +93,7 @@ void Blit_command_encoder_impl::copy_from_texture(
     const glm::ivec3     destination_origin
 )
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     const gl::Texture_target gl_source_texture_target = convert_to_gl_texture_target(
         source_texture->get_texture_type(),
         source_texture->get_sample_count() != 0,
@@ -132,6 +154,7 @@ void Blit_command_encoder_impl::copy_from_buffer(
     const glm::ivec3     destination_origin
 )
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(source_size.x <= destination_texture->get_width ());
     ERHE_VERIFY(source_size.y <= destination_texture->get_height());
     ERHE_VERIFY(source_size.z <= destination_texture->get_depth ());
@@ -352,6 +375,8 @@ void Blit_command_encoder_impl::copy_from_texture(
     const std::uintptr_t destination_bytes_per_image
 )
 {
+    // Readback stays main-thread-only (plan section 4).
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     const gl::Texture_target gl_source_texture_target = convert_to_gl_texture_target(
         source_texture->get_texture_type(),
         source_texture->get_sample_count() != 0,
@@ -437,7 +462,12 @@ void Blit_command_encoder_impl::copy_from_texture(
 
 void Blit_command_encoder_impl::generate_mipmaps(const Texture* texture)
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     gl::generate_texture_mipmap(texture->get_impl().gl_name());
+    // Writes the shared texture: a worker-side call is a publication point.
+    if (get_gl_thread_role() == Gl_thread_role::worker) {
+        texture->get_impl().publish_from_worker();
+    }
 }
 
 void Blit_command_encoder_impl::fill_buffer(
@@ -447,6 +477,7 @@ void Blit_command_encoder_impl::fill_buffer(
     const uint8_t        value
 )
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     gl::clear_named_buffer_sub_data(
         buffer->get_impl().gl_name(),
         gl::Internal_format::r8ui,
@@ -456,6 +487,10 @@ void Blit_command_encoder_impl::fill_buffer(
         gl::Pixel_type::unsigned_byte,
         &value
     );
+    // Writes the shared buffer: a worker-side call is a publication point.
+    if (get_gl_thread_role() == Gl_thread_role::worker) {
+        buffer->get_impl().publish_from_worker();
+    }
 }
 
 // Texture to texture copy, multiple array slices and/or mipmap levels
@@ -470,6 +505,7 @@ void Blit_command_encoder_impl::copy_from_texture(
     const std::uintptr_t level_count
 )
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     const gl::Texture_target gl_source_texture_target = convert_to_gl_texture_target(
         source_texture->get_texture_type(),
         source_texture->get_sample_count() != 0,
@@ -545,6 +581,7 @@ void Blit_command_encoder_impl::copy_from_buffer(
     const std::uintptr_t size
 )
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     // Buffer to buffer copy
     gl::copy_named_buffer_sub_data(
         source_buffer->get_impl().gl_name(),
@@ -553,6 +590,11 @@ void Blit_command_encoder_impl::copy_from_buffer(
         destination_offset,
         size
     );
+    // Writes the shared destination buffer: a worker-side call is a
+    // publication point.
+    if (get_gl_thread_role() == Gl_thread_role::worker) {
+        destination_buffer->get_impl().publish_from_worker();
+    }
 }
 
 } // namespace erhe::graphics
