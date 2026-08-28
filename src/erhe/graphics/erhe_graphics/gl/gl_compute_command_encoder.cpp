@@ -38,6 +38,8 @@ void Compute_command_encoder_impl::set_storage_image(uint32_t binding_point, con
     // always safe for both LUT passes (transmittance writes; multi-scatter
     // reads unit 0 and writes unit 1).
     const Texture_impl& texture_impl = texture.get_impl();
+    // Publication consumer: see Render_command_encoder_impl::set_sampled_image.
+    texture_impl.wait_publication();
     const std::optional<gl::Internal_format> internal_format_opt =
         gl_helpers::convert_to_gl(texture_impl.get_pixelformat());
     ERHE_VERIFY(internal_format_opt.has_value());

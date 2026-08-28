@@ -149,6 +149,12 @@ auto Texture_heap_impl::allocate(const Texture* texture, const Sampler* sampler)
         return invalid_texture_handle;
     }
 
+    // Publication consumer: the heap is where a texture first heads toward
+    // a main-context bind (bind_and_make_resident binds every heap slot).
+    // Wait on a worker-created texture before it enters the heap; no-op
+    // (one null check) on the cache-hit steady state.
+    texture->get_impl().wait_publication();
+
 #if ERHE_TEXTURE_HEAP_LOG
     const GLuint texture_name = texture->get_impl().gl_name(); // get_texture_from_handle(handle);
     const GLuint sampler_name = sampler->get_impl().gl_name(); // get_sampler_from_handle(handle);

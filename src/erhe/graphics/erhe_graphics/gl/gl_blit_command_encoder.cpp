@@ -256,6 +256,14 @@ void Blit_command_encoder_impl::copy_from_buffer(
             }
         }
     }
+
+    // Publication (plan section 5): one fence per upload METHOD call, not
+    // per sub-image - the fence covers every command before it. Dormant
+    // until worker-side blit-encoder use is legalized (the constructor's
+    // DRAW_CAPABLE guard), but the publication point belongs to the write.
+    if (get_gl_thread_role() == Gl_thread_role::worker) {
+        destination_texture->get_impl().publish_from_worker();
+    }
 }
 
 // Block-compressed destination path of buffer->texture copy_from_buffer.
@@ -322,6 +330,12 @@ void Blit_command_encoder_impl::copy_from_buffer_compressed(
                 ERHE_FATAL("Bad texture target for compressed upload");
             }
         }
+    }
+
+    // Publication: see the tail of copy_from_buffer above - once per
+    // method call, covering every compressed sub-image write before it.
+    if (get_gl_thread_role() == Gl_thread_role::worker) {
+        destination_texture->get_impl().publish_from_worker();
     }
 }
 

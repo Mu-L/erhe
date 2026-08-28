@@ -7,6 +7,7 @@
 #include "scene/scene_commit_queue.hpp"
 #include "scene/scene_root.hpp"
 
+#include "erhe_graphics/scoped_worker_context.hpp"
 #include "erhe_primitive/primitive.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_scene/mesh.hpp"
@@ -129,6 +130,14 @@ void deferred_finalize_mesh_items(Mesh_operation_parameters&& parameters, const 
             }
             const std::shared_ptr<erhe::primitive::Primitive_render_shape>& render_shape = primitive.render_shape;
             if (render_shape && render_shape->has_buffer_mesh_triangles() && !render_shape->has_edge_lines()) {
+                // On GL a worker needs a share context for the GPU buffer
+                // allocation inside prepare_geometry_buffer_mesh. Scope is
+                // deliberately NARROW - around the GPU build only, not the
+                // BVH build above - so the fixed context pool does not cap
+                // the CPU-heavy part of the finalize (plan section 9 item
+                // 1). Unreachable without worker contexts: the import path
+                // only defers edge lines when supports_worker_contexts().
+                erhe::graphics::Scoped_worker_context worker_context{*context.graphics_device};
                 if (!render_shape->prepare_geometry_buffer_mesh(mesh_build_info, erhe::primitive::Normal_style::corner_normals, scene_mesh->get_name())) {
                     log_operations->warn(
                         "Deferred finalize: could not build full buffer mesh for '{}' (out of GPU mesh memory?)",
@@ -237,7 +246,12 @@ void Async_raytrace_kickoff_operation::execute(App_context& context)
             [scene_root](Mesh_operation_parameters&& mesh_operation_parameters)
             {
                 deferred_finalize_mesh_items(std::move(mesh_operation_parameters), scene_root);
-            }
+            },
+            // The finalize manages its own NARROW worker-context scope
+            // around the GPU build only (the BVH build is CPU-heavy and
+            // must not hold a pool context) - and is dispatched per mesh,
+            // so it must not fall into the dispatcher's inline mode.
+            /*op_builds_gpu_meshes=*/false
         );
     }
 }

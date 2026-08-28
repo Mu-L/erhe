@@ -8,6 +8,8 @@
 #include "erhe_scene_renderer/mesh_memory.hpp"
 
 #include "erhe_geometry/geometry.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/scoped_worker_context.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_verify/verify.hpp"
@@ -52,7 +54,8 @@ void purge_completed_item_async_tasks()
 void async_for_nodes_with_mesh(
     App_context&                                                context,
     const std::vector<std::shared_ptr<erhe::Item_base>>&        input_items,
-    std::function<void(Mesh_operation_parameters&& parameters)> op
+    std::function<void(Mesh_operation_parameters&& parameters)> op,
+    const bool                                                  op_builds_gpu_meshes
 )
 {
     purge_completed_tasks();
@@ -79,7 +82,7 @@ void async_for_nodes_with_mesh(
     }
     Scene_root* scene_root = static_cast<Scene_root*>(item_host);
 
-    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{scene_root->item_host_mutex};
+    std::unique_lock<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{scene_root->item_host_mutex};
 
     // Gather items with mesh and collect their pending tasks as dependencies
     std::vector<std::shared_ptr<erhe::Item_base>> items;
@@ -167,8 +170,8 @@ void async_for_nodes_with_mesh(
     }
 
     ++context.pending_async_ops;
-    tf::AsyncTask task = context.executor->silent_dependent_async(
-        [&context, op, items, selected_facets = std::move(selected_facets), component_selection = std::move(component_selection)]()
+    auto run_operation =
+        [&context, op, op_builds_gpu_meshes, items, selected_facets = std::move(selected_facets), component_selection = std::move(component_selection)]()
         {
             ++context.running_async_ops;
             // Geometry operations call into Geogram, whose assertion mechanism
@@ -196,7 +199,16 @@ void async_for_nodes_with_mesh(
                 parameters.items               = items;
                 parameters.selected_facets     = selected_facets;
                 parameters.component_selection = component_selection;
-                op(std::move(parameters));
+                if (op_builds_gpu_meshes) {
+                    // The op builds renderable meshes: on GL a worker needs
+                    // a share context for the GPU buffer allocations. No-op
+                    // on the main thread (the inline fallback below) and on
+                    // other backends.
+                    const erhe::graphics::Scoped_worker_context worker_context{*context.graphics_device};
+                    op(std::move(parameters));
+                } else {
+                    op(std::move(parameters));
+                }
             } catch (const std::exception& e) {
                 log_operations->error("Async mesh operation failed: {}", e.what());
                 // Last-ditch surface for the Lightmap window: UV unwrap is
@@ -213,9 +225,25 @@ void async_for_nodes_with_mesh(
             }
             --context.running_async_ops;
             --context.pending_async_ops;
-        },
-        item_tasks.begin(), item_tasks.end()
-    );
+        };
+
+    const bool run_inline =
+        op_builds_gpu_meshes &&
+        (context.graphics_device != nullptr) &&
+        !context.graphics_device->supports_worker_contexts();
+    if (run_inline) {
+        // No worker contexts (GL, headless / null window): a worker may not
+        // build GPU meshes, so run the op synchronously on the calling
+        // (main) thread - the pre-async behavior for a user-triggered edit.
+        // Release the scene lock first: the operation locks item_host_mutex
+        // itself. No task is registered, so this path does not chain
+        // against in-flight async tasks for the same items.
+        scene_lock.unlock();
+        run_operation();
+        return;
+    }
+
+    tf::AsyncTask task = context.executor->silent_dependent_async(std::move(run_operation), item_tasks.begin(), item_tasks.end());
 
     for (const std::shared_ptr<erhe::Item_base>& item : items) {
         s_item_tasks.insert_or_assign(item->get_id(), task);

@@ -34,6 +34,14 @@ public:
     auto map_all_bytes        () noexcept -> std::span<std::byte>;
     auto map_bytes            (std::size_t byte_offset, std::size_t byte_count) noexcept -> std::span<std::byte>;
 
+    // Cross-context publication (plan section 5): a worker-created buffer
+    // carries a fence sync issued (and flushed) on the worker right after
+    // storage allocation, before the name escapes to the main thread. The
+    // main thread calls wait_publication() - a server-side glWaitSync, once
+    // per object - before its first use of the buffer; null sync (main-
+    // thread-created buffer, or already consumed) is a fast no-op.
+    void wait_publication() const;
+
     template <typename T>
     [[nodiscard]]
     auto map_elements(const std::size_t element_offset, const std::size_t element_count) noexcept -> std::span<T>
@@ -52,6 +60,9 @@ public:
 
 private:
     void allocate_storage(const void* init_data = nullptr);
+    // Producer half of the publication contract: fence-then-flush on the
+    // creating worker context (the flush is what submits the fence).
+    void publish_from_worker();
     [[nodiscard]] auto get_gl_storage_mask() const -> gl::Buffer_storage_mask;
     [[nodiscard]] auto get_gl_access_mask () const -> gl::Map_buffer_access_mask;
 
@@ -70,6 +81,14 @@ private:
     std::span<std::byte> m_map;
     std::size_t          m_map_byte_offset{0};
     bool                 m_allocated      {false};
+
+    // Publication sync: written by the creating worker in
+    // publish_from_worker() before the name escapes; consumed by the main
+    // thread in wait_publication(). Empty for main-thread-created buffers.
+    // Mutable because the consumer reaches the impl through const Buffer&;
+    // consuming the sync mutates only the synchronization bookkeeping,
+    // never the logical buffer.
+    mutable Gl_publication_sync m_publication_sync;
 };
 
 class Buffer_impl_hash

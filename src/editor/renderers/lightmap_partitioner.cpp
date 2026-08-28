@@ -11,6 +11,8 @@
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_geometry/operation/bake_transform.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/scoped_worker_context.hpp"
 #include "erhe_item/item.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_primitive/primitive.hpp"
@@ -110,6 +112,7 @@ public:
     // Mirror Make_atlas_operation's per-facet fallback so one degenerate
     // piece does not abort the whole partition.
     static void process_piece(
+        erhe::graphics::Device* const                     graphics_device,
         const Params&                                     params,
         const erhe::primitive::Build_info&                build_info,
         const std::vector<float>&                         tile_texels_per_meter,
@@ -191,7 +194,15 @@ public:
         result.unwrap_us = elapsed_us(piece_start, unwrap_end);
 
         std::shared_ptr<erhe::primitive::Primitive> piece_primitive = std::make_shared<erhe::primitive::Primitive>(atlas_geometry);
-        const bool renderable_ok = piece_primitive->make_renderable_mesh(build_info, task.normal_style);
+        bool renderable_ok = false;
+        {
+            // On GL the GPU buffer allocations inside make_renderable_mesh
+            // need a worker share context; the scope is narrow - the unwrap
+            // above and the raytrace build below are CPU-only. No-op on the
+            // main thread (the serial path runs process_piece there).
+            const erhe::graphics::Scoped_worker_context worker_context{*graphics_device};
+            renderable_ok = piece_primitive->make_renderable_mesh(build_info, task.normal_style);
+        }
         const bool raytrace_ok   = renderable_ok && piece_primitive->make_raytrace();
         result.build_us = elapsed_us(unwrap_end, Clock::now());
         if (!renderable_ok || !raytrace_ok) {
@@ -223,6 +234,7 @@ public:
     // (deferred glTF finalize does the same). Lightmap_report already takes
     // worker-thread reports (async UV unwrap failures).
     static void process_region(
+        erhe::graphics::Device* const                                 graphics_device,
         const Params&                                                 params,
         const erhe::primitive::Build_info&                            build_info,
         const std::vector<erhe::geometry::operation::Clip_tree_node>& tile_tree,
@@ -262,9 +274,9 @@ public:
         if (subflow != nullptr) {
             for (std::size_t i = 0; i < pieces.size(); ++i) {
                 subflow->emplace(
-                    [&params, &build_info, &tile_texels_per_meter, report, &task, &cancel_requested, &pieces, i]() {
+                    [graphics_device, &params, &build_info, &tile_texels_per_meter, report, &task, &cancel_requested, &pieces, i]() {
                         if (!cancel_requested.load(std::memory_order_relaxed)) {
-                            process_piece(params, build_info, tile_texels_per_meter, report, task, pieces[i], task.results[i]);
+                            process_piece(graphics_device, params, build_info, tile_texels_per_meter, report, task, pieces[i], task.results[i]);
                         }
                     }
                 );
@@ -275,7 +287,7 @@ public:
         } else {
             for (std::size_t i = 0; i < pieces.size(); ++i) {
                 if (!cancel_requested.load(std::memory_order_relaxed)) {
-                    process_piece(params, build_info, tile_texels_per_meter, report, task, pieces[i], task.results[i]);
+                    process_piece(graphics_device, params, build_info, tile_texels_per_meter, report, task, pieces[i], task.results[i]);
                 }
             }
         }
@@ -288,6 +300,8 @@ public:
     }
 
     Scene_root*                                             scene_root{nullptr};
+    // For the worker share-context scope in process_piece (GL only).
+    erhe::graphics::Device*                                 graphics_device{nullptr};
     Params                                                  params{};
     int                                                     tile_texture_size{0};
     int                                                     resident_tile_budget{0};
@@ -408,6 +422,7 @@ auto Lightmap_partitioner::request_prepare(
     // partition keeps rendering while the new one computes.
     std::unique_ptr<Prepare_job> job = std::make_unique<Prepare_job>();
     job->scene_root           = &scene_root;
+    job->graphics_device      = m_context.graphics_device;
     job->params               = params;
     job->tile_texture_size    = tile_texture_size;
     job->resident_tile_budget = resident_tile_budget;
@@ -512,12 +527,17 @@ auto Lightmap_partitioner::request_prepare(
         );
     }
 
-    if ((m_context.executor == nullptr) || (raw_job->tasks.size() <= 1)) {
+    const bool worker_contexts =
+        (m_context.graphics_device != nullptr) &&
+        m_context.graphics_device->supports_worker_contexts();
+    if ((m_context.executor == nullptr) || !worker_contexts || (raw_job->tasks.size() <= 1)) {
         // Synchronous fallback: run inline (no subflow) and commit before
-        // returning.
+        // returning. Also taken when the device has no worker contexts
+        // (GL, headless / null window) - process_piece builds GPU meshes,
+        // which a worker then may not do.
         for (Prepare_job::Region_task& task : raw_job->tasks) {
             if (!raw_job->cancel_requested.load(std::memory_order_relaxed)) {
-                Prepare_job::process_region(raw_job->params, *raw_job->build_info, raw_job->tile_tree, raw_job->tile_texels_per_meter, report, task, raw_job->cancel_requested, nullptr);
+                Prepare_job::process_region(raw_job->graphics_device, raw_job->params, *raw_job->build_info, raw_job->tile_tree, raw_job->tile_texels_per_meter, report, task, raw_job->cancel_requested, nullptr);
             }
             raw_job->regions_done.fetch_add(1, std::memory_order_relaxed);
         }
@@ -532,7 +552,7 @@ auto Lightmap_partitioner::request_prepare(
         raw_job->taskflow.emplace(
             [raw_job, report, i](tf::Subflow& subflow) {
                 if (!raw_job->cancel_requested.load(std::memory_order_relaxed)) {
-                    Prepare_job::process_region(raw_job->params, *raw_job->build_info, raw_job->tile_tree, raw_job->tile_texels_per_meter, report, raw_job->tasks[i], raw_job->cancel_requested, &subflow);
+                    Prepare_job::process_region(raw_job->graphics_device, raw_job->params, *raw_job->build_info, raw_job->tile_tree, raw_job->tile_texels_per_meter, report, raw_job->tasks[i], raw_job->cancel_requested, &subflow);
                 }
                 raw_job->regions_done.fetch_add(1, std::memory_order_relaxed);
             }

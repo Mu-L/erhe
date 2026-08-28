@@ -632,22 +632,6 @@ void OpenGL_state_tracker::set_device(Device* const device)
     vertex_input.set_device(device);
 }
 
-// Container objects (VAOs, framebuffers) are per-context instances now, and
-// Gpu_timer is main-thread-only - there is no per-thread object migration
-// left to dispatch. These hooks remain only to reset the software caches on
-// the dead Gl_context_provider path; the worker-context commit deletes them.
-void OpenGL_state_tracker::on_thread_exit()
-{
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
-    vertex_input .reset();
-    shader_stages.reset();
-}
-
-void OpenGL_state_tracker::on_thread_enter()
-{
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
-}
-
 void OpenGL_state_tracker::reset()
 {
     ERHE_PROFILE_FUNCTION();

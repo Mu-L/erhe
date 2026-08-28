@@ -269,8 +269,28 @@ void Buffer_impl::allocate_storage(const void* init_data)
         map_bytes(0, m_capacity_byte_count);
     }
 
+    // Publication (plan section 5): a buffer allocated on a worker context
+    // must be published - fence issued and flushed on the worker - before
+    // its name escapes into anything the main thread can read. init_data is
+    // passed at storage time and workers may not map, so storage allocation
+    // is the buffer's only publication point.
+    if (get_gl_thread_role() == Gl_thread_role::worker) {
+        publish_from_worker();
+    }
+
     ERHE_VERIFY(gl_name() != 0);
     ERHE_VERIFY(m_capacity_byte_count > 0);
+}
+
+void Buffer_impl::publish_from_worker()
+{
+    ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::worker);
+    m_publication_sync.publish_from_worker();
+}
+
+void Buffer_impl::wait_publication() const
+{
+    m_publication_sync.wait_and_consume();
 }
 
 Buffer_impl::Buffer_impl(Device& device, const Buffer_create_info& create_info) noexcept
@@ -324,6 +344,7 @@ Buffer_impl::Buffer_impl(Buffer_impl&& old) noexcept
     , m_map                               {old.m_map}
     , m_map_byte_offset                   {old.m_map_byte_offset}
     , m_allocated                         {std::exchange(old.m_allocated, false)}
+    , m_publication_sync                  {std::move(old.m_publication_sync)}
 {
 }
 
@@ -339,6 +360,7 @@ auto Buffer_impl::operator=(Buffer_impl&& old) noexcept -> Buffer_impl&
     m_map                                = old.m_map;
     m_map_byte_offset                    = old.m_map_byte_offset;
     m_allocated                          = std::exchange(old.m_allocated, false);
+    m_publication_sync                   = std::move(old.m_publication_sync);
     return *this;
 }
 

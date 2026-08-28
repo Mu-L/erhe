@@ -113,6 +113,30 @@ private:
     GLuint       m_gl_name    {0};
 };
 
+// Move-only holder for a cross-context publication fence (GLsync).
+// publish_from_worker() is the producer half - fence-then-flush on the
+// creating worker context, replacing any unconsumed earlier sync (a fence
+// covers every command issued before it on its context). wait_and_consume()
+// is the consumer half - a server-side glWaitSync (no CPU stall) followed
+// by delete; fast no-op when empty. An unconsumed sync is deleted on
+// destruction.
+class Gl_publication_sync final
+{
+public:
+    Gl_publication_sync() = default;
+    ~Gl_publication_sync() noexcept;
+    Gl_publication_sync(const Gl_publication_sync&) = delete;
+    void operator=     (const Gl_publication_sync&) = delete;
+    Gl_publication_sync(Gl_publication_sync&& old) noexcept;
+    auto operator=     (Gl_publication_sync&& old) noexcept -> Gl_publication_sync&;
+
+    void publish_from_worker();
+    void wait_and_consume   ();
+
+private:
+    void* m_sync{nullptr};
+};
+
 class Gl_query final
 {
 public:

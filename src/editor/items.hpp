@@ -121,10 +121,18 @@ auto count(const std::vector<std::shared_ptr<erhe::Item_base>>& items) -> std::s
     return i;
 }
 
+// op_builds_gpu_meshes: true for ops that build renderable meshes on the
+// worker (every mesh-operation construction) - the dispatcher then takes a
+// Scoped_worker_context around op, and on a device with no worker contexts
+// (GL, headless / null window) it builds the parameters and runs op inline
+// on the calling (main) thread instead of dispatching. Pass false for an op
+// that manages its own worker-context scope or does no GPU work (the
+// deferred glTF finalize).
 void async_for_nodes_with_mesh(
     App_context&                                         context,
     const std::vector<std::shared_ptr<erhe::Item_base>>& items,
-    std::function<void(Mesh_operation_parameters&&)>     op
+    std::function<void(Mesh_operation_parameters&&)>     op,
+    bool                                                 op_builds_gpu_meshes = true
 );
 
 // Drops the handles of completed async tasks. A retained tf::AsyncTask

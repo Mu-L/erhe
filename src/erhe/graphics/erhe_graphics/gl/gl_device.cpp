@@ -25,6 +25,7 @@
 #include "erhe_graphics/gl/gl_scoped_debug_group.hpp"
 #include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/renderdoc_app.h"
 #include "erhe_graphics/ring_buffer.hpp"
@@ -116,7 +117,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     : m_device             {device}
     , m_graphics_config    {graphics_config}
     , m_shader_monitor     {device}
-    , m_gl_context_provider{device, m_gl_state_trackers[0]}
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -1063,6 +1063,12 @@ inline auto access_mask(Device& device) -> gl::Map_buffer_access_mask
 
 void Device_impl::upload_to_buffer(const Buffer& buffer, size_t offset, const void* data, size_t length)
 {
+    // Consumer half of the publication contract: this is the main thread's
+    // first touch of a worker-created buffer (glCopyNamedBufferSubData into
+    // its name below). Server-side wait, once per object, no-op for
+    // main-thread-created buffers.
+    buffer.get_impl().wait_publication();
+
     Ring_buffer_range    staging_buffer_range = m_staging_buffer->acquire(Ring_buffer_usage::CPU_write, length);
     std::span<std::byte> staging_buffer_span  = staging_buffer_range.get_span();
     memcpy(
@@ -1135,7 +1141,6 @@ void Device_impl::on_thread_enter()
 {
     set_gl_thread_role(Gl_thread_role::main);
     set_gl_context_index(0);
-    m_gl_state_trackers[0].on_thread_enter();
 }
 
 void Device_impl::install_gl_debug_callback()
@@ -1712,11 +1717,95 @@ void Device_impl::create_per_context_resources()
     // is created eagerly rather than lazily on first draw. Created here -
     // from Device::Device's body - rather than in Device_impl's constructor,
     // because its destructor reaches Device::get_impl(), which requires
-    // Device::m_impl to be wired for the object's whole lifetime. Each
-    // future pool context populates its own slot as the last step of
-    // creating that context, while it is current.
+    // Device::m_impl to be wired for the object's whole lifetime. Each pool
+    // context below populates its own slot as the last step of creating
+    // that context, while it is current.
     ERHE_VERIFY(!m_default_vertex_input_state);
     m_default_vertex_input_state = std::make_unique<Vertex_input_state>(m_device);
+
+    // The worker share-context pool. Created eagerly on the main thread:
+    // SDL's share-context path make-currents the main context mid-creation
+    // (sdl_window.cpp share ctor -> open()), creates a window, and
+    // registers an event watch - all main-thread-only operations, so lazy
+    // creation from a worker is not implementable. No window to share from
+    // (headless / null window) means no pool, and
+    // supports_worker_contexts() stays false - GPU-touching worker call
+    // sites take their main-thread fallback.
+    if (m_context_window == nullptr) {
+        return;
+    }
+    for (int slot = 1; slot <= gl_worker_context_pool_size; ++slot) {
+        // Leaves the new share context current on this (main) thread; a
+        // creation failure aborts via the Context_window constructor's
+        // verify, like the main context's own creation.
+        auto worker_context_window = std::make_unique<erhe::window::Context_window>(m_context_window);
+        worker_context_window->make_current(); // explicit, not relying on SDL leaving it current
+        set_gl_context_index(slot);
+        // glDebugMessageCallback is per-context: without this every GL
+        // error a worker raises on this context is silently discarded.
+        install_gl_debug_callback();
+        // The context's own default-VAO instance, created while the
+        // context is current - the const per-draw substitution path only
+        // ever reads an already-populated own-context slot.
+        {
+            const Scoped_vertex_input_state scoped_default_vertex_input_state{m_device, *m_default_vertex_input_state.get()};
+            ERHE_VERIFY(scoped_default_vertex_input_state.gl_name() != 0);
+        }
+        m_context_slot_live[slot].store(true, std::memory_order_release);
+        worker_context_window->clear_current();
+        m_worker_context_windows.push_back(std::move(worker_context_window));
+        m_free_worker_context_slots.push_back(slot);
+    }
+    // Share-context creation stole the main context; restore it.
+    m_context_window->make_current();
+    set_gl_context_index(0);
+    log_startup->info("Created {} GL worker share contexts", m_worker_context_windows.size());
+}
+
+auto Device_impl::supports_worker_contexts() const -> bool
+{
+    return !m_worker_context_windows.empty();
+}
+
+auto Device_impl::acquire_worker_context_slot() -> int
+{
+    // Only a thread with no context current may acquire: the main thread
+    // never comes here (Scoped_worker_context no-ops for it) and nested
+    // worker scopes refcount instead of re-acquiring.
+    ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::none);
+    ERHE_VERIFY(!m_worker_context_windows.empty());
+    int slot = -1;
+    {
+        std::unique_lock<std::mutex> lock{m_worker_context_pool_mutex};
+        m_worker_context_pool_condition.wait(lock, [this]() { return !m_free_worker_context_slots.empty(); });
+        slot = m_free_worker_context_slots.back();
+        m_free_worker_context_slots.pop_back();
+    }
+    m_worker_context_windows[slot - 1]->make_current();
+    set_gl_thread_role(Gl_thread_role::worker);
+    set_gl_context_index(slot);
+    // This context's drain point: names queued by destructors on other
+    // contexts, and shared-object scrubs, since the last time this context
+    // was current.
+    drain_container_object_deletes_for_current_context();
+    drain_shared_object_scrubs_for_current_context();
+    return slot;
+}
+
+void Device_impl::release_worker_context_slot(const int slot)
+{
+    ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::worker);
+    ERHE_VERIFY(get_gl_context_index() == slot);
+    ERHE_VERIFY(slot >= 1);
+    ERHE_VERIFY(slot <= static_cast<int>(m_worker_context_windows.size()));
+    m_worker_context_windows[slot - 1]->clear_current();
+    set_gl_thread_role(Gl_thread_role::none);
+    set_gl_context_index(-1);
+    {
+        const std::lock_guard<std::mutex> lock{m_worker_context_pool_mutex};
+        m_free_worker_context_slots.push_back(slot);
+    }
+    m_worker_context_pool_condition.notify_one();
 }
 
 void Device_impl::queue_vertex_array_delete_on_context(const int context_index, const unsigned int name)

@@ -68,6 +68,8 @@ erhe_target_sources_grouped(
     erhe_graphics/sampler.hpp
     erhe_graphics/scoped_container_access.cpp
     erhe_graphics/scoped_container_access.hpp
+    erhe_graphics/scoped_worker_context.cpp
+    erhe_graphics/scoped_worker_context.hpp
     erhe_graphics/scoped_debug_group.cpp
     erhe_graphics/scoped_debug_group.hpp
     erhe_graphics/scoped_transient_object_pool.cpp
@@ -129,8 +131,6 @@ if (ERHE_GRAPHICS_API_OPENGL)
         erhe_graphics/gl/gl_compute_command_encoder.hpp
         erhe_graphics/gl/gl_compute_pipeline.cpp
         erhe_graphics/gl/gl_compute_pipeline.hpp
-        erhe_graphics/gl/gl_context_provider.cpp
-        erhe_graphics/gl/gl_context_provider.hpp
         erhe_graphics/gl/gl_debug.cpp
         erhe_graphics/gl/gl_debug.hpp
         erhe_graphics/gl/gl_device.cpp

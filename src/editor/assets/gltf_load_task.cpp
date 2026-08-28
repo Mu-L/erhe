@@ -14,6 +14,7 @@
 #include "erhe_item/item.hpp"
 #include "erhe_gltf/image_transfer.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/scoped_worker_context.hpp"
 #include "erhe_primitive/build_info.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
@@ -104,9 +105,19 @@ void Gltf_load_task::start_scan(Asset_load_tick_context& tick_context)
 
 void Gltf_load_task::start_build(Asset_load_tick_context& tick_context)
 {
-    static_cast<void>(tick_context);
     erhe::scene_renderer::Mesh_memory* const mesh_memory = m_context.mesh_memory;
     ERHE_VERIFY(mesh_memory != nullptr);
+
+    // Without worker contexts (GL, headless / null window) the worker may
+    // not allocate GPU buffers: skip the async build entirely and let the
+    // main-thread finalize pass (finalize_imported_meshes) build the buffer
+    // meshes - the pre-async import behavior.
+    if (!tick_context.graphics_device.supports_worker_contexts()) {
+        auto build_result = std::make_shared<Build_result>();
+        build_result->finished.store(true, std::memory_order_release);
+        m_build_result = build_result;
+        return;
+    }
 
     // Both Build_infos are made HERE, on the main thread:
     // make_primitive_buffer_info can create a Vertex_input_state, which is a
@@ -129,9 +140,13 @@ void Gltf_load_task::start_build(Asset_load_tick_context& tick_context)
     auto build_result = std::make_shared<Build_result>();
     auto parse_result = m_parse_result;
     m_build_result    = build_result;
+    erhe::graphics::Device* const graphics_device = &tick_context.graphics_device;
     tick_context.executor.silent_async(
-        [build_result, parse_result, build_info, skinned_build_info]() {
+        [build_result, parse_result, build_info, skinned_build_info, graphics_device]() {
             try {
+                // On GL the GPU buffer allocations inside the build need a
+                // worker share context; no-op on other backends.
+                const erhe::graphics::Scoped_worker_context worker_context{*graphics_device};
                 build_imported_buffer_meshes(build_info, skinned_build_info, parse_result->gltf_data);
             } catch (...) {
                 // A failed build leaves primitives without buffer meshes;

@@ -44,6 +44,20 @@ public:
     void clear();
     void set_buffer(Buffer& buffer);
 
+    // Cross-context publication (plan section 5): a worker-created or
+    // worker-uploaded texture carries a fence sync issued (and flushed) on
+    // the worker. The main thread calls wait_publication() - a server-side
+    // glWaitSync, once per object - before its first bind of the texture
+    // (which is also rule 4's attach); null sync is a fast no-op.
+    // publish_from_worker() is the producer half: called at storage
+    // allocation and at the end of each worker-side pixel-upload method,
+    // replacing any unconsumed earlier sync.
+    // Both const: they mutate only the mutable synchronization
+    // bookkeeping, and the upload paths reach the impl through
+    // const Texture*.
+    void publish_from_worker() const;
+    void wait_publication   () const;
+
 private:
     static constexpr const char* s_pool_name = "glTexture";
 
@@ -62,6 +76,12 @@ private:
     int                        m_level_count           {0};
     Buffer*                    m_buffer                {nullptr};
     erhe::utility::Debug_label m_debug_label;
+
+    // Publication sync: see publish_from_worker() / wait_publication()
+    // above. Mutable because consumers reach the impl through const
+    // Texture&; consuming the sync mutates only the synchronization
+    // bookkeeping, never the logical texture.
+    mutable Gl_publication_sync m_publication_sync;
 };
 
 [[nodiscard]] auto gl_name(const Texture& texture) -> GLuint;

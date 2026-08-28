@@ -543,6 +543,14 @@ public:
     void add_completion_handler    (std::function<void()> callback);
     void on_thread_enter           ();
 
+    // True when a worker thread may perform GPU work: unconditionally on
+    // backends with no per-thread context concept (Vulkan, Metal, null);
+    // on GL, when the worker share-context pool exists (it does not when
+    // the device has no window to share from). GPU-touching worker call
+    // sites branch on this and take their main-thread fallback when false;
+    // see gl-worker-thread-contexts-plan.md section 8.
+    [[nodiscard]] auto supports_worker_contexts() const -> bool;
+
     // Reads the most recently composited frame back to host memory as tightly
     // packed 8-bit RGBA (out_format = format_8_vec4_srgb). Returns false if the
     // backend / configuration does not support it, Vulkan only. Headless

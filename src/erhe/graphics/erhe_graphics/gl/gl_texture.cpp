@@ -2,6 +2,7 @@
 
 #include "erhe_graphics/gl/gl_texture.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_gl/enum_string_functions.hpp"
 #include "erhe_gl/gl_helpers.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
@@ -498,6 +499,17 @@ auto Texture_impl::get_mipmap_dimensions(const gl::Texture_target target) -> int
 
 Texture_impl::Texture_impl(Texture_impl&&) noexcept = default;
 
+void Texture_impl::publish_from_worker() const
+{
+    ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::worker);
+    m_publication_sync.publish_from_worker();
+}
+
+void Texture_impl::wait_publication() const
+{
+    m_publication_sync.wait_and_consume();
+}
+
 Texture_impl::~Texture_impl() noexcept
 {
     log_texture->trace("Deleting texture {} {}", gl_name(), m_debug_label.string_view());
@@ -893,6 +905,14 @@ Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_inf
         }
 
         m_allocated = true;
+
+        // Publication (plan section 5): texture storage allocated on a
+        // worker context must be published before the name escapes to the
+        // main thread. Pixel upload is a separate publication point (the
+        // blit encoder's copy_from_buffer methods).
+        if (get_gl_thread_role() == Gl_thread_role::worker) {
+            publish_from_worker();
+        }
 
 #if defined(ERHE_PROFILE_LIBRARY_TRACY)
         // TODO Do cubemaps have depth = 6 or depth = 1?

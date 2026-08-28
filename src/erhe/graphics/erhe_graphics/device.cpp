@@ -129,6 +129,14 @@ void Device::on_thread_enter()
 {
     m_impl->on_thread_enter();
 }
+auto Device::supports_worker_contexts() const -> bool
+{
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    return m_impl->supports_worker_contexts();
+#else
+    return true;
+#endif
+}
 auto Device::get_buffer_alignment(Buffer_target target) -> std::size_t
 {
     return m_impl->get_buffer_alignment(target);

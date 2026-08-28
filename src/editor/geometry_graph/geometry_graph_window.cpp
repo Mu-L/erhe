@@ -33,6 +33,7 @@
 #include "erhe_graph/link.hpp"
 #include "erhe_graph/pin.hpp"
 #include "erhe_graphics/device.hpp"
+#include "erhe_graphics/scoped_worker_context.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_imgui/imgui_node_editor.h"
 #include "erhe_imgui/imgui_windows.hpp"
@@ -717,30 +718,41 @@ void Geometry_graph_window::launch_evaluation(const std::shared_ptr<Graph_mesh>&
     m_evaluation_run = run;
     App_context& context = m_app_context;
     ++context.pending_async_ops;
-    context.executor->silent_async(
-        [run, &context]() {
-            ++context.running_async_ops;
-            // Geometry operations call into Geogram, whose assertion
-            // mechanism throws by default; an exception escaping the task
-            // would terminate the process. Catch at the task boundary:
-            // the affected nodes simply keep stale payloads (their edits
-            // re-mark them dirty).
-            try {
-                run->shadow_graph.evaluate_if_dirty();
-            } catch (const std::exception& e) {
-                log_graph_editor->error("Geometry graph evaluation failed: {}", e.what());
-            } catch (...) {
-                log_graph_editor->error("Geometry graph evaluation failed: unknown exception");
-            }
-            --context.running_async_ops;
-            --context.pending_async_ops;
-            {
-                std::lock_guard<std::mutex> lock{run->mutex};
-                run->done = true;
-            }
-            run->condition.notify_all();
+    const auto evaluate = [run, &context]() {
+        ++context.running_async_ops;
+        // Geometry operations call into Geogram, whose assertion
+        // mechanism throws by default; an exception escaping the task
+        // would terminate the process. Catch at the task boundary:
+        // the affected nodes simply keep stale payloads (their edits
+        // re-mark them dirty).
+        try {
+            // The evaluation builds renderable meshes (output node,
+            // per-node previews): on GL a worker needs a share context
+            // for the GPU buffer allocations. No-op on the main thread
+            // and on other backends.
+            const erhe::graphics::Scoped_worker_context worker_context{*context.graphics_device};
+            run->shadow_graph.evaluate_if_dirty();
+        } catch (const std::exception& e) {
+            log_graph_editor->error("Geometry graph evaluation failed: {}", e.what());
+        } catch (...) {
+            log_graph_editor->error("Geometry graph evaluation failed: unknown exception");
         }
-    );
+        --context.running_async_ops;
+        --context.pending_async_ops;
+        {
+            std::lock_guard<std::mutex> lock{run->mutex};
+            run->done = true;
+        }
+        run->condition.notify_all();
+    };
+    if (context.graphics_device->supports_worker_contexts()) {
+        context.executor->silent_async(evaluate);
+    } else {
+        // No worker contexts (GL, headless / null window): evaluate on the
+        // main thread, synchronously - the pre-async behavior for a
+        // user-triggered graph edit.
+        evaluate();
+    }
 }
 
 void Geometry_graph_window::finish_evaluation()

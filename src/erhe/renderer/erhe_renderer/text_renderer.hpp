@@ -21,7 +21,6 @@
 
 namespace erhe::graphics {
     class Command_buffer;
-    class Gl_context_provider;
     class Device;
     class OpenGL_state_tracker;
     class Render_command_encoder;

@@ -31,6 +31,7 @@
 
 #include "erhe_file/file.hpp"
 #include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/device.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_gltf/gltf.hpp"
 #include "erhe_gltf/image_transfer.hpp"
@@ -676,7 +677,12 @@ void finalize_imported_meshes(
     // normals), the full buffer mesh and the real triangle raytrace after
     // the glTF has finished loading. Without editor settings (or with the
     // options disabled) everything is built here, synchronously.
-    const bool defer_edge_lines = (context.editor_settings != nullptr) && context.editor_settings->load.deferred_edge_lines;
+    // Deferred edge lines put the GPU buffer-mesh build on a worker, which
+    // on GL needs a worker share context; without one (headless / null
+    // window) the edge lines are built eagerly here on the main thread.
+    // Deferred raytrace is CPU-only on the worker and needs no gate.
+    const bool worker_contexts  = (context.graphics_device != nullptr) && context.graphics_device->supports_worker_contexts();
+    const bool defer_edge_lines = (context.editor_settings != nullptr) && context.editor_settings->load.deferred_edge_lines && worker_contexts;
     const bool defer_raytrace   = (context.editor_settings != nullptr) && context.editor_settings->load.deferred_raytrace;
 
     // Build_info variant for skinned meshes -- same as the caller's

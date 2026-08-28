@@ -146,8 +146,6 @@ public:
     OpenGL_state_tracker(const OpenGL_state_tracker&) = delete;
     void operator=      (const OpenGL_state_tracker&) = delete;
 
-    void on_thread_exit   ();
-    void on_thread_enter  ();
     void reset            ();
     void execute_         (const Render_pipeline_state& pipeline, bool skip_shader_stages = false);
     void execute_         (const Compute_pipeline_state& pipeline);

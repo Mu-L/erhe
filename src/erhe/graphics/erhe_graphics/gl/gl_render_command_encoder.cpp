@@ -34,6 +34,10 @@ void Render_command_encoder_impl::set_bind_group_layout(const Bind_group_layout*
 
 void Render_command_encoder_impl::set_sampled_image(uint32_t binding_point, const Texture& texture, const Sampler& sampler)
 {
+    // Publication consumer: a worker-created texture must be waited on
+    // before its first main-context bind (the bind is also rule 4's
+    // attach). No-op for main-thread-created textures.
+    texture.get_impl().wait_publication();
     gl::bind_texture_unit(binding_point, texture.get_impl().gl_name());
     gl::bind_sampler(binding_point, sampler.get_impl().gl_name());
 }

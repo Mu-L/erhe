@@ -3,7 +3,6 @@
 #include "erhe_graphics/buffer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/gl/gl_binding_state.hpp"
-#include "erhe_graphics/gl/gl_context_provider.hpp"
 #include "erhe_graphics/gl/gl_objects.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
 #include "erhe_graphics/gl/gl_thread_role.hpp"
@@ -12,6 +11,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -199,6 +199,22 @@ public:
     void on_shared_object_deleted(Gl_shared_object_kind kind, unsigned int name);
     void drain_shared_object_scrubs_for_current_context();
 
+    // Worker share-context pool (behind Scoped_worker_context - call sites
+    // never touch these directly). The pool is created eagerly, on the main
+    // thread, in create_per_context_resources(); it is empty when the
+    // device has no window to share from (headless / null window), and
+    // supports_worker_contexts() is then false.
+    [[nodiscard]] auto supports_worker_contexts() const -> bool;
+    // Blocks until a pool context is free, makes it current on the calling
+    // thread, sets the thread role and context index, and drains this
+    // context's deferred container-delete and shared-scrub queues. Returns
+    // the context slot index (1..pool size). The calling thread must have
+    // no context current (role none).
+    [[nodiscard]] auto acquire_worker_context_slot() -> int;
+    // Clears the context from the calling thread, resets role and index,
+    // and returns the slot to the pool.
+    void release_worker_context_slot(int slot);
+
     // GL object creation
     [[nodiscard]] auto create_texture     (gl::Texture_target target) -> Gl_texture;
     [[nodiscard]] auto create_texture_view(gl::Texture_target target) -> Gl_texture;
@@ -231,17 +247,33 @@ private:
     // describes only that context's GL state.
     std::array<OpenGL_state_tracker, gl_context_slot_count> m_gl_state_trackers;
     std::array<Gl_binding_state, gl_context_slot_count>     m_gl_binding_states;
-    Gl_context_provider           m_gl_context_provider;
     Device_info                   m_info;
     erhe::window::Context_window* m_context_window{nullptr};
+
+    // Worker share-context pool: entry i backs context slot i + 1 (slot 0
+    // is the main context). Populated in create_per_context_resources()
+    // (Device::Device's body - share-context creation make-currents the
+    // main context, so it is main-thread and must not run while a frame is
+    // in flight); empty when there is no window to share from. Declared
+    // BEFORE m_default_vertex_input_state: destroying the per-context
+    // default VAOs queues deferred deletes on pool slots, and the pool
+    // contexts must still exist at that point (the queued names then die
+    // with their contexts). Teardown requires no worker holding a pool
+    // context current (SDL_GL_DestroyContext un-currents only the calling
+    // thread); the application quiesces its executor before destroying the
+    // Device.
+    std::vector<std::unique_ptr<erhe::window::Context_window>> m_worker_context_windows;
+    std::mutex              m_worker_context_pool_mutex;
+    std::condition_variable m_worker_context_pool_condition;
+    std::vector<int>        m_free_worker_context_slots;
 
     // Persistent empty VAO bound for draws whose pipeline declares no vertex
     // input (core-profile GL rejects glDraw* with VAO 0). Created eagerly by
     // create_per_context_resources() - from Device::Device's BODY, because
     // Vertex_input_state construction goes through Device::get_impl() and
     // Device::m_impl is still null while Device_impl's constructor runs.
-    // Declared after m_gl_context_provider so it is destroyed while the GL
-    // context is still current.
+    // Declared after the worker context pool so it is destroyed first,
+    // while the pool contexts (and the main context) still exist.
     std::unique_ptr<Vertex_input_state> m_default_vertex_input_state;
 
     // See queue_*_delete_on_context() above. One queue per context; the
