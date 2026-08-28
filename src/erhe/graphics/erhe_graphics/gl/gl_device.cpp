@@ -313,20 +313,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     Scoped_debug_group_impl::s_enabled = m_info.use_debug_groups;
     log_startup->info("Debug output supported: {} (groups: {})", m_info.use_debug_output, m_info.use_debug_groups);
 
-    if (m_info.use_debug_output) {
-        ERHE_PROFILE_SCOPE("Debug Callback");
-        gl::debug_message_callback(erhe_opengl_callback, nullptr);
-        gl::debug_message_control(
-            gl::Debug_source  ::dont_care,
-            gl::Debug_type    ::dont_care,
-            gl::Debug_severity::dont_care,
-            0,
-            nullptr,
-            GL_TRUE
-        );
-        gl::enable(gl::Enable_cap::debug_output);
-        gl::enable(gl::Enable_cap::debug_output_synchronous);
-    }
+    install_gl_debug_callback();
 
     if (m_info.use_debug_groups) {
         GLint max_debug_message_length = 0;
@@ -1137,6 +1124,25 @@ void Device_impl::on_thread_enter()
 {
     set_gl_thread_role(Gl_thread_role::main);
     m_gl_state_tracker.on_thread_enter();
+}
+
+void Device_impl::install_gl_debug_callback()
+{
+    if (!m_info.use_debug_output) {
+        return;
+    }
+    ERHE_PROFILE_SCOPE("Debug Callback");
+    gl::debug_message_callback(erhe_opengl_callback, nullptr);
+    gl::debug_message_control(
+        gl::Debug_source  ::dont_care,
+        gl::Debug_type    ::dont_care,
+        gl::Debug_severity::dont_care,
+        0,
+        nullptr,
+        GL_TRUE
+    );
+    gl::enable(gl::Enable_cap::debug_output);
+    gl::enable(gl::Enable_cap::debug_output_synchronous);
 }
 
 void Device_impl::frame_completed(const uint64_t completed_frame)

@@ -92,6 +92,12 @@ public:
     void add_completion_handler    (std::function<void(Device_impl&)> callback);
     void on_thread_enter           ();
 
+    // glDebugMessageCallback is per-context GL state: call this once per
+    // context, while that context is current - the Device constructor does
+    // it for the main context, worker share contexts do it at creation.
+    // Without it every GL error a worker raises is silently discarded.
+    void install_gl_debug_callback ();
+
     [[nodiscard]] auto get_surface                        () -> Surface*;
     // Present-wait clamp (frame pacing FR5): no present-wait path on GL.
     [[nodiscard]] auto wait_for_displayed_frame           (std::int64_t frame_id, uint64_t timeout_ns) -> Present_wait_result;

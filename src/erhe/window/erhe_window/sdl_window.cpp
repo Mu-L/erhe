@@ -887,6 +887,11 @@ auto Context_window::open(const Window_configuration& configuration) -> bool
 
 Context_window::~Context_window() noexcept
 {
+    // open() registers the watch with `this` as userdata for every window,
+    // share contexts included; leaving it registered dangles once any
+    // Context_window is destroyed before the last one stops pumping events.
+    SDL_RemoveEventWatch(Context_window_SDL_EventFilter, static_cast<void*>(this));
+
 #if defined(ERHE_GRAPHICS_API_VULKAN)
     SDL_Vulkan_UnloadLibrary();
 #endif
@@ -901,6 +906,19 @@ Context_window::~Context_window() noexcept
             m_mouse_cursors[cursor_n] = nullptr;
         }
     }
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    if (m_sdl_gl_context != nullptr) {
+        if (!SDL_GL_DestroyContext(static_cast<SDL_GLContext>(m_sdl_gl_context))) {
+            log_window->warn("SDL_GL_DestroyContext() failed");
+            const char* const sdl_error = SDL_GetError();
+            if (sdl_error != nullptr) {
+                log_window->warn("  SDL error: {}", sdl_error);
+            }
+        }
+        m_sdl_gl_context = nullptr;
+    }
+#endif
 
     auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
     if (window != nullptr) {

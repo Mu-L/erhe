@@ -1,6 +1,8 @@
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/gl/gl_context_provider.hpp"
+#include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
+#include "erhe_graphics/device.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
 #include "erhe_window/window.hpp"
@@ -50,6 +52,12 @@ void Gl_context_provider::provide_worker_contexts(
 
         auto context = std::make_shared<erhe::window::Context_window>(main_window);
         m_contexts.push_back(context);
+        // glDebugMessageCallback is per-context state: install it on the new
+        // share context or every GL error a worker raises on it is silently
+        // discarded. SDL leaves the created context current, but make that
+        // explicit rather than relying on it.
+        context->make_current();
+        m_device.get_impl().install_gl_debug_callback();
         context->clear_current();
         Gl_worker_context context_wrapper{static_cast<int>(i), context.get()};
         m_worker_context_pool.enqueue(context_wrapper);
