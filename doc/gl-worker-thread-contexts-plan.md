@@ -1311,6 +1311,12 @@ commit-12 reviews have something to check against:
   (which section 12 item 6's clean-shutdown check covers), then either
   drain-and-consume every pending publication sync or `glClientWaitSync` /
   delete them, before the pool contexts are destroyed.
+- **No worker may hold a pool context current at `~Context_window`.**
+  `SDL_GL_DestroyContext` un-currents the context only on the *calling*
+  thread and is documented main-thread-only; destroying a context still
+  current on a worker thread is undefined. The worker quiesce above must
+  therefore also guarantee every pool context has been released
+  (`clear_current()` on its worker) before pool destruction begins.
 
 ### When contexts cannot be created
 
