@@ -26,8 +26,7 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(
     erhe::graphics::Device& graphics_device,
     const int               view_count_arg
 )
-    : use_compute{graphics_device.get_info().use_compute_shader}
-    , view_count{std::max(1, view_count_arg)}
+    : view_count{std::max(1, view_count_arg)}
     , fragment_outputs{
         erhe::graphics::Fragment_output{
             .name     = "out_color",
@@ -130,34 +129,8 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(
 
     const auto shader_path = std::filesystem::path{"res"} / std::filesystem::path{"shaders"};
 
-    // Bind group layout will be created after all blocks are known
-    auto make_bind_group_layout = [&]() {
-        erhe::graphics::Bind_group_layout_create_info layout_info{
-            .debug_label       = "Debug renderer",
-            .uses_texture_heap = false
-        };
-        // line_vertex/triangle_vertex are read/written only by compute_before_line.comp.
-        if (line_vertex_buffer_block) {
-            layout_info.bindings.push_back({.binding_point = line_vertex_buffer_block->get_binding_point(), .type = erhe::graphics::Binding_type::storage_buffer, .stage_flags = erhe::graphics::Shader_stage_flags::compute});
-        }
-        if (triangle_vertex_buffer_block) {
-            layout_info.bindings.push_back({.binding_point = triangle_vertex_buffer_block->get_binding_point(), .type = erhe::graphics::Binding_type::storage_buffer, .stage_flags = erhe::graphics::Shader_stage_flags::compute});
-        }
-        // This layout is shared across the compute, simple (line_simple.vert), and
-        // geometry (debug_line.vert/.geom + line_after_compute.frag) tiers, so view
-        // is read in all of compute, vertex, geometry, and fragment.
-        layout_info.bindings.push_back({
-            .binding_point = view_block->get_binding_point(),
-            .type = (view_block->get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
-                ? erhe::graphics::Binding_type::storage_buffer
-                : erhe::graphics::Binding_type::uniform_buffer,
-            .stage_flags = erhe::graphics::Shader_stage_flags::compute | erhe::graphics::Shader_stage_flags::vertex | erhe::graphics::Shader_stage_flags::geometry | erhe::graphics::Shader_stage_flags::fragment
-        });
-        return std::make_unique<erhe::graphics::Bind_group_layout>(graphics_device, layout_info);
-    };
-
-    if (use_compute) {
-        // Compute path: SSBO line vertices → compute shader → SSBO triangle vertices → render triangles
+    // Compute path (wide lines): SSBO line vertices → compute shader → SSBO triangle vertices → render triangles
+    {
         line_vertex_buffer_block = std::make_unique<erhe::graphics::Shader_resource>(
             graphics_device,
             erhe::graphics::Shader_resource::Block_create_info{
@@ -205,7 +178,25 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(
             erhe::graphics::Shader_resource::unsized_array
         );
 
-        bind_group_layout = make_bind_group_layout();
+        // Compute-pass layout: line_vertex/triangle_vertex are read/written
+        // only by compute_before_line.comp; view is also read by the direct
+        // path's line_simple.{vert,frag}, which shares this layout.
+        {
+            erhe::graphics::Bind_group_layout_create_info layout_info{
+                .debug_label       = "Debug renderer",
+                .uses_texture_heap = false
+            };
+            layout_info.bindings.push_back({.binding_point = line_vertex_buffer_block->get_binding_point(), .type = erhe::graphics::Binding_type::storage_buffer, .stage_flags = erhe::graphics::Shader_stage_flags::compute});
+            layout_info.bindings.push_back({.binding_point = triangle_vertex_buffer_block->get_binding_point(), .type = erhe::graphics::Binding_type::storage_buffer, .stage_flags = erhe::graphics::Shader_stage_flags::compute});
+            layout_info.bindings.push_back({
+                .binding_point = view_block->get_binding_point(),
+                .type = (view_block->get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
+                    ? erhe::graphics::Binding_type::storage_buffer
+                    : erhe::graphics::Binding_type::uniform_buffer,
+                .stage_flags = erhe::graphics::Shader_stage_flags::compute | erhe::graphics::Shader_stage_flags::vertex | erhe::graphics::Shader_stage_flags::fragment
+            });
+            bind_group_layout = std::make_unique<erhe::graphics::Bind_group_layout>(graphics_device, layout_info);
+        }
 
         graphics_bind_group_layout = std::make_unique<erhe::graphics::Bind_group_layout>(
             graphics_device,
@@ -326,11 +317,9 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(
         }
     }
 
-    // Simple line shader (used when compute shaders unavailable, or as fallback)
+    // Direct-path shader: triangle / point / thin-line buckets render their
+    // vertex buffer directly (no wide-line expansion, so no compute involved).
     {
-        if (!bind_group_layout) {
-            bind_group_layout = make_bind_group_layout();
-        }
         using namespace erhe::graphics;
 
         const std::filesystem::path vert_path = shader_path / std::filesystem::path{"line_simple.vert"};
@@ -375,38 +364,6 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(
             }
         }
     }
-
-    // Geometry shader path: wide lines without compute (GL_LINES -> geometry shader -> triangle strip).
-    // !use_compute is reached on devices without compute support (originally
-    // the since-removed macOS OpenGL 4.1 path; every supported GL device has
-    // compute now that 4.5 is the hard minimum).
-    // A load failure here is a real configuration error and
-    // is surfaced through the device_message callback by Glsl_file_loader.
-    if (!use_compute) {
-        using namespace erhe::graphics;
-
-        const std::filesystem::path vert_path = shader_path / std::filesystem::path{"debug_line.vert"};
-        const std::filesystem::path geom_path = shader_path / std::filesystem::path{"debug_line.geom"};
-        const std::filesystem::path frag_path = shader_path / std::filesystem::path{"line_after_compute.frag"};
-        Shader_stages_create_info create_info{
-            .name             = "debug_line_geometry",
-            .struct_types     = { view_camera_struct.get() },
-            .interface_blocks = { view_block.get() },
-            .fragment_outputs = &fragment_outputs,
-            .vertex_format    = &line_vertex_format,
-            .shaders = {
-                { Shader_type::vertex_shader,   vert_path },
-                { Shader_type::geometry_shader, geom_path },
-                { Shader_type::fragment_shader, frag_path }
-            },
-            .bind_group_layout = bind_group_layout.get(),
-        };
-
-        Shader_stages_prototype prototype = build_shader_stages(graphics_device, create_info);
-        geometry_shader_stages = std::make_unique<Shader_stages>(graphics_device, std::move(prototype));
-        graphics_device.get_shader_monitor().add(create_info, geometry_shader_stages.get());
-        use_geometry_shader = true;
-    }
 }
 
 Debug_renderer::Debug_renderer(erhe::graphics::Device& graphics_device, const int view_count)
@@ -418,18 +375,12 @@ Debug_renderer::Debug_renderer(erhe::graphics::Device& graphics_device, const in
     }
     , m_empty_vertex_input{graphics_device, erhe::graphics::Vertex_input_state_data{}}
     , m_lines_to_triangles_compute_pipeline{
-        m_program_interface.use_compute
-            ? std::optional<erhe::graphics::Compute_pipeline>{
-                erhe::graphics::Compute_pipeline{
-                    graphics_device,
-                    erhe::graphics::Compute_pipeline_data{
-                        .name              = "compute_before_line",
-                        .shader_stages     = m_program_interface.compute_shader_stages.get(),
-                        .bind_group_layout = m_program_interface.bind_group_layout.get()
-                    }
-                }
-              }
-            : std::nullopt
+        graphics_device,
+        erhe::graphics::Compute_pipeline_data{
+            .name              = "compute_before_line",
+            .shader_stages     = m_program_interface.compute_shader_stages.get(),
+            .bind_group_layout = m_program_interface.bind_group_layout.get()
+        }
     }
 {
 }
@@ -539,13 +490,8 @@ void Debug_renderer::begin_frame(
 
 void Debug_renderer::compute(erhe::graphics::Compute_command_encoder& command_encoder)
 {
-    if (!m_program_interface.use_compute) {
-        return;
-    }
-
-    ERHE_VERIFY(m_lines_to_triangles_compute_pipeline.has_value());
     command_encoder.set_bind_group_layout(m_program_interface.bind_group_layout.get());
-    command_encoder.set_compute_pipeline(m_lines_to_triangles_compute_pipeline.value());
+    command_encoder.set_compute_pipeline(m_lines_to_triangles_compute_pipeline);
 
     for (Debug_renderer_bucket& bucket : m_buckets) {
         bucket.dispatch_compute(command_encoder);

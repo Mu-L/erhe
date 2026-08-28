@@ -43,11 +43,6 @@ void main()
 // to one compute encoder.
 TEST_F(Gpu_test, compute_uniform_buffer_input)
 {
-    const erhe::graphics::Device_info& info = device().get_info();
-    if (!info.use_compute_shader || !info.use_shader_storage_buffers) {
-        GTEST_SKIP() << "compute / storage buffers unavailable on this device";
-    }
-
     constexpr uint32_t    element_count = 1000;
     constexpr uint32_t    base_value    = 5000;
     constexpr std::size_t ssbo_bytes    = static_cast<std::size_t>(element_count) * sizeof(uint32_t);

@@ -37,36 +37,34 @@ class Content_wide_line_interface;
 class Mesh_memory;
 
 // Abstract owner of the content wide-line rendering path. The editor
-// constructs exactly one concrete subclass per device via a factory
-// (see make_content_wide_line_compute_renderer /
-// make_content_wide_line_geometry_renderer below). Callers see only
-// this base class -- the choice of backend is encoded in which factory
-// was called.
+// constructs the compute implementation via
+// make_content_wide_line_compute_renderer below; callers see only this
+// base class.
 //
-// Frame protocol (both backends):
+// Frame protocol:
 //   renderer.begin_frame();
 //   renderer.set_view_params(views, reverse_depth, depth_range, conventions);
 //   renderer.set_joint_buffer(client, std::move(range));    // optional
 //   for each mesh: renderer.add_mesh(mesh_memory, mesh, color, line_width, group);
-//   renderer.compute(compute_encoder);                       // geom backend = no-op
+//   renderer.compute(compute_encoder);
 //   renderer.render (render_encoder, pipeline_state, blend, group, multiview);
 //   renderer.end_frame();
 //
 // The view UBO contents and the cached joint buffer are owned by the
-// base; both backends share one set of view-block writes and one
-// joint-range lifetime. end_frame() releases the cached joint range
-// and any per-dispatch ranges stashed by the subclass.
+// base: one set of view-block writes and one joint-range lifetime.
+// end_frame() releases the cached joint range and any per-dispatch
+// ranges stashed by the subclass.
 class Content_wide_line_renderer
 {
 public:
     virtual ~Content_wide_line_renderer() noexcept;
 
     // Kept callable so existing call sites `if (renderer &&
-    // renderer->is_enabled())` stay valid. Both factories return
+    // renderer->is_enabled())` stay valid. The factory returns
     // nullptr on construction failure, so a live pointer means enabled.
     [[nodiscard]] auto is_enabled() const -> bool { return true; }
 
-    // Tent wide-line method controls (compute backend only). use_tent selects
+    // Tent wide-line method controls. use_tent selects
     // between the simple single-plane quad (false) and the two-face surface
     // tent (true) at runtime; both are kept because each wins in different
     // cases. line_bias_margin is the tent's surface-line depth-bias headroom in
@@ -80,16 +78,10 @@ public:
     void               set_line_bias_clamp (float ulps)   { m_line_bias_clamp = ulps; }
     [[nodiscard]] auto get_line_bias_clamp () const -> float { return m_line_bias_clamp; }
 
-    // True for the compute backend (compute() runs a real dispatch and
-    // callers must emit a compute->vertex memory barrier afterwards),
-    // false for the geometry-shader backend (compute() is a no-op and
-    // there is no compute->vertex hazard, so no barrier is needed).
-    [[nodiscard]] virtual auto uses_compute() const -> bool = 0;
-
     void begin_frame();
 
     // Cache the per-frame view + depth conventions. Eagerly builds the
-    // Per_view_camera array consumed by both backends' write_view_block
+    // Per_view_camera array consumed by the subclass's write_view_block
     // calls. Call once per frame between begin_frame() and the first
     // add_mesh() / compute() / render().
     void set_view_params(
@@ -110,7 +102,7 @@ public:
     // Queue this mesh's edge-line primitives for rendering. group
     // partitions dispatches across composition passes (selection
     // outline, selected, not_selected, ...). Subclass picks which
-    // primitives carry usable edge data for its backend.
+    // primitives carry usable edge data.
     void add_mesh(
         Mesh_memory&             mesh_memory,
         const erhe::scene::Mesh& mesh,
@@ -120,17 +112,15 @@ public:
     );
 
     // Run the compute pre-pass that pre-transforms edge endpoints into
-    // a triangle SSBO. No-op on the geometry-shader backend (the
-    // geometry shader expands lines inside the render encoder
-    // instead). Call AFTER add_mesh() / set_joint_buffer() and BEFORE
-    // any render pass that calls render().
+    // a triangle SSBO. Call AFTER add_mesh() / set_joint_buffer() and
+    // BEFORE any render pass that calls render().
     virtual void compute(erhe::graphics::Compute_command_encoder& command_encoder) = 0;
 
     // Issue draw calls for all queued dispatches matching group.
     // pipeline_state supplies caller-controlled state (debug_label,
     // input_assembly, multisample, viewport_depth_range, rasterization,
     // depth_stencil); the renderer overrides shader stages, vertex
-    // input, and bind group layout per backend. color_blend_state
+    // input, and bind group layout itself. color_blend_state
     // overrides pipeline_state's blend. The caller's
     // pipeline_state.data.shader_stages, vertex_input, and
     // bind_group_layout are ignored.
@@ -155,8 +145,8 @@ protected:
     // Subclass entry point for per-mesh-primitive dispatch construction.
     // The base's add_mesh() has already verified the mesh has a node,
     // computed world_from_node, and resolved the skin's base_joint_index.
-    // The subclass inspects buffer_mesh for the backend-specific
-    // edge-data ranges and either pushes a backend dispatch or skips.
+    // The subclass inspects buffer_mesh for the edge-data ranges and
+    // either pushes a dispatch or skips.
     virtual void add_primitive(
         Mesh_memory&                        mesh_memory,
         const erhe::primitive::Buffer_mesh& buffer_mesh,
@@ -169,8 +159,8 @@ protected:
     ) = 0;
 
     // Subclass hook for end_frame() -- release any per-dispatch ring
-    // buffer ranges and clear backend dispatch queues. Called after the
-    // base releases its own joint range.
+    // buffer ranges and clear dispatch queues. Called after the base
+    // releases its own joint range.
     virtual void release_backend_state() = 0;
 
     // Shared per-frame state accessible to subclasses.
@@ -181,9 +171,9 @@ protected:
     erhe::graphics::Device&            m_graphics_device;
     Content_wide_line_interface&       m_interface;
 
-    // Shared view UBO ring buffer client. Each backend acquires per-
-    // dispatch view-block ranges from this client; the subclass holds
-    // the ranges alive until end_frame().
+    // Shared view UBO ring buffer client. The subclass acquires per-
+    // dispatch view-block ranges from this client and holds the ranges
+    // alive until end_frame().
     erhe::graphics::Ring_buffer_client m_view_buffer;
 
 private:
@@ -191,7 +181,7 @@ private:
     Dispatch_per_frame_params          m_frame_params{};
     bool                               m_view_params_set{false};
 
-    // Tent wide-line method state (compute backend). Defaults: tent off (the
+    // Tent wide-line method state. Defaults: tent off (the
     // simple single-plane quad is the no-regression default; the tent is opt-in
     // via the Visual Style toggle), a 1024-ULP bias headroom matching
     // Debug_renderer's default, and a 2048-ULP toward-camera extrapolation clamp
@@ -205,9 +195,10 @@ private:
     bool                                m_joint_buffer_set{false};
 };
 
-// Factory for the compute backend (SSBO expansion path used when the
-// device supports compute shaders). Returns nullptr if any of the
-// supplied shader stages is null or not valid.
+// Factory for the compute implementation (the only one): a compute
+// pre-pass expands edge lines into an SSBO of triangles that the
+// graphics stages then draw. Returns nullptr if any of the supplied
+// shader stages is null or not valid.
 //
 // compute_shader_stages_skinned may be null when the interface was
 // built without joint_block (skinned path disabled); non-skinned
@@ -222,23 +213,6 @@ auto make_content_wide_line_compute_renderer(
     erhe::graphics::Shader_stages* compute_shader_stages_skinned,
     erhe::graphics::Shader_stages* graphics_shader_stages,
     erhe::graphics::Shader_stages* multiview_graphics_shader_stages
-) -> std::unique_ptr<Content_wide_line_renderer>;
-
-// Factory for the geometry-shader backend (used when the device does
-// not support compute shaders). Returns nullptr if either of the
-// supplied shader stages is null or not valid.
-//
-// Both shader stage sets render edge lines via the same geometry
-// shader; they differ only in vertex-format defines: the not-skinned
-// variant is compiled against vertex_format_not_skinned, the skinned
-// variant against vertex_format_skinned (so the skinning branch in the
-// vertex shader is enabled). The renderer picks per dispatch based on
-// whether the queued mesh has a skin.
-auto make_content_wide_line_geometry_renderer(
-    erhe::graphics::Device&        graphics_device,
-    Content_wide_line_interface&   interface_,
-    erhe::graphics::Shader_stages* geometry_shader_stages_not_skinned,
-    erhe::graphics::Shader_stages* geometry_shader_stages_skinned
 ) -> std::unique_ptr<Content_wide_line_renderer>;
 
 } // namespace erhe::scene_renderer

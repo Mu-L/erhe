@@ -32,9 +32,7 @@ auto Text_renderer::build_shader_stages() -> erhe::graphics::Shader_stages_proto
     const std::filesystem::path fs_path = shader_path / std::filesystem::path{"text.frag"};
     Shader_stages_create_info create_info{
         .name             = "text",
-        .interface_blocks = m_use_buffer_texture
-            ? std::vector<const Shader_resource*>{ &m_projection_block }
-            : std::vector<const Shader_resource*>{ &m_projection_block, &m_vertex_ssbo_block },
+        .interface_blocks = { &m_projection_block, &m_vertex_ssbo_block },
         .fragment_outputs = &m_fragment_outputs,
         .vertex_format    = nullptr,
         .shaders = {
@@ -44,12 +42,8 @@ auto Text_renderer::build_shader_stages() -> erhe::graphics::Shader_stages_proto
         .bind_group_layout = &m_bind_group_layout,
     };
 
-    if (m_use_buffer_texture) {
-        create_info.defines.emplace_back("ERHE_VERTEX_DATA_TEXTURE_BUFFER", "1");
-    }
-
-    // Named sampler declarations (s_texture, s_vertex_data) come from the
-    // bind_group_layout's combined_image_sampler bindings above.
+    // Named sampler declaration (s_texture) comes from the
+    // bind_group_layout's combined_image_sampler binding above.
 
     Shader_stages_prototype prototype{m_graphics_device, create_info};
     prototype.compile_shaders();
@@ -71,9 +65,7 @@ auto Text_renderer::build_multiview_shader_stages() -> erhe::graphics::Shader_st
     const std::filesystem::path fs_path = shader_path / std::filesystem::path{"text.frag"};
     Shader_stages_create_info create_info{
         .name             = "text_multiview",
-        .interface_blocks = m_use_buffer_texture
-            ? std::vector<const Shader_resource*>{ &m_projection_block }
-            : std::vector<const Shader_resource*>{ &m_projection_block, &m_vertex_ssbo_block },
+        .interface_blocks = { &m_projection_block, &m_vertex_ssbo_block },
         .fragment_outputs = &m_fragment_outputs,
         .vertex_format    = nullptr,
         .shaders = {
@@ -82,10 +74,6 @@ auto Text_renderer::build_multiview_shader_stages() -> erhe::graphics::Shader_st
         },
         .bind_group_layout = &m_bind_group_layout,
     };
-
-    if (m_use_buffer_texture) {
-        create_info.defines.emplace_back("ERHE_VERTEX_DATA_TEXTURE_BUFFER", "1");
-    }
 
     create_info.view_count = m_view_count;
 
@@ -114,32 +102,21 @@ Text_renderer::Text_renderer(
         {
             .name          = "vertex_ssbo",
             .binding_point = 1,
-            .type          = graphics_device.get_info().use_shader_storage_buffers
-                ? erhe::graphics::Shader_resource::Type::shader_storage_block
-                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
             .readonly      = true
         }
     }
     , m_clip_from_window_resource  {m_projection_block.add_mat4 ("clip_from_window")}
     , m_texture_resource           {m_projection_block.add_uvec2("texture")}
-    , m_vertex_data_offset_resource{m_projection_block.add_uint ("vertex_data_offset")}
     , m_vertex_data_resource{
-        m_vertex_ssbo_block.add_uvec4(
-            "data",
-            graphics_device.get_info().use_shader_storage_buffers
-                ? erhe::graphics::Shader_resource::unsized_array
-                : std::optional<std::size_t>{static_cast<std::size_t>(graphics_device.get_info().max_uniform_block_size) / sizeof(glm::uvec4)}
-        )
+        m_vertex_ssbo_block.add_uvec4("data", erhe::graphics::Shader_resource::unsized_array)
     } // x,y | z,w | color | u,v
     , m_u_clip_from_window_size        {m_clip_from_window_resource    ->get_size_bytes()}
     , m_u_clip_from_window_offset      {m_clip_from_window_resource    ->get_offset_in_parent()}
     , m_u_texture_size                 {m_texture_resource             ->get_size_bytes()}
     , m_u_texture_offset               {m_texture_resource             ->get_offset_in_parent()}
-    , m_u_vertex_data_offset_size      {m_vertex_data_offset_resource  ->get_size_bytes()}
-    , m_u_vertex_data_offset_offset    {m_vertex_data_offset_resource  ->get_offset_in_parent()}
     , m_u_vertex_data_size             {m_vertex_data_resource         ->get_size_bytes()}
     , m_u_vertex_data_offset           {m_vertex_data_resource         ->get_offset_in_parent()}
-    , m_use_buffer_texture             {!graphics_device.get_info().use_shader_storage_buffers}
     , m_fragment_outputs{
         erhe::graphics::Fragment_output{
             .name     = "out_color",
@@ -158,18 +135,14 @@ Text_renderer::Text_renderer(
     }
     , m_bind_group_layout{
         graphics_device,
-        [&]{
-            std::vector<erhe::graphics::Bind_group_layout_binding> bindings{
+        erhe::graphics::Bind_group_layout_create_info{
+            .bindings = {
                 {.binding_point = m_projection_block.get_binding_point(),
-                    .type = (m_projection_block.get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
-                        ? erhe::graphics::Binding_type::storage_buffer
-                        : erhe::graphics::Binding_type::uniform_buffer,
-                    // projection.clip_from_window / vertex_data_offset read in text.vert only.
+                    .type = erhe::graphics::Binding_type::uniform_buffer,
+                    // projection.clip_from_window read in text.vert only.
                     .stage_flags = erhe::graphics::Shader_stage_flags::vertex},
                 {.binding_point = m_vertex_ssbo_block.get_binding_point(),
-                    .type = (m_vertex_ssbo_block.get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
-                        ? erhe::graphics::Binding_type::storage_buffer
-                        : erhe::graphics::Binding_type::uniform_buffer,
+                    .type = erhe::graphics::Binding_type::storage_buffer,
                     // Vertex pulling: vertex data read in text.vert only.
                     .stage_flags = erhe::graphics::Shader_stage_flags::vertex},
                 // s_texture: bound via Render_command_encoder::set_sampled_image()
@@ -187,26 +160,9 @@ Text_renderer::Text_renderer(
                     // Glyph atlas sampled in the fragment stage (text.frag).
                     .stage_flags     = erhe::graphics::Shader_stage_flags::fragment
                 }
-            };
-            if (m_use_buffer_texture) {
-                // s_vertex_data: only used when SSBO storage isn't available
-                // (the buffer-texture vertex data path).
-                bindings.push_back({
-                    .binding_point   = 1,
-                    .type            = erhe::graphics::Binding_type::combined_image_sampler,
-                    .sampler_aspect  = erhe::graphics::Sampler_aspect::color,
-                    .name            = "s_vertex_data",
-                    .glsl_type       = erhe::graphics::Glsl_type::unsigned_int_sampler_buffer,
-                    .is_texture_heap = false,
-                    // Vertex pulling: texelFetch(s_vertex_data, ...) in text.vert.
-                    .stage_flags     = erhe::graphics::Shader_stage_flags::vertex
-                });
-            }
-            return erhe::graphics::Bind_group_layout_create_info{
-                .bindings = std::move(bindings),
-                .debug_label = "Text renderer"
-            };
-        }()
+            },
+            .debug_label = "Text renderer"
+        }
     }
     , m_shader_stages     {graphics_device, build_shader_stages()}
     , m_vertex_ssbo_buffer{
@@ -266,22 +222,6 @@ Text_renderer::Text_renderer(
         config.font_size,
         0.0f // TODO reimplement outline better 1.0f
     );
-
-    if (m_use_buffer_texture) {
-        erhe::graphics::Texture_create_info buffer_tex_create_info{
-            .device       = m_graphics_device,
-            .usage_mask   = erhe::graphics::Image_usage_flag_bit_mask::sampled,
-            .type         = erhe::graphics::Texture_type::texture_buffer,
-            .pixelformat  = erhe::dataformat::Format::format_32_vec4_uint,
-            .sample_count = 0,
-            .width        = 0,
-            .height       = 0,
-            .depth        = 0,
-            .debug_label  = erhe::utility::Debug_label{"Text_renderer vertex buffer texture"}
-        };
-        m_vertex_buffer_texture = std::make_shared<erhe::graphics::Texture>(m_graphics_device, buffer_tex_create_info);
-        log_startup->info("Text renderer: using buffer texture for vertex data");
-    }
 
     m_texture_heap = std::make_unique<erhe::graphics::Texture_heap>(
         m_graphics_device,
@@ -433,8 +373,23 @@ void Text_renderer::render(
     m_texture_heap->bind(encoder);
 
     encoder.set_sampled_image(0, *m_font->texture(), m_nearest_sampler);
-    if (m_use_buffer_texture) {
-        encoder.set_sampled_image(1, *m_vertex_buffer_texture, m_nearest_sampler);
+
+    // Write and bind the projection UBO once; its content is the same for
+    // every draw.
+    {
+        using erhe::graphics::as_span;
+        using erhe::graphics::write;
+        erhe::graphics::Ring_buffer_range projection_buffer_range = m_projection_buffer.acquire(
+            erhe::graphics::Ring_buffer_usage::CPU_write,
+            m_projection_block.get_size_bytes()
+        );
+        const std::span<std::byte> gpu_data = projection_buffer_range.get_span();
+        write(gpu_data, m_u_clip_from_window_offset, as_span(clip_from_window));
+        write(gpu_data, m_u_texture_offset,          as_span(shader_handle));
+        projection_buffer_range.bytes_written(m_projection_block.get_size_bytes());
+        projection_buffer_range.close();
+        m_projection_buffer.bind(encoder, projection_buffer_range);
+        projection_buffer_range.release();
     }
 
     const std::size_t vertex_ssbo_stride = m_u_vertex_data_size;
@@ -446,41 +401,7 @@ void Text_renderer::render(
         const std::size_t byte_count = vertex_buffer_range.get_written_byte_count();
         const std::size_t quad_count = byte_count / bytes_per_quad;
 
-        // Write projection UBO per draw (vertex_data_offset differs per range)
-        const uint32_t vertex_data_offset = m_use_buffer_texture
-            ? static_cast<uint32_t>(vertex_buffer_range.get_byte_start_offset_in_buffer() / sizeof(glm::uvec4))
-            : 0u;
-        {
-            using erhe::graphics::as_span;
-            using erhe::graphics::write;
-            erhe::graphics::Ring_buffer_range projection_buffer_range = m_projection_buffer.acquire(
-                erhe::graphics::Ring_buffer_usage::CPU_write,
-                m_projection_block.get_size_bytes()
-            );
-            const std::span<std::byte> gpu_data = projection_buffer_range.get_span();
-            write(gpu_data, m_u_clip_from_window_offset,   as_span(clip_from_window));
-            write(gpu_data, m_u_texture_offset,            as_span(shader_handle));
-            write(gpu_data, m_u_vertex_data_offset_offset, as_span(vertex_data_offset));
-            projection_buffer_range.bytes_written(m_projection_block.get_size_bytes());
-            projection_buffer_range.close();
-            m_projection_buffer.bind(encoder, projection_buffer_range);
-            projection_buffer_range.release();
-        }
-
-        if (m_use_buffer_texture) {
-            erhe::graphics::Ring_buffer* ring_buffer = vertex_buffer_range.get_buffer();
-            ERHE_VERIFY(ring_buffer != nullptr);
-            erhe::graphics::Buffer* buffer = ring_buffer->get_buffer();
-            ERHE_VERIFY(buffer != nullptr);
-
-            // Re-associate buffer texture if the underlying buffer changed
-            if (buffer != m_last_vertex_buffer) {
-                m_vertex_buffer_texture->set_buffer(*buffer);
-                m_last_vertex_buffer = buffer;
-            }
-        } else {
-            m_vertex_ssbo_buffer.bind(encoder, vertex_buffer_range);
-        }
+        m_vertex_ssbo_buffer.bind(encoder, vertex_buffer_range);
 
         encoder.draw_primitives(
             m_pipeline.data.input_assembly.primitive_topology,

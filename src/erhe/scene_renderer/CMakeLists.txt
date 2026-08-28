@@ -8,7 +8,6 @@ erhe_target_sources_grouped(
     erhe_scene_renderer/content_wide_line_interface.cpp
     erhe_scene_renderer/content_wide_line_interface.hpp
     erhe_scene_renderer/content_wide_line_compute_renderer.cpp
-    erhe_scene_renderer/content_wide_line_geometry_renderer.cpp
     erhe_scene_renderer/content_wide_line_renderer.cpp
     erhe_scene_renderer/content_wide_line_renderer.hpp
     erhe_scene_renderer/content_wide_line_view_writer.hpp

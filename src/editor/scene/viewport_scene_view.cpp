@@ -270,7 +270,7 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
         m_context.tools        ->render_viewport_tools(context);
         m_context.app_rendering->render_viewport_renderables(context);
 
-        if (m_context.debug_renderer->use_compute()) {
+        {
             {
                 erhe::graphics::Scoped_debug_group debug_group{command_buffer, "debug_renderer->compute()"};
                 erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder(command_buffer);
@@ -420,16 +420,11 @@ void Viewport_scene_view::execute_rendergraph_node(erhe::graphics::Command_buffe
                     m_context.content_wide_line_renderer->set_joint_buffer(&joint_buffer, std::move(joint_buffer_range));
                 }
 
-                // Compute pre-pass + compute->vertex barrier only on the
-                // compute backend. The geometry-shader backend (used when
-                // the device does not expose compute shaders, e.g. OpenGL
-                // 4.1 on macOS) expands lines in its geometry shader at
-                // render time: compute() is a no-op, there is no
-                // compute->vertex hazard, and glMemoryBarrier does not
-                // exist there. Skipped when nothing was fed this frame
-                // (edge lines disabled in this view's Visual Style and no
-                // outline / ghost meshes): no ribbons to expand, no hazard.
-                if ((content_wide_line_mesh_count > 0) && m_context.content_wide_line_renderer->uses_compute()) {
+                // Compute pre-pass + compute->vertex barrier. Skipped when
+                // nothing was fed this frame (edge lines disabled in this
+                // view's Visual Style and no outline / ghost meshes): no
+                // ribbons to expand, no hazard.
+                if (content_wide_line_mesh_count > 0) {
                     {
                         erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder(command_buffer);
                         m_context.content_wide_line_renderer->compute(compute_encoder);

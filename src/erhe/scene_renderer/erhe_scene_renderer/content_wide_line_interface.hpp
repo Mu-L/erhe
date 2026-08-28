@@ -47,8 +47,8 @@ public:
     std::size_t use_tent              {0};
     std::size_t line_bias_clamp       {0};
     // Vertex position dequantization affine for the dispatched primitive, as
-    // vec4s (xyz used). content_edge_lines.vert transforms a_position itself and
-    // has no primitive block in scope, so it decodes from here instead.
+    // vec4s (xyz used); written per dispatch by write_view_block. The view
+    // block has no primitive block in scope, so the affine travels here.
     std::size_t position_scale        {0};
     std::size_t position_offset       {0};
 };
@@ -83,10 +83,8 @@ public:
     erhe::graphics::Fragment_outputs fragment_outputs;
     erhe::dataformat::Vertex_format  triangle_vertex_format;
 
-    // SSBO resources used only by the compute backend. nullptr when the
-    // device does not support shader storage buffers (forced no-compute
-    // builds, fallback / driver-limited builds). The geometry-shader
-    // backend never touches these.
+    // SSBO resources consumed by the compute pre-pass and the SSBO-read
+    // graphics path.
     std::unique_ptr<erhe::graphics::Shader_resource> edge_line_vertex_struct;
     std::unique_ptr<erhe::graphics::Shader_resource> edge_line_vertex_buffer_block;
     std::unique_ptr<erhe::graphics::Shader_resource> edge_line_joint_vertex_struct;
@@ -102,30 +100,16 @@ public:
     erhe::graphics::Shader_resource  view_camera_struct;
     erhe::graphics::Shader_resource  view_block;
 
-    // Compute backend bind group layout: contains the line SSBO, the
-    // triangle SSBO, and the view UBO. nullptr when SSBOs are not
-    // supported.
+    // Compute bind group layout: contains the line SSBO, the triangle
+    // SSBO, and the view UBO.
     std::unique_ptr<erhe::graphics::Bind_group_layout> bind_group_layout;
     // Skinned-variant bind group layout: adds the edge-line joint side
     // buffer SSBO + the `joint` block. nullptr when joint_block was
-    // nullptr at construction (skinned compute path disabled) OR when
-    // SSBOs are not supported.
+    // nullptr at construction (skinned compute path disabled).
     std::unique_ptr<erhe::graphics::Bind_group_layout> skinned_bind_group_layout;
     // Graphics pipeline layout used by both single-view and multiview
-    // SSBO-read render paths: triangle SSBO + view UBO. nullptr when
-    // SSBOs are not supported.
+    // SSBO-read render paths: triangle SSBO + view UBO.
     std::unique_ptr<erhe::graphics::Bind_group_layout> graphics_bind_group_layout;
-
-    // Geometry-shader backend bind group layouts. The geometry-shader
-    // path expands lines into quads inside the vertex/geom stages of an
-    // ordinary indexed draw, so the vertex shader reads a_position /
-    // a_normal_1 (and a_joint_* under the skinned variant) through the
-    // input assembler -- no SSBOs. Only the view UBO is bound through
-    // the descriptor set (and the joint UBO under the skinned variant).
-    erhe::graphics::Bind_group_layout                  geometry_bind_group_layout_not_skinned;
-    // nullptr when joint_block was null at construction (no skinning
-    // support).
-    std::unique_ptr<erhe::graphics::Bind_group_layout> geometry_bind_group_layout_skinned;
 
     Content_wide_line_view_offsets   offsets;
     int                              view_count{1};

@@ -392,8 +392,7 @@
     },
     "id_renderer": {
         "_version": 2,
-        "enabled": false,
-        "box_select_use_compute": true
+        "enabled": false
     },
     "ray_trace": {
         "downscale": 1,

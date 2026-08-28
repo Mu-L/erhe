@@ -92,11 +92,6 @@ static_assert(sizeof(Item) == 48, "Item must be 48 bytes for std140");
 // are asserted bit-exact through the SSBO readback.
 TEST_F(Gpu_test, struct_types_in_interface_block)
 {
-    const erhe::graphics::Device_info& info = device().get_info();
-    if (!info.use_compute_shader || !info.use_shader_storage_buffers) {
-        GTEST_SKIP() << "compute / storage buffers unavailable on this device";
-    }
-
     // Struct type declaration: Item { vec4 a; vec4 b; uint s0..s3; }
     erhe::graphics::Shader_resource item_struct{device(), "Item"};
     const std::size_t off_a  = item_struct.add_vec4("a" )->get_offset_in_parent();

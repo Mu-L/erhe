@@ -1,12 +1,10 @@
 #pragma once
 
-// Internal helper shared by Content_wide_line_compute_renderer and
-// Content_wide_line_geometry_renderer. The data laid out by
-// write_view_block matches the Content_wide_line_view_offsets that
-// Content_wide_line_interface publishes; both backends consume the
-// same UBO contents (the compute backend reads cameras[] in compute
-// before SSBO write, the geometry backend reads cameras[] and the
-// per-mesh fields in the vertex stage).
+// Internal helper for Content_wide_line_compute_renderer. The data laid
+// out by write_view_block matches the Content_wide_line_view_offsets
+// that Content_wide_line_interface publishes: the compute shader reads
+// cameras[] and the per-dispatch fields before writing the triangle
+// SSBO, and the graphics stages read cameras[] when drawing it.
 
 #include "erhe_graphics/span.hpp"
 #include "erhe_math/math_util.hpp"
@@ -89,10 +87,9 @@ inline void write_view_block(
     uint32_t                              edge_count,
     uint32_t                              stride_per_view,
     uint32_t                              base_joint_index,
-    // Vertex position dequantization affine for this dispatch. The geometry
-    // backend transforms a_position from the mesh stream and passes the
-    // primitive's; the compute backend reads the separate, never quantized
-    // edge-line stream and passes the identity.
+    // Vertex position dequantization affine for this dispatch. The compute
+    // renderer reads the separate, never quantized edge-line stream and
+    // passes the identity.
     const Position_quantization&          position_quantization
 )
 {

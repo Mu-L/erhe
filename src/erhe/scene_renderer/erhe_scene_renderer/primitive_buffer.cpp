@@ -47,9 +47,7 @@ Primitive_interface::Primitive_interface(erhe::graphics::Device& graphics_device
         {
             .name          = "primitive",
             .binding_point = primitive_buffer_binding_point,
-            .type          = graphics_device.get_info().use_shader_storage_buffers
-                ? erhe::graphics::Shader_resource::Type::shader_storage_block
-                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
             .readonly      = true
         }
     }
@@ -69,29 +67,7 @@ Primitive_interface::Primitive_interface(erhe::graphics::Device& graphics_device
     }
     , max_primitive_count{static_cast<std::size_t>(max_primitive_count)}
 {
-    std::optional<std::size_t> array_size;
-    if (graphics_device.get_info().use_shader_storage_buffers) {
-        array_size = erhe::graphics::Shader_resource::unsized_array;
-    } else {
-        const std::size_t element_size = primitive_struct.get_size_bytes(); // std140 default rounds to base alignment
-        const std::size_t ubo_max      = static_cast<std::size_t>(graphics_device.get_info().max_uniform_block_size) / element_size;
-        this->max_primitive_count = std::min(this->max_primitive_count, ubo_max);
-        array_size = this->max_primitive_count;
-        // The UBO path is the one that pays for a wider Primitive record: the
-        // record size divides the uniform block, so growing the struct lowers
-        // primitives-per-block and Draw_list_scene chunks its draws more often.
-        // Log it, so a device that ends up with an implausibly small budget is
-        // visible rather than merely slow. (The SSBO path uses an unsized array
-        // and is unaffected.)
-        log_primitive_buffer->info(
-            "Primitive UBO: record {} bytes, max uniform block {} bytes -> {} primitives per block (requested {})",
-            element_size,
-            graphics_device.get_info().max_uniform_block_size,
-            this->max_primitive_count,
-            max_primitive_count
-        );
-    }
-    primitive_block.add_struct("primitives", &primitive_struct, array_size);
+    primitive_block.add_struct("primitives", &primitive_struct, erhe::graphics::Shader_resource::unsized_array);
 }
 
 Primitive_buffer::Primitive_buffer(erhe::graphics::Device& graphics_device, Primitive_interface& primitive_interface)

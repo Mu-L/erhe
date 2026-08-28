@@ -21,8 +21,8 @@
 // scale / offset are the primitive's dequantization affine (its object space
 // AABB half extent and center). They are taken as parameters rather than read
 // from primitive.primitives[] because not every shader that decodes a position
-// has that block in scope - content_edge_lines.vert and the lightmap baker
-// carry the same two vectors in their own per-draw blocks.
+// has that block in scope - the lightmap baker carries the same two vectors in
+// its own per-draw block.
 //
 // Note both arguments are evaluated in either variant, since they sit outside
 // the #if: a shader converted to call this must already have the two fields in

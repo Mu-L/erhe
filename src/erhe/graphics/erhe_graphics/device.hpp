@@ -201,8 +201,9 @@ public:
     bool use_multi_draw_indirect_core{false};
     bool use_multi_draw_indirect_arb {false};
     bool emulate_multi_draw_indirect {false};
-    bool use_compute_shader          {false};
-    bool use_shader_storage_buffers  {false};
+    // Compute shaders and shader storage buffers are required on every
+    // backend (OpenGL requires 4.5 at device creation); there are no
+    // capability flags for them and no fallback paths.
 
     // GPU ray tracing via ray queries: Acceleration_structure creation/builds
     // and Binding_type::acceleration_structure /

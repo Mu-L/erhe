@@ -1976,8 +1976,6 @@ Device_impl::Device_impl(
         log_startup->info("Driver workaround (KosmicKrisp): reading storage-image LUTs via sampler in compute (WORKAROUND_NO_COMPUTE_STORAGE_IMAGE_READ)");
     }
     m_info.use_multi_draw_indirect_arb = false;
-    m_info.use_compute_shader          = true;
-    m_info.use_shader_storage_buffers  = true;
     m_info.use_ray_query                    = enable_ray_query;
     m_info.ray_query_disabled_by_capture_layer = m_ray_tracing_blocked_by_capture_layer;
     m_info.use_ray_tracing_position_fetch   = enable_ray_tracing_position_fetch;

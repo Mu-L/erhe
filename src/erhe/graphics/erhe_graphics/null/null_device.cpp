@@ -30,7 +30,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     m_info.max_integer_samples                      = 8;
     m_info.max_vertex_attribs                       = 16;
     m_info.use_persistent_buffers                   = true;
-    m_info.use_compute_shader                       = true;
     m_info.use_multi_draw_indirect_core             = true;
     m_info.uniform_buffer_offset_alignment          = 256;
     m_info.shader_storage_buffer_offset_alignment   = 256;

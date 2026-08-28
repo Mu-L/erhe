@@ -17,7 +17,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <span>
 #include <stack>
 #include <vector>
@@ -50,8 +49,6 @@ public:
         int                     view_count = 1
     );
 
-    bool                                             use_compute{false};
-    bool                                             use_geometry_shader{false};
     int                                              view_count{1};
 
     erhe::graphics::Fragment_outputs                 fragment_outputs;
@@ -88,10 +85,7 @@ public:
     // both paths; the C++ side just writes view_count = 1 vs N.
     std::unique_ptr<erhe::graphics::Shader_stages>   multiview_graphics_shader_stages;
 
-    // Geometry shader path (wide lines without compute): GL_LINES -> geometry shader -> triangle strip
-    std::unique_ptr<erhe::graphics::Shader_stages>   geometry_shader_stages;
-
-    // Simple line path (no compute, no geometry shader): vertex buffer → GL_LINES
+    // Direct path (triangles / points / thin lines): vertex buffer → GL_LINES / GL_TRIANGLES / GL_POINTS
     erhe::dataformat::Vertex_format                  line_vertex_format;
     std::unique_ptr<erhe::graphics::Shader_stages>   line_shader_stages;
     // Multiview compile of line_simple (built when view_count >= 2): same
@@ -236,8 +230,6 @@ public:
     // the draw to fire, even when the vertex shader reads its data via
     // gl_VertexID instead of input attributes.
     auto get_empty_vertex_input() -> erhe::graphics::Vertex_input_state* { return &m_empty_vertex_input; }
-    auto use_compute          () const -> bool { return m_program_interface.use_compute; }
-    auto use_geometry_shader  () const -> bool { return m_program_interface.use_geometry_shader; }
     // True only when there are at least two views; matches the
     // >= 2 gate that Debug_renderer_bucket::dispatch_compute uses
     // to decide between single-view and multiview pipelines. A
@@ -249,9 +241,9 @@ public:
 private:
     erhe::graphics::Device&                         m_graphics_device;
     Debug_renderer_program_interface                m_program_interface;
-    erhe::graphics::Vertex_input_state              m_line_vertex_input;  // simple line path
+    erhe::graphics::Vertex_input_state              m_line_vertex_input;  // direct (vertex-buffer) path
     erhe::graphics::Vertex_input_state              m_empty_vertex_input; // SSBO-read triangle path
-    std::optional<erhe::graphics::Compute_pipeline> m_lines_to_triangles_compute_pipeline;
+    erhe::graphics::Compute_pipeline                m_lines_to_triangles_compute_pipeline;
     std::stack<View>                                m_view_stack{};
     View                                            m_view      {};
     float                                           m_line_bias_margin{1024.0f};

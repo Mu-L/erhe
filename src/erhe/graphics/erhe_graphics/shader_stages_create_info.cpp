@@ -269,11 +269,6 @@ auto Shader_stages_create_info::final_source(
     }
 
 #if defined(ERHE_GRAPHICS_API_OPENGL)
-    if (graphics_device.get_info().use_shader_storage_buffers && (graphics_device.get_info().gl_version < 430)) {
-        ERHE_VERIFY(gl::is_extension_supported(gl::Extension::Extension_GL_ARB_shader_storage_buffer_object));
-        sb << "#extension GL_ARB_shader_storage_buffer_object : enable\n";
-        sb << "#define ERHE_HAS_ARB_SHADER_STORAGE_BUFFER_OBJECT 1\n";
-    }
     if (graphics_device.get_info().texture_heap_path == Texture_heap_path::opengl_bindless_textures) {
         sb << "#extension GL_ARB_bindless_texture : enable\n";
         sb << "#define ERHE_TEXTURE_HEAP_OPENGL_BINDLESS 1\n";

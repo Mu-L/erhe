@@ -11,15 +11,12 @@
 namespace erhe::scene_renderer {
 
 Glyph_interface::Glyph_interface(erhe::graphics::Device& graphics_device)
-    : supported{graphics_device.get_info().use_shader_storage_buffers}
-    , glyph_block{
+    : glyph_block{
         graphics_device,
         {
             .name          = "glyph",
             .binding_point = glyph_buffer_binding_point,
-            .type          = supported
-                ? erhe::graphics::Shader_resource::Type::shader_storage_block
-                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
             .readonly      = true
         }
     }
@@ -34,14 +31,8 @@ Glyph_interface::Glyph_interface(erhe::graphics::Device& graphics_device)
 {
     glyphs_member = glyph_block.add_struct("glyphs", &glyph_meta_struct, glyph_slot_count);
 
-    // The curves array must be the last member: it is unsized in the SSBO
-    // case. In the dummy uniform block fallback (no SSBO support) the
-    // array gets a fixed size of one element; it is never read because
-    // shaders are compiled without ERHE_GRID_LABELS.
-    curves_member = glyph_block.add_vec2(
-        "curves",
-        supported ? erhe::graphics::Shader_resource::unsized_array : std::size_t{1}
-    );
+    // The curves array must be the last member: it is unsized.
+    curves_member = glyph_block.add_vec2("curves", erhe::graphics::Shader_resource::unsized_array);
 }
 
 namespace {
@@ -59,7 +50,7 @@ auto build_glyph_buffer_data(
     // and device offset alignment padding; use it as the minimum so the
     // whole declared block always fits in the buffer.
     const std::size_t block_byte_count = glyph_interface.glyph_block.get_size_bytes();
-    if (!glyph_interface.supported || (glyph_outline_set == nullptr) || !glyph_outline_set->valid) {
+    if ((glyph_outline_set == nullptr) || !glyph_outline_set->valid) {
         return std::vector<std::byte>(block_byte_count, std::byte{0});
     }
 

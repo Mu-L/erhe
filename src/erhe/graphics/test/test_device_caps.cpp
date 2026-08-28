@@ -158,28 +158,24 @@ TEST_F(Gpu_test, device_caps_device_info_self_consistent)
 
     EXPECT_FALSE(info.api_info.empty()) << "device must report a backend API string";
 
-    // If compute is advertised, the compute limit fields must at least hold
-    // their sane floor (>= 1) in every dimension. NOTE: the Vulkan backend does
-    // not currently populate these max_compute_* fields from
-    // VkPhysicalDeviceLimits (unlike the GL/Metal/null backends), so they keep
-    // their default of 1; the actual local_size_x = 64 the compute tests use is
-    // validated by those tests dispatching successfully, not by this field. Do
-    // not tighten this to the real hardware limit until the Vulkan backend fills
-    // these fields.
-    if (info.use_compute_shader) {
-        EXPECT_GE(info.max_compute_work_group_invocations, 1);
-        for (int dim = 0; dim < 3; ++dim) {
-            EXPECT_GE(info.max_compute_workgroup_size[dim], 1)  << "compute on but workgroup size dim " << dim << " < 1";
-            EXPECT_GE(info.max_compute_workgroup_count[dim], 1) << "compute on but workgroup count dim " << dim << " < 1";
-        }
+    // Compute shaders are required on every backend; the compute limit fields
+    // must at least hold their sane floor (>= 1) in every dimension. NOTE: the
+    // Vulkan backend does not currently populate these max_compute_* fields
+    // from VkPhysicalDeviceLimits (unlike the GL/Metal/null backends), so they
+    // keep their default of 1; the actual local_size_x = 64 the compute tests
+    // use is validated by those tests dispatching successfully, not by this
+    // field. Do not tighten this to the real hardware limit until the Vulkan
+    // backend fills these fields.
+    EXPECT_GE(info.max_compute_work_group_invocations, 1);
+    for (int dim = 0; dim < 3; ++dim) {
+        EXPECT_GE(info.max_compute_workgroup_size[dim], 1)  << "workgroup size dim " << dim << " < 1";
+        EXPECT_GE(info.max_compute_workgroup_count[dim], 1) << "workgroup count dim " << dim << " < 1";
     }
 
-    // SSBOs are used by every compute test; if advertised there must be at
+    // SSBOs are required and used by every compute test; there must be at
     // least one storage-buffer binding available.
-    if (info.use_shader_storage_buffers) {
-        EXPECT_GE(info.max_shader_storage_buffer_bindings, 1)
-            << "storage buffers advertised but no SSBO bindings";
-    }
+    EXPECT_GE(info.max_shader_storage_buffer_bindings, 1)
+        << "no SSBO bindings";
 
     // Buffer offset alignments are device limits expressed in bytes; Vulkan
     // guarantees they are powers of two and non-zero.

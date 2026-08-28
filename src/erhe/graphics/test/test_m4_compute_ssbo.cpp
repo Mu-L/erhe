@@ -47,14 +47,6 @@ void main()
 // element (no tolerance -- this is integer compute output).
 TEST_F(Gpu_test, compute_writes_ssbo_pattern)
 {
-    const erhe::graphics::Device_info& info = device().get_info();
-    if (!info.use_compute_shader) {
-        GTEST_SKIP() << "compute shaders unavailable on this device";
-    }
-    if (!info.use_shader_storage_buffers) {
-        GTEST_SKIP() << "shader storage buffers unavailable on this device";
-    }
-
     constexpr uint32_t    element_count = 1000;          // not a multiple of 64
     constexpr std::size_t byte_count    = static_cast<std::size_t>(element_count) * sizeof(uint32_t);
 

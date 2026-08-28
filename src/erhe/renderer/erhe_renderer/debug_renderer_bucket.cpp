@@ -32,23 +32,16 @@ bool operator==(const Debug_renderer_config& lhs, const Debug_renderer_config& r
         (lhs.xray              == rhs.xray             );
 }
 
-auto Debug_renderer_shader_key::derive(
-    const bool                   device_use_compute,
-    const bool                   device_use_geometry_shader,
-    const Debug_renderer_config& config
-) -> Debug_renderer_shader_key
+auto Debug_renderer_shader_key::derive(const Debug_renderer_config& config) -> Debug_renderer_shader_key
 {
     Debug_renderer_shader_key key;
     key.primitive_type = config.primitive_type;
-    if (config.primitive_type != erhe::graphics::Primitive_type::line) {
-        // Triangles and points render directly; there is no wide-line
-        // expansion to do, so the compute / geometry tiers do not apply.
-        key.tier = Tier::simple;
-    } else if (device_use_compute && !config.thin_lines) {
+    if ((config.primitive_type == erhe::graphics::Primitive_type::line) && !config.thin_lines) {
+        // Wide lines are expanded to triangles by the compute shader.
         key.tier = Tier::compute;
-    } else if (device_use_geometry_shader && !config.thin_lines) {
-        key.tier = Tier::geometry;
     } else {
+        // Triangles, points and thin lines render directly; there is no
+        // wide-line expansion to do, so the compute tier does not apply.
         key.tier = Tier::simple;
     }
     return key;
@@ -59,17 +52,15 @@ auto Debug_renderer_bucket::Debug_renderer_bucket::make_pipeline(const bool visi
     const bool reverse_depth = (m_graphics_device.get_info().coordinate_conventions.native_depth_range == erhe::math::Depth_range::zero_to_one);
     using namespace erhe::graphics;
 
-    // Three tiers: compute (triangles) > geometry shader (GL_LINES + geom expand) > simple.
+    // Two tiers: compute (wide lines) and simple (direct draw).
     // The compute tier expands lines into triangles, so it draws GL_TRIANGLES;
-    // the geometry tier and the simple-line variant draw GL_LINES; the simple
-    // tier for non-line primitives draws that primitive's topology directly.
+    // the simple tier draws that primitive's topology directly.
     // The shader stages and vertex input vary across tiers but live outside the
     // base pipeline state -- they are passed to get_pipeline_for() at draw time
     // (see render_compute_draws / render_line_draws below).
     Input_assembly_state input_assembly = Input_assembly_state::line;
     switch (m_shader_key.tier) {
         case Debug_renderer_shader_key::Tier::compute:  input_assembly = Input_assembly_state::triangle; break;
-        case Debug_renderer_shader_key::Tier::geometry: input_assembly = Input_assembly_state::line;     break;
         case Debug_renderer_shader_key::Tier::simple:
         default: {
             switch (m_shader_key.primitive_type) {
@@ -147,13 +138,7 @@ Debug_renderer_bucket::Debug_renderer_bucket(
 )
     : m_graphics_device   {graphics_device}
     , m_debug_renderer    {debug_renderer}
-    , m_shader_key{
-        Debug_renderer_shader_key::derive(
-            debug_renderer.use_compute(),
-            debug_renderer.use_geometry_shader(),
-            config
-        )
-    }
+    , m_shader_key{Debug_renderer_shader_key::derive(config)}
     , m_view_buffer{
         graphics_device,
         erhe::graphics::Buffer_target::uniform,
@@ -548,16 +533,12 @@ void Debug_renderer_bucket::render(
     } else {
         // Direct path: close input ranges (upload CPU data to GPU), then render
         // GL_LINES / GL_TRIANGLES / GL_POINTS directly from the vertex buffer.
-        // This serves the simple-line and geometry-line tiers and every
-        // triangle / point bucket (which never use compute).
+        // This serves every triangle / point / thin-line bucket (which never
+        // use compute).
         // Multiview draws the same world-space vertex buffer once into the
         // layered render pass with the line_simple_multiview stages, whose
         // c_view_index resolves to gl_ViewIndex, picking the per-eye camera
         // from the view UBO (update_view_buffer below writes all views).
-        // The geometry tier never sees multiview: it exists only when
-        // compute is unavailable, and the multiview headset path
-        // requires Vulkan, where compute is available.
-        ERHE_VERIFY(!multiview || !uses_geometry());
         // Close all input ranges first (can only be done once)
         for (Debug_draw_entry& draw : m_draws) {
             if (draw.primitive_count > 0 && !draw.input_buffer_range.is_closed()) {
@@ -567,21 +548,12 @@ void Debug_renderer_bucket::render(
 
         auto render_line_draws = [&](const bool visible, erhe::graphics::Base_render_pipeline& pipeline) {
             const Debug_renderer_program_interface& pi = m_debug_renderer.get_program_interface();
-            // graphics_shader_stages is built only on the compute path
-            // (see Debug_renderer_program_interface ctor). On a device
-            // where use_compute is false, that pointer is null and binding
-            // it would issue glUseProgram(0). Pick the matching direct-path
-            // shader instead -- geometry-expanded wide lines when the bucket's
-            // tier is geometry, else the simple shader. The simple shader
-            // (line_simple.{vert,frag}) only transforms position and passes
-            // color through, so it serves line, triangle and point topologies
-            // alike from the shared line_vertex_format.
-            erhe::graphics::Shader_stages* line_shader_stages =
-                multiview
-                    ? pi.multiview_line_shader_stages.get()
-                    : uses_geometry()
-                        ? pi.geometry_shader_stages.get()
-                        : pi.line_shader_stages.get();
+            // The simple shader (line_simple.{vert,frag}) only transforms
+            // position and passes color through, so it serves line, triangle
+            // and point topologies alike from the shared line_vertex_format.
+            erhe::graphics::Shader_stages* line_shader_stages = multiview
+                ? pi.multiview_line_shader_stages.get()
+                : pi.line_shader_stages.get();
             if ((line_shader_stages == nullptr) || !line_shader_stages->is_valid()) {
                 return;
             }

@@ -73,12 +73,7 @@ erhe_target_sources_grouped(
     #res/shaders/error.vert
     res/shaders/line_after_compute.frag
     res/shaders/line_after_compute.vert
-    res/shaders/content_edge_lines.frag
-    res/shaders/content_edge_lines.geom
-    res/shaders/content_edge_lines.vert
     res/shaders/content_line_after_compute.frag
-    res/shaders/debug_line.geom
-    res/shaders/debug_line.vert
     res/shaders/standard.frag
     res/shaders/standard.vert
     res/shaders/text.frag

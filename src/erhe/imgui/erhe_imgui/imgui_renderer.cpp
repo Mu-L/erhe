@@ -163,9 +163,7 @@ Imgui_program_interface::Imgui_program_interface(erhe::graphics::Device& graphic
         {
             .name          = "draw",
             .binding_point = 0,
-            .type          = graphics_device.get_info().use_shader_storage_buffers
-                ? erhe::graphics::Shader_resource::Type::shader_storage_block
-                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
             .readonly      = true
         }
     }
@@ -183,11 +181,7 @@ Imgui_program_interface::Imgui_program_interface(erhe::graphics::Device& graphic
         .draw_parameter_struct_array = draw_parameter_block.add_struct(
             "draw_parameters",
             &draw_parameter_struct,
-            graphics_device.get_info().use_shader_storage_buffers
-                ? erhe::graphics::Shader_resource::unsized_array
-                // Subtract the fixed block header (scale + translate + clip_rotation = 3 vec4)
-                // before dividing the remaining UBO space into draw-parameter entries.
-                : std::optional<std::size_t>{(static_cast<std::size_t>(graphics_device.get_info().max_uniform_block_size) - 3 * sizeof(glm::vec4)) / draw_parameter_struct.get_size_bytes()}
+            erhe::graphics::Shader_resource::unsized_array
         )->get_offset_in_parent()
     }
     , fragment_outputs{
@@ -224,9 +218,7 @@ namespace {
         .bindings = {
             {
                 .binding_point = draw_parameter_block.get_binding_point(),
-                .type = (draw_parameter_block.get_type() == erhe::graphics::Shader_resource::Type::shader_storage_block)
-                    ? erhe::graphics::Binding_type::storage_buffer
-                    : erhe::graphics::Binding_type::uniform_buffer,
+                .type = erhe::graphics::Binding_type::storage_buffer,
                 // draw.scale/translate in the vertex stage; draw_parameters[].texture in fragment.
                 .stage_flags = erhe::graphics::Shader_stage_flags::vertex | erhe::graphics::Shader_stage_flags::fragment
             },

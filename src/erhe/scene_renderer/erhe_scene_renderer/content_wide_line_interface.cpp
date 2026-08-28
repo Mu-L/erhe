@@ -57,19 +57,6 @@ Content_wide_line_interface::Content_wide_line_interface(
         c_view_binding_point,
         erhe::graphics::Shader_resource::Type::uniform_block
     }
-    , geometry_bind_group_layout_not_skinned{
-        graphics_device,
-        erhe::graphics::Bind_group_layout_create_info{
-            .bindings = {
-                // Geometry-shader line path: view read in content_edge_lines.vert
-                // (transform) and content_edge_lines.geom (viewport expand).
-                // content_edge_lines.frag does not read view.
-                make_block_binding(view_block, erhe::graphics::Shader_stage_flags::vertex | erhe::graphics::Shader_stage_flags::geometry)
-            },
-            .debug_label       = "Content wide line geometry",
-            .uses_texture_heap = false
-        }
-    }
     , view_count{std::max(1, view_count_)}
     , joint_block{joint_block_}
 {
@@ -111,10 +98,9 @@ Content_wide_line_interface::Content_wide_line_interface(
     offsets.stride_per_view      = view_block.add_uint ("stride_per_view"     )->get_offset_in_parent();
     offsets.vp_y_sign            = view_block.add_float("vp_y_sign"           )->get_offset_in_parent();
     offsets.clip_depth_direction = view_block.add_float("clip_depth_direction")->get_offset_in_parent();
-    // base_joint_index is read only by the skinned variants under
-    // ERHE_USE_SKINNING or ERHE_ATTRIBUTE_a_joint_weights_0; the non-
-    // skinned variants ignore it. Keeping the field in the shared view
-    // block avoids two view layouts.
+    // base_joint_index is read only by the skinned compute variant
+    // (ERHE_USE_SKINNING); the non-skinned variant ignores it. Keeping
+    // the field in the shared view block avoids two view layouts.
     offsets.base_joint_index     = view_block.add_uint ("base_joint_index"    )->get_offset_in_parent();
     // Tent wide-line method fields; see Content_wide_line_view_offsets.
     offsets.line_bias_margin     = view_block.add_float("line_bias_margin"    )->get_offset_in_parent();
@@ -125,34 +111,6 @@ Content_wide_line_interface::Content_wide_line_interface(
     // vec4s, so they carry 16-byte alignment and land after the scalars above.
     offsets.position_scale       = view_block.add_vec4 ("position_scale"      )->get_offset_in_parent();
     offsets.position_offset      = view_block.add_vec4 ("position_offset"     )->get_offset_in_parent();
-
-    // Skinned geometry-shader bind group layout: view UBO + global joint
-    // block. The vertex shader reads a_joint_indices_0 + a_joint_weights_0
-    // through the input assembler and indexes joint.joints[] with them;
-    // no SSBO bindings, so this layout is built whenever joint_block is
-    // supplied regardless of whether SSBOs are available.
-    if (joint_block != nullptr) {
-        geometry_bind_group_layout_skinned = std::make_unique<erhe::graphics::Bind_group_layout>(
-            graphics_device,
-            erhe::graphics::Bind_group_layout_create_info{
-                .bindings = {
-                    make_block_binding(view_block, erhe::graphics::Shader_stage_flags::vertex | erhe::graphics::Shader_stage_flags::geometry),
-                    // joint: skinning runs in the vertex stage only
-                    // (erhe_skinning.glsl included by content_edge_lines.vert).
-                    make_block_binding(*joint_block, erhe::graphics::Shader_stage_flags::vertex)
-                },
-                .debug_label       = "Content wide line geometry skinned",
-                .uses_texture_heap = false
-            }
-        );
-    }
-
-    // SSBO-backed compute resources are only built on devices that
-    // support shader storage buffers. The geometry-shader backend never
-    // touches these; it uses only the view UBO + joint UBO above.
-    if (!graphics_device.get_info().use_shader_storage_buffers) {
-        return;
-    }
 
     edge_line_vertex_struct = std::make_unique<erhe::graphics::Shader_resource>(graphics_device, "edge_line_vertex");
     edge_line_vertex_buffer_block = std::make_unique<erhe::graphics::Shader_resource>(

@@ -43,19 +43,17 @@ auto operator==(const Debug_renderer_config& lhs, const Debug_renderer_config& r
 // Selects which precompiled shader-stage variant and draw-time primitive
 // topology a bucket renders with. Modeled on
 // erhe::scene_renderer::Shader_key / Shader_key_hash: a small value key with
-// a stable hash, used to resolve the pipeline / shader variant once instead
-// of branching on device capabilities at every draw.
+// a stable hash, used to resolve the pipeline / shader variant once at bucket
+// construction instead of branching on the config at every draw.
 class Debug_renderer_shader_key
 {
 public:
     // Shader tier that produces the final on-screen primitives:
     //   simple   - direct vertex buffer -> line_simple.{vert,frag}; the draw
     //              topology is primitive_type (line / triangle / point).
-    //   geometry - GL_LINES -> debug_line.{vert,geom} wide-line expansion
-    //              (used when compute is unavailable; line only).
     //   compute  - SSBO lines -> compute_before_line.comp -> triangle SSBO ->
     //              graphics (wide lines; line only).
-    enum class Tier : uint8_t { simple = 0, geometry = 1, compute = 2 };
+    enum class Tier : uint8_t { simple = 0, compute = 1 };
 
     erhe::graphics::Primitive_type primitive_type{erhe::graphics::Primitive_type::line};
     Tier                           tier          {Tier::simple};
@@ -69,13 +67,9 @@ public:
                 static_cast<std::uint64_t>(tier);
     }
 
-    // Only the line primitive uses the wide-line compute / geometry tiers;
-    // triangles and points always render directly via the simple tier.
-    [[nodiscard]] static auto derive(
-        bool                         device_use_compute,
-        bool                         device_use_geometry_shader,
-        const Debug_renderer_config& config
-    ) -> Debug_renderer_shader_key;
+    // Only the line primitive uses the wide-line compute tier; triangles,
+    // points and thin lines always render directly via the simple tier.
+    [[nodiscard]] static auto derive(const Debug_renderer_config& config) -> Debug_renderer_shader_key;
 };
 
 class Debug_renderer_shader_key_hash
@@ -148,12 +142,10 @@ private:
         std::size_t           primitive_count
     ) -> erhe::graphics::Ring_buffer_range;
 
-    // Tier helpers derived from m_shader_key. uses_compute() == false means
-    // the bucket takes the direct (vertex-buffer) draw path -- this is always
-    // the case for triangle / point primitives, and for lines when the device
-    // has no compute (the geometry or simple line tier renders them).
-    [[nodiscard]] auto uses_compute () const -> bool { return m_shader_key.tier == Debug_renderer_shader_key::Tier::compute;  }
-    [[nodiscard]] auto uses_geometry() const -> bool { return m_shader_key.tier == Debug_renderer_shader_key::Tier::geometry; }
+    // Tier helper derived from m_shader_key. uses_compute() == false means
+    // the bucket takes the direct (vertex-buffer) draw path -- the case for
+    // triangle / point primitives and for thin lines.
+    [[nodiscard]] auto uses_compute() const -> bool { return m_shader_key.tier == Debug_renderer_shader_key::Tier::compute; }
 
     erhe::graphics::Device&            m_graphics_device;
     Debug_renderer&                    m_debug_renderer;

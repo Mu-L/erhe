@@ -1,4 +1,4 @@
-﻿{
+{
     "_version": 3,
     "camera_controls": {
         "invert_x": false,
@@ -457,8 +457,8 @@
         "summon_distance": 0.4
     },
     "id_renderer": {
-        "enabled": false,
-        "box_select_use_compute": true
+        "_version": 2,
+        "enabled": false
     },
     "ray_trace": {
         "downscale": 1,

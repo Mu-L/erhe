@@ -335,7 +335,6 @@ Shader_resource::Shader_resource(Device& device, const Block_create_info& create
         ERHE_VERIFY(create_info.binding_point < info.max_uniform_buffer_bindings);
     }
     if (create_info.type == Type::shader_storage_block) {
-        ERHE_VERIFY(info.use_shader_storage_buffers);
         ERHE_VERIFY(create_info.binding_point < info.max_shader_storage_buffer_bindings);
     }
 }
@@ -359,7 +358,6 @@ Shader_resource::Shader_resource(
         ERHE_VERIFY(binding_point < info.max_uniform_buffer_bindings);
     }
     if (type == Type::shader_storage_block) {
-        ERHE_VERIFY(info.use_shader_storage_buffers);
         ERHE_VERIFY(binding_point < info.max_shader_storage_buffer_bindings);
     }
 }
@@ -860,13 +858,10 @@ auto Shader_resource::get_layout_string(const uint32_t sampler_binding_offset) c
     }
     ss << ") ";
     // GLSL memory qualifiers (readonly / writeonly) are valid on shader
-    // storage blocks and image variables, NOT on uniform blocks. When the
-    // SSBO path falls back to uniform blocks (devices / configs with
-    // use_shader_storage_buffers = false), the readonly / writeonly flag
-    // set on the Shader_resource is intentionally ignored at emission
-    // time -- emitting `readonly uniform foo { ... }` is a compile error
-    // ("OpenGL does not allow memory qualifiers on '<undefined>' storage
-    // block" on NVIDIA).
+    // storage blocks and image variables, NOT on uniform blocks -- emitting
+    // `readonly uniform foo { ... }` is a compile error ("OpenGL does not
+    // allow memory qualifiers on '<undefined>' storage block" on NVIDIA), so
+    // the flags are emitted only for shader storage blocks.
     if ((m_device.get_info().glsl_version >= 420) && (m_type == Type::shader_storage_block)) {
         if (m_readonly) {
             ss << "readonly ";

@@ -39,10 +39,9 @@ class Scene_root;
 // multiview-aware view matrices and the sun direction / atmosphere parameters
 // in Sky_parameters; only the two LUT samplers are dedicated to this pass.
 //
-// Storage-image compute (used to generate the LUTs) is wired on the Vulkan and
-// OpenGL backends; OpenGL additionally requires GL 4.3 (use_compute_shader). On
-// backends/versions without it, is_atmosphere_supported() returns false and the
-// Sky_composition_pass falls back to the gradient sky.
+// On backends without a graphics API (the null backend),
+// is_atmosphere_supported() returns false and the Sky_composition_pass falls
+// back to the gradient sky.
 class Sky_renderer
 {
 public:
@@ -94,8 +93,8 @@ private:
     // WORKAROUND_NO_COMPUTE_STORAGE_IMAGE_READ.
     bool                                     m_sample_transmittance_lut{false};
 
-    // GPU resources. Constructed on backends with storage-image compute
-    // (Vulkan, or OpenGL 4.3+); null elsewhere -> is_atmosphere_supported() == false.
+    // GPU resources. Constructed on backends with a graphics API; null on the
+    // null backend -> is_atmosphere_supported() == false.
     std::unique_ptr<erhe::graphics::Texture>                  m_transmittance_lut;
     std::unique_ptr<erhe::graphics::Texture>                  m_multiscatter_lut;
     std::unique_ptr<erhe::graphics::Sampler>                  m_lut_sampler;

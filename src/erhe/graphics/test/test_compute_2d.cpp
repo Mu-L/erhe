@@ -54,14 +54,6 @@ void main()
 // gl_GlobalInvocationID mapping and the boundary guard on the rounded-up tail.
 TEST_F(Gpu_test, compute_2d_global_invocation_pattern)
 {
-    const erhe::graphics::Device_info& info = device().get_info();
-    if (!info.use_compute_shader) {
-        GTEST_SKIP() << "compute shaders unavailable on this device";
-    }
-    if (!info.use_shader_storage_buffers) {
-        GTEST_SKIP() << "shader storage buffers unavailable on this device";
-    }
-
     constexpr uint32_t    extent_x      = 37u;
     constexpr uint32_t    extent_y      = 21u;
     constexpr uint32_t    local_size_x  = 8u;

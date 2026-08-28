@@ -20,9 +20,7 @@ Joint_interface::Joint_interface(erhe::graphics::Device& graphics_device, const 
         {
             .name          = "joint",
             .binding_point = joint_buffer_binding_point,
-            .type          = graphics_device.get_info().use_shader_storage_buffers
-                ? erhe::graphics::Shader_resource::Type::shader_storage_block
-                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
             .readonly      = true
         }
     }}
@@ -42,19 +40,7 @@ Joint_interface::Joint_interface(erhe::graphics::Device& graphics_device, const 
         .debug_flags      = joint_struct.add_uvec4("debug_flags"           )->get_offset_in_parent()
     };
 
-    std::optional<std::size_t> array_size;
-    if (graphics_device.get_info().use_shader_storage_buffers) {
-        array_size = erhe::graphics::Shader_resource::unsized_array;
-    } else {
-        const std::size_t struct_size    = joint_struct.get_size_bytes();
-        const std::size_t element_size   = ((struct_size + 15u) / 16u) * 16u; // std140 array element alignment
-        const std::size_t prefix_size    = joint_block.get_size_bytes();
-        const std::size_t ubo_remaining  = static_cast<std::size_t>(graphics_device.get_info().max_uniform_block_size) - prefix_size;
-        const std::size_t ubo_max        = ubo_remaining / element_size;
-        this->max_joint_count = std::min(this->max_joint_count, ubo_max);
-        array_size = this->max_joint_count;
-    }
-    offsets.joint_struct = joint_block.add_struct("joints", &joint_struct, array_size)->get_offset_in_parent();
+    offsets.joint_struct = joint_block.add_struct("joints", &joint_struct, erhe::graphics::Shader_resource::unsized_array)->get_offset_in_parent();
 }
 
 Joint_buffer::Joint_buffer(erhe::graphics::Device& graphics_device, Joint_interface& joint_interface)

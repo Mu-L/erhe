@@ -100,17 +100,13 @@ private:
     erhe::graphics::Shader_resource        m_vertex_ssbo_block;
     erhe::graphics::Shader_resource*       m_clip_from_window_resource;
     erhe::graphics::Shader_resource*       m_texture_resource;
-    erhe::graphics::Shader_resource*       m_vertex_data_offset_resource;
     erhe::graphics::Shader_resource*       m_vertex_data_resource;
     std::size_t                            m_u_clip_from_window_size        {0};
     std::size_t                            m_u_clip_from_window_offset      {0};
     std::size_t                            m_u_texture_size                 {0};
     std::size_t                            m_u_texture_offset               {0};
-    std::size_t                            m_u_vertex_data_offset_size      {0};
-    std::size_t                            m_u_vertex_data_offset_offset    {0};
     std::size_t                            m_u_vertex_data_size             {0};
     std::size_t                            m_u_vertex_data_offset           {0};
-    bool                                   m_use_buffer_texture             {false};
     erhe::graphics::Fragment_outputs       m_fragment_outputs;
     erhe::graphics::Sampler                m_nearest_sampler;
     erhe::graphics::Bind_group_layout      m_bind_group_layout;
@@ -124,8 +120,6 @@ private:
 
     std::vector<erhe::graphics::Ring_buffer_range> m_vertex_buffer_ranges;
     std::unique_ptr<erhe::graphics::Texture_heap>  m_texture_heap;
-    std::shared_ptr<erhe::graphics::Texture>       m_vertex_buffer_texture;
-    erhe::graphics::Buffer*                        m_last_vertex_buffer{nullptr};
 };
 
 } // namespace erhe::renderer

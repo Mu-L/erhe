@@ -172,8 +172,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     m_info.max_integer_samples                      = max_samples;
     m_info.max_vertex_attribs                       = 31;
     m_info.use_persistent_buffers                   = true;
-    m_info.use_compute_shader                       = true;
-    m_info.use_shader_storage_buffers               = true;
     // GPU ray tracing (Apple7+ / Apple silicon): ray query GLSL lowers to
     // MSL intersection_query via SPIRV-Cross, acceleration structures build
     // through MTL::AccelerationStructureCommandEncoder. Position fetch has

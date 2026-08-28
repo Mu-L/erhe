@@ -89,14 +89,6 @@ Sky_renderer::Sky_renderer(
 
     const std::filesystem::path editor_shaders = std::filesystem::path{"res"} / std::filesystem::path{"editor"} / std::filesystem::path{"shaders"};
 
-    // Storage-image compute requires GL 4.3 (use_compute_shader). On GL < 4.3 or
-    // when compute is force-disabled, leave all members null so
-    // is_atmosphere_supported() returns false and the gradient sky is used.
-    // (Vulkan always reports use_compute_shader == true.)
-    if (!graphics_device.get_info().use_compute_shader) {
-        return;
-    }
-
     // LUT textures: written by compute (storage) then sampled by the
     // atmosphere fragment shader (sampled). R16G16B16A16F.
     m_transmittance_lut = std::make_unique<Texture>(

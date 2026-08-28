@@ -32,10 +32,6 @@ public:
 // curve). Glyph slots follow a fixed convention shared with the shaders:
 // slots 0..9 = digits '0'..'9', slot 10 = '-', slot 11 = '.', 12..15 spare.
 //
-// The feature requires shader storage buffers (unsized vec2 array with
-// std430 stride). When the device lacks SSBO support the block falls back
-// to a dummy uniform block so the shared bind group layout stays uniform,
-// `supported` is false and shaders are compiled without ERHE_GRID_LABELS.
 class Glyph_interface
 {
 public:
@@ -43,7 +39,6 @@ public:
 
     static constexpr std::size_t glyph_slot_count = 16;
 
-    bool                             supported{false};
     erhe::graphics::Shader_resource  glyph_block;
     erhe::graphics::Shader_resource  glyph_meta_struct;
     Glyph_meta_struct                glyph_meta_offsets;
@@ -54,9 +49,9 @@ public:
 // Static GPU buffer holding the glyph metadata and curve data described by
 // Glyph_interface. Built once at init from erhe::ui::Glyph_outline_set
 // (slot order = codepoint order used at extraction). Always creates a
-// bindable buffer - empty when unsupported, when the outline set is
-// invalid, or when glyph_outline_set is nullptr (executables that never
-// draw glyphs) - so bind() is unconditionally legal.
+// bindable buffer - empty when the outline set is invalid or when
+// glyph_outline_set is nullptr (executables that never draw glyphs) - so
+// bind() is unconditionally legal.
 class Glyph_buffer
 {
 public:

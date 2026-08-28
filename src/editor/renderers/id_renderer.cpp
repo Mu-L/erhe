@@ -66,7 +66,6 @@ Id_renderer::Id_renderer(
     Programs&                                   programs
 )
     : m_graphics_device      {graphics_device}
-    , m_id_renderer_config   {id_renderer_config}
     , m_mesh_memory          {mesh_memory}
     , m_shader_variant_cache {shader_variant_cache}
     , m_programs             {programs}
@@ -99,11 +98,6 @@ Id_renderer::Id_renderer(
         graphics_device,
         erhe::graphics::Buffer_target::transfer_dst,
         "Id_renderer::m_texture_read_buffer"
-    }
-    , m_region_read_buffer{
-        graphics_device,
-        erhe::graphics::Buffer_target::transfer_dst,
-        "Id_renderer::m_region_read_buffer"
     }
     , m_scan_input_buffer  {graphics_device, erhe::graphics::Buffer_target::storage,      "Id_renderer::m_scan_input_buffer"  }
     , m_scan_bitmask_buffer{graphics_device, erhe::graphics::Buffer_target::storage,      "Id_renderer::m_scan_bitmask_buffer"}
@@ -433,15 +427,6 @@ void Id_renderer::ensure_scan_compute()
     }
     m_scan_compute_attempted = true;
 
-    // The two scan passes are SSBO-backed compute. On devices without compute
-    // shaders or shader storage buffers m_scan_compute_available stays false
-    // and the CPU region-scan path is used. (Every supported GL device has
-    // both now that OpenGL 4.5 is the hard minimum.)
-    const erhe::graphics::Device_info& info = m_graphics_device.get_info();
-    if (!info.use_compute_shader || !info.use_shader_storage_buffers) {
-        return;
-    }
-
     using erhe::graphics::Shader_resource;
 
     constexpr int c_input_binding   = 0;
@@ -601,14 +586,28 @@ void Id_renderer::ensure_scan_compute()
         m_scan_compact_pipeline.has_value() && m_scan_compact_pipeline->is_valid();
 }
 
-auto Id_renderer::submit_scan_compute(
+void Id_renderer::submit_scan_compute(
     erhe::graphics::Command_buffer& command_buffer,
     Region_entry&                   region,
     const int scan_x, const int scan_y, const int scan_w, const int scan_h
-) -> bool
+)
 {
+    // Deliver an immediately-complete empty result: callers such as the
+    // box-select commit wait for a Read_complete entry with a new-enough
+    // frame_number, so a scan that dispatches nothing must still resolve
+    // (with zero hits) rather than leaving the region slot Unused.
+    const auto complete_empty_scan = [this, &region]() {
+        region.max_output   = 0;
+        region.frame_number = m_graphics_device.get_frame_index();
+        region.compact_data.assign(sizeof(uint32_t), 0); // {count = 0}
+        region.state        = Transfer_entry::State::Read_complete;
+    };
+
     if (!m_scan_compute_available) {
-        return false;
+        // Scan compute pipelines failed to build (broken shader install);
+        // resolve as empty instead of stalling callers forever.
+        complete_empty_scan();
+        return;
     }
 
     // max_id (exclusive id upper bound) and max_output (total facet count, the
@@ -621,7 +620,9 @@ auto Id_renderer::submit_scan_compute(
         max_output += static_cast<uint32_t>(range.length);
     }
     if ((max_id == 0) || (max_output == 0)) {
-        return false; // nothing drawn this scan; let the (empty) CPU path handle it
+        // Nothing drawn this scan; no ids to collect.
+        complete_empty_scan();
+        return;
     }
     const uint32_t bitmask_word_count = (max_id + 31u) / 32u;
 
@@ -635,13 +636,7 @@ auto Id_renderer::submit_scan_compute(
     const std::size_t output_bytes     = (static_cast<std::size_t>(max_output) + 1u) * 4u; // count + ids
     const std::size_t params_bytes     = m_scan_params_block->get_size_bytes();
 
-    region.used_compute = true;
     region.max_output   = max_output;
-    region.x            = scan_x;
-    region.y            = scan_y;
-    region.width        = scan_w;
-    region.height       = scan_h;
-    region.row_stride   = static_cast<int>(row_stride_bytes);
     region.frame_number = m_graphics_device.get_frame_index();
 
     erhe::graphics::Ring_buffer_range input_range   = m_scan_input_buffer.acquire  (erhe::graphics::Ring_buffer_usage::GPU_access, input_bytes);
@@ -769,8 +764,6 @@ auto Id_renderer::submit_scan_compute(
     bitmask_range.release();
     output_range.release();
     params_range.release();
-
-    return true;
 }
 
 void Id_renderer::render(const Render_parameters& parameters)
@@ -1041,15 +1034,10 @@ void Id_renderer::render(const Render_parameters& parameters)
         );
     }
 
-    // Region selection scan readback (box / paint). Two paths produce the same
-    // deduplicated id set that take_scan_result() resolves to facet hits a few
-    // frames later:
-    //   - GPU compute (preferred): two compute passes scan the id buffer into a
-    //     bitmask then compact it to a small { count, ids } vector (see
-    //     submit_scan_compute()).
-    //   - CPU fallback (devices without compute): blit the scan rectangle
-    //     of the color texture into a CPU-read buffer and dedup per texel on the
-    //     main thread.
+    // Region selection scan readback (box / paint). Two compute passes scan the
+    // id buffer into a bitmask then compact it to a small { count, ids } vector
+    // (see submit_scan_compute()) that take_scan_result() resolves to facet hits
+    // a few frames later.
     if (do_scan) {
         Region_entry& region = m_region_entries[region_slot];
         region.brush_center = m_pending_scan->brush_center;
@@ -1064,66 +1052,9 @@ void Id_renderer::render(const Render_parameters& parameters)
         const std::vector<erhe::scene_renderer::Primitive_buffer::Id_range>& live_ranges = m_primitive_buffers.id_ranges();
         region.id_ranges.insert(region.id_ranges.end(), live_ranges.begin(), live_ranges.end());
 
-        // The GPU compute gather is used only when both the device supports it
-        // and the (live, Settings-window-editable) toggle is on; otherwise the
-        // CPU path below runs. Build the compute resources lazily on first use so
-        // toggling the option off at startup costs nothing.
-        bool submitted = false;
-        if (m_id_renderer_config.box_select_use_compute) {
-            ensure_scan_compute();
-            if (m_scan_compute_available) {
-                submitted = submit_scan_compute(parameters.command_buffer, region, scan_x, scan_y, scan_w, scan_h);
-            }
-        }
-
-        if (!submitted) {
-            // CPU fallback.
-            region.used_compute = false;
-            const std::size_t bytes_per_pixel = erhe::dataformat::get_format_size_bytes(m_color_texture->get_pixelformat());
-            // The texture->buffer blit requires a 256-byte-aligned destination row
-            // stride (the pointer pick readback above always uses s_extent*4 == 1024,
-            // which is aligned; an arbitrary scan_w*4 such as 5600 is not and yields a
-            // sheared / corrupted readback). Round the row stride up to 256 bytes; the
-            // padding bytes past scan_w*bytes_per_pixel are skipped on decode.
-            const std::size_t row_stride_bytes = (((static_cast<std::size_t>(scan_w) * bytes_per_pixel) + 255u) / 256u) * 256u;
-            const std::size_t region_bytes     = row_stride_bytes * static_cast<std::size_t>(scan_h);
-            region.data.resize(region_bytes);
-            region.x            = scan_x;
-            region.y            = scan_y;
-            region.width        = scan_w;
-            region.height       = scan_h;
-            region.row_stride   = static_cast<int>(row_stride_bytes);
-            region.frame_number = m_graphics_device.get_frame_index();
-            region.buffer_range = m_region_read_buffer.acquire(erhe::graphics::Ring_buffer_usage::CPU_read, region_bytes);
-
-            Blit_command_encoder encoder           = m_graphics_device.make_blit_command_encoder(parameters.command_buffer);
-            const Buffer*        dst_buffer        = region.buffer_range.get_buffer()->get_buffer();
-            const std::uintptr_t dst_offset        = region.buffer_range.get_byte_start_offset_in_buffer();
-            const std::uintptr_t dst_bytes_per_row = row_stride_bytes;
-            const std::uintptr_t dst_bytes_per_img = row_stride_bytes * static_cast<std::uintptr_t>(scan_h);
-            encoder.copy_from_texture(
-                m_color_texture.get(),
-                0,
-                0,
-                glm::ivec3{scan_x, scan_y, 0},
-                glm::ivec3{scan_w, scan_h, 1},
-                dst_buffer,
-                dst_offset,
-                dst_bytes_per_row,
-                dst_bytes_per_img
-            );
-            region.state = Transfer_entry::State::Waiting_for_read;
-            m_graphics_device.add_completion_handler(
-                [&region]() {
-                    std::span<std::byte> gpu_data = region.buffer_range.get_span();
-                    memcpy(region.data.data(), gpu_data.data(), gpu_data.size_bytes());
-                    region.buffer_range.bytes_gpu_used(gpu_data.size_bytes());
-                    region.buffer_range.close();
-                    region.buffer_range.release();
-                    region.state = Transfer_entry::State::Read_complete;
-                }
-            );
-        }
+        // Build the compute resources lazily on first scan.
+        ensure_scan_compute();
+        submit_scan_compute(parameters.command_buffer, region, scan_x, scan_y, scan_w, scan_h);
     }
     // Consume the request whether or not a slot was free; the gesture re-requests
     // every frame it wants a scan.
@@ -1264,56 +1195,32 @@ auto Id_renderer::take_scan_result() -> const Scan_result&
 
     Region_entry& region = m_region_entries[best_slot];
 
-    // Collect the scan's deduplicated id set into m_scan_id_scratch, either from
-    // the compute compaction result or by looping texels on the CPU.
+    // Collect the scan's deduplicated id set into m_scan_id_scratch from the
+    // compute compaction result. compact_data is
+    // { uint count; uint ids[max_output]; } (already brush-masked and
+    // deduplicated by the two compute passes). Read count, clamp to the output
+    // capacity, and gather the ids.
     m_scan_id_scratch.clear();
-    if (region.used_compute) {
-        // compact_data is { uint count; uint ids[max_output]; } (already
-        // brush-masked and deduplicated by the two compute passes). Read count,
-        // clamp to the output capacity, and gather the ids.
-        uint32_t count = 0;
-        if (region.compact_data.size() >= sizeof(uint32_t)) {
-            memcpy(&count, region.compact_data.data(), sizeof(uint32_t));
-        }
-        if (count > region.max_output) {
-            // Pass 2 found more distinct ids than the output buffer holds; the
-            // surplus ids were not written. This is not expected (max_output is
-            // the total facet count, an upper bound on distinct ids), so warn.
-            log_id_render->warn(
-                "Id_renderer scan compute output overflow: count={} max_output={} (truncating)",
-                count, region.max_output
-            );
-            count = region.max_output;
-        }
-        const uint8_t* id_bytes = region.compact_data.data() + sizeof(uint32_t);
-        for (uint32_t i = 0; i < count; ++i) {
-            uint32_t id = 0;
-            memcpy(&id, id_bytes + (static_cast<std::size_t>(i) * sizeof(uint32_t)), sizeof(uint32_t));
-            if (id != 0) {
-                m_scan_id_scratch.insert(id);
-            }
-        }
-    } else {
-        // CPU path: decode the region's texels. For a brush scan, skip texels
-        // outside the disk. id 0 is the background sentinel.
-        const int stride = region.row_stride;
-        for (int ry = 0; ry < region.height; ++ry) {
-            for (int rx = 0; rx < region.width; ++rx) {
-                if (region.is_brush) {
-                    const float dx = static_cast<float>(region.x + rx) - region.brush_center.x;
-                    const float dy = static_cast<float>(region.y + ry) - region.brush_center.y;
-                    if ((dx * dx + dy * dy) > (region.brush_radius * region.brush_radius)) {
-                        continue;
-                    }
-                }
-                const uint8_t  r  = region.data[rx * 4 + ry * stride + 0];
-                const uint8_t  g  = region.data[rx * 4 + ry * stride + 1];
-                const uint8_t  b  = region.data[rx * 4 + ry * stride + 2];
-                const uint32_t id = (static_cast<uint32_t>(r) << 16u) | (static_cast<uint32_t>(g) << 8u) | static_cast<uint32_t>(b);
-                if (id != 0) {
-                    m_scan_id_scratch.insert(id);
-                }
-            }
+    uint32_t count = 0;
+    if (region.compact_data.size() >= sizeof(uint32_t)) {
+        memcpy(&count, region.compact_data.data(), sizeof(uint32_t));
+    }
+    if (count > region.max_output) {
+        // Pass 2 found more distinct ids than the output buffer holds; the
+        // surplus ids were not written. This is not expected (max_output is
+        // the total facet count, an upper bound on distinct ids), so warn.
+        log_id_render->warn(
+            "Id_renderer scan compute output overflow: count={} max_output={} (truncating)",
+            count, region.max_output
+        );
+        count = region.max_output;
+    }
+    const uint8_t* id_bytes = region.compact_data.data() + sizeof(uint32_t);
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t id = 0;
+        memcpy(&id, id_bytes + (static_cast<std::size_t>(i) * sizeof(uint32_t)), sizeof(uint32_t));
+        if (id != 0) {
+            m_scan_id_scratch.insert(id);
         }
     }
 

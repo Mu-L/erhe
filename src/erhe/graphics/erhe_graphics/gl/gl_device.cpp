@@ -400,10 +400,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         (m_info.gl_version >= 450) || gl::is_extension_supported(gl::Extension::Extension_GL_ARB_clip_control);
     log_startup->info("Clip Control supported: {}", m_info.use_clip_control);
 
-    m_info.use_shader_storage_buffers =
-        (m_info.gl_version >= 430) || gl::is_extension_supported(gl::Extension::Extension_GL_ARB_shader_storage_buffer_object);
-    log_startup->info("SSBO supported: {}", m_info.use_shader_storage_buffers);
-    if (m_info.use_shader_storage_buffers) {
+    {
         int shader_storage_buffer_offset_alignment{0};
         gl::get_integer_v(gl::Get_p_name::shader_storage_buffer_offset_alignment, &shader_storage_buffer_offset_alignment);
         m_info.shader_storage_buffer_offset_alignment = static_cast<unsigned int>(shader_storage_buffer_offset_alignment);
@@ -447,9 +444,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     m_info.use_base_instance = (m_info.gl_version >= 420) || gl::is_extension_supported(gl::Extension::Extension_GL_ARB_base_instance);
     log_startup->info("Base Instance supported: {}", m_info.use_base_instance);
 
-    m_info.use_compute_shader = m_info.gl_version >= 430;
-    if (m_info.use_compute_shader) {
-        log_startup->info("Compute shaders supported: true");
+    {
         for (GLuint i = 0; i < 3; ++i) {
             gl::get_integer_iv(gl::Get_p_name::max_compute_work_group_count, i, &m_info.max_compute_workgroup_count[i]);
             gl::get_integer_iv(gl::Get_p_name::max_compute_work_group_size,  i, &m_info.max_compute_workgroup_size[i]);
@@ -485,22 +480,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         gl::get_integer_v(gl::Get_p_name::max_geometry_shader_storage_blocks,        &m_info.max_geometry_shader_storage_blocks);
         gl::get_integer_v(gl::Get_p_name::max_tess_control_shader_storage_blocks,    &m_info.max_tess_control_shader_storage_blocks);
         gl::get_integer_v(gl::Get_p_name::max_tess_evaluation_shader_storage_blocks, &m_info.max_tess_evaluation_shader_storage_blocks);
-    } else {
-        log_startup->info("Compute shaders supported: false");
-        for (GLuint i = 0; i < 3; ++i) {
-            m_info.max_compute_workgroup_count[i] = 0;
-            m_info.max_compute_workgroup_size [i] = 0;
-        }
-        m_info.max_compute_work_group_invocations        = 0;
-        m_info.max_compute_shared_memory_size            = 0;
-        m_info.max_shader_storage_buffer_bindings        = 0;
-        m_info.max_compute_shader_storage_blocks         = 0;
-        m_info.max_compute_uniform_blocks                = 0;
-        m_info.max_vertex_shader_storage_blocks          = 0;
-        m_info.max_fragment_shader_storage_blocks        = 0;
-        m_info.max_geometry_shader_storage_blocks        = 0;
-        m_info.max_tess_control_shader_storage_blocks    = 0;
-        m_info.max_tess_evaluation_shader_storage_blocks = 0;
     }
 
     int uniform_buffer_offset_alignment{0};

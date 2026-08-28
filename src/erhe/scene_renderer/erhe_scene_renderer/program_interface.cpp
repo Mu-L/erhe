@@ -241,11 +241,7 @@ auto Program_interface::make_prototype(
     create_info.add_interface_block(&glyph_interface.glyph_block);
     create_info.bind_group_layout = bind_group_layout.get();
     create_info.defines.emplace_back("ERHE_SHADOW_MAPS", "1");
-    if (glyph_interface.supported) {
-        // GPU curve-based glyph rendering (grid axis labels) needs the
-        // unsized std430 curves array, so it is SSBO-only.
-        create_info.defines.emplace_back("ERHE_GRID_LABELS", "1");
-    }
+    create_info.defines.emplace_back("ERHE_GRID_LABELS", "1");
 
     bool found = false;
     auto process_shader = [&create_info, &found](erhe::graphics::Shader_type shader_type, const std::filesystem::path& path) -> void
@@ -256,25 +252,13 @@ auto Program_interface::make_prototype(
         }
     };
 
-    const bool device_supports_compute = graphics_device.get_info().use_compute_shader;
-
     for (const std::filesystem::path& shader_path : config.shader_paths) {
         const std::filesystem::path cs_path = shader_path / std::filesystem::path(create_info.name + ".comp");
         const std::filesystem::path fs_path = shader_path / std::filesystem::path(create_info.name + ".frag");
         const std::filesystem::path gs_path = shader_path / std::filesystem::path(create_info.name + ".geom");
         const std::filesystem::path vs_path = shader_path / std::filesystem::path(create_info.name + ".vert");
 
-        // Only emit a compute stage when the device supports compute.
-        // On a device without compute support, feeding a
-        // Shader_type::compute_shader through the build pipeline triggers
-        // downstream errors: shader creation fails, the subsequent
-        // compile / query calls error out, and the prototype ends in
-        // state_fail with a confusing log trail. Skip the .comp probe
-        // entirely on such devices. (Every supported GL device has
-        // compute now that OpenGL 4.5 is the hard minimum.)
-        if (device_supports_compute) {
-            process_shader(erhe::graphics::Shader_type::compute_shader,  cs_path);
-        }
+        process_shader(erhe::graphics::Shader_type::compute_shader,  cs_path);
         process_shader(erhe::graphics::Shader_type::fragment_shader, fs_path);
 #if defined(ERHE_GRAPHICS_API_OPENGL)
         process_shader(erhe::graphics::Shader_type::geometry_shader, gs_path);

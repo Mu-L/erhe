@@ -11,9 +11,7 @@ Cube_interface::Cube_interface(erhe::graphics::Device& graphics_device)
         {
             .name          = "instance",
             .binding_point = cube_instance_buffer_binding_point,
-            .type          = graphics_device.get_info().use_shader_storage_buffers
-                ? erhe::graphics::Shader_resource::Type::shader_storage_block
-                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
             .readonly      = true
         }
     }
@@ -27,9 +25,7 @@ Cube_interface::Cube_interface(erhe::graphics::Device& graphics_device)
         {
             .name          = "cube_control",
             .binding_point = cube_control_buffer_binding_point,
-            .type          = graphics_device.get_info().use_shader_storage_buffers
-                ? erhe::graphics::Shader_resource::Type::shader_storage_block
-                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .type          = erhe::graphics::Shader_resource::Type::shader_storage_block,
             .readonly      = true
         }
     }
@@ -42,29 +38,8 @@ Cube_interface::Cube_interface(erhe::graphics::Device& graphics_device)
         .color_end   = cube_control_struct.add_vec4("color_end"  )->get_offset_in_parent(),
     }
 {
-    {
-        std::optional<std::size_t> array_size;
-        if (graphics_device.get_info().use_shader_storage_buffers) {
-            array_size = erhe::graphics::Shader_resource::unsized_array;
-        } else {
-            const std::size_t struct_size  = cube_instance_struct.get_size_bytes();
-            const std::size_t element_size = ((struct_size + 15u) / 16u) * 16u; // std140 array element alignment
-            array_size = static_cast<std::size_t>(graphics_device.get_info().max_uniform_block_size) / element_size;
-        }
-        cube_instance_block.add_struct("instances", &cube_instance_struct, array_size);
-    }
-
-    {
-        std::optional<std::size_t> array_size;
-        if (graphics_device.get_info().use_shader_storage_buffers) {
-            array_size = erhe::graphics::Shader_resource::unsized_array;
-        } else {
-            const std::size_t struct_size  = cube_control_struct.get_size_bytes();
-            const std::size_t element_size = ((struct_size + 15u) / 16u) * 16u; // std140 array element alignment
-            array_size = static_cast<std::size_t>(graphics_device.get_info().max_uniform_block_size) / element_size;
-        }
-        cube_control_block.add_struct("cube_control", &cube_control_struct, array_size);
-    }
+    cube_instance_block.add_struct("instances",    &cube_instance_struct, erhe::graphics::Shader_resource::unsized_array);
+    cube_control_block .add_struct("cube_control", &cube_control_struct,  erhe::graphics::Shader_resource::unsized_array);
 }
 
 Cube_instance_buffer::Cube_instance_buffer(

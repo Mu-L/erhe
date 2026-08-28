@@ -1179,19 +1179,11 @@ auto Headset_view::render_headset(erhe::graphics::Command_buffer& command_buffer
             // Combined compute pass for both renderers. Either one (or
             // both) may have queued work; the barrier below covers SSBO
             // and vertex-attribute readers downstream regardless of
-            // which compute ran. Skipping when neither needs compute
-            // avoids a stray Compute_command_encoder + barrier on
-            // backends that gate compute.
-            // Wide lines only dispatch compute on the compute backend; the
-            // geometry-shader backend expands lines at render time (compute()
-            // is a no-op) and runs on devices without glMemoryBarrier, so it
-            // must not drive the compute encoder / barrier here.
-            const bool wide_lines_compute = drive_wide_lines && content_wide_line_renderer->uses_compute();
-            const bool need_compute = wide_lines_compute || m_app_context.debug_renderer->use_compute();
-            if (need_compute) {
+            // which compute ran.
+            {
                 {
                     erhe::graphics::Compute_command_encoder compute_encoder = m_app_context.graphics_device->make_compute_command_encoder(views_cb);
-                    if (wide_lines_compute) {
+                    if (drive_wide_lines) {
                         content_wide_line_renderer->set_view_params(
                             std::span<const erhe::scene_renderer::Camera_view_input>{view_inputs},
                             get_reverse_depth(),
@@ -1215,9 +1207,6 @@ auto Headset_view::render_headset(erhe::graphics::Command_buffer& command_buffer
                         }
                         content_wide_line_renderer->compute(compute_encoder);
                     }
-                    // Debug_renderer::compute() early-returns when
-                    // use_compute is false, so calling it
-                    // unconditionally here is safe.
                     m_app_context.debug_renderer->compute(compute_encoder);
                 }
                 // Compute -> vertex barrier. The single-view per-eye
@@ -1453,7 +1442,7 @@ auto Headset_view::render_headset(erhe::graphics::Command_buffer& command_buffer
             m_context.tools         ->render_viewport_tools(render_context);
             m_context.app_rendering ->render_viewport_renderables(render_context);
 
-            if (m_context.debug_renderer->use_compute()) {
+            {
                 {
                     erhe::graphics::Compute_command_encoder compute_encoder = graphics_device.make_compute_command_encoder(view_cb);
                     m_context.debug_renderer->compute(compute_encoder);

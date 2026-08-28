@@ -138,10 +138,11 @@ public:
 
     // Region selection scan (box / paint select). A selection gesture requests
     // a scan of a viewport-pixel rectangle (optionally masked to a brush disk)
-    // of the ID buffer; render() rasterizes and blits that rectangle to a
-    // CPU-read buffer, and take_scan_result() resolves the completed readback
-    // into the set of visible (mesh, primitive, triangle) hits a few frames
-    // later (async, same latency as the pointer pick). Faces only for now; the
+    // of the ID buffer; render() rasterizes that rectangle and two compute
+    // passes compact its distinct ids into a small readback, and
+    // take_scan_result() resolves the completed readback into the set of
+    // visible (mesh, primitive, triangle) hits a few frames later (async, same
+    // latency as the pointer pick). Faces only for now; the
     // caller maps triangle -> facet.
     class Scan_request
     {
@@ -221,10 +222,6 @@ private:
 
     // TODO Do not store these here?
     erhe::graphics::Device&                      m_graphics_device;
-    // Live reference to the editor's Id_renderer_config (m_editor_settings.id_renderer).
-    // Read at runtime (e.g. box_select_use_compute) so a Settings-window toggle takes
-    // effect without reconstructing the renderer. Stable for the app lifetime.
-    const Id_renderer_config&                    m_id_renderer_config;
     erhe::scene_renderer::Mesh_memory&           m_mesh_memory;
     erhe::scene_renderer::Shader_variant_cache&  m_shader_variant_cache;
     Programs&                                    m_programs;
@@ -249,32 +246,22 @@ private:
     std::array<Transfer_entry, s_transfer_entry_count> m_transfer_entries;
     int                                                m_current_transfer_entry_slot{0};
 
-    // Region selection scan state (box / paint). A small ring of color-only
-    // readback entries, sized per-scan (the scan rect, not s_extent), so several
-    // scans can be in flight while a gesture drags. Parallel to the pointer-pick
-    // Transfer_entry ring above but independent of it.
+    // Region selection scan state (box / paint). A small ring of scan entries
+    // so several scans can be in flight while a gesture drags. Parallel to the
+    // pointer-pick Transfer_entry ring above but independent of it.
     static constexpr int s_region_entry_count = 3;
     class Region_entry
     {
     public:
-        erhe::graphics::Ring_buffer_range buffer_range;
-        std::vector<uint8_t>              data        {};
-        int                               x           {0};
-        int                               y           {0};
-        int                               width       {0};
-        int                               height      {0};
-        int                               row_stride  {0}; // bytes per row in `data` (256-byte aligned for the GPU copy)
         glm::vec2                         brush_center{0.0f, 0.0f};
         float                             brush_radius{0.0f};
         bool                              is_brush    {false};
         uint64_t                          frame_number{0};
         Transfer_entry::State             state       {Transfer_entry::State::Unused};
-        // GPU compute-gather path: when used_compute is true the scan was resolved
-        // by the two compute passes, the small {count, ids} result was read back
-        // into compact_data (not the per-pixel `data` above), and take_scan_result()
-        // resolves scan_count ids from it instead of looping texels. compact_range
-        // is the CPU_read ring range the completion handler copied from.
-        bool                              used_compute{false};
+        // The two compute passes resolve the scan into the small {count, ids}
+        // result that is read back into compact_data; take_scan_result()
+        // resolves the ids from it. compact_range is the CPU_read ring range
+        // the completion handler copied from.
         erhe::graphics::Ring_buffer_range compact_range;
         std::vector<uint8_t>              compact_data{}; // {uint count; uint ids[max_output];}
         uint32_t                          max_output  {0};
@@ -290,7 +277,6 @@ private:
     };
     std::optional<Scan_request>                    m_pending_scan;
     std::array<Region_entry, s_region_entry_count> m_region_entries;
-    erhe::graphics::Ring_buffer_client             m_region_read_buffer;
     Scan_result                                    m_scan_result;
     std::set<uint32_t>                             m_scan_id_scratch; // reused id-dedup set; cleared per resolve
     // Snapshot of the id-range table from the most recently resolved scan, kept so
@@ -299,20 +285,17 @@ private:
     std::vector<erhe::scene_renderer::Primitive_buffer::Id_range> m_last_scan_id_ranges;
 
     // ---- Box/paint GPU compute gather --------------------------------------
-    // Two compute passes replace the per-pixel CPU readback + dedup loop when the
-    // device supports compute shaders (Vulkan / Metal / GL, where 4.5 is the
-    // hard minimum): pass 1
-    // (id_scan_gather.comp) scans the blitted region id buffer and atomicOrs each
-    // decoded id into a bitmask (the dedup); pass 2 (id_scan_compact.comp) compacts
-    // the set bits into a dense {count, ids} vector that is read back. On devices
-    // without compute m_scan_compute_available stays false and
-    // the CPU region-scan path is used. Built lazily on first scan.
+    // Two compute passes resolve a region scan: pass 1 (id_scan_gather.comp)
+    // scans the blitted region id buffer and atomicOrs each decoded id into a
+    // bitmask (the dedup); pass 2 (id_scan_compact.comp) compacts the set bits
+    // into a dense {count, ids} vector that is read back. Built lazily on
+    // first scan.
     void                                               ensure_scan_compute();
-    [[nodiscard]] auto submit_scan_compute(
+    void submit_scan_compute(
         erhe::graphics::Command_buffer& command_buffer,
         Region_entry&                   region,
         int scan_x, int scan_y, int scan_w, int scan_h
-    ) -> bool;
+    );
     bool                                               m_scan_compute_attempted{false};
     bool                                               m_scan_compute_available{false};
     std::unique_ptr<erhe::graphics::Shader_resource>   m_scan_input_block;   // binding 0 readonly SSBO (region pixels)
