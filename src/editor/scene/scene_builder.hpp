@@ -196,7 +196,7 @@ private:
     auto make_brush(
         Content_library_node&                            folder,
         App_settings&                                    app_settings,
-        erhe::scene_renderer::Mesh_memory&               mesh_memory,
+        const erhe::primitive::Build_info&               brush_build_info,
         const std::shared_ptr<erhe::geometry::Geometry>& geometry
     ) -> std::shared_ptr<Brush>;
 
@@ -206,15 +206,20 @@ private:
 
     auto get_brushes() -> Content_library_node&;
 
+    // The brush makers below make_brushes() run on taskflow workers.
+    // build_info() reads Mesh_memory vertex-input state, so make_brushes()
+    // builds the Build_info once on its calling thread, before the workers
+    // start, and the workers receive it by const reference instead of a
+    // Mesh_memory.
     void ensure_brushes             (float mass_scale, int detail);
     void make_brushes               (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory, tf::Executor& executor);
-    void make_platonic_solid_brushes(App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
-    void make_sphere_brushes        (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
-    void make_torus_brushes         (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
-    void make_cylinder_brushes      (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
-    void make_cone_brushes          (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
-    void make_capsule_brushes       (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory);
-    void make_json_brushes          (App_settings& app_settings, erhe::scene_renderer::Mesh_memory& mesh_memory, tf::Taskflow* tf, Json_library& library);
+    void make_platonic_solid_brushes(App_settings& app_settings, const erhe::primitive::Build_info& brush_build_info);
+    void make_sphere_brushes        (App_settings& app_settings, const erhe::primitive::Build_info& brush_build_info);
+    void make_torus_brushes         (App_settings& app_settings, const erhe::primitive::Build_info& brush_build_info);
+    void make_cylinder_brushes      (App_settings& app_settings, const erhe::primitive::Build_info& brush_build_info);
+    void make_cone_brushes          (App_settings& app_settings, const erhe::primitive::Build_info& brush_build_info);
+    void make_capsule_brushes       (App_settings& app_settings, const erhe::primitive::Build_info& brush_build_info);
+    void make_json_brushes          (App_settings& app_settings, const erhe::primitive::Build_info& brush_build_info, tf::Taskflow* tf, Json_library& library);
     void make_mesh_nodes            (const Make_mesh_config& config, std::vector<std::shared_ptr<Brush>>& brushes);
 
     App_context&          m_context;

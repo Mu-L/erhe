@@ -20,6 +20,7 @@
 #include <mutex>
 #include <optional>
 #include <span>
+#include <thread>
 #include <vector>
 
 namespace erhe::graphics {
@@ -323,6 +324,13 @@ private:
     const Mesh_memory_config&             m_mesh_memory_config;
     erhe::graphics::Device&               m_graphics_device;
     std::vector<Vertex_input_entry>       m_vertex_input_entries;
+    // get_vertex_input_from_vertex_format() is read from workers with nothing
+    // preventing a concurrent emplace_back. That is safe only because the
+    // constructor pre-registers every format on the owning thread and nothing
+    // appends afterwards; these two members let the miss path assert exactly
+    // that coupling instead of relying on it silently.
+    std::thread::id                       m_owner_thread_id{std::this_thread::get_id()};
+    bool                                  m_vertex_input_entries_frozen{false};
     std::vector<Buffer_pool>              m_vertex_pools;
     std::vector<Buffer_pool>              m_index_pools;
     erhe::graphics::Buffer_transfer_queue m_buffer_transfer_queue;

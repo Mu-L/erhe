@@ -411,6 +411,9 @@ Mesh_memory::Mesh_memory(
         }
         get_vertex_input_from_vertex_format(*format);
     }
+    // Every format is now registered; get_vertex_input_from_vertex_format()
+    // must never take its miss path again (workers read the vector unlocked).
+    m_vertex_input_entries_frozen = true;
 }
 
 auto Mesh_memory::get_all_vertex_formats() -> std::vector<erhe::dataformat::Vertex_format*>
@@ -730,6 +733,14 @@ auto Mesh_memory::get_vertex_input_from_vertex_format(const erhe::dataformat::Ve
             return entry;
         }
     }
+
+    // Workers reach this function while the main thread could in principle
+    // grow the vector; the read path is lock-free only because every format
+    // is pre-registered by the constructor. Enforce both halves: the miss
+    // path runs only on the constructing thread, and never after the
+    // constructor froze the set.
+    ERHE_VERIFY(std::this_thread::get_id() == m_owner_thread_id);
+    ERHE_VERIFY(!m_vertex_input_entries_frozen);
 
     m_vertex_input_entries.emplace_back(
         end,
