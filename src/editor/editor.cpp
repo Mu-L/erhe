@@ -1,11 +1,4 @@
-﻿// Using llvm pipe appears to have broken GL context sharing at least with what I do here.
-#define ERHE_SERIAL_INIT 1
-
-#if !defined(ERHE_SERIAL_INIT)
-# define ERHE_PARALLEL_INIT 1
-#endif
-
-#include "editor.hpp"
+﻿#include "editor.hpp"
 
 #include "app_context.hpp"
 #include "config/generated/add_cameras_args.hpp"
@@ -279,54 +272,6 @@ void write_ai_error_report(const char* const path, const std::string& title, con
 }
 
 } // anonymous namespace
-
-#if defined(ERHE_PROFILE_LIBRARY_TRACY)
-class Tracy_observer : public tf::ObserverInterface {
-public:
-    void set_up(std::size_t) override final {};
-
-    void on_entry(tf::WorkerView, tf::TaskView tv) override final
-    {
-        const std::string& name = tv.name();
-#if TRACY_ENABLE
-        const std::size_t hash = tv.hash_value();
-        const uint32_t color = 0x804020ffu;
-        uint64_t srcloc = ___tracy_alloc_srcloc_name(1, "", 0, "", 0, name.c_str(), name.length(), color);
-        TracyCZoneCtx zone = ___tracy_emit_zone_begin_alloc(srcloc, 1);
-        // log_startup->trace("enter zone = {} worker = {} task = {} hash = {:x}", zone.id, w.id(), name, hash);
-        st_entries.emplace_back(hash, zone);
-#endif
-    }
-
-    void on_exit(tf::WorkerView, tf::TaskView tv) override final
-    {
-        //const std::string& name = tv.name();
-#if TRACY_ENABLE
-        const std::size_t hash = tv.hash_value();
-        for (Entry& entry : st_entries) {
-            if (entry.hash == hash && entry.zone.active != 0) {
-                // log_startup->trace("leave zone = {} worker = {} task = {} hash = {:x}", entry.zone.id, w.id(), name, hash);
-                ___tracy_emit_zone_end(entry.zone);
-                entry.zone.active = 0;
-                return;
-            }
-        }
-        ERHE_FATAL("zone not found");
-#endif
-    }
-
-private:
-    struct Entry
-    {
-        std::size_t   hash;
-        TracyCZoneCtx zone;
-    };
-    static thread_local std::vector<Entry> st_entries;
-};
-
-thread_local std::vector<Tracy_observer::Entry> Tracy_observer::st_entries;
-#endif
-
 
 class Editor : public erhe::window::Input_event_handler
 {
@@ -1401,8 +1346,8 @@ public:
             log_startup->info("glTF spot light fixup enabled for this session (--fix-spot-lights)");
         }
 
-        // Editor is constructed on the main thread; parts constructed on init
-        // taskflow workers must not capture their own thread id as the owner.
+        // Editor is constructed on the main thread; anything capturing an
+        // owner thread id must record this one, not a worker's.
         m_app_context.main_thread_id = std::this_thread::get_id();
 
         // thread_count <= 0 means one worker per hardware thread.
@@ -1411,8 +1356,6 @@ public:
             ? static_cast<std::size_t>(configured_thread_count)
             : std::max<std::size_t>(std::thread::hardware_concurrency(), 1);
 
-        // Note: m_executor is also used at runtime, so it cannot be
-        //       skipped even if parallel init is not used.
         m_executor = std::make_unique<tf::Executor>(thread_count);
 
         // Scene level raytrace BVH builds run on the executor, so that they
@@ -1420,20 +1363,13 @@ public:
         erhe::raytrace::set_executor(m_executor.get());
 
         // Declared outside the try so the loading screen survives past
-        // the parallel-init catch block; the post-task init phase
-        // (run_startup_script, prewarm_all) still drives pump() through
-        // this owner. Constructed inside the try once Text_renderer is
-        // built; destroyed when Editor::Editor() returns.
+        // the init catch block; the post-init phase (run_startup_script,
+        // prewarm_all) still drives pump() through this owner. Constructed
+        // inside the try once Text_renderer is built; destroyed when
+        // Editor::Editor() returns.
         std::unique_ptr<Init_status_display> init_status_display_ptr;
 
         try {
-#if defined(ERHE_PARALLEL_INIT)
-            tf::Taskflow taskflow;
-# if defined(ERHE_PROFILE_LIBRARY_TRACY)
-            std::shared_ptr<Tracy_observer> observer = m_executor->make_observer<Tracy_observer>();
-# endif
-#endif
-
             m_commands          = std::make_unique<erhe::commands::Commands      >();
             m_app_message_bus   = std::make_unique<App_message_bus               >();
             m_app_settings.read(m_editor_settings.headset.openxr);
@@ -1442,19 +1378,9 @@ public:
             auto& commands        = *m_commands       .get();
             auto& app_message_bus = *m_app_message_bus.get();
 
-#if defined(ERHE_PARALLEL_INIT)
-#   define ERHE_GET_GL_CONTEXT erhe::graphics::Scoped_gl_context ctx{m_graphics_device->context_provider};
-#   define ERHE_TASK_HEADER(var) auto var = taskflow.emplace([&, this]()
-#   define ERHE_TASK_FOOTER(ops) ) ops
-#else
-#   define ERHE_GET_GL_CONTEXT
-#   define ERHE_TASK_HEADER(var) init_status_display.set_line(1, #var); init_status_display.pump();
-#   define ERHE_TASK_FOOTER(ops) init_status_display.set_line(1, ""); init_status_display.pump();
-#endif
-
-#if defined(ERHE_PARALLEL_INIT)
-            m_executor->run(taskflow);
-#endif
+#define ERHE_GET_GL_CONTEXT
+#define ERHE_TASK_HEADER(var) init_status_display.set_line(1, #var); init_status_display.pump();
+#define ERHE_TASK_FOOTER(ops) init_status_display.set_line(1, ""); init_status_display.pump();
 
             // Window and graphics context creation - in main thread
             m_window = create_window(m_graphics_config, m_window_config, m_editor_settings);
@@ -1606,16 +1532,6 @@ public:
             }
 #endif
 
-            // It seems to be faster to create the worker thread here instead of between
-            // executor run and wait.
-#if defined(ERHE_PARALLEL_INIT)
-            m_graphics_device->context_provider.provide_worker_contexts(
-                m_window.get(),
-                8u,
-                []() -> bool { return true; }
-            );
-#endif
-
             m_clipboard            = std::make_unique<Clipboard     >(commands, m_app_context, app_message_bus);
             m_prefab_library       = std::make_unique<Prefab_library>(m_app_context);
             m_texture_file_loader  = std::make_unique<Texture_file_loader>(m_app_context);
@@ -1689,10 +1605,9 @@ public:
             // reseat the pointer after driving a swapchain frame for
             // the loading screen. When a Headset is supplied, pump()
             // drives an OpenXR frame instead of the desktop swapchain.
-            // set_line() / set_clear_color() are called from taskflow
-            // workers; they only mutate state under a mutex. pump()
-            // runs on the main thread (driven by the wait_for() loop
-            // below) so SDL_PollEvent and xrBegin/EndFrame never run
+            // Everything runs on the main thread: set_line() /
+            // set_clear_color() from the serial init steps, and pump(),
+            // so SDL_PollEvent and xrBegin/EndFrame never run
             // off-main-thread.
             erhe::xr::Headset* const init_status_headset =
 #if defined(ERHE_XR_LIBRARY_OPENXR)
@@ -2451,49 +2366,6 @@ public:
                 .succeed(imgui_renderer_task, imgui_windows_task, icon_set_task, tools_task, headset_task)
             );
 
-#if defined(ERHE_PARALLEL_INIT)
-            std::string graph_dump = taskflow.dump();
-            erhe::file::write_file("erhe_init_graph.dot", graph_dump);
-
-            // Run the parallel-init taskflow with the editor's init cb
-            // already open (opened above before Init_status_display was
-            // constructed). Worker tasks record GPU work via
-            // m_app_context.current_command_buffer. Submission +
-            // wait_idle happens below.
-            //
-            // We poll Init_status_display::pump() on the main thread
-            // while the taskflow runs. set_line() from worker threads
-            // updates the line vector under a mutex and sets a dirty
-            // flag; pump() drains the flag here and runs SDL_PollEvent
-            // + xrBegin/EndFrame, neither of which is safe to call
-            // from worker threads.
-            //
-            // Pre-existing hazard: pump() can reseat
-            // m_app_context.current_command_buffer (when it ends +
-            // submits the init cb and opens a fresh one for a
-            // swapchain or XR frame). Workers that dereference the
-            // pointer concurrently with that reseat race on the
-            // pointer. In practice each worker grabs the pointer once
-            // at task entry under ERHE_GET_GL_CONTEXT (which holds
-            // the GL context lock), and pump() never reseats while a
-            // worker holds that lock; on Vulkan/Metal the workers
-            // each open their own cb so the reseat target is not
-            // shared. Tightening this would need an explicit quiesce
-            // around the reseat, which is out of scope for A3.
-            ERHE_VERIFY(m_app_context.current_command_buffer != nullptr);
-            {
-                tf::Future<void> taskflow_future = m_executor->run(taskflow);
-                using namespace std::chrono_literals;
-                while (taskflow_future.wait_for(16ms) != std::future_status::ready) {
-                    init_status_display.pump();
-                }
-                // get() rethrows any exception captured from worker
-                // threads, restoring the propagation that .wait()
-                // previously gave us into the surrounding catch.
-                taskflow_future.get();
-                init_status_display.pump();
-            }
-#endif
         } catch (std::runtime_error& e) {
             log_startup->error("exception: {}", e.what());
             ERHE_FATAL("editor initialization failed");

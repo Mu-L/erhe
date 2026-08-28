@@ -157,7 +157,7 @@ Geometry operations can run asynchronously via `tf::Executor`. `async_for_nodes_
 
 ### Parallel Initialization
 
-Controlled by `ERHE_SERIAL_INIT` / `ERHE_PARALLEL_INIT`. When parallel init is enabled, GPU subsystems are created in parallel Taskflow tasks with explicit dependency edges. Currently serial init is the default due to GL context sharing issues.
+Initialization is serial. The retired `ERHE_PARALLEL_INIT` experiment (parallel Taskflow tasks with explicit dependency edges over `Gl_context_provider` worker contexts) was deleted; any future parallel init should build on the GL worker-context API of `doc/gl-worker-thread-contexts-plan.md` instead.
 
 ### Physics Integration
 

@@ -4,13 +4,15 @@
 
 Deferred. Phase I (`src/editor/init_status_display.{hpp,cpp}` plus the
 `init_message` lambda wired into `Programs::load_programs`) is what
-ships today. Phase I assumes the editor's init is single-threaded
-(`#define ERHE_SERIAL_INIT 1` at the top of `src/editor/editor.cpp`) so
-no synchronization is required between the worker(s) that publish
-status text and the main thread that draws it.
+ships today. Phase I assumes the editor's init is single-threaded --
+which it is: the `ERHE_SERIAL_INIT` / `ERHE_PARALLEL_INIT` toggle was
+retired and init is serial by construction -- so no synchronization is
+required between the worker(s) that publish status text and the main
+thread that draws it.
 
 This document captures the shape of the work that becomes necessary
-when init goes parallel (`ERHE_PARALLEL_INIT`).
+if init ever goes parallel (on the GL worker-context API of
+`doc/gl-worker-thread-contexts-plan.md`).
 
 ## Goal
 
