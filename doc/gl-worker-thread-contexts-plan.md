@@ -1,7 +1,21 @@
 # OpenGL worker-thread GL contexts -- plan
 
-Status: Phase 0 (section 3) is IMPLEMENTED and verified; phases 1-7
-(commits 4-14 in section 13) are planned, not implemented.
+Status (2026-08-28): IMPLEMENTATION COMPLETE. All required commits
+(1-2 and 4-14 in section 13; commit 3's residual gate-collapse stays
+optional and skipped) are
+implemented and committed, and **the section 1 bug is fixed**: the GL
+build loads `ABeautifulGame.glb` and `controller_left.glb` with zero
+stderr and a clean `quit_after_frames` exit, the log confirms
+"Created 4 GL worker share contexts", and MCP-driven Catmull-Clark
+subdivides exercised the worker mesh-operation path end to end. The
+phase-boundary sweep is green: ninja Vulkan Debug, VS null backend,
+Quest APK, build_tests + ctest 645/645.
+
+What remains is **verification only**, no code: section 12's status
+block lists the open items (7, 9, 10, and parts of 8), and section
+11's `Mesh_memory` pool-vector race still needs its own commit or an
+explicit written deferral.
+
 Important: Read doc/gl-spec-section-5.md - consider it carefully, apply
 it to this plan when you review the plan.
 
@@ -189,7 +203,7 @@ stay conditional (`ARB_bindless_texture` is an extension, not 4.5 core), and
 the `GL_ARB_shading_language_packing` polyfill stays (it is gated on
 extension availability, not GL version).
 
-## 4. Phase 1 -- the thread-role guard
+## 4. Phase 1 -- DONE (`f70a756ae`) -- the thread-role guard
 
 Note: the `DRAW_CAPABLE` guard sites placed here are transitional -- the
 per-context caches (section 10, commits 10-11) relax most of them to
@@ -337,7 +351,7 @@ Phase 1 is independently valuable and independently committable: on its own it
 turns the driver crash into a named assert, with no behavior change on any
 configuration that passes today.
 
-## 5. Phase 2 -- cross-context publication
+## 5. Phase 2 -- DONE (landed with commit 12, `90fc6efaa`) -- cross-context publication
 
 **This is a first-class part of the design, not a detail of the API.**
 
@@ -573,7 +587,7 @@ fence to the handoff**, and section 12 item 9 (worker texture upload) must
 exercise it: the main thread writes the staging buffer, fences, and the
 worker waits before copying.
 
-## 6. Phase 3 -- the worker context API and per-object access
+## 6. Phase 3 -- DONE (commits 8-9, 12) -- the worker context API and per-object access
 
 The call sites (`deferred_finalize_mesh_items`,
 `build_imported_buffer_meshes`, the lightmap partitioner) are **backend-shared
@@ -1211,7 +1225,7 @@ creation is not implementable:
 First acquire happens on a worker, so lazy creation would need a main-thread
 request/response hop, which buys nothing over a fixed pool of 4.
 
-## 7. Phase 4 -- retire ERHE_PARALLEL_INIT
+## 7. Phase 4 -- DONE (`5abcb5bfa`) -- retire ERHE_PARALLEL_INIT
 
 `ERHE_PARALLEL_INIT` is defined at `editor.cpp:5`, inside
 `#if !defined(ERHE_SERIAL_INIT)` -- and `ERHE_SERIAL_INIT` is defined
@@ -1249,7 +1263,7 @@ plan invalidates -- and `doc/init_status_display_phase_ii.md:13`.
 system. Leave it alone -- but note it, so a grep hit does not read as a live
 call site.
 
-## 8. Phase 5 -- context creation and lifetime
+## 8. Phase 5 -- DONE (commits 5, 12) -- context creation and lifetime
 
 ### Creation
 
@@ -1347,7 +1361,7 @@ For `Lightmap_partitioner`, note that the serial path is chosen at launch
 time (`lightmap_partitioner.cpp:515`), not inside `process_region`, so the
 predicate has to be evaluated in `request_prepare`.
 
-## 9. Phase 6 -- the call sites
+## 9. Phase 6 -- DONE (landed with commit 12, `90fc6efaa`) -- the call sites
 
 GPU-allocating worker tasks:
 
@@ -1459,7 +1473,7 @@ Consequences:
 commented out. If revived it needs a worker context; record that in
 `src/erhe/primitive/erhe_primitive/notes.md`.
 
-## 10. Phase 7 -- per-context binding state and state tracker
+## 10. Phase 7 -- DONE (commits 10-11) -- per-context binding state and state tracker
 
 **Integral to this plan.** Its place in the sequence: after the per-context
 container objects and accessors (commits 8-9), which supply its two
@@ -1619,7 +1633,10 @@ Nothing in the earlier phases is wasted: the guards relax rather than being
 discarded, and the context index and the deferred queue (commits 8-9) are the
 prerequisites that fix this phase's place in the sequence.
 
-## 11. Known pre-existing race this plan makes reachable
+## 11. STILL OPEN -- known pre-existing race this plan makes reachable
+
+Status (2026-08-28): not addressed by commits 1-14. Still needs its own
+commit, or an explicit written deferral in doc/.
 
 `Mesh_memory::allocate_vertex_buffer_range` does
 `m_vertex_pools.emplace_back(...)` on the worker (`mesh_memory.cpp:525`;
@@ -1653,7 +1670,19 @@ open. Do not leave it unstated.
 
 ## 12. Verification
 
-Phase 0's gate has already been run (section 3). For the remaining phases:
+Status (2026-08-28): phase 0's gate was run (section 3). Of the items
+below: **item 1 is done** for `ABeautifulGame.glb` and
+`controller_left.glb` (zero stderr, clean `quit_after_frames=240` exit
+exercising pool teardown; a Bistro-scale pool-exhaustion run is not
+separately recorded); **item 5's builds are done** (ninja Vulkan Debug,
+VS null backend, Quest APK; the user minimally verified the Vulkan VS
+build interactively); **item 8's mesh-operations half is done**
+(MCP-driven Catmull-Clark on the GL build: cube 6->24->96 facets,
+icosahedron 20->60, tetrahedron 4->12, zero stderr); **item 11 is
+done** (ctest 645/645). REMAINING: item 7 (needs dedicated scaffolding;
+no natural call site), item 8's CSG / geometry-graph / lightmap halves,
+item 9 (no call site exists; the mechanism is in place and dormant),
+and item 10's scrub-queue checks.
 
 1. **The repro.** `build_vs2026_opengl` Debug, `editor.exe --scene
    res/editor/assets/ABeautifulGame.glb` from `D:\erhe`. Loads, renders, no
@@ -1789,8 +1818,11 @@ Phase 0's gate has already been run (section 3). For the remaining phases:
    compute and geometry fallbacks` -- the compute/SSBO half of the original
    gate-collapse survey. The rest (section 3's "still open" list) remains
    optional and required by nothing below.
-4. `graphics: GL thread-role guards` -- section 4. Turns the crash into a
-   named assert.
+4. **DONE** (`f70a756ae`) `graphics: GL thread-role guards` -- section 4.
+   Turns the crash into a named assert. As landed, the repro dies with a
+   named assert at `Device_impl::create_buffer` (symbolized stack), and
+   the seven `on_*_deleted` hooks landed **log-once**, never promoted --
+   commit 11 retired them as planned.
 
    **It is only safe in isolation for object *creation*.** The reasoning
    "the only GL path reaching `create_buffer` off the main thread is the glTF
@@ -1828,16 +1860,23 @@ Phase 0's gate has already been run (section 3). For the remaining phases:
    (`HAS_CONTEXT` on the object creators/destructors is unaffected), with
    section 4's main-thread deferred-delete queue as the fix if a real such
    site turns up.
-5. `window: fix Context_window event-watch and GL context teardown` --
-   section 8's three lifetime defects, plus the worker debug callback.
+5. **DONE** (`711e13939`, doc follow-up `c54c67059`)
+   `window: fix Context_window event-watch and GL context teardown` --
+   section 8's three lifetime defects, plus the worker debug callback
+   (extracted to `Device_impl::install_gl_debug_callback()`, per-context).
    **Must land before any pool exists.**
-6. `editor: retire ERHE_PARALLEL_INIT` -- section 7, mechanical and
+6. **DONE** (`5abcb5bfa`)
+   `editor: retire ERHE_PARALLEL_INIT` -- section 7, mechanical and
    **independently committable**: the blocks are dead (section 7), so this is
    pure removal that interacts with nothing. It must land **before** commit 12,
    which cannot delete `Gl_context_provider` while `editor.cpp:1446` and
    `:1612` still name it.
-7. `scene: build brush Build_info on the main thread` -- section 9, hygiene.
-8. `graphics: per-context container objects` -- section 6, applied to **all
+7. **DONE** (`11c0da86a`)
+   `scene: build brush Build_info on the main thread` -- section 9,
+   hygiene. Also asserts the `get_vertex_input_from_vertex_format`
+   miss-path invariant (owner thread + frozen-after-ctor) per section 6.
+8. **DONE** (`836cb0afb`)
+   `graphics: per-context container objects` -- section 6, applied to **all
    three** of `Vertex_input_state_impl`, `Render_pass_impl` and
     `Gpu_timer_impl`, though **not all three the same way** (section 6):
 
@@ -1870,7 +1909,8 @@ Phase 0's gate has already been run (section 3). For the remaining phases:
    a dangling registry pointer. That stops mattering when the registry stops
    existing. If this commit slips, land the one-line erase fix separately; it
    is independently correct.
-9. `graphics: per-object scoped accessors` -- `Scoped_vertex_input_state` and
+9. **DONE** (`d79a86255`)
+   `graphics: per-object scoped accessors` -- `Scoped_vertex_input_state` and
    `Scoped_framebuffer`, no-ops on non-GL backends, plus the deferred
    per-context delete queues. **Adopt them main-thread-first**, at *all four*
    adoption points section 6 names -- converting only the first is the
@@ -1890,7 +1930,8 @@ Phase 0's gate has already been run (section 3). For the remaining phases:
    which has no adoption point at all. Converting these in this commit is
    what gets the mechanism exercised on every frame rather than only by a
    future worker.
-10. `graphics: per-context Gl_binding_state and OpenGL_state_tracker` --
+10. **DONE** (`4292ee42b`)
+    `graphics: per-context Gl_binding_state and OpenGL_state_tracker` --
     section 10's core. Each context gets a **wired pair** -- the tracker
     holds its own binding-state and device pointers (`gl_device.cpp:125`,
     `:529`) -- keyed by the commit-8 context index.
@@ -1906,7 +1947,8 @@ Phase 0's gate has already been run (section 3). For the remaining phases:
     **Behaviour-neutral with one context in existence** -- the same
     bisectability property as commit 8, and the reason this lands before the
     pool exists (commit 12) rather than after.
-11. `graphics: cross-context scrub queue for shared-object deletion` --
+11. **DONE** (`17520f004`)
+    `graphics: cross-context scrub queue for shared-object deletion` --
     section 10 cost 2: per-context scrub queues sharing commit 9's deferred
     queue mechanism, real GL unbinds on drain, the name-recycling epoch, and
     the explicit main-thread drain point in `Device_impl::wait_frame()` /
@@ -1917,7 +1959,8 @@ Phase 0's gate has already been run (section 3). For the remaining phases:
     role enum, `HAS_CONTEXT`, and the readback / encoder-construction
     `DRAW_CAPABLE` sites stay. Also correct the wrong comment at
     `gl_binding_state.hpp:147` here.
-12. `graphics: GL worker contexts, and their call sites` -- the residual
+12. **DONE** (`90fc6efaa`)
+    `graphics: GL worker contexts, and their call sites` -- the residual
     parts of sections 5, 6 and 8 plus section 9, in **one** commit (the rest
     of section 6 is commits 8 and 9; section 8's lifetime defects are commit
     5): `Scoped_worker_context`, re-entrancy, the
@@ -1935,14 +1978,27 @@ Phase 0's gate has already been run (section 3). For the remaining phases:
     commit 6 to have removed the last `Gl_context_provider` references, and
     commits 10-11 so that workers arrive on a tree with no shared cache left
     to corrupt.
-13. `graphics: split the Blit_command_encoder guard per method` -- section 4:
+
+    **Deviation, recorded in the commit message:** a share-context creation
+    failure aborts via `Context_window`'s verify instead of degrading to a
+    smaller pool. As landed: the pool acquire is a mutex + condition-variable
+    free-slot list on `Device_impl`; `Device::supports_worker_contexts()`
+    (true off GL); `Gl_publication_sync` on `Buffer_impl` / `Texture_impl`
+    with consumer waits in `upload_to_buffer`, `set_sampled_image`,
+    `set_storage_image` and `Texture_heap` allocate; and
+    `async_for_nodes_with_mesh` gained `op_builds_gpu_meshes` (default true)
+    which wraps the op in a scope and runs it inline on main when
+    `!supports_worker_contexts()`.
+13. **DONE** (`f199094f1`)
+    `graphics: split the Blit_command_encoder guard per method` -- section 4:
     upload and copy take `HAS_CONTEXT`, `blit_framebuffer` additionally
     requires `Scoped_framebuffer`, readback keeps `DRAW_CAPABLE`. Depends on
     commit 9. Because this commit legalizes a worker-side `blit_framebuffer`,
     it also adds the blit destination's publication fence and, if the source
     was main-written, the main-side fence of section 5's reverse-direction
     rule.
-14. `editor: print a callstack for structured exceptions` -- see below.
+14. **DONE** (`7aa667d05`)
+    `editor: print a callstack for structured exceptions` -- see below.
 
 Section 11's `Mesh_memory` pool-vector race gets its own commit or an
 explicit written deferral; it is not covered by any of the above.
