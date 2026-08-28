@@ -5,6 +5,7 @@
 #include "erhe_graphics/gl/gl_helpers.hpp"
 #include "erhe_graphics/gl/gl_render_pass.hpp"
 #include "erhe_graphics/gl/gl_gpu_timer.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/gl/gl_vertex_input_state.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_dataformat/vertex_format.hpp"
@@ -488,6 +489,7 @@ void Vertex_input_state_tracker::reset()
 
 void Vertex_input_state_tracker::execute(const Vertex_input_state* const state)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(m_binding_state != nullptr);
     // Core-profile GL requires a non-zero vertex array object bound for every draw,
     // even when the pipeline declares no vertex input (e.g. a gl_VertexID-driven
@@ -519,6 +521,7 @@ void Vertex_input_state_tracker::execute(const Vertex_input_state* const state)
 
 void Vertex_input_state_tracker::set_index_buffer(const Buffer* buffer) const
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(m_binding_state != nullptr);
     const GLuint vao = m_binding_state->get_bound_vertex_array();
     ERHE_VERIFY(vao != 0); // Must have VAO bound
@@ -532,6 +535,7 @@ void Vertex_input_state_tracker::set_vertex_buffer(
     const std::uintptr_t offset
 )
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(m_binding_state != nullptr);
     const GLuint vao = m_binding_state->get_bound_vertex_array();
     ERHE_VERIFY(vao != 0); // Must have VAO bound
@@ -618,6 +622,7 @@ void OpenGL_state_tracker::set_binding_state(Gl_binding_state* const binding_sta
 
 void OpenGL_state_tracker::on_thread_exit()
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     vertex_input .reset();
     shader_stages.reset();
 
@@ -628,6 +633,7 @@ void OpenGL_state_tracker::on_thread_exit()
 
 void OpenGL_state_tracker::on_thread_enter()
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     Render_pass_impl       ::on_thread_enter();
     Vertex_input_state_impl::on_thread_enter();
     Gpu_timer_impl         ::on_thread_enter();
@@ -637,6 +643,7 @@ void OpenGL_state_tracker::reset()
 {
     ERHE_PROFILE_FUNCTION();
 
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     shader_stages       .reset();
     vertex_input        .reset();
     input_assembly      .reset();
@@ -653,6 +660,7 @@ void OpenGL_state_tracker::execute_(const Render_pipeline_state& pipeline, const
 {
     ERHE_PROFILE_FUNCTION();
 
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     if (!skip_shader_stages) {
         shader_stages.execute(pipeline.data.shader_stages);
     }
@@ -671,6 +679,7 @@ void OpenGL_state_tracker::execute_(const Render_pipeline_state& pipeline, const
 
 void OpenGL_state_tracker::execute_(const Compute_pipeline_state& pipeline)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     shader_stages.execute(pipeline.data.shader_stages);
 }
 

@@ -164,6 +164,8 @@ if (ERHE_GRAPHICS_API_OPENGL)
         erhe_graphics/gl/gl_texture.hpp
         erhe_graphics/gl/gl_texture_heap.cpp
         erhe_graphics/gl/gl_texture_heap.hpp
+        erhe_graphics/gl/gl_thread_role.cpp
+        erhe_graphics/gl/gl_thread_role.hpp
         erhe_graphics/gl/gl_vertex_input_state.cpp
         erhe_graphics/gl/gl_vertex_input_state.hpp
     )

@@ -3,6 +3,7 @@
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_render_pass.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_gl/gl_helpers.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_dataformat/dataformat.hpp"
@@ -17,6 +18,11 @@ namespace erhe::graphics {
 Blit_command_encoder_impl::Blit_command_encoder_impl(Device& device, Command_buffer& command_buffer)
     : Command_encoder_impl{device, command_buffer}
 {
+    // Transitional: guarding at construction makes every upload/copy path
+    // main-thread-only as a side effect. A later commit splits the guard per
+    // method (upload/copy HAS_CONTEXT, blit via Scoped_framebuffer, readback
+    // DRAW_CAPABLE) once the per-object accessors exist.
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
 }
 
 Blit_command_encoder_impl::~Blit_command_encoder_impl() noexcept = default;

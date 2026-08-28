@@ -1,7 +1,12 @@
 #include "erhe_graphics/gl/gl_binding_state.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/graphics_log.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_verify/verify.hpp"
 
+#include <atomic>
+#include <sstream>
+#include <thread>
 #include <utility>
 
 namespace erhe::graphics {
@@ -178,6 +183,7 @@ auto Gl_binding_state::texture_target_to_index(const gl::Texture_target target) 
 
 auto Gl_binding_state::push_buffer(const gl::Buffer_target target, const GLuint buffer) -> Buffer_binding_guard
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(target != gl::Buffer_target::element_array_buffer);
     const std::size_t index = buffer_target_to_index(target);
     m_buffer_stack[index].push_back(m_bound_buffers[index]);
@@ -187,6 +193,7 @@ auto Gl_binding_state::push_buffer(const gl::Buffer_target target, const GLuint 
 
 void Gl_binding_state::pop_buffer(const gl::Buffer_target target)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(target != gl::Buffer_target::element_array_buffer);
     const std::size_t index = buffer_target_to_index(target);
     ERHE_VERIFY(!m_buffer_stack[index].empty());
@@ -197,6 +204,7 @@ void Gl_binding_state::pop_buffer(const gl::Buffer_target target)
 
 void Gl_binding_state::bind_buffer(const gl::Buffer_target target, const GLuint buffer)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     // element_array_buffer binding is part of VAO state, not global state.
     // We do not track it here; let it pass through directly to GL.
     if (target == gl::Buffer_target::element_array_buffer) {
@@ -220,6 +228,7 @@ auto Gl_binding_state::get_bound_buffer(const gl::Buffer_target target) const ->
 
 auto Gl_binding_state::push_texture(const GLuint unit, const gl::Texture_target target, const GLuint texture) -> Texture_binding_guard
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(unit < s_max_texture_units);
     const std::size_t target_index = texture_target_to_index(target);
     m_texture_stack[unit][target_index].push_back(m_bound_textures[unit][target_index]);
@@ -229,6 +238,7 @@ auto Gl_binding_state::push_texture(const GLuint unit, const gl::Texture_target 
 
 void Gl_binding_state::pop_texture(const GLuint unit, const gl::Texture_target target)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(unit < s_max_texture_units);
     const std::size_t target_index = texture_target_to_index(target);
     ERHE_VERIFY(!m_texture_stack[unit][target_index].empty());
@@ -239,6 +249,7 @@ void Gl_binding_state::pop_texture(const GLuint unit, const gl::Texture_target t
 
 void Gl_binding_state::bind_texture(const GLuint unit, const gl::Texture_target target, const GLuint texture)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(unit < s_max_texture_units);
     const std::size_t target_index = texture_target_to_index(target);
     if (m_bound_textures[unit][target_index] != texture) {
@@ -261,6 +272,7 @@ auto Gl_binding_state::get_bound_texture(const GLuint unit, const gl::Texture_ta
 
 auto Gl_binding_state::push_framebuffer(const gl::Framebuffer_target target, const GLuint framebuffer) -> Framebuffer_binding_guard
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     switch (target) {
         case gl::Framebuffer_target::draw_framebuffer: {
             m_draw_framebuffer_stack.push_back(m_draw_framebuffer);
@@ -282,6 +294,7 @@ auto Gl_binding_state::push_framebuffer(const gl::Framebuffer_target target, con
 
 void Gl_binding_state::pop_framebuffer(const gl::Framebuffer_target target)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     switch (target) {
         case gl::Framebuffer_target::draw_framebuffer: {
             ERHE_VERIFY(!m_draw_framebuffer_stack.empty());
@@ -317,6 +330,7 @@ void Gl_binding_state::pop_framebuffer(const gl::Framebuffer_target target)
 
 void Gl_binding_state::bind_framebuffer(const gl::Framebuffer_target target, const GLuint framebuffer)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     switch (target) {
         case gl::Framebuffer_target::draw_framebuffer: {
             if (m_draw_framebuffer != framebuffer) {
@@ -359,6 +373,7 @@ auto Gl_binding_state::get_read_framebuffer() const -> GLuint
 
 auto Gl_binding_state::push_renderbuffer(const GLuint renderbuffer) -> Renderbuffer_binding_guard
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     m_renderbuffer_stack.push_back(m_bound_renderbuffer);
     bind_renderbuffer(renderbuffer);
     return Renderbuffer_binding_guard{*this};
@@ -366,6 +381,7 @@ auto Gl_binding_state::push_renderbuffer(const GLuint renderbuffer) -> Renderbuf
 
 void Gl_binding_state::pop_renderbuffer()
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(!m_renderbuffer_stack.empty());
     const GLuint old = m_renderbuffer_stack.back();
     m_renderbuffer_stack.pop_back();
@@ -374,6 +390,7 @@ void Gl_binding_state::pop_renderbuffer()
 
 void Gl_binding_state::bind_renderbuffer(const GLuint renderbuffer)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     if (m_bound_renderbuffer != renderbuffer) {
         m_bound_renderbuffer = renderbuffer;
         gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, renderbuffer);
@@ -389,6 +406,7 @@ auto Gl_binding_state::get_bound_renderbuffer() const -> GLuint
 
 auto Gl_binding_state::push_vertex_array(const GLuint vao) -> Vertex_array_binding_guard
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     m_vertex_array_stack.push_back(m_bound_vertex_array);
     bind_vertex_array(vao);
     return Vertex_array_binding_guard{*this};
@@ -396,6 +414,7 @@ auto Gl_binding_state::push_vertex_array(const GLuint vao) -> Vertex_array_bindi
 
 void Gl_binding_state::pop_vertex_array()
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(!m_vertex_array_stack.empty());
     const GLuint old = m_vertex_array_stack.back();
     m_vertex_array_stack.pop_back();
@@ -404,6 +423,7 @@ void Gl_binding_state::pop_vertex_array()
 
 void Gl_binding_state::bind_vertex_array(const GLuint vao)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     if (m_bound_vertex_array != vao) {
         m_bound_vertex_array = vao;
         gl::bind_vertex_array(vao);
@@ -419,6 +439,7 @@ auto Gl_binding_state::get_bound_vertex_array() const -> GLuint
 
 void Gl_binding_state::bind_sampler(const GLuint unit, const GLuint sampler)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(unit < s_max_texture_units);
     if (m_bound_samplers[unit] != sampler) {
         m_bound_samplers[unit] = sampler;
@@ -436,6 +457,7 @@ auto Gl_binding_state::get_bound_sampler(const GLuint unit) const -> GLuint
 
 void Gl_binding_state::use_program(const GLuint program)
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     if (m_current_program != program) {
         m_current_program = program;
         gl::use_program(program);
@@ -451,6 +473,27 @@ auto Gl_binding_state::get_current_program() const -> GLuint
 //
 // A helper that scrubs a single-slot value.
 namespace {
+
+// The delete hooks scrub the shared binding cache, which only the draw
+// thread may touch - but worker-side destruction has not been audited to be
+// unreachable, so an off-thread call logs once per hook instead of aborting.
+// Transitional: the per-context scrub queue (plan section 10, commit 11)
+// routes worker-side deletion through deferred queues and retires this
+// check entirely - do not promote it to ERHE_VERIFY.
+void log_once_off_thread_delete(std::atomic<bool>& logged, const char* hook, const GLuint name)
+{
+    if (get_gl_thread_role() == Gl_thread_role::main) {
+        return;
+    }
+    if (!logged.exchange(true)) {
+        std::stringstream thread_id;
+        thread_id << std::this_thread::get_id();
+        log_threads->warn(
+            "Gl_binding_state::{}({}) called off the GL draw thread (thread {}); the shared binding cache scrub is unsynchronized",
+            hook, name, thread_id.str()
+        );
+    }
+}
 
 void scrub(GLuint& slot, GLuint deleted)
 {
@@ -472,6 +515,8 @@ void scrub(std::vector<GLuint>& stack, GLuint deleted)
 
 void Gl_binding_state::on_texture_deleted(const GLuint texture)
 {
+    static std::atomic<bool> s_logged{false};
+    log_once_off_thread_delete(s_logged, "on_texture_deleted", texture);
     if (texture == 0) {
         return;
     }
@@ -489,6 +534,8 @@ void Gl_binding_state::on_texture_deleted(const GLuint texture)
 
 void Gl_binding_state::on_buffer_deleted(const GLuint buffer)
 {
+    static std::atomic<bool> s_logged{false};
+    log_once_off_thread_delete(s_logged, "on_buffer_deleted", buffer);
     if (buffer == 0) {
         return;
     }
@@ -502,6 +549,8 @@ void Gl_binding_state::on_buffer_deleted(const GLuint buffer)
 
 void Gl_binding_state::on_sampler_deleted(const GLuint sampler)
 {
+    static std::atomic<bool> s_logged{false};
+    log_once_off_thread_delete(s_logged, "on_sampler_deleted", sampler);
     if (sampler == 0) {
         return;
     }
@@ -512,6 +561,8 @@ void Gl_binding_state::on_sampler_deleted(const GLuint sampler)
 
 void Gl_binding_state::on_framebuffer_deleted(const GLuint framebuffer)
 {
+    static std::atomic<bool> s_logged{false};
+    log_once_off_thread_delete(s_logged, "on_framebuffer_deleted", framebuffer);
     if (framebuffer == 0) {
         return;
     }
@@ -523,6 +574,8 @@ void Gl_binding_state::on_framebuffer_deleted(const GLuint framebuffer)
 
 void Gl_binding_state::on_renderbuffer_deleted(const GLuint renderbuffer)
 {
+    static std::atomic<bool> s_logged{false};
+    log_once_off_thread_delete(s_logged, "on_renderbuffer_deleted", renderbuffer);
     if (renderbuffer == 0) {
         return;
     }
@@ -532,6 +585,8 @@ void Gl_binding_state::on_renderbuffer_deleted(const GLuint renderbuffer)
 
 void Gl_binding_state::on_vertex_array_deleted(const GLuint vertex_array)
 {
+    static std::atomic<bool> s_logged{false};
+    log_once_off_thread_delete(s_logged, "on_vertex_array_deleted", vertex_array);
     if (vertex_array == 0) {
         return;
     }
@@ -541,6 +596,8 @@ void Gl_binding_state::on_vertex_array_deleted(const GLuint vertex_array)
 
 void Gl_binding_state::on_program_deleted(const GLuint program)
 {
+    static std::atomic<bool> s_logged{false};
+    log_once_off_thread_delete(s_logged, "on_program_deleted", program);
     if (program == 0) {
         return;
     }

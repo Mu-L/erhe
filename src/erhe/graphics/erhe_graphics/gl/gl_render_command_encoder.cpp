@@ -8,6 +8,7 @@
 #include "erhe_graphics/gl/gl_render_pass.hpp"
 #include "erhe_graphics/gl/gl_sampler.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
@@ -19,6 +20,7 @@ namespace erhe::graphics {
 Render_command_encoder_impl::Render_command_encoder_impl(Device& device, Command_buffer& command_buffer)
     : Command_encoder_impl{device, command_buffer}
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
 }
 
 Render_command_encoder_impl::~Render_command_encoder_impl() noexcept = default;

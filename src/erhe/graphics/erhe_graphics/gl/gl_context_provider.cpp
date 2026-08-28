@@ -67,6 +67,11 @@ void Gl_context_provider::provide_worker_contexts(
 
 auto Gl_context_provider::acquire_gl_context() -> Gl_worker_context
 {
+    // Dead code: only reachable under ERHE_PARALLEL_INIT, which is never
+    // defined. Re-enabling it now aborts - the OpenGL_state_tracker thread
+    // hooks called below are draw-thread-only (see gl_thread_role.hpp) and
+    // this worker thread's role is none. The replacement worker-context API
+    // deletes this class entirely.
     ERHE_PROFILE_COLOR("acquire_gl_context", 0x444444);
 
     if (std::this_thread::get_id() == m_main_thread_id) {

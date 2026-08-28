@@ -2,6 +2,7 @@
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/compute_pipeline_state.hpp"
 #include "erhe_graphics/texture.hpp"
 
@@ -16,6 +17,7 @@ namespace erhe::graphics {
 Compute_command_encoder_impl::Compute_command_encoder_impl(Device& device, Command_buffer& command_buffer)
     : Command_encoder_impl{device, command_buffer}
 {
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
 }
 
 Compute_command_encoder_impl::~Compute_command_encoder_impl() noexcept

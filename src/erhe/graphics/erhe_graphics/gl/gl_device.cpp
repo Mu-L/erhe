@@ -23,6 +23,7 @@
 #include "erhe_graphics/gl/gl_debug.hpp"
 #include "erhe_graphics/gl/gl_render_command_encoder.hpp"
 #include "erhe_graphics/gl/gl_scoped_debug_group.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/renderdoc_app.h"
@@ -118,6 +119,9 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     , m_gl_context_provider{device, m_gl_state_tracker}
 {
     ERHE_PROFILE_FUNCTION();
+
+    // The constructing thread owns the drawing context.
+    set_gl_thread_role(Gl_thread_role::main);
 
     // Single source of truth for the bound VAO. The per-draw tracker and the
     // VAO-setup push/pop guards in Vertex_input_state_impl must share state,
@@ -1131,6 +1135,7 @@ void Device_impl::add_completion_handler(std::function<void(Device_impl&)> callb
 
 void Device_impl::on_thread_enter()
 {
+    set_gl_thread_role(Gl_thread_role::main);
     m_gl_state_tracker.on_thread_enter();
 }
 
@@ -1673,8 +1678,16 @@ auto Device_impl::get_default_vertex_input_state() -> const Vertex_input_state*
 //
 // gl::create_* creates the object immediately (no bind needed).
 
+// Shared-object creators take ERHE_VERIFY_GL_THREAD_HAS_CONTEXT(): legal on
+// any thread with a context current, main or worker. Container objects
+// (vertex arrays, framebuffers) are per-context; their creators also take
+// HAS_CONTEXT because per-object accessors guarantee the object being
+// created belongs to the calling thread's own context. create_query is the
+// exception: Gpu_timer is main-thread-only, so it takes DRAW_CAPABLE.
+
 auto Device_impl::create_texture(gl::Texture_target target) -> Gl_texture
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name{0};
     gl::create_textures(target, 1, &name);
     ERHE_VERIFY(name != 0);
@@ -1685,6 +1698,7 @@ auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
 {
     // Texture views use gen_textures (name only, no object created yet).
     // The object is created later by glTextureView.
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     static_cast<void>(target);
     GLuint name{0};
     gl::gen_textures(1, &name);
@@ -1694,6 +1708,7 @@ auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
 
 auto Device_impl::create_buffer() -> Gl_buffer
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name{0};
     gl::create_buffers(1, &name);
     ERHE_VERIFY(name != 0);
@@ -1702,6 +1717,7 @@ auto Device_impl::create_buffer() -> Gl_buffer
 
 auto Device_impl::create_framebuffer() -> Gl_framebuffer
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name{0};
     gl::create_framebuffers(1, &name);
     ERHE_VERIFY(name != 0);
@@ -1710,6 +1726,7 @@ auto Device_impl::create_framebuffer() -> Gl_framebuffer
 
 auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name{0};
     gl::create_renderbuffers(1, &name);
     ERHE_VERIFY(name != 0);
@@ -1718,6 +1735,7 @@ auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
 
 auto Device_impl::create_sampler() -> Gl_sampler
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name{0};
     gl::create_samplers(1, &name);
     ERHE_VERIFY(name != 0);
@@ -1726,6 +1744,7 @@ auto Device_impl::create_sampler() -> Gl_sampler
 
 auto Device_impl::create_vertex_array() -> Gl_vertex_array
 {
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name{0};
     gl::create_vertex_arrays(1, &name);
     ERHE_VERIFY(name != 0);
@@ -1734,6 +1753,9 @@ auto Device_impl::create_vertex_array() -> Gl_vertex_array
 
 auto Device_impl::create_query(gl::Query_target target) -> Gl_query
 {
+    // Only Gpu_timer_impl::create() calls this, and Gpu_timer is
+    // main-thread-only (its per-context state is a ring of four queries).
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     GLuint name{0};
     gl::create_queries(target, 1, &name);
     ERHE_VERIFY(name != 0);
@@ -1743,6 +1765,7 @@ auto Device_impl::create_query(gl::Query_target target) -> Gl_query
 auto Device_impl::create_program() -> Gl_program
 {
     // glCreateProgram is not DSA — available since GL 2.0.
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name = gl::create_program();
     ERHE_VERIFY(name != 0);
     return Gl_program{name, &m_gl_binding_state};
@@ -1751,6 +1774,7 @@ auto Device_impl::create_program() -> Gl_program
 auto Device_impl::create_shader(gl::Shader_type type) -> Gl_shader
 {
     // glCreateShader is not DSA — available since GL 2.0.
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name = gl::create_shader(type);
     ERHE_VERIFY(name != 0);
     return Gl_shader{name};
