@@ -1,5 +1,7 @@
 #include "crash_handler.hpp"
 
+#include "erhe_verify/verify.hpp" // erhe_dump_callstack
+
 #if defined(_WIN32)
 
 // clang-format off
@@ -82,6 +84,12 @@ LONG WINAPI unhandled_exception_filter(EXCEPTION_POINTERS* exception_pointers)
         : 0;
     std::fprintf(stderr, "[crash] unhandled exception (code=0x%08lx)\n", code);
     std::fflush(stderr);
+    // Symbolized stack of the faulting thread, straight to stderr: the
+    // minidump below needs cdb / windbg to read, which a bare machine (or a
+    // CI log) does not have. This filter runs on the faulting thread, so
+    // the walk starts inside the handler frames and continues through the
+    // fault site.
+    erhe_dump_callstack();
     write_minidump(exception_pointers);
     return EXCEPTION_EXECUTE_HANDLER; // terminate the process
 }
