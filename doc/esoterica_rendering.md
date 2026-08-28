@@ -11,7 +11,7 @@ The two engines make opposite foundational bets:
 
 | Axis | Esoterica | erhe |
 |---|---|---|
-| Portability | None — D3D12 + SM 6.6 + mesh shaders required | Vulkan, OpenGL (down to 4.1), Metal, headless null; Android/Quest |
+| Portability | None — D3D12 + SM 6.6 + mesh shaders required | Vulkan, OpenGL (4.5 + DSA minimum), Metal, headless null; Android/Quest |
 | Draw submission | Fully GPU-driven (compute culling → `ExecuteIndirect` mesh dispatch); zero per-instance CPU work | CPU builds indirect command lists per frame; `multi_draw_indexed_primitives_indirect` per pipeline |
 | Binding model | Bindless-only (SM 6.6 `ResourceDescriptorHeap`); no vertex buffers or input layouts at all | Four texture-heap strategies per backend; classic vertex input; UBO/SSBO binding points |
 | Shaders | HLSL, offline DXC compile, fixed permutation set (~4 per material shader), all PSOs at init | GLSL, runtime glslang→SPIR-V with disk cache, large variant space (24 bool + 20 int axes), on-demand compile + prewarm + hot reload |
@@ -238,8 +238,9 @@ order.
   graph to slot a `Gtao_rendergraph_node` between the depth prepass and the
   forward pass. Output an AO texture sampled in `standard.frag`
   (`ao * material occlusion`), plus a `Shader_debug` mode.
-- Fallback: skip on devices without compute (GL 4.1) — flat AO=1, same pattern
-  as the sky LUT and wide-line compute paths.
+- Fallback: skip on devices without compute — flat AO=1, same pattern
+  as the sky LUT and wide-line compute paths. (All supported GL devices have
+  compute now that OpenGL 4.5 is the hard minimum.)
 
 **1.4 IBL — split-sum environment lighting** (medium-large)
 - Steps, all with existing machinery (cube-map array render passes exist for

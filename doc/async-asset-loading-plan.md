@@ -422,8 +422,9 @@ pressure on Metal.
   consumers above.
   The previously proposed "create the texture and clear it to a solid color"
   is not implementable here: clearing needs `use_clear_texture`
-  (GL >= 4.4 / `GL_ARB_clear_texture`, `gl_device.cpp:384` - **false on macOS
-  GL 4.1**) or the render-pass fallback, which would require render-target
+  (GL >= 4.4 / `GL_ARB_clear_texture`, `gl_device.cpp:384` - always true on GL
+  now that 4.5 is the hard minimum; it was false on the since-removed macOS
+  GL 4.1 path) or the render-pass fallback, which would require render-target
   usage on every imported texture (they are created `sampled |
   transfer_dst`, `gltf_fastgltf.cpp:1430-1447`), and it is impossible for the
   block-compressed images this parser produces (`KHR_texture_basisu`,

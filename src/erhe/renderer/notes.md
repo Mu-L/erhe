@@ -33,8 +33,8 @@ GPU rendering utilities for debug visualization and text overlay in 3D viewports
 
 ## Notes
 - Debug lines have three rendering paths, selected at startup based on GPU capabilities:
-  1. **Compute shader** (GL 4.3+): lines stored as SSBO data, expanded to triangles by compute shader.
-  2. **Geometry shader** (GL 4.1+): lines drawn as GL_LINES, expanded to triangle strips by geometry shader for configurable width.
+  1. **Compute shader** (preferred; every supported GL device qualifies now that OpenGL 4.5 is the hard minimum): lines stored as SSBO data, expanded to triangles by compute shader.
+  2. **Geometry shader** (fallback for devices without compute): lines drawn as GL_LINES, expanded to triangle strips by geometry shader for configurable width.
   3. **Simple GL_LINES** (fallback): 1-pixel wide lines when neither compute nor geometry shader is available.
 - Buckets use `etl::vector` (fixed capacity) so that element addresses remain stable.
 - `Primitive_renderer` is move-only; obtain one per frame per config.

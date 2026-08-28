@@ -193,8 +193,9 @@ public:
         const erhe::scene::Node*                               debug_target_joint{nullptr};
         // When non-null, bypass the Shader_variant_cache lookup and use
         // these stages for every bucket. Used by non-standard primitive
-        // passes (e.g. macOS GL 4.1 edge_lines, where the geometry-shader
-        // wide_lines program replaces the standard mesh shader).
+        // passes that draw with a dedicated program instead of the
+        // standard mesh shader (e.g. an edge_lines pass using the
+        // geometry-shader wide_lines program).
         const erhe::graphics::Shader_stages*                   shader_stages_override{nullptr};
         // When non-null, overrides the per-bucket color-blend state (otherwise
         // color_blend_disabled / color_blend_premultiplied chosen by blend mode).

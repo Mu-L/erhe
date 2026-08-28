@@ -212,8 +212,10 @@ then set **Sky Mode = 1**. The same visual / regression checks (1-7 above) apply
 the window (or with a RenderDoc capture: two compute dispatches binding the LUTs as images,
 then the fullscreen atmosphere draw). In `logs/log.txt`, confirm
 `Sky_renderer::ensure_luts: generating atmosphere LUTs` once and `render_atmosphere first
-call: supported=true ...`; if the startup compute-support line is false (GL < 4.3 or
-`force_no_compute_shader`), `supported=false` and the gradient sky is the expected fallback.
+call: supported=true ...`; if the startup compute-support line is false,
+`supported=false` and the gradient sky is the expected fallback. (This cannot happen on
+GL any more: OpenGL 4.5 is the hard minimum and the `force_no_compute_shader`
+config field has been retired.)
 
 ## Known risks / tuning knobs
 

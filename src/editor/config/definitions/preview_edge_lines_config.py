@@ -5,8 +5,8 @@ from erhe_codegen import *
 # the preview composer draws a second solid-wireframe pass (expanded fill soup
 # + SOLID_WIREFRAME shader variant, depth less-or-equal overlay) on top of the
 # polygon fill, so real polygon edges are visible with no z-fight. Requires
-# Device_info::use_solid_wireframe (where unsupported, e.g. macOS OpenGL 4.1,
-# the toggle is inert). Two instances live in Editor_settings_config:
+# Device_info::use_solid_wireframe (where unsupported, the toggle is inert).
+# Two instances live in Editor_settings_config:
 # graph_node_preview_edge_lines and brush_preview_edge_lines.
 struct("Preview_edge_lines_config",
     reflect=True,

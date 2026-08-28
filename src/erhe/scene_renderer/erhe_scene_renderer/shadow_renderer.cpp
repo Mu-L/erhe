@@ -225,8 +225,8 @@ void Shadow_renderer::draw_shadow_casters(
             continue;
         }
         // Bind the pipeline before the index/vertex buffers: switching the
-        // pipeline switches the GL VAO, and on GL 4.1 (no DSA) the element
-        // array buffer binding is VAO-local.
+        // pipeline switches the GL VAO, and the element array buffer
+        // binding is VAO-local.
         encoder.set_render_pipeline(*render_pipeline);
 
         erhe::graphics::Buffer* index_buffer = m_mesh_memory.get_index_buffer(bucket.buffer_set.index_buffer);

@@ -29,8 +29,8 @@ workaround to the devices that actually need it.
 1. **Detect** the limitation at device init and store a flag on `Device_info`
    (`src/erhe/graphics/erhe_graphics/device.hpp`). Detection is usually by driver
    ID (see the `is_moltenvk` / `is_kosmickrisp` checks in
-   `vulkan_device_init.cpp`), the same way `use_solid_wireframe` is cleared on
-   macOS OpenGL 4.1. The flag defaults to `false`, so backends and drivers that
+   `vulkan_device_init.cpp`), the same way `use_solid_wireframe` was cleared on
+   the since-removed macOS OpenGL 4.1 path. The flag defaults to `false`, so backends and drivers that
    do not need the workaround are unaffected.
 
 2. **Emit** the define into every shader's prelude from that flag, in

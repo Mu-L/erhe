@@ -234,8 +234,9 @@ snapshot. The interface blocks (`id_scan_input` / `id_scan_bitmask` /
 `id_scan_output` / `id_scan_params`) are declared in C++ (`ensure_scan_compute()`)
 and injected by `build_shader_stages`. The bitmask is sized dynamically to the
 live max id and the output to the total facet count (both from the id-range
-snapshot). On devices without compute (e.g. macOS OpenGL 4.1) the original
-per-pixel CPU readback + dedup path is kept as a fallback.
+snapshot). On devices without compute the original per-pixel CPU readback +
+dedup path is kept as a fallback (every supported GL device has compute now
+that OpenGL 4.5 is the hard minimum).
 
 Still future work: compute-shader selection over the GPU vertex / index buffers
 themselves (vertex / edge marking, lasso), and component ID-buffer picking on

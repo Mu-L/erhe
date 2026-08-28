@@ -273,6 +273,7 @@ also idle. The single trailing memory barrier covers both with
 ## Out of scope
 
 - **Geometry-shader fallback** (`debug_line.geom`).
-  Geometry-shader builds (`!use_compute`) target OpenGL 4.1 /
-  macOS where multiview is not relevant; the geometry-shader path
-  stays single-view. Only the compute path is multiview-aware.
+  Geometry-shader builds (`!use_compute`) originally targeted the
+  since-removed OpenGL 4.1 / macOS path, where multiview is not
+  relevant; the geometry-shader path stays single-view. Only the
+  compute path is multiview-aware.

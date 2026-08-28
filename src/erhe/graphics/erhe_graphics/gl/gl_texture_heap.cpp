@@ -258,16 +258,8 @@ void Texture_heap_impl::unbind(Command_buffer& command_buffer)
         // region, leaving dedicated sampler units alone.
         const uint32_t offset = static_cast<uint32_t>(m_sampler_array_offset);
         const uint32_t count  = m_device.get_info().max_per_stage_descriptor_samplers - offset;
-        if (m_device.get_info().use_direct_state_access) {
-            gl::bind_textures(offset, count, m_zero_vector.data() + offset);
-            gl::bind_samplers(offset, count, m_zero_vector.data() + offset);
-        } else {
-            for (uint32_t i = offset; i < offset + count; ++i) {
-                const gl::Texture_target gl_target = m_textures.at(i)->get_impl().get_gl_texture_target();
-                m_device.get_impl().get_binding_state().bind_texture(i, gl_target, 0);
-                m_device.get_impl().get_binding_state().bind_sampler(i, 0);
-            }
-        }
+        gl::bind_textures(offset, count, m_zero_vector.data() + offset);
+        gl::bind_samplers(offset, count, m_zero_vector.data() + offset);
     }
 }
 
@@ -339,16 +331,8 @@ auto Texture_heap_impl::bind_common(Command_buffer& command_buffer) -> std::size
         // offset is derived at construction from the GL Bind_group_layout_impl.
         const uint32_t offset = static_cast<uint32_t>(m_sampler_array_offset);
         const uint32_t count  = m_device.get_info().max_per_stage_descriptor_samplers - offset;
-        if (m_device.get_info().use_direct_state_access) {
-            gl::bind_textures(offset, count, m_gl_textures.data() + offset);
-            gl::bind_samplers(offset, count, m_gl_samplers.data() + offset);
-        } else {
-            for (uint32_t i = offset; i < offset + count; ++i) {
-                const gl::Texture_target gl_target = m_textures.at(i)->get_impl().get_gl_texture_target();
-                m_device.get_impl().get_binding_state().bind_texture(i, gl_target, m_gl_textures.at(i));
-                m_device.get_impl().get_binding_state().bind_sampler(i, m_gl_samplers.at(i));
-            }
-        }
+        gl::bind_textures(offset, count, m_gl_textures.data() + offset);
+        gl::bind_samplers(offset, count, m_gl_samplers.data() + offset);
 
 #if ERHE_TEXTURE_HEAP_PARANOID_SANITY_CHECKS
         // Neither GL_TEXTURE_BINDING_* nor GL_SAMPLER_BINDING is a legal pname
@@ -384,12 +368,7 @@ auto Texture_heap_impl::bind_common(Command_buffer& command_buffer) -> std::size
 
         if (!ok) {
             for (uint32_t i = offset, end = offset + count; i < end; ++i) {
-                if (m_device.get_info().use_direct_state_access) {
-                    gl::bind_texture_unit(i, m_gl_textures.at(i));
-                } else {
-                    const gl::Texture_target gl_target2 = m_textures.at(i)->get_impl().get_gl_texture_target();
-                    m_device.get_impl().get_binding_state().bind_texture(i, gl_target2, m_gl_textures.at(i));
-                }
+                gl::bind_texture_unit(i, m_gl_textures.at(i));
                 const gl::Texture_target gl_target         = m_textures.at(i)->get_impl().get_gl_texture_target();
                 const gl::Get_p_name     gl_binding_p_name = get_binding_p_name(gl_target);
                 GLint bound_texture{0};

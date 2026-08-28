@@ -264,14 +264,14 @@ auto Program_interface::make_prototype(
         const std::filesystem::path gs_path = shader_path / std::filesystem::path(create_info.name + ".geom");
         const std::filesystem::path vs_path = shader_path / std::filesystem::path(create_info.name + ".vert");
 
-        // Only emit a compute stage when the device supports compute
-        // (GL 4.3+, Vulkan, Metal). On contexts without compute support
-        // (e.g. macOS GL 4.1) feeding a Shader_type::compute_shader
-        // through the build pipeline triggers downstream errors:
-        // glCreateShader(GL_COMPUTE_SHADER) returns 0, the subsequent
-        // glCompileShader / glGetShaderiv calls raise GL_INVALID_VALUE,
-        // and the prototype ends in state_fail with a confusing log
-        // trail. Skip the .comp probe entirely on those contexts.
+        // Only emit a compute stage when the device supports compute.
+        // On a device without compute support, feeding a
+        // Shader_type::compute_shader through the build pipeline triggers
+        // downstream errors: shader creation fails, the subsequent
+        // compile / query calls error out, and the prototype ends in
+        // state_fail with a confusing log trail. Skip the .comp probe
+        // entirely on such devices. (Every supported GL device has
+        // compute now that OpenGL 4.5 is the hard minimum.)
         if (device_supports_compute) {
             process_shader(erhe::graphics::Shader_type::compute_shader,  cs_path);
         }

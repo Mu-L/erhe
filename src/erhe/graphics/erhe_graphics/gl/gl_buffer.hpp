@@ -52,8 +52,6 @@ public:
 
 private:
     void allocate_storage(const void* init_data = nullptr);
-    void capability_check(gl::Buffer_storage_mask storage_mask);
-    void capability_check(gl::Map_buffer_access_mask access_mask);
     [[nodiscard]] auto get_gl_storage_mask() const -> gl::Buffer_storage_mask;
     [[nodiscard]] auto get_gl_access_mask () const -> gl::Map_buffer_access_mask;
 

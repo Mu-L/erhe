@@ -196,9 +196,10 @@ App_rendering::App_rendering(
     static constexpr bool selected = true;
     static constexpr bool not_selected = false;
 
-    // The SOLID_WIREFRAME standard-shader variant cannot link on the macOS
-    // OpenGL 4.1 Apple GLSL compiler (too many flat varyings at high explicit
-    // locations); see Device_info::use_solid_wireframe. Where unsupported, the
+    // The SOLID_WIREFRAME standard-shader variant may not link on every
+    // device (historically the since-removed macOS OpenGL 4.1 path: too many
+    // flat varyings at high explicit locations);
+    // see Device_info::use_solid_wireframe. Where unsupported, the
     // solid-wireframe passes are disabled (and their variant is never forced,
     // so prewarm does not try to compile it) and the wide-line edge passes draw
     // instead.
@@ -340,8 +341,8 @@ App_rendering::App_rendering(
                 // Solid wireframe replaces the wide-line edge path: when it is
                 // enabled, suppress the Content_wide_line_renderer edge lines so
                 // the two do not both draw. Where solid wireframe is unsupported
-                // (macOS GL 4.1) its toggle is inert, so the wide-line edges
-                // must not be suppressed by it.
+                // its toggle is inert, so the wide-line edges must not be
+                // suppressed by it.
                 [solid_wireframe_supported](const Render_context& context) -> bool {
                     return !solid_wireframe_supported || !context.viewport_config.render_style_not_selected.solid_wireframe;
                 }

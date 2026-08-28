@@ -173,8 +173,7 @@ void Brush_preview::make_preview_scene()
     // the fill shader (no z-fight). Enabled / colored per render_preview call
     // from Preview_edge_lines_config; meshes without an expanded fill range
     // are skipped by the bucket walk (fill-only look). Not created where the
-    // device cannot link the variant (macOS GL 4.1); no wide-line fallback
-    // for previews.
+    // device cannot link the variant; no wide-line fallback for previews.
     if (m_solid_wireframe_supported) {
         auto wireframe_pass = std::make_shared<Composition_pass>("Brush preview solid wireframe");
         wireframe_pass->data.enabled                      = false; // per-call state (render_preview)

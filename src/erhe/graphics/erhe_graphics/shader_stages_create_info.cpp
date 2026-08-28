@@ -285,9 +285,9 @@ auto Shader_stages_create_info::final_source(
         sb << "#extension GL_ARB_shading_language_packing : enable\n";
         sb << "#define ERHE_HAS_ARB_SHADING_LANGUAGE_PACKING 1\n";
     } else {
-        // Provide polyfill implementations for pack/unpack functions
-        // when GL_ARB_shading_language_packing is not available
-        // (e.g. macOS OpenGL 4.1 where these are missing despite being GLSL 4.00 core)
+        // Provide polyfill implementations for pack/unpack functions,
+        // kept for drivers that do not advertise
+        // GL_ARB_shading_language_packing (extension-gated, not version-gated)
         sb << "vec2 unpackSnorm2x16(uint p) {\n"
               "    uvec2 u = uvec2(p & 0xFFFFu, (p >> 16) & 0xFFFFu);\n"
               "    ivec2 s = ivec2(u);\n"

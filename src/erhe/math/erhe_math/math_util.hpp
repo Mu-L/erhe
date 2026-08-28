@@ -240,7 +240,7 @@ constexpr glm::mat4 mat4_rotate_yz_180{
 
 enum class Depth_range : unsigned int {
     zero_to_one,        // GL 4.5 with glClipControl(lower_left, zero_to_one), Metal, or Vulkan
-    negative_one_to_one // Default OpenGL NDC (GL 4.1 on macOS)
+    negative_one_to_one // Default OpenGL NDC (when glClipControl is not applied)
 };
 
 enum class Framebuffer_origin : unsigned int {

@@ -132,7 +132,7 @@ public:
     Vendor vendor{Vendor::Unknown};
 
     // Human-readable backend API identifier for diagnostics and window title.
-    // Example: "OpenGL 4.1 Core", "Vulkan 1.3.0 VK_DRIVER_ID_MOLTENVK",
+    // Example: "OpenGL 4.5 Core", "Vulkan 1.3.0 VK_DRIVER_ID_MOLTENVK",
     // "Metal (Apple M1)", "Null".
     std::string api_info;
 
@@ -292,10 +292,11 @@ public:
     // The SOLID_WIREFRAME standard-shader variant draws real polygon edges in
     // the lit fill fragment, which adds several flat varyings at high explicit
     // locations (v_bary / v_edge_mask / v_wire_color / v_wire_width at
-    // locations 13..16). The macOS OpenGL 4.1 (GLSL 410) Apple GLSL compiler
-    // fails to allocate them and the program will not link ("Implementation
-    // limit of 128 varying components exceeded ... v_edge_mask"). Default true;
-    // the GL backend clears it on 4.1. When false the editor falls back to the
+    // locations 13..16). A backend clears this flag on devices that cannot
+    // link the variant (historically the since-removed macOS OpenGL 4.1 path,
+    // where the Apple GLSL 410 compiler failed to allocate the varyings:
+    // "Implementation limit of 128 varying components exceeded ...
+    // v_edge_mask"). Default true. When false the editor falls back to the
     // wide-line edge renderer instead of solid wireframe.
     bool use_solid_wireframe         {true};
 

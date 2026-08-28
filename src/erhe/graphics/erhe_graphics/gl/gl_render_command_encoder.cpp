@@ -30,14 +30,8 @@ void Render_command_encoder_impl::set_bind_group_layout(const Bind_group_layout*
 
 void Render_command_encoder_impl::set_sampled_image(uint32_t binding_point, const Texture& texture, const Sampler& sampler)
 {
-    if (m_device.get_info().use_direct_state_access) {
-        gl::bind_texture_unit(binding_point, texture.get_impl().gl_name());
-        gl::bind_sampler(binding_point, sampler.get_impl().gl_name());
-    } else {
-        const gl::Texture_target gl_target = texture.get_impl().get_gl_texture_target();
-        m_device.get_impl().get_binding_state().bind_texture(binding_point, gl_target, texture.get_impl().gl_name());
-        m_device.get_impl().get_binding_state().bind_sampler(binding_point, sampler.get_impl().gl_name());
-    }
+    gl::bind_texture_unit(binding_point, texture.get_impl().gl_name());
+    gl::bind_sampler(binding_point, sampler.get_impl().gl_name());
 }
 
 void Render_command_encoder_impl::set_render_pipeline(const Render_pipeline& pipeline)

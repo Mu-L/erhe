@@ -35,42 +35,22 @@ void Blit_command_encoder_impl::blit_framebuffer(
     const gl::Color_buffer src_buffer = src_name != 0 ? gl::Color_buffer::color_attachment0 : gl::Color_buffer::back;
     const gl::Color_buffer dst_buffer = dst_name != 0 ? gl::Color_buffer::color_attachment0 : gl::Color_buffer::back;
 
-    if (m_device.get_info().use_direct_state_access) {
-        gl::named_framebuffer_read_buffer (src_name, src_buffer);
-        gl::named_framebuffer_draw_buffers(dst_name, 1, &dst_buffer);
-        gl::blit_named_framebuffer(
-            src_name,                                // read framebuffer
-            dst_name,                                // draw framebuffer
-            source_origin.x,                         // src X0
-            source_origin.y,                         // src Y0
-            source_size.x,                           // src X1
-            source_size.y,                           // src Y1
-            destination_origin.x,                    // dst X0
-            destination_origin.y,                    // dst Y0
-            source_size.x,                           // dst X1
-            source_size.y,                           // dst Y1
-            gl::Clear_buffer_mask::color_buffer_bit, // mask
-            gl::Blit_framebuffer_filter::nearest     // filter
-        );
-    } else {
-        gl::bind_framebuffer(gl::Framebuffer_target::read_framebuffer, src_name);
-        gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, dst_name);
-        gl::read_buffer(static_cast<gl::Read_buffer_mode>(src_buffer));
-        const gl::Draw_buffer_mode draw_buf = static_cast<gl::Draw_buffer_mode>(dst_buffer);
-        gl::draw_buffers(1, &draw_buf);
-        gl::blit_framebuffer(
-            source_origin.x,                         // src X0
-            source_origin.y,                         // src Y0
-            source_size.x,                           // src X1
-            source_size.y,                           // src Y1
-            destination_origin.x,                    // dst X0
-            destination_origin.y,                    // dst Y0
-            source_size.x,                           // dst X1
-            source_size.y,                           // dst Y1
-            gl::Clear_buffer_mask::color_buffer_bit, // mask
-            gl::Blit_framebuffer_filter::nearest     // filter
-        );
-    }
+    gl::named_framebuffer_read_buffer (src_name, src_buffer);
+    gl::named_framebuffer_draw_buffers(dst_name, 1, &dst_buffer);
+    gl::blit_named_framebuffer(
+        src_name,                                // read framebuffer
+        dst_name,                                // draw framebuffer
+        source_origin.x,                         // src X0
+        source_origin.y,                         // src Y0
+        source_size.x,                           // src X1
+        source_size.y,                           // src Y1
+        destination_origin.x,                    // dst X0
+        destination_origin.y,                    // dst Y0
+        source_size.x,                           // dst X1
+        source_size.y,                           // dst Y1
+        gl::Clear_buffer_mask::color_buffer_bit, // mask
+        gl::Blit_framebuffer_filter::nearest     // filter
+    );
 }
 
 // Texture to texture copy, single level, single array slice
@@ -208,16 +188,13 @@ void Blit_command_encoder_impl::copy_from_buffer(
         return;
     }
 
-    // A plain cube map stores its six faces as 2D storage (texture_storage_2d) but
-    // the three buffer->image upload APIs disagree on how to address a face, so it
-    // gets a dedicated branch below instead of the dimension switch:
-    //   - DSA     glTextureSubImage3D(name, ..., zoffset = face)       : valid (z == face).
-    //   - classic glTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face): valid (per face).
-    //   - classic glTexSubImage3D(GL_TEXTURE_CUBE_MAP, ...)            : GL_INVALID_ENUM.
+    // A plain cube map stores its six faces as 2D storage (texture_storage_2d), but
+    // glTextureSubImage3D addresses a face as the z layer (zoffset = face), so it
+    // gets a dedicated branch below instead of the dimension switch.
     // texture_cube_map_array is NOT special here: its GL target accepts 3D sub-image
-    // addressing (z == 6 * layer + face) on both the DSA and the classic path, so it
-    // flows through storage_dimensions == 3 like a 2D array. convert_texture_offset_to_gl
-    // sets gl_destination_z to the face index for a cube map.
+    // addressing (z == 6 * layer + face), so it flows through storage_dimensions == 3
+    // like a 2D array. convert_texture_offset_to_gl sets gl_destination_z to the face
+    // index for a cube map.
     const int  storage_dimensions = destination_texture->get_impl().get_storage_dimensions(gl_destination_texture_target);
     const bool is_cube_map        = (gl_destination_texture_target == gl::Texture_target::texture_cube_map);
 
@@ -229,100 +206,42 @@ void Blit_command_encoder_impl::copy_from_buffer(
 
     const char* data_pointer = reinterpret_cast<const char*>(source_offset);
 
-    const bool use_dsa = m_device.get_info().use_direct_state_access;
-    std::optional<Texture_binding_guard> texture_guard;
-    if (!use_dsa) {
-        constexpr GLuint scratch_unit = Gl_binding_state::s_max_texture_units - 1;
-        texture_guard.emplace(
-            m_device.get_impl().get_binding_state().push_texture(
-                scratch_unit, gl_destination_texture_target, destination_texture->get_impl().gl_name()
-            )
-        );
-    }
-
     if (is_cube_map) {
-        if (use_dsa) {
-            // DSA addresses a cube face as the z layer of a 3D sub-image by texture name.
-            gl::texture_sub_image_3d(
-                destination_texture->get_impl().gl_name(),
-                static_cast<GLint>(destination_level),
-                gl_destination_x, gl_destination_y, gl_destination_z,
-                gl_width, gl_height, gl_depth, gl_format, gl_type, data_pointer
-            );
-        } else {
-            // Classic GL: a cube face is uploaded through its per-face 2D target with
-            // the cube bound to GL_TEXTURE_CUBE_MAP (the texture_guard above); the 3D
-            // target GL_TEXTURE_CUBE_MAP is not a valid glTexSubImage3D target. This
-            // uploads exactly one face; a multi-face copy (gl_depth > 1) is not
-            // supported on the per-face 2D path (the DSA branch above handles it via
-            // depth), so require a single face here rather than silently writing only
-            // the first.
-            ERHE_VERIFY(gl_depth == 1);
-            const gl::Texture_target face_target = static_cast<gl::Texture_target>(
-                static_cast<unsigned int>(gl::Texture_target::texture_cube_map_positive_x) +
-                static_cast<unsigned int>(gl_destination_z)
-            );
-            gl::tex_sub_image_2d(
-                face_target,
-                static_cast<GLint>(destination_level),
-                gl_destination_x, gl_destination_y,
-                gl_width, gl_height, gl_format, gl_type, data_pointer
-            );
-        }
+        // DSA addresses a cube face as the z layer of a 3D sub-image by texture name.
+        gl::texture_sub_image_3d(
+            destination_texture->get_impl().gl_name(),
+            static_cast<GLint>(destination_level),
+            gl_destination_x, gl_destination_y, gl_destination_z,
+            gl_width, gl_height, gl_depth, gl_format, gl_type, data_pointer
+        );
     } else {
         switch (storage_dimensions) {
             case 1: {
-                if (use_dsa) {
-                    gl::texture_sub_image_1d(
-                        destination_texture->get_impl().gl_name(),
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_width, gl_format, gl_type, data_pointer
-                    );
-                } else {
-                    gl::tex_sub_image_1d(
-                        gl_destination_texture_target,
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_width, gl_format, gl_type, data_pointer
-                    );
-                }
+                gl::texture_sub_image_1d(
+                    destination_texture->get_impl().gl_name(),
+                    static_cast<GLint>(destination_level),
+                    gl_destination_x, gl_width, gl_format, gl_type, data_pointer
+                );
                 break;
             }
 
             case 2: {
-                if (use_dsa) {
-                    gl::texture_sub_image_2d(
-                        destination_texture->get_impl().gl_name(),
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_destination_y,
-                        gl_width, gl_height, gl_format, gl_type, data_pointer
-                    );
-                } else {
-                    gl::tex_sub_image_2d(
-                        gl_destination_texture_target,
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_destination_y,
-                        gl_width, gl_height, gl_format, gl_type, data_pointer
-                    );
-                }
+                gl::texture_sub_image_2d(
+                    destination_texture->get_impl().gl_name(),
+                    static_cast<GLint>(destination_level),
+                    gl_destination_x, gl_destination_y,
+                    gl_width, gl_height, gl_format, gl_type, data_pointer
+                );
                 break;
             }
 
             case 3: {
-                if (use_dsa) {
-                    gl::texture_sub_image_3d(
-                        destination_texture->get_impl().gl_name(),
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_destination_y, gl_destination_z,
-                        gl_width, gl_height, gl_depth, gl_format, gl_type, data_pointer
-                    );
-                } else {
-                    gl::tex_sub_image_3d(
-                        gl_destination_texture_target,
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_destination_y, gl_destination_z,
-                        gl_width, gl_height, gl_depth, gl_format, gl_type, data_pointer
-                    );
-                }
+                gl::texture_sub_image_3d(
+                    destination_texture->get_impl().gl_name(),
+                    static_cast<GLint>(destination_level),
+                    gl_destination_x, gl_destination_y, gl_destination_z,
+                    gl_width, gl_height, gl_depth, gl_format, gl_type, data_pointer
+                );
                 break;
             }
 
@@ -362,79 +281,34 @@ void Blit_command_encoder_impl::copy_from_buffer_compressed(
 
     gl::bind_buffer(gl::Buffer_target::pixel_unpack_buffer, source_buffer->get_impl().gl_name());
     const char* data_pointer = reinterpret_cast<const char*>(source_offset);
-    const bool use_dsa = m_device.get_info().use_direct_state_access;
-
-    std::optional<Texture_binding_guard> texture_guard;
-    if (!use_dsa) {
-        constexpr GLuint scratch_unit = Gl_binding_state::s_max_texture_units - 1;
-        texture_guard.emplace(
-            m_device.get_impl().get_binding_state().push_texture(
-                scratch_unit, gl_destination_texture_target, destination_texture->get_impl().gl_name()
-            )
-        );
-    }
 
     if (is_cube_map) {
-        if (use_dsa) {
-            // DSA addresses a cube face as the z layer of a 3D sub-image by texture name.
-            gl::compressed_texture_sub_image_3d(
-                destination_texture->get_impl().gl_name(),
-                static_cast<GLint>(destination_level),
-                gl_destination_x, gl_destination_y, gl_destination_z,
-                gl_width, gl_height, gl_depth, gl_format, image_size, data_pointer
-            );
-        } else {
-            // Classic GL: one face at a time through the per-face 2D target
-            // (see copy_from_buffer for rationale).
-            ERHE_VERIFY(gl_depth == 1);
-            const gl::Texture_target face_target = static_cast<gl::Texture_target>(
-                static_cast<unsigned int>(gl::Texture_target::texture_cube_map_positive_x) +
-                static_cast<unsigned int>(gl_destination_z)
-            );
-            gl::compressed_tex_sub_image_2d(
-                face_target,
-                static_cast<GLint>(destination_level),
-                gl_destination_x, gl_destination_y,
-                gl_width, gl_height, gl_format, image_size, data_pointer
-            );
-        }
+        // DSA addresses a cube face as the z layer of a 3D sub-image by texture name.
+        gl::compressed_texture_sub_image_3d(
+            destination_texture->get_impl().gl_name(),
+            static_cast<GLint>(destination_level),
+            gl_destination_x, gl_destination_y, gl_destination_z,
+            gl_width, gl_height, gl_depth, gl_format, image_size, data_pointer
+        );
     } else {
         switch (storage_dimensions) {
             case 2: {
-                if (use_dsa) {
-                    gl::compressed_texture_sub_image_2d(
-                        destination_texture->get_impl().gl_name(),
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_destination_y,
-                        gl_width, gl_height, gl_format, image_size, data_pointer
-                    );
-                } else {
-                    gl::compressed_tex_sub_image_2d(
-                        gl_destination_texture_target,
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_destination_y,
-                        gl_width, gl_height, gl_format, image_size, data_pointer
-                    );
-                }
+                gl::compressed_texture_sub_image_2d(
+                    destination_texture->get_impl().gl_name(),
+                    static_cast<GLint>(destination_level),
+                    gl_destination_x, gl_destination_y,
+                    gl_width, gl_height, gl_format, image_size, data_pointer
+                );
                 break;
             }
 
             case 3: {
-                if (use_dsa) {
-                    gl::compressed_texture_sub_image_3d(
-                        destination_texture->get_impl().gl_name(),
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_destination_y, gl_destination_z,
-                        gl_width, gl_height, gl_depth, gl_format, image_size, data_pointer
-                    );
-                } else {
-                    gl::compressed_tex_sub_image_3d(
-                        gl_destination_texture_target,
-                        static_cast<GLint>(destination_level),
-                        gl_destination_x, gl_destination_y, gl_destination_z,
-                        gl_width, gl_height, gl_depth, gl_format, image_size, data_pointer
-                    );
-                }
+                gl::compressed_texture_sub_image_3d(
+                    destination_texture->get_impl().gl_name(),
+                    static_cast<GLint>(destination_level),
+                    gl_destination_x, gl_destination_y, gl_destination_z,
+                    gl_width, gl_height, gl_depth, gl_format, image_size, data_pointer
+                );
                 break;
             }
 
@@ -530,89 +404,20 @@ void Blit_command_encoder_impl::copy_from_texture(
     if (!format_type_ok) {
         return;
     }
-    if (m_device.get_info().use_direct_state_access) {
-        gl::get_texture_sub_image(
-            source_texture->get_impl().gl_name(),
-            static_cast<GLint>(source_level),
-            gl_source_x, gl_source_y, gl_source_z,
-            gl_width, gl_height, gl_depth,
-            gl_format, gl_type,
-            static_cast<GLsizei>(destination_size),
-            reinterpret_cast<void *>(destination_offset)
-        );
-    } else {
-        // Pre-DSA (e.g. OpenGL 4.1 on macOS, which has neither DSA nor
-        // glGetTextureSubImage): glGetTexImage cannot read a sub-rectangle
-        // -- it always reads the whole mip level, which overflows a
-        // destination buffer sized for source_size and raises
-        // GL_INVALID_OPERATION. Attach the source level to a scratch read
-        // framebuffer and use glReadPixels, which honors the (x, y, w, h)
-        // region. glReadPixels is inherently 2D and cannot resolve
-        // multisample attachments, so this path handles single-sample,
-        // single-slice reads only.
-        ERHE_VERIFY(source_texture->get_sample_count() == 0);
-        ERHE_VERIFY(gl_depth == 1);
-
-        const erhe::dataformat::Format format    = source_texture->get_pixelformat();
-        const bool                     is_depth   = erhe::dataformat::get_depth_size_bits  (format) > 0;
-        const bool                     is_stencil = erhe::dataformat::get_stencil_size_bits(format) > 0;
-        const gl::Framebuffer_attachment attachment =
-            is_depth
-                ? (is_stencil
-                    ? gl::Framebuffer_attachment::depth_stencil_attachment
-                    : gl::Framebuffer_attachment::depth_attachment)
-                : gl::Framebuffer_attachment::color_attachment0;
-
-        Gl_framebuffer scratch_framebuffer = m_device.get_impl().create_framebuffer();
-        auto fb_guard = m_device.get_impl().get_binding_state().push_framebuffer(
-            gl::Framebuffer_target::read_framebuffer, scratch_framebuffer.gl_name()
-        );
-
-        // texture_2d uses framebuffer_texture_2d; array / 3D targets select
-        // the slice (gl_source_z) via framebuffer_texture_layer.
-        if (gl_source_texture_target == gl::Texture_target::texture_2d) {
-            gl::framebuffer_texture_2d(
-                gl::Framebuffer_target::read_framebuffer,
-                attachment,
-                gl_source_texture_target,
-                source_texture->get_impl().gl_name(),
-                static_cast<GLint>(source_level)
-            );
-        } else {
-            gl::framebuffer_texture_layer(
-                gl::Framebuffer_target::read_framebuffer,
-                attachment,
-                source_texture->get_impl().gl_name(),
-                static_cast<GLint>(source_level),
-                gl_source_z
-            );
-        }
-
-        // glReadPixels reads color from the current read buffer; for depth /
-        // stencil reads the read buffer is irrelevant, so set it to none to
-        // avoid expecting an (absent) color attachment.
-        gl::read_buffer(is_depth ? gl::Read_buffer_mode::none : gl::Read_buffer_mode::color_attachment0);
-
-        gl::read_pixels(
-            gl_source_x, gl_source_y, gl_width, gl_height,
-            gl_format, gl_type,
-            reinterpret_cast<void *>(destination_offset)
-        );
-    }
+    gl::get_texture_sub_image(
+        source_texture->get_impl().gl_name(),
+        static_cast<GLint>(source_level),
+        gl_source_x, gl_source_y, gl_source_z,
+        gl_width, gl_height, gl_depth,
+        gl_format, gl_type,
+        static_cast<GLsizei>(destination_size),
+        reinterpret_cast<void *>(destination_offset)
+    );
 }
 
 void Blit_command_encoder_impl::generate_mipmaps(const Texture* texture)
 {
-    if (m_device.get_info().use_direct_state_access) {
-        gl::generate_texture_mipmap(texture->get_impl().gl_name());
-    } else {
-        const gl::Texture_target target = texture->get_impl().get_gl_texture_target();
-        constexpr GLuint scratch_unit = Gl_binding_state::s_max_texture_units - 1;
-        auto guard = m_device.get_impl().get_binding_state().push_texture(
-            scratch_unit, target, texture->get_impl().gl_name()
-        );
-        gl::generate_mipmap(target);
-    }
+    gl::generate_texture_mipmap(texture->get_impl().gl_name());
 }
 
 void Blit_command_encoder_impl::fill_buffer(
@@ -622,28 +427,15 @@ void Blit_command_encoder_impl::fill_buffer(
     const uint8_t        value
 )
 {
-    if (m_device.get_info().use_direct_state_access) {
-        gl::clear_named_buffer_sub_data(
-            buffer->get_impl().gl_name(),
-            gl::Internal_format::r8ui,
-            offset,
-            length,
-            gl::Pixel_format::red_integer,
-            gl::Pixel_type::unsigned_byte,
-            &value
-        );
-    } else {
-        auto guard = m_device.get_impl().get_binding_state().push_buffer(gl::Buffer_target::copy_write_buffer, buffer->get_impl().gl_name());
-        gl::clear_buffer_sub_data(
-            gl::Buffer_target::copy_write_buffer,
-            gl::Internal_format::r8ui,
-            offset,
-            length,
-            gl::Pixel_format::red_integer,
-            gl::Pixel_type::unsigned_byte,
-            &value
-        );
-    }
+    gl::clear_named_buffer_sub_data(
+        buffer->get_impl().gl_name(),
+        gl::Internal_format::r8ui,
+        offset,
+        length,
+        gl::Pixel_format::red_integer,
+        gl::Pixel_type::unsigned_byte,
+        &value
+    );
 }
 
 // Texture to texture copy, multiple array slices and/or mipmap levels
@@ -734,25 +526,13 @@ void Blit_command_encoder_impl::copy_from_buffer(
 )
 {
     // Buffer to buffer copy
-    if (m_device.get_info().use_direct_state_access) {
-        gl::copy_named_buffer_sub_data(
-            source_buffer->get_impl().gl_name(),
-            destination_buffer->get_impl().gl_name(),
-            source_offset,
-            destination_offset,
-            size
-        );
-    } else {
-        auto guard_read  = m_device.get_impl().get_binding_state().push_buffer(gl::Buffer_target::copy_read_buffer,  source_buffer->get_impl().gl_name());
-        auto guard_write = m_device.get_impl().get_binding_state().push_buffer(gl::Buffer_target::copy_write_buffer, destination_buffer->get_impl().gl_name());
-        gl::copy_buffer_sub_data(
-            gl::Copy_buffer_sub_data_target::copy_read_buffer,
-            gl::Copy_buffer_sub_data_target::copy_write_buffer,
-            source_offset,
-            destination_offset,
-            size
-        );
-    }
+    gl::copy_named_buffer_sub_data(
+        source_buffer->get_impl().gl_name(),
+        destination_buffer->get_impl().gl_name(),
+        source_offset,
+        destination_offset,
+        size
+    );
 }
 
 } // namespace erhe::graphics

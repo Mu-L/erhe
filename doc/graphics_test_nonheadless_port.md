@@ -5,9 +5,11 @@
 - The `erhe_graphics_gpu_tests` target builds and runs on non-headless OpenGL
   (`build_vs2026_opengl`: ERHE_GRAPHICS_API=opengl + a real window library).
 - Headless Vulkan: **41/41 green** (unchanged; this is the hard gate -- never regress it).
-- OpenGL: **40 passed + 1 skipped, 0 failures, 0 aborts** -- complete, in both the
-  default DSA mode and the opt-in non-DSA mode (`ERHE_TEST_OPENGL_NO_DSA=1`; see the
-  Non-DSA section below). The skip is `snorm_color_render_readback`, a legitimate
+- OpenGL: **40 passed + 1 skipped, 0 failures, 0 aborts** -- complete in the DSA
+  mode, which is now the only OpenGL path (OpenGL 4.5 + DSA is a hard requirement;
+  the opt-in non-DSA mode and its `ERHE_TEST_OPENGL_NO_DSA` env var have been
+  removed -- the Non-DSA section below is historical record only). The skip is
+  `snorm_color_render_readback`, a legitimate
   device-capability skip (`format_8_vec4_snorm` is not color-renderable on this GL
   device; the test `GTEST_SKIP`s with that reason).
 
@@ -49,8 +51,9 @@ fix below is an engine fix, not a config toggle.
   (`array_layer_count == 6`): `convert_texture_dimensions_to_gl` folds the layer
   count into depth, `convert_texture_offset_to_gl` selects the face via the z offset,
   and `copy_from_buffer` uses 3D sub-image addressing for cubes on the DSA path (2D
-  storage but z = face for uploads). The classic non-DSA path instead uploads each
-  face via its per-face 2D target -- see Non-DSA OpenGL below.
+  storage but z = face for uploads). (The since-removed classic non-DSA path instead
+  uploaded each face via its per-face 2D target -- see the historical Non-DSA
+  section below.)
 
 ### Tests
 - **Point Y-mapping** (`test_topology.cpp`): `topology_point_list` queries the
@@ -58,22 +61,23 @@ fix below is an engine fix, not a config toggle.
   instead of hardcoding Vulkan's negative-height-viewport assumption -- tests must
   respect device coordinate conventions like all application code does.
 
-## Non-DSA OpenGL (opt-in)
+## Non-DSA OpenGL (historical -- path removed)
 
-The test device builds a default `Graphics_config` and does not read
-`erhe_graphics.json`, so the editor's `force_no_direct_state_access` does not affect
-the suite. Set `ERHE_TEST_OPENGL_NO_DSA=1` to force the non-DSA OpenGL path (which
-also disables persistent buffers, since erhe ties persistent mapping to
-`glNamedBufferStorage`); the default (unset) keeps DSA.
+**This section is historical record.** The non-DSA OpenGL path, the
+`ERHE_TEST_OPENGL_NO_DSA` env var, and the `force_no_direct_state_access` config
+field have all been removed; OpenGL 4.5 + DSA is a hard requirement (device
+creation fails below 4.5). At the time, setting `ERHE_TEST_OPENGL_NO_DSA=1` forced
+the non-DSA OpenGL path (which also disabled persistent buffers, since erhe tied
+persistent mapping to `glNamedBufferStorage`).
 
-Three changes make the suite mode-agnostic:
+Three changes made the suite mode-agnostic:
 - The fixture's `make_host_buffer` uses the `Ring_buffer` required/preferred split
   (`host_read|host_write` required; `host_coherent|host_persistent` preferred)
   instead of requiring coherent, which aborted in non-DSA mode ("coherent buffers
   required but not supported").
 - The Vulkan `Buffer::unmap` is persistent-aware (mirrors `map_bytes` and the GL
   backend), needed because the fixture now requests a persistent mapping.
-- `copy_from_buffer` (`gl_blit_command_encoder.cpp`) uploads a plain cube-map face
+- `copy_from_buffer` (`gl_blit_command_encoder.cpp`) uploaded a plain cube-map face
   through its per-face 2D target (`GL_TEXTURE_CUBE_MAP_POSITIVE_X + face`) on the
   classic path, instead of `glTexSubImage3D(GL_TEXTURE_CUBE_MAP, ...)` -- which is
   `GL_INVALID_ENUM` in classic GL and left every face unwritten. The DSA path keeps
@@ -85,7 +89,7 @@ Three changes make the suite mode-agnostic:
   is unaffected: its GL target accepts 3D sub-image addressing on both paths, so it
   keeps flowing through `storage_dimensions == 3`.
 
-Result with `ERHE_TEST_OPENGL_NO_DSA=1`: **40 passed + 1 skipped, 0 failed** -- full
+Result at the time with `ERHE_TEST_OPENGL_NO_DSA=1`: **40 passed + 1 skipped, 0 failed** -- full
 parity with the DSA run (the same legitimate `snorm_color_render_readback` skip) and
 with headless Vulkan. `texture_cube_sample_faces`, previously the lone non-DSA
 failure, now passes.
@@ -94,6 +98,6 @@ failure, now passes.
 
 The CMake gate enables the Metal build, but Metal cannot be built or run on the
 Windows dev machine. Validate on macOS (Xcode); the same classes of issue may apply.
-The cube-map upload path's macOS (`__APPLE__`) GL branch uploads each face through
-its per-face 2D target (`GL_TEXTURE_CUBE_MAP_POSITIVE_X + face`), matching the non-DSA
-path, but is unverified there.
+(A macOS (`__APPLE__`) GL cube-map upload branch that uploaded each face through
+its per-face 2D target existed alongside the non-DSA path; both have since been
+removed together with the pre-4.5 GL support.)

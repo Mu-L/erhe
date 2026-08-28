@@ -651,7 +651,7 @@ void Shader_stages_prototype_impl::post_link()
             }
         }
 
-        if (m_create_info.dump_reflection && m_device.get_info().gl_version >= 430) {
+        if (m_create_info.dump_reflection) {
             dump_reflection();
         }
         if (m_create_info.dump_interface) {

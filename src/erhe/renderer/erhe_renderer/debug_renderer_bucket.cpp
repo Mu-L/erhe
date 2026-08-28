@@ -555,8 +555,8 @@ void Debug_renderer_bucket::render(
         // c_view_index resolves to gl_ViewIndex, picking the per-eye camera
         // from the view UBO (update_view_buffer below writes all views).
         // The geometry tier never sees multiview: it exists only when
-        // compute is unavailable (GL 4.1 / Metal), and the multiview
-        // headset path requires Vulkan, where compute is available.
+        // compute is unavailable, and the multiview headset path
+        // requires Vulkan, where compute is available.
         ERHE_VERIFY(!multiview || !uses_geometry());
         // Close all input ranges first (can only be done once)
         for (Debug_draw_entry& draw : m_draws) {
@@ -568,7 +568,7 @@ void Debug_renderer_bucket::render(
         auto render_line_draws = [&](const bool visible, erhe::graphics::Base_render_pipeline& pipeline) {
             const Debug_renderer_program_interface& pi = m_debug_renderer.get_program_interface();
             // graphics_shader_stages is built only on the compute path
-            // (see Debug_renderer_program_interface ctor). On GL 4.1 / Metal,
+            // (see Debug_renderer_program_interface ctor). On a device
             // where use_compute is false, that pointer is null and binding
             // it would issue glUseProgram(0). Pick the matching direct-path
             // shader instead -- geometry-expanded wide lines when the bucket's

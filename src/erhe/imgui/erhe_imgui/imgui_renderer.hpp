@@ -226,8 +226,9 @@ private:
     // Lazy cache of samplers with (min_lod, max_lod) clamped to a specific mip
     // level. Keyed by (filter, mipmap_mode, lod) packed into a uint64_t so the
     // Draw_texture_parameters::lod knob can snap sampling to an exact mip of a
-    // full mipmapped texture without creating a per-mip Texture view (needed
-    // on GL 4.1 where ARB_texture_view is unavailable).
+    // full mipmapped texture without creating a per-mip Texture view
+    // (originally needed on the since-removed GL 4.1 path, where
+    // ARB_texture_view was unavailable).
     mutable std::unordered_map<uint64_t, std::unique_ptr<erhe::graphics::Sampler>> m_lod_clamped_samplers;
 
     // TODO Re-add a per-render-pass GPU timer; the imgui draw render pass

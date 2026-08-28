@@ -377,9 +377,10 @@ Debug_renderer_program_interface::Debug_renderer_program_interface(
     }
 
     // Geometry shader path: wide lines without compute (GL_LINES -> geometry shader -> triangle strip).
-    // !use_compute is reached on OpenGL 4.1 (macOS) where compute is not available;
-    // geometry shaders are part of GL 3.2 core, so this path is the deterministic
-    // correct choice there. A load failure here is a real configuration error and
+    // !use_compute is reached on devices without compute support (originally
+    // the since-removed macOS OpenGL 4.1 path; every supported GL device has
+    // compute now that 4.5 is the hard minimum).
+    // A load failure here is a real configuration error and
     // is surfaced through the device_message callback by Glsl_file_loader.
     if (!use_compute) {
         using namespace erhe::graphics;

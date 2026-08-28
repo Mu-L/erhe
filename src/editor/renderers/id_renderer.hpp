@@ -300,11 +300,12 @@ private:
 
     // ---- Box/paint GPU compute gather --------------------------------------
     // Two compute passes replace the per-pixel CPU readback + dedup loop when the
-    // device supports compute shaders (Vulkan / Metal / GL >= 4.3): pass 1
+    // device supports compute shaders (Vulkan / Metal / GL, where 4.5 is the
+    // hard minimum): pass 1
     // (id_scan_gather.comp) scans the blitted region id buffer and atomicOrs each
     // decoded id into a bitmask (the dedup); pass 2 (id_scan_compact.comp) compacts
     // the set bits into a dense {count, ids} vector that is read back. On devices
-    // without compute (e.g. macOS GL 4.1) m_scan_compute_available stays false and
+    // without compute m_scan_compute_available stays false and
     // the CPU region-scan path is used. Built lazily on first scan.
     void                                               ensure_scan_compute();
     [[nodiscard]] auto submit_scan_compute(

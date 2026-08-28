@@ -37,10 +37,10 @@ Vulkan is the default backend; the OpenGL build uses the `*_opengl` scripts inst
 | :--- | :--- | :--- |
 | Windows | OpenGL, Vulkan | Primary |
 | Linux | OpenGL, Vulkan | Supported |
-| macOS | OpenGL (4.1), Vulkan, Metal | Supported |
+| macOS | Vulkan, Metal | Supported |
 | Meta Quest / Android | Vulkan + OpenXR | Supported |
 
-The OpenGL backend requires OpenGL 4.1 at minimum (the maximum available on macOS); 4.6 is recommended. See [doc/opengl41_compatibility.md](doc/opengl41_compatibility.md) for the compatibility layer.
+The OpenGL backend requires OpenGL 4.5 (with Direct State Access) at minimum; 4.6 is recommended. It is not available on Apple platforms.
 
 ## Editor
 
@@ -166,7 +166,7 @@ erhe is organized as a set of independent libraries under `src/erhe/`. Each has 
 
 ### OpenGL Compatibility
 
-erhe targets OpenGL 4.6 with DSA but includes a runtime compatibility layer for OpenGL 4.1 (the maximum version on macOS). Features like DSA, SSBOs, compute shaders, persistent mapping, and texture views are emulated or gracefully degraded at runtime. See [doc/opengl41_compatibility.md](doc/opengl41_compatibility.md) for details.
+erhe requires OpenGL 4.5 with DSA (Direct State Access); device creation fails on older versions. DSA, SSBOs, compute shaders and clip control are used unconditionally. The former OpenGL 4.1 (macOS) runtime compatibility layer has been removed.
 
 ## License
 

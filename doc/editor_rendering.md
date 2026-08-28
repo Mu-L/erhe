@@ -128,8 +128,9 @@ Solid wireframe (passes 3-4) is a shader-variant axis
 (`Shader_bool::SOLID_WIREFRAME`): the expanded fill geometry is redrawn with
 real polygon edges blended over the lit fill, sharing the fill's exact depth.
 It replaces the wide-line edge path when enabled; the two never both draw. On
-devices where the variant cannot link (macOS OpenGL 4.1), the passes are
-disabled and the wide-line edge passes draw instead.
+devices where the variant cannot link, the passes are disabled and the
+wide-line edge passes draw instead. (The macOS OpenGL 4.1 case that originally
+motivated this fallback is gone -- OpenGL 4.5 + DSA is now the hard minimum.)
 
 ### Mirrored (negative-determinant) geometry
 
@@ -330,7 +331,7 @@ Starting from the smallest mip level, each level is upsampled back to the next l
 
 Configurable parameters: `upsample_radius`, `tonemap_luminance_max`, `tonemap_alpha`, `lowpass_count`.
 
-The output is the level 0 of the upsample texture (returned as a texture view if available, or the full mipmapped texture on GL 4.1).
+The output is the level 0 of the upsample texture (returned as a texture view if available, or the full mipmapped texture otherwise).
 
 ## ID renderer
 

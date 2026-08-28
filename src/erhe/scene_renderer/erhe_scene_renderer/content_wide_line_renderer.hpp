@@ -82,9 +82,8 @@ public:
 
     // True for the compute backend (compute() runs a real dispatch and
     // callers must emit a compute->vertex memory barrier afterwards),
-    // false for the geometry-shader backend (compute() is a no-op, there
-    // is no compute->vertex hazard, and the device may not even expose
-    // glMemoryBarrier -- e.g. OpenGL 4.1 on macOS).
+    // false for the geometry-shader backend (compute() is a no-op and
+    // there is no compute->vertex hazard, so no barrier is needed).
     [[nodiscard]] virtual auto uses_compute() const -> bool = 0;
 
     void begin_frame();

@@ -225,7 +225,7 @@ VUID-VkDescriptorImageInfo-imageView-01976.
 
 ## Notes
 - All major types use the pimpl pattern (`*_impl` classes) to isolate backend-specific code. Backend implementations live in `gl/` (OpenGL), `vulkan/` (Vulkan), `metal/` (Metal), and `null/` (headless).
-- The OpenGL backend includes a runtime compatibility layer for OpenGL 4.1 (macOS). DSA, SSBOs, compute shaders, persistent mapping, and texture views are emulated or gracefully degraded based on `Device_info` capability flags. See `doc/opengl41_compatibility.md`.
+- The OpenGL backend requires OpenGL 4.5 with direct state access (DSA) as a hard minimum; device creation fails on older contexts, and there are no non-DSA or GL 4.1 fallback paths.
 - `Shader_resource` is used to programmatically build GLSL interface declarations from C++, keeping shader sources and C++ code in sync without reflection. For sampler declarations it is an implementation detail of `Bind_group_layout`.
 - `Reloadable_shader_stages` combines `Shader_stages_create_info` with a live `Shader_stages` for hot-reload via `Shader_monitor`.
 - Enums in `enums.hpp` mirror Vulkan concepts (Buffer_target, Texture_type, Memory_usage, Texture_heap_path, Resolve_mode, etc.) to keep the API backend-neutral.

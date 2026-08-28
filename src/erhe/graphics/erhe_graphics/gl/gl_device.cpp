@@ -206,26 +206,24 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     log_startup->info("glVersion:   {}", m_info.gl_version);
     log_startup->info("glslVersion: {}", m_info.glsl_version);
 
+    // OpenGL 4.5 minimum: DSA, clip control, compute shaders, SSBOs, debug
+    // output and internalformat queries are all relied on unconditionally;
+    // the pre-4.5 emulation layer has been removed.
+    if (m_info.gl_version < 450) {
+        ERHE_FATAL(
+            "OpenGL 4.5 or newer is required; the driver reported version %d.%d (\"%s\")",
+            m_info.gl_version / 100,
+            (m_info.gl_version / 10) % 10,
+            gl_version_str.c_str()
+        );
+    }
+
     const bool force_bindless_textures_off       = graphics_config.opengl.force_bindless_textures_off;
     const bool force_no_persistent_buffers       = graphics_config.opengl.force_no_persistent_buffers;
-    const bool force_no_direct_state_access      = graphics_config.opengl.force_no_direct_state_access;
-    const bool force_no_clip_control             = graphics_config.opengl.force_no_clip_control;
-    const bool force_no_compute_shader           = graphics_config.opengl.force_no_compute_shader;
     const bool force_emulate_multi_draw_indirect = graphics_config.opengl.force_emulate_multi_draw_indirect;
-    const int  force_gl_version                  = graphics_config.opengl.force_gl_version;
-    const int  force_glsl_version                = graphics_config.opengl.force_glsl_version;
     const bool initial_clear                     = graphics_config.initial_clear;
 
     m_context_window = surface_create_info.context_window;
-
-    if (force_gl_version > 0) {
-        m_info.gl_version = force_gl_version;
-        log_startup->warn("Forced GL version to be {} due to config setting", force_gl_version);
-    }
-    if (force_glsl_version > 0) {
-        m_info.glsl_version = force_glsl_version;
-        log_startup->warn("Forced GLSL version to be {} due to config setting", force_glsl_version);
-    }
 
     {
         ERHE_PROFILE_SCOPE("Query GL");
@@ -241,9 +239,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         gl::get_integer_v(gl::Get_p_name::max_samples,                &m_info.max_samples);
         gl::get_integer_v(gl::Get_p_name::max_color_texture_samples,  &m_info.max_color_texture_samples);
         gl::get_integer_v(gl::Get_p_name::max_depth_texture_samples,  &m_info.max_depth_texture_samples);
-        if (m_info.gl_version >= 430) {
-            gl::get_integer_v(gl::Get_p_name::max_framebuffer_samples, &m_info.max_framebuffer_samples);
-        }
+        gl::get_integer_v(gl::Get_p_name::max_framebuffer_samples, &m_info.max_framebuffer_samples);
         gl::get_integer_v(gl::Get_p_name::max_integer_samples,        &m_info.max_integer_samples);
 
         log_startup->info(
@@ -396,8 +392,8 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     m_info.use_solid_wireframe = (m_info.gl_version > 410);
     log_startup->info("Solid wireframe variant supported: {}", m_info.use_solid_wireframe);
 
-    m_info.use_direct_state_access =
-        (m_info.gl_version >= 450) || gl::is_extension_supported(gl::Extension::Extension_GL_ARB_direct_state_access);
+    // GL 4.5 is a hard requirement (checked above), so DSA is always present.
+    m_info.use_direct_state_access = true;
     log_startup->info("Direct State Access supported: {}", m_info.use_direct_state_access);
 
     m_info.use_clip_control =
@@ -406,11 +402,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
 
     m_info.use_shader_storage_buffers =
         (m_info.gl_version >= 430) || gl::is_extension_supported(gl::Extension::Extension_GL_ARB_shader_storage_buffer_object);
-    if (force_no_compute_shader && m_info.use_shader_storage_buffers) {
-        m_info.use_shader_storage_buffers = false;
-        m_info.shader_storage_buffer_offset_alignment = 0;
-        log_startup->warn("Force disabled shader storage buffers due to config setting force_no_compute_shader");
-    }
     log_startup->info("SSBO supported: {}", m_info.use_shader_storage_buffers);
     if (m_info.use_shader_storage_buffers) {
         int shader_storage_buffer_offset_alignment{0};
@@ -427,7 +418,10 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     }
     log_startup->info("GL_ARB_sparse_texture supported : {}", m_info.use_sparse_texture);
 
-    m_info.use_persistent_buffers = gl::is_extension_supported(gl::Extension::Extension_GL_ARB_buffer_storage);
+    // glBufferStorage is GL 4.4 core; also accept the extension string for
+    // completeness (a conformant 4.5 driver need not advertise it).
+    m_info.use_persistent_buffers =
+        (m_info.gl_version >= 440) || gl::is_extension_supported(gl::Extension::Extension_GL_ARB_buffer_storage);
     if (m_info.gl_version >= 430) {
         m_info.use_multi_draw_indirect_core = true;
         m_info.use_multi_draw_indirect_arb  = false;
@@ -454,12 +448,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     log_startup->info("Base Instance supported: {}", m_info.use_base_instance);
 
     m_info.use_compute_shader = m_info.gl_version >= 430;
-    if (force_no_compute_shader) {
-        if (m_info.use_compute_shader) {
-            m_info.use_compute_shader = false;
-            log_startup->warn("Force disabled compute shaders due to config setting");
-        }
-    }
     if (m_info.use_compute_shader) {
         log_startup->info("Compute shaders supported: true");
         for (GLuint i = 0; i < 3; ++i) {
@@ -556,28 +544,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
         }
     }
 
-    if (force_no_direct_state_access) {
-        if (m_info.use_direct_state_access) {
-            m_info.use_direct_state_access = false;
-            log_startup->warn("Force disabled direct state access due to erhe.json setting");
-        }
-        // Persistent buffers require glBufferStorage (GL 4.4), which is not available
-        // when DSA is disabled (pre-DSA path uses glBufferData instead)
-        if (m_info.use_persistent_buffers) {
-            m_info.use_persistent_buffers = false;
-            log_startup->warn("Force disabled persistent buffers because direct state access is disabled (glBufferStorage not available)");
-        }
-    }
-
-    if (force_no_clip_control) {
-        if (m_info.use_clip_control) {
-            m_info.use_clip_control = false;
-            log_startup->warn("Force disabled clip control due to config setting");
-        }
-    }
-
-    m_gl_state_tracker.vertex_input.set_use_dsa(m_info.use_direct_state_access);
-
     // The vertex-input tracker binds a persistent empty VAO for pipelines that
     // declare no vertex input (core-profile GL rejects glDraw* with VAO 0). The
     // VAO is created lazily on first use; see get_default_vertex_input_state().
@@ -621,8 +587,8 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
 
     log_startup->info("Format properties:");
 
-    if (m_info.gl_version >= 430) {
-        // GL 4.3+ path: use glGetInternalformativ (GL_ARB_internalformat_query2)
+    {
+        // Use glGetInternalformativ (GL_ARB_internalformat_query2), GL 4.3 core.
         for (const gl::Internal_format format : formats) {
             Format_properties properties{};
 
@@ -732,313 +698,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
             properties.texture_2d_array_max_layers = get_int(gl::Internal_format_p_name::max_layers, gl::Texture_target::texture_2d_array);
             format_properties.insert({format, properties});
         }
-    } else {
-        // GL < 4.3 fallback: probe formats by creating textures/renderbuffers
-        // and checking for GL errors and framebuffer completeness.
-
-        // Suspend wrapper-level error checking: the probe pattern intentionally
-        // invokes failing GL calls and reads the result via gl::get_error().
-        // With ERHE_GL_CHECK_ERRORS active (macOS debug), the wrapper would
-        // consume the error before the probe can observe it, and the device
-        // error callback would fire on every probed-but-unsupported format.
-        gl_helpers::set_error_checking(false);
-
-        // Helper: drain any pending GL errors
-        auto drain_gl_errors = []() {
-            while (gl::get_error() != gl::Error_code::no_error) {}
-        };
-
-        // Query global texture array limits (GL 3.0) - applied to all probed formats
-        const int global_max_texture_size       = m_info.max_texture_size;
-        const int global_max_array_texture_layers = m_info.max_array_texture_layers;
-
-        // Helper: probe supported MSAA sample counts for a given internal format
-        // by calling renderbuffer_storage_multisample with candidate counts and
-        // checking for GL errors. GL 4.1 lacks glGetInternalformativ (4.2+), so
-        // we must probe explicitly. Returns sorted ascending counts that include 1.
-        auto probe_sample_counts = [&drain_gl_errors](gl::Internal_format format, int max_samples) -> std::vector<int>
-        {
-            std::vector<int> result;
-            result.push_back(1);
-            if (max_samples <= 1) {
-                return result;
-            }
-            const int candidates[] = { 2, 4, 8, 16, 32 };
-            for (const int count : candidates) {
-                if (count > max_samples) {
-                    break;
-                }
-                drain_gl_errors();
-                GLuint rb = 0;
-                gl::gen_renderbuffers(1, &rb);
-                gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, rb);
-                gl::renderbuffer_storage_multisample(gl::Renderbuffer_target::renderbuffer, count, format, 4, 4);
-                const bool ok = (gl::get_error() == gl::Error_code::no_error);
-                gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, 0);
-                gl::delete_renderbuffers(1, &rb);
-                drain_gl_errors();
-                if (ok) {
-                    result.push_back(count);
-                }
-            }
-            return result;
-        };
-
-        // Determine pixel format and type for tex_image_2d probing of color formats
-        struct Color_format_info
-        {
-            gl::Internal_format internal_format;
-            gl::Pixel_format    pixel_format;
-            gl::Pixel_type      pixel_type;
-        };
-        Color_format_info color_format_table[] = {
-            { gl::Internal_format::r8,              gl::Pixel_format::red,  gl::Pixel_type::unsigned_byte },
-            { gl::Internal_format::rg8,             gl::Pixel_format::rg,   gl::Pixel_type::unsigned_byte },
-            { gl::Internal_format::rgba8,           gl::Pixel_format::rgba, gl::Pixel_type::unsigned_byte },
-            { gl::Internal_format::srgb8_alpha8,    gl::Pixel_format::rgba, gl::Pixel_type::unsigned_byte },
-            { gl::Internal_format::r11f_g11f_b10f,  gl::Pixel_format::rgb,  gl::Pixel_type::float_        },
-            { gl::Internal_format::r16_snorm,       gl::Pixel_format::red,  gl::Pixel_type::short_        },
-            { gl::Internal_format::r16f,            gl::Pixel_format::red,  gl::Pixel_type::float_        },
-            { gl::Internal_format::rg16f,           gl::Pixel_format::rg,   gl::Pixel_type::float_        },
-            { gl::Internal_format::rgba16f,         gl::Pixel_format::rgba, gl::Pixel_type::float_        },
-            { gl::Internal_format::r32f,            gl::Pixel_format::red,  gl::Pixel_type::float_        },
-            { gl::Internal_format::rg32f,           gl::Pixel_format::rg,   gl::Pixel_type::float_        },
-            { gl::Internal_format::rgba32f,         gl::Pixel_format::rgba, gl::Pixel_type::float_        },
-        };
-
-        // Only sized depth/stencil formats; unsized formats (depth_component,
-        // depth_stencil) are excluded because convert_from_gl cannot map them
-        // to dataformat::Format for size queries.
-        gl::Internal_format depth_stencil_formats[] = {
-            gl::Internal_format::depth32f_stencil8,
-            gl::Internal_format::depth24_stencil8,
-            gl::Internal_format::stencil_index8,
-            gl::Internal_format::depth_component16,
-            gl::Internal_format::depth_component32f,
-        };
-
-        // Probe color formats using tex_image_2d
-        for (const Color_format_info& info : color_format_table) {
-            Format_properties properties{};
-
-            drain_gl_errors();
-
-            GLuint tex = 0;
-            gl::gen_textures(1, &tex);
-            gl::bind_texture(gl::Texture_target::texture_2d, tex);
-            gl::tex_image_2d(
-                gl::Texture_target::texture_2d,
-                0,
-                static_cast<GLint>(info.internal_format),
-                4, 4, 0,
-                info.pixel_format, info.pixel_type,
-                nullptr
-            );
-
-            if (gl::get_error() != gl::Error_code::no_error) {
-                drain_gl_errors();
-                gl::bind_texture(gl::Texture_target::texture_2d, 0);
-                gl::delete_textures(1, &tex);
-                drain_gl_errors();
-                log_startup->info("    {}: not supported", gl::c_str(info.internal_format));
-                continue;
-            }
-
-            properties.supported = true;
-
-            // Query actual component sizes from the created texture
-            GLint red_size   = 0;
-            GLint green_size = 0;
-            GLint blue_size  = 0;
-            GLint alpha_size = 0;
-            gl::get_tex_level_parameter_iv(gl::Texture_target::texture_2d, 0, gl::Get_texture_parameter::texture_red_size,   &red_size);
-            gl::get_tex_level_parameter_iv(gl::Texture_target::texture_2d, 0, gl::Get_texture_parameter::texture_green_size, &green_size);
-            gl::get_tex_level_parameter_iv(gl::Texture_target::texture_2d, 0, gl::Get_texture_parameter::texture_blue_size,  &blue_size);
-            gl::get_tex_level_parameter_iv(gl::Texture_target::texture_2d, 0, gl::Get_texture_parameter::texture_alpha_size, &alpha_size);
-            properties.red_size         = red_size;
-            properties.green_size       = green_size;
-            properties.blue_size        = blue_size;
-            properties.alpha_size       = alpha_size;
-            properties.depth_size       = 0;
-            properties.stencil_size     = 0;
-            properties.image_texel_size = (red_size + green_size + blue_size + alpha_size + 7) / 8;
-            properties.filter           = true;  // All color formats support filtering
-            properties.framebuffer_blend = true;
-
-            // Probe color renderability by attaching to an FBO
-            GLuint fbo = 0;
-            gl::gen_framebuffers(1, &fbo);
-            gl::bind_framebuffer(gl::Framebuffer_target::framebuffer, fbo);
-            gl::framebuffer_texture_2d(
-                gl::Framebuffer_target::framebuffer,
-                gl::Framebuffer_attachment::color_attachment0,
-                gl::Texture_target::texture_2d,
-                tex, 0
-            );
-            gl::Framebuffer_status status = gl::check_framebuffer_status(gl::Framebuffer_target::framebuffer);
-            properties.color_renderable = (status == gl::Framebuffer_status::framebuffer_complete);
-            drain_gl_errors();
-
-            gl::bind_framebuffer(gl::Framebuffer_target::framebuffer, 0);
-            gl::delete_framebuffers(1, &fbo);
-            gl::bind_texture(gl::Texture_target::texture_2d, 0);
-            gl::delete_textures(1, &tex);
-            drain_gl_errors();
-
-            // Float formats do not support blending without GL_ARB_color_buffer_float
-            if (info.pixel_type == gl::Pixel_type::float_) {
-                properties.framebuffer_blend = properties.color_renderable;
-            }
-
-            // Probe supported MSAA sample counts. The current color_format_table
-            // contains no integer formats, so GL_MAX_COLOR_TEXTURE_SAMPLES (and
-            // GL_MAX_SAMPLES as the overall cap) is the appropriate bound.
-            const int color_sample_cap = std::min(m_info.max_samples, m_info.max_color_texture_samples);
-            properties.texture_2d_sample_counts = probe_sample_counts(info.internal_format, color_sample_cap);
-
-            std::stringstream ss;
-            ss << "    " << gl::c_str(info.internal_format)
-               << ": R" << properties.red_size
-               << " G" << properties.green_size
-               << " B" << properties.blue_size
-               << " A" << properties.alpha_size;
-            if (properties.color_renderable) {
-                ss << " color-renderable";
-            }
-            if (!properties.texture_2d_sample_counts.empty()) {
-                ss << ", sample counts:";
-                for (const int count : properties.texture_2d_sample_counts) {
-                    ss << ' ' << count;
-                }
-            }
-            log_startup->info(ss.str());
-
-            properties.texture_2d_array_max_width  = global_max_texture_size;
-            properties.texture_2d_array_max_height = global_max_texture_size;
-            properties.texture_2d_array_max_layers = global_max_array_texture_layers;
-            format_properties.insert({info.internal_format, properties});
-        }
-
-        // Probe depth/stencil formats using renderbuffer_storage
-        for (const gl::Internal_format format : depth_stencil_formats) {
-            Format_properties properties{};
-
-            drain_gl_errors();
-
-            GLuint rb = 0;
-            gl::gen_renderbuffers(1, &rb);
-            gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, rb);
-            gl::renderbuffer_storage(gl::Renderbuffer_target::renderbuffer, format, 4, 4);
-
-            if (gl::get_error() != gl::Error_code::no_error) {
-                drain_gl_errors();
-                gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, 0);
-                gl::delete_renderbuffers(1, &rb);
-                drain_gl_errors();
-                log_startup->info("    {}: not supported", gl::c_str(format));
-                continue;
-            }
-
-            properties.supported = true;
-
-            // Determine depth/stencil sizes from format
-            const erhe::dataformat::Format df = gl_helpers::convert_from_gl(format);
-            properties.depth_size   = static_cast<int>(erhe::dataformat::get_depth_size_bits(df));
-            properties.stencil_size = static_cast<int>(erhe::dataformat::get_stencil_size_bits(df));
-            properties.image_texel_size = (properties.depth_size + properties.stencil_size + 7) / 8;
-            properties.filter = (properties.depth_size > 0) && (properties.stencil_size == 0);
-
-            // Probe renderability by attaching to an FBO
-            GLuint fbo = 0;
-            gl::gen_framebuffers(1, &fbo);
-            gl::bind_framebuffer(gl::Framebuffer_target::framebuffer, fbo);
-
-            // We need a color attachment for the FBO to be complete
-            GLuint color_tex = 0;
-            gl::gen_textures(1, &color_tex);
-            gl::bind_texture(gl::Texture_target::texture_2d, color_tex);
-            gl::tex_image_2d(
-                gl::Texture_target::texture_2d,
-                0,
-                static_cast<GLint>(gl::Internal_format::rgba8),
-                4, 4, 0,
-                gl::Pixel_format::rgba, gl::Pixel_type::unsigned_byte,
-                nullptr
-            );
-            gl::framebuffer_texture_2d(
-                gl::Framebuffer_target::framebuffer,
-                gl::Framebuffer_attachment::color_attachment0,
-                gl::Texture_target::texture_2d,
-                color_tex, 0
-            );
-
-            if ((properties.depth_size > 0) && (properties.stencil_size > 0)) {
-                gl::framebuffer_renderbuffer(
-                    gl::Framebuffer_target::framebuffer,
-                    gl::Framebuffer_attachment::depth_stencil_attachment,
-                    gl::Renderbuffer_target::renderbuffer,
-                    rb
-                );
-            } else if (properties.depth_size > 0) {
-                gl::framebuffer_renderbuffer(
-                    gl::Framebuffer_target::framebuffer,
-                    gl::Framebuffer_attachment::depth_attachment,
-                    gl::Renderbuffer_target::renderbuffer,
-                    rb
-                );
-            } else {
-                gl::framebuffer_renderbuffer(
-                    gl::Framebuffer_target::framebuffer,
-                    gl::Framebuffer_attachment::stencil_attachment,
-                    gl::Renderbuffer_target::renderbuffer,
-                    rb
-                );
-            }
-
-            gl::Framebuffer_status status = gl::check_framebuffer_status(gl::Framebuffer_target::framebuffer);
-            bool renderable = (status == gl::Framebuffer_status::framebuffer_complete);
-            properties.depth_renderable   = renderable && (properties.depth_size > 0);
-            properties.stencil_renderable = renderable && (properties.stencil_size > 0);
-            drain_gl_errors();
-
-            gl::bind_framebuffer(gl::Framebuffer_target::framebuffer, 0);
-            gl::delete_framebuffers(1, &fbo);
-            gl::bind_texture(gl::Texture_target::texture_2d, 0);
-            gl::delete_textures(1, &color_tex);
-            gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, 0);
-            gl::delete_renderbuffers(1, &rb);
-            drain_gl_errors();
-
-            // Probe supported MSAA sample counts. Depth/stencil formats are
-            // capped by GL_MAX_DEPTH_TEXTURE_SAMPLES and GL_MAX_SAMPLES.
-            const int depth_sample_cap = std::min(m_info.max_samples, m_info.max_depth_texture_samples);
-            properties.texture_2d_sample_counts = probe_sample_counts(format, depth_sample_cap);
-
-            std::stringstream ss;
-            ss << "    " << gl::c_str(format)
-               << ": D" << properties.depth_size
-               << " S" << properties.stencil_size;
-            if (properties.depth_renderable) {
-                ss << " depth-renderable";
-            }
-            if (properties.stencil_renderable) {
-                ss << " stencil-renderable";
-            }
-            if (!properties.texture_2d_sample_counts.empty()) {
-                ss << ", sample counts:";
-                for (const int count : properties.texture_2d_sample_counts) {
-                    ss << ' ' << count;
-                }
-            }
-            log_startup->info(ss.str());
-
-            properties.texture_2d_array_max_width  = global_max_texture_size;
-            properties.texture_2d_array_max_height = global_max_texture_size;
-            properties.texture_2d_array_max_layers = global_max_array_texture_layers;
-            format_properties.insert({format, properties});
-        }
-
-        gl_helpers::set_error_checking(true);
     }
 
     {
@@ -1433,25 +1092,13 @@ void Device_impl::upload_to_buffer(const Buffer& buffer, size_t offset, const vo
     staging_buffer_range.bytes_written(length);
     staging_buffer_range.close();
 
-    if (m_info.use_direct_state_access) {
-        gl::copy_named_buffer_sub_data(
-            staging_buffer_range.get_buffer()->get_buffer()->get_impl().gl_name(),  // GLuint   readBuffer
-            buffer.get_impl().gl_name(),                                            // GLuint   writeBuffer
-            staging_buffer_range.get_byte_start_offset_in_buffer(),                 // GLintptr readOffset
-            offset,                                                                 // GLintptr writeOffset
-            length                                                                  // GLsizeiptr size
-        );
-    } else {
-        auto guard_read  = m_gl_binding_state.push_buffer(gl::Buffer_target::copy_read_buffer,  staging_buffer_range.get_buffer()->get_buffer()->get_impl().gl_name());
-        auto guard_write = m_gl_binding_state.push_buffer(gl::Buffer_target::copy_write_buffer, buffer.get_impl().gl_name());
-        gl::copy_buffer_sub_data(
-            gl::Copy_buffer_sub_data_target::copy_read_buffer,   // GLenum   readTarget
-            gl::Copy_buffer_sub_data_target::copy_write_buffer,   // GLenum   writeTarget
-            staging_buffer_range.get_byte_start_offset_in_buffer(),  // GLintptr readOffset
-            offset,                                                  // GLintptr writeOffset
-            length                                                   // GLsizeiptr size
-        );
-    }
+    gl::copy_named_buffer_sub_data(
+        staging_buffer_range.get_buffer()->get_buffer()->get_impl().gl_name(),  // GLuint   readBuffer
+        buffer.get_impl().gl_name(),                                            // GLuint   writeBuffer
+        staging_buffer_range.get_byte_start_offset_in_buffer(),                 // GLintptr readOffset
+        offset,                                                                 // GLintptr writeOffset
+        length                                                                  // GLsizeiptr size
+    );
 
     staging_buffer_range.release();
 }
@@ -1485,27 +1132,11 @@ void Device_impl::upload_to_texture(
     gl::pixel_store_i(gl::Pixel_store_parameter::unpack_row_length, row_length);
     gl::pixel_store_i(gl::Pixel_store_parameter::unpack_image_height, 0);
 
-    const gl::Texture_target gl_target = convert_to_gl_texture_target(
-        texture.get_texture_type(), texture.get_sample_count() != 0, texture.get_array_layer_count() != 0
+    gl::texture_sub_image_2d(
+        texture.get_impl().gl_name(),
+        level, x, y, width, height,
+        gl_format, gl_type, data
     );
-
-    if (m_info.use_direct_state_access) {
-        gl::texture_sub_image_2d(
-            texture.get_impl().gl_name(),
-            level, x, y, width, height,
-            gl_format, gl_type, data
-        );
-    } else {
-        constexpr GLuint scratch_unit = Gl_binding_state::s_max_texture_units - 1;
-        auto guard = m_gl_binding_state.push_texture(
-            scratch_unit, gl_target, texture.get_impl().gl_name()
-        );
-        gl::tex_sub_image_2d(
-            gl_target,
-            level, x, y, width, height,
-            gl_format, gl_type, data
-        );
-    }
 }
 
 void Device_impl::add_completion_handler(std::function<void(Device_impl&)> callback)
@@ -2060,24 +1691,13 @@ auto Device_impl::get_default_vertex_input_state() -> const Vertex_input_state*
 }
 
 // GL object creation
-// GL object creation
 //
-// DSA path: gl::create_* creates the object immediately (no bind needed).
-// Pre-DSA path (GL 4.1): gl::gen_* + push_* to temporarily bind (creating
-// the object). RAII guards restore previous bindings on scope exit.
+// gl::create_* creates the object immediately (no bind needed).
 
 auto Device_impl::create_texture(gl::Texture_target target) -> Gl_texture
 {
     GLuint name{0};
-    if (m_info.use_direct_state_access) {
-        gl::create_textures(target, 1, &name);
-    } else {
-        gl::gen_textures(1, &name);
-        ERHE_VERIFY(name != 0);
-        // Bind to a scratch texture unit to create the texture object.
-        constexpr GLuint scratch_unit = Gl_binding_state::s_max_texture_units - 1;
-        auto guard = m_gl_binding_state.push_texture(scratch_unit, target, name);
-    }
+    gl::create_textures(target, 1, &name);
     ERHE_VERIFY(name != 0);
     return Gl_texture{name, /*owned=*/true, &m_gl_binding_state};
 }
@@ -2096,13 +1716,7 @@ auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
 auto Device_impl::create_buffer() -> Gl_buffer
 {
     GLuint name{0};
-    if (m_info.use_direct_state_access) {
-        gl::create_buffers(1, &name);
-    } else {
-        gl::gen_buffers(1, &name);
-        ERHE_VERIFY(name != 0);
-        auto guard = m_gl_binding_state.push_buffer(gl::Buffer_target::copy_write_buffer, name);
-    }
+    gl::create_buffers(1, &name);
     ERHE_VERIFY(name != 0);
     return Gl_buffer{name, &m_gl_binding_state};
 }
@@ -2110,13 +1724,7 @@ auto Device_impl::create_buffer() -> Gl_buffer
 auto Device_impl::create_framebuffer() -> Gl_framebuffer
 {
     GLuint name{0};
-    if (m_info.use_direct_state_access) {
-        gl::create_framebuffers(1, &name);
-    } else {
-        gl::gen_framebuffers(1, &name);
-        ERHE_VERIFY(name != 0);
-        auto guard = m_gl_binding_state.push_framebuffer(gl::Framebuffer_target::draw_framebuffer, name);
-    }
+    gl::create_framebuffers(1, &name);
     ERHE_VERIFY(name != 0);
     return Gl_framebuffer{name, &m_gl_binding_state};
 }
@@ -2124,27 +1732,15 @@ auto Device_impl::create_framebuffer() -> Gl_framebuffer
 auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
 {
     GLuint name{0};
-    if (m_info.use_direct_state_access) {
-        gl::create_renderbuffers(1, &name);
-    } else {
-        gl::gen_renderbuffers(1, &name);
-        ERHE_VERIFY(name != 0);
-        auto guard = m_gl_binding_state.push_renderbuffer(name);
-    }
+    gl::create_renderbuffers(1, &name);
     ERHE_VERIFY(name != 0);
     return Gl_renderbuffer{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_sampler() -> Gl_sampler
 {
-    // glGenSamplers creates the sampler object immediately (no bind needed).
-    // Same call works for both DSA and pre-DSA.
     GLuint name{0};
-    if (m_info.use_direct_state_access) {
-        gl::create_samplers(1, &name);
-    } else {
-        gl::gen_samplers(1, &name);
-    }
+    gl::create_samplers(1, &name);
     ERHE_VERIFY(name != 0);
     return Gl_sampler{name, &m_gl_binding_state};
 }
@@ -2152,28 +1748,15 @@ auto Device_impl::create_sampler() -> Gl_sampler
 auto Device_impl::create_vertex_array() -> Gl_vertex_array
 {
     GLuint name{0};
-    if (m_info.use_direct_state_access) {
-        gl::create_vertex_arrays(1, &name);
-    } else {
-        gl::gen_vertex_arrays(1, &name);
-        ERHE_VERIFY(name != 0);
-        auto guard = m_gl_binding_state.push_vertex_array(name);
-    }
+    gl::create_vertex_arrays(1, &name);
     ERHE_VERIFY(name != 0);
     return Gl_vertex_array{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_query(gl::Query_target target) -> Gl_query
 {
-    // Queries are created on first use (glBeginQuery). glGenQueries is
-    // sufficient for both DSA and pre-DSA.
     GLuint name{0};
-    if (m_info.use_direct_state_access) {
-        gl::create_queries(target, 1, &name);
-    } else {
-        static_cast<void>(target);
-        gl::gen_queries(1, &name);
-    }
+    gl::create_queries(target, 1, &name);
     ERHE_VERIFY(name != 0);
     return Gl_query{name};
 }

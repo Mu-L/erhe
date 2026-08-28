@@ -434,8 +434,9 @@ void Id_renderer::ensure_scan_compute()
     m_scan_compute_attempted = true;
 
     // The two scan passes are SSBO-backed compute. On devices without compute
-    // shaders or shader storage buffers (e.g. macOS OpenGL 4.1)
-    // m_scan_compute_available stays false and the CPU region-scan path is used.
+    // shaders or shader storage buffers m_scan_compute_available stays false
+    // and the CPU region-scan path is used. (Every supported GL device has
+    // both now that OpenGL 4.5 is the hard minimum.)
     const erhe::graphics::Device_info& info = m_graphics_device.get_info();
     if (!info.use_compute_shader || !info.use_shader_storage_buffers) {
         return;
@@ -1046,7 +1047,7 @@ void Id_renderer::render(const Render_parameters& parameters)
     //   - GPU compute (preferred): two compute passes scan the id buffer into a
     //     bitmask then compact it to a small { count, ids } vector (see
     //     submit_scan_compute()).
-    //   - CPU fallback (no compute, e.g. macOS GL 4.1): blit the scan rectangle
+    //   - CPU fallback (devices without compute): blit the scan rectangle
     //     of the color texture into a CPU-read buffer and dedup per texel on the
     //     main thread.
     if (do_scan) {
