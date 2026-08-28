@@ -4,6 +4,7 @@
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_graphics/gl/gl_gpu_timer.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/render_pass.hpp"
@@ -27,33 +28,6 @@ namespace erhe::graphics {
 ERHE_PROFILE_MUTEX(std::mutex, Gpu_timer_impl::s_mutex);
 std::vector<Gpu_timer_impl*>   Gpu_timer_impl::s_all_gpu_timers;
 std::size_t                    Gpu_timer_impl::s_index{0};
-
-void Gpu_timer_impl::on_thread_enter()
-{
-#if defined(ERHE_USE_TIME_QUERY)
-    const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{s_mutex};
-
-    for (Gpu_timer_impl* gpu_timer : s_all_gpu_timers) {
-        if (gpu_timer->m_owner_thread == std::thread::id{}) {
-            gpu_timer->create();
-        }
-    }
-#endif
-}
-
-void Gpu_timer_impl::on_thread_exit()
-{
-#if defined(ERHE_USE_TIME_QUERY)
-    const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{s_mutex};
-
-    const std::thread::id this_thread_id = std::this_thread::get_id();
-    for (Gpu_timer_impl* gpu_timer : s_all_gpu_timers) {
-        if (gpu_timer->m_owner_thread == this_thread_id) {
-            gpu_timer->reset();
-        }
-    }
-#endif
-}
 
 Gpu_timer_impl::Gpu_timer_impl(Render_pass& render_pass, const char* label)
     : m_render_pass{&render_pass}
@@ -81,24 +55,13 @@ Gpu_timer_impl::~Gpu_timer_impl() noexcept
 void Gpu_timer_impl::create()
 {
 #if defined(ERHE_USE_TIME_QUERY)
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     for (Query& query : m_queries) {
         if (!query.query_object.has_value()) {
             query.query_object.emplace(
                 m_device->get_impl().create_query(gl::Query_target::time_elapsed)
             );
         }
-    }
-    m_owner_thread = std::this_thread::get_id();
-#endif
-}
-
-void Gpu_timer_impl::reset()
-{
-#if defined(ERHE_USE_TIME_QUERY)
-    m_owner_thread = {};
-    for (Query& query : m_queries) {
-        query.query_object.reset();
-        query.pending = false;
     }
 #endif
 }
@@ -107,13 +70,8 @@ void Gpu_timer_impl::write_begin_timestamp(Command_buffer& command_buffer)
 {
     static_cast<void>(command_buffer);
 #if defined(ERHE_USE_TIME_QUERY)
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{s_mutex};
-
-    if (m_owner_thread != std::this_thread::get_id()) {
-        // Timer was created on a different thread; skip silently. The
-        // editor's render thread is the only one expected to drive timers.
-        return;
-    }
 
     Query& query = m_queries[s_index % s_count];
     if (!query.query_object.has_value()) {
@@ -133,11 +91,8 @@ void Gpu_timer_impl::write_end_timestamp(Command_buffer& command_buffer)
 {
     static_cast<void>(command_buffer);
 #if defined(ERHE_USE_TIME_QUERY)
+    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{s_mutex};
-
-    if (m_owner_thread != std::this_thread::get_id()) {
-        return;
-    }
 
     Query& query = m_queries[s_index % s_count];
     if (!query.query_object.has_value()) {
@@ -154,10 +109,6 @@ void Gpu_timer_impl::write_end_timestamp(Command_buffer& command_buffer)
 void Gpu_timer_impl::poll()
 {
 #if defined(ERHE_USE_TIME_QUERY)
-    if (m_owner_thread != std::this_thread::get_id()) {
-        return;
-    }
-
     for (std::size_t i = 0; i < s_count; ++i) {
         Query& query = m_queries[i];
         if (!query.pending || !query.query_object.has_value()) {
@@ -189,13 +140,13 @@ auto Gpu_timer_impl::label() const -> const char*
 void Gpu_timer_impl::end_frame()
 {
 #if defined(ERHE_USE_TIME_QUERY)
+    // Every registered timer was created on the drawing thread (create()
+    // asserts it), so the walk is unconditional; poll() re-checks pending
+    // and has_value() per slot.
     const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{s_mutex};
 
-    const std::thread::id this_thread_id = std::this_thread::get_id();
     for (Gpu_timer_impl* timer : s_all_gpu_timers) {
-        if (timer->m_owner_thread == this_thread_id) {
-            timer->poll();
-        }
+        timer->poll();
     }
     ++s_index;
 #endif

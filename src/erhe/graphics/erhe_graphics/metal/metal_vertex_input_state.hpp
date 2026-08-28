@@ -14,16 +14,8 @@ public:
     Vertex_input_state_impl(Device& device, Vertex_input_state_data&& create_info);
     ~Vertex_input_state_impl() noexcept;
 
-    void set    (const Vertex_input_state_data& data);
-    void create ();
-    void reset  ();
-    void update ();
-
     [[nodiscard]] auto gl_name () const -> unsigned int;
     [[nodiscard]] auto get_data() const -> const Vertex_input_state_data&;
-
-    static void on_thread_enter();
-    static void on_thread_exit();
 
 private:
     Device&                 m_device;

@@ -157,44 +157,6 @@ auto Gl_sampler::gl_name() const -> unsigned int
     return m_gl_name;
 }
 
-// Gl_framebuffer
-
-Gl_framebuffer::Gl_framebuffer(GLuint gl_name, Gl_binding_state* binding_state)
-    : m_binding_state{binding_state}
-    , m_gl_name      {gl_name}
-{
-}
-
-Gl_framebuffer::~Gl_framebuffer() noexcept
-{
-    if (m_gl_name != 0) {
-        if (m_binding_state != nullptr) {
-            m_binding_state->on_framebuffer_deleted(m_gl_name);
-        }
-        gl::delete_framebuffers(1, &m_gl_name);
-    }
-}
-
-Gl_framebuffer::Gl_framebuffer(Gl_framebuffer&& old) noexcept
-    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
-    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
-{
-}
-
-auto Gl_framebuffer::operator=(Gl_framebuffer&& old) noexcept -> Gl_framebuffer&
-{
-    if (&old == this) {
-        return *this;
-    }
-    this->~Gl_framebuffer();
-    return *new (this) Gl_framebuffer(std::move(old));
-}
-
-auto Gl_framebuffer::gl_name() const -> GLuint
-{
-    return m_gl_name;
-}
-
 // Gl_renderbuffer
 
 Gl_renderbuffer::Gl_renderbuffer(GLuint gl_name, Gl_binding_state* binding_state)
@@ -300,44 +262,6 @@ auto Gl_query::operator=(Gl_query&& old) noexcept -> Gl_query&
 }
 
 auto Gl_query::gl_name() const -> GLuint
-{
-    return m_gl_name;
-}
-
-// Gl_vertex_array
-
-Gl_vertex_array::Gl_vertex_array(GLuint gl_name, Gl_binding_state* binding_state)
-    : m_binding_state{binding_state}
-    , m_gl_name      {gl_name}
-{
-}
-
-Gl_vertex_array::~Gl_vertex_array() noexcept
-{
-    if (m_gl_name != 0) {
-        if (m_binding_state != nullptr) {
-            m_binding_state->on_vertex_array_deleted(m_gl_name);
-        }
-        gl::delete_vertex_arrays(1, &m_gl_name);
-    }
-}
-
-Gl_vertex_array::Gl_vertex_array(Gl_vertex_array&& old) noexcept
-    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
-    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
-{
-}
-
-auto Gl_vertex_array::operator=(Gl_vertex_array&& old) noexcept -> Gl_vertex_array&
-{
-    if (&old == this) {
-        return *this;
-    }
-    this->~Gl_vertex_array();
-    return *new (this) Gl_vertex_array(std::move(old));
-}
-
-auto Gl_vertex_array::gl_name() const -> GLuint
 {
     return m_gl_name;
 }

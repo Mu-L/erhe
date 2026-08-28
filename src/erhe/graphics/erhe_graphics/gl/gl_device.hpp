@@ -138,22 +138,27 @@ public:
     [[nodiscard]] auto push_program(unsigned int program) -> Program_binding_guard;
     [[nodiscard]] auto get_binding_state() -> Gl_binding_state&;
 
-    // Lazily-created persistent empty VAO (wrapped in a Vertex_input_state so the
-    // per-thread VAO migration machinery manages it), bound by the vertex-input
-    // tracker for draws whose pipeline declares no vertex input. Created on first
-    // use rather than in the constructor: Vertex_input_state_impl::create() reaches
-    // back through the public Device, whose m_impl is not yet wired while this
-    // Device_impl constructor runs.
+    // Persistent empty VAO bound by the vertex-input tracker for draws whose
+    // pipeline declares no vertex input. Created eagerly per context - the
+    // main context's instance by create_per_context_resources() - so the
+    // const per-draw substitution path only ever reads an already-populated
+    // own-context slot.
     [[nodiscard]] auto get_default_vertex_input_state() -> const Vertex_input_state*;
+
+    // Called from Device::Device's BODY, after m_impl is wired: creates the
+    // per-context resources whose lifetime reaches back through the public
+    // Device (Vertex_input_state_impl's destructor goes through
+    // Device::get_impl(), which is a null dereference while Device_impl's
+    // constructor runs, so the object must not be constructed before m_impl
+    // is assigned).
+    void create_per_context_resources();
 
     // GL object creation
     [[nodiscard]] auto create_texture     (gl::Texture_target target) -> Gl_texture;
     [[nodiscard]] auto create_texture_view(gl::Texture_target target) -> Gl_texture;
     [[nodiscard]] auto create_buffer      () -> Gl_buffer;
-    [[nodiscard]] auto create_framebuffer () -> Gl_framebuffer;
     [[nodiscard]] auto create_renderbuffer() -> Gl_renderbuffer;
     [[nodiscard]] auto create_sampler     () -> Gl_sampler;
-    [[nodiscard]] auto create_vertex_array() -> Gl_vertex_array;
     [[nodiscard]] auto create_query       (gl::Query_target target) -> Gl_query;
     [[nodiscard]] auto create_program     () -> Gl_program;
     [[nodiscard]] auto create_shader      (gl::Shader_type type) -> Gl_shader;
@@ -180,9 +185,11 @@ private:
     erhe::window::Context_window* m_context_window{nullptr};
 
     // Persistent empty VAO bound for draws whose pipeline declares no vertex
-    // input (core-profile GL rejects glDraw* with VAO 0). Owned here so the
-    // existing per-thread VAO migration (Vertex_input_state_impl) manages it;
-    // declared after m_gl_context_provider so it is destroyed while the GL
+    // input (core-profile GL rejects glDraw* with VAO 0). Created eagerly by
+    // create_per_context_resources() - from Device::Device's BODY, because
+    // Vertex_input_state construction goes through Device::get_impl() and
+    // Device::m_impl is still null while Device_impl's constructor runs.
+    // Declared after m_gl_context_provider so it is destroyed while the GL
     // context is still current.
     std::unique_ptr<Vertex_input_state> m_default_vertex_input_state;
 

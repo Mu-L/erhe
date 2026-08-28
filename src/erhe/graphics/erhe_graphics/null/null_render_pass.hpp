@@ -3,9 +3,6 @@
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_utility/debug_label.hpp"
 
-#include <mutex>
-#include <vector>
-
 namespace erhe::graphics {
 
 class Render_pipeline_state;
@@ -20,15 +17,10 @@ public:
     Render_pass_impl (Render_pass_impl&&)      = delete;
     void operator=   (Render_pass_impl&&)      = delete;
 
-    static void on_thread_enter();
-    static void on_thread_exit ();
-
     [[nodiscard]] auto gl_name                    () const -> unsigned int;
     [[nodiscard]] auto gl_multisample_resolve_name() const -> unsigned int;
     [[nodiscard]] auto get_sample_count           () const -> unsigned int;
 
-    void create      ();
-    void reset       ();
     auto check_status() const -> bool;
 
     [[nodiscard]] auto get_render_target_width () const -> int;
@@ -49,8 +41,6 @@ private:
     erhe::utility::Debug_label m_debug_label;
 
     friend class Device_impl;
-    static std::mutex                     s_mutex;
-    static std::vector<Render_pass_impl*> s_all_framebuffers;
 };
 
 } // namespace erhe::graphics

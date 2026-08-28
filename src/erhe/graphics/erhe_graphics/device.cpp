@@ -50,6 +50,11 @@ Device::Device(
 #if !defined(ERHE_GRAPHICS_API_VULKAN)
     static_cast<void>(vulkan_external_creators);
 #endif
+    // Runs after the member-init list, so m_impl is wired and per-context
+    // resources whose lifetime reaches back through Device::get_impl()
+    // (the GL default vertex input state) can exist. No-op on backends
+    // with no per-context objects.
+    m_impl->create_per_context_resources();
 }
 
 Device::~Device() noexcept = default;

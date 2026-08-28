@@ -231,6 +231,8 @@ public:
     void submit_command_buffer_and_wait(Command_buffer& command_buffer);
     void add_completion_handler   (std::function<void(Device_impl&)> callback);
     void on_thread_enter          ();
+    // No per-context resources in the Vulkan backend; see Device::Device.
+    void create_per_context_resources() {}
 
     [[nodiscard]] auto get_handle                         (const Texture& texture, const Sampler& sampler) const -> uint64_t;
     [[nodiscard]] auto create_dummy_texture               (Command_buffer& init_command_buffer, const erhe::dataformat::Format format) -> std::shared_ptr<Texture>;

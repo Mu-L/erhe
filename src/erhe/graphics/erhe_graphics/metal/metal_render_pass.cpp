@@ -34,9 +34,6 @@ Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor&
 
 Render_pass_impl::~Render_pass_impl() noexcept = default;
 
-void Render_pass_impl::on_thread_enter() {}
-void Render_pass_impl::on_thread_exit()  {}
-
 auto Render_pass_impl::gl_name() const -> unsigned int { return 0; }
 auto Render_pass_impl::gl_multisample_resolve_name() const -> unsigned int { return 0; }
 auto Render_pass_impl::get_sample_count() const -> unsigned int
@@ -58,8 +55,6 @@ auto Render_pass_impl::get_sample_count() const -> unsigned int
     return 1;
 }
 
-void Render_pass_impl::create() {}
-void Render_pass_impl::reset()  {}
 auto Render_pass_impl::check_status() const -> bool { return true; }
 
 auto Render_pass_impl::get_render_target_width() const -> int { return m_render_target_width; }

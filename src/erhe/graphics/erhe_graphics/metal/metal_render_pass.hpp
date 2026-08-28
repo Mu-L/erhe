@@ -25,15 +25,10 @@ public:
     Render_pass_impl (Render_pass_impl&&)      = delete;
     void operator=   (Render_pass_impl&&)      = delete;
 
-    static void on_thread_enter();
-    static void on_thread_exit ();
-
     [[nodiscard]] auto gl_name                    () const -> unsigned int;
     [[nodiscard]] auto gl_multisample_resolve_name() const -> unsigned int;
     [[nodiscard]] auto get_sample_count           () const -> unsigned int;
 
-    void create      ();
-    void reset       ();
     auto check_status() const -> bool;
 
     [[nodiscard]] auto get_render_target_width () const -> int;

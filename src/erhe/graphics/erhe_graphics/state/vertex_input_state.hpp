@@ -48,8 +48,6 @@ public:
     Vertex_input_state(Device& device, Vertex_input_state_data&& create_info);
     ~Vertex_input_state() noexcept;
 
-    void set(const Vertex_input_state_data& data);
-
     [[nodiscard]] auto get_data() const -> const Vertex_input_state_data&;
     [[nodiscard]] auto get_impl() -> Vertex_input_state_impl&;
     [[nodiscard]] auto get_impl() const -> const Vertex_input_state_impl&;

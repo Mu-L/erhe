@@ -20,7 +20,6 @@ public:
     Vertex_input_state_impl(Device& device, Vertex_input_state_data&& create_info);
     ~Vertex_input_state_impl() noexcept;
 
-    void set   (const Vertex_input_state_data& data);
     void create();
     void reset ();
     void update();

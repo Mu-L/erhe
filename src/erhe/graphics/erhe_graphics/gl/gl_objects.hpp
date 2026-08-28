@@ -78,23 +78,6 @@ private:
     GLuint            m_gl_name      {0};
 };
 
-class Gl_framebuffer final
-{
-public:
-    explicit Gl_framebuffer(GLuint gl_name, Gl_binding_state* binding_state = nullptr);
-    ~Gl_framebuffer() noexcept;
-    Gl_framebuffer (const Gl_framebuffer&) = delete;
-    void operator= (const Gl_framebuffer&) = delete;
-    Gl_framebuffer (Gl_framebuffer&& other) noexcept;
-    auto operator= (Gl_framebuffer&& other) noexcept -> Gl_framebuffer&;
-
-    [[nodiscard]] auto gl_name() const -> GLuint;
-
-private:
-    Gl_binding_state* m_binding_state{nullptr};
-    GLuint            m_gl_name      {0};
-};
-
 class Gl_renderbuffer final
 {
 public:
@@ -144,23 +127,6 @@ public:
 
 private:
     GLuint m_gl_name{0};
-};
-
-class Gl_vertex_array final
-{
-public:
-    explicit Gl_vertex_array(GLuint gl_name, Gl_binding_state* binding_state = nullptr);
-    ~Gl_vertex_array() noexcept;
-    Gl_vertex_array (const Gl_vertex_array&) = delete;
-    void operator=  (const Gl_vertex_array&) = delete;
-    Gl_vertex_array (Gl_vertex_array&& other) noexcept;
-    auto operator=  (Gl_vertex_array&& other) noexcept -> Gl_vertex_array&;
-
-    [[nodiscard]] auto gl_name() const -> GLuint;
-
-private:
-    Gl_binding_state* m_binding_state{nullptr};
-    GLuint            m_gl_name      {0};
 };
 
 } // namespace erhe::graphics

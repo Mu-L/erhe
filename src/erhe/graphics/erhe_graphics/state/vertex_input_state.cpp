@@ -89,10 +89,6 @@ Vertex_input_state::Vertex_input_state(Device& device, Vertex_input_state_data&&
 {
 }
 Vertex_input_state::~Vertex_input_state() noexcept = default;
-void Vertex_input_state::set(const Vertex_input_state_data& data)
-{
-    m_impl->set(data);
-}
 auto Vertex_input_state::get_data() const -> const Vertex_input_state_data&
 {
     return m_impl->get_data();

@@ -13,8 +13,8 @@
 #include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
 
+#include <mutex>
 #include <optional>
-#include <thread>
 
 namespace erhe::graphics {
 
@@ -122,9 +122,7 @@ void dump_fbo(Device& device, const int fbo_name)
 
 
 // TODO move to graphics::Device?
-ERHE_PROFILE_MUTEX(std::mutex, Render_pass_impl::s_mutex);
-std::vector<Render_pass_impl*> Render_pass_impl::s_all_framebuffers{};
-Render_pass_impl*              Device_impl::s_active_render_pass = nullptr;
+Render_pass_impl* Device_impl::s_active_render_pass = nullptr;
 
 
 Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor& descriptor)
@@ -158,91 +156,101 @@ Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor&
     check_multisample_resolve(m_depth_attachment);
     check_multisample_resolve(m_stencil_attachment);
 
-    const std::lock_guard lock{s_mutex};
+    // m_draw_buffers depends only on the swapchain / attachment descriptors,
+    // which are set above and never change - so it is computed once here.
+    // Per-context framebuffer creation must not write shared members: two
+    // contexts adopting the same pass concurrently would otherwise clear and
+    // refill this vector under each other.
+    if (m_swapchain != nullptr) {
+        m_draw_buffers.push_back(gl::Color_buffer::back);
+    } else {
+        unsigned int color_index = 0;
+        for (const Render_pass_attachment_descriptor& attachment : m_color_attachments) {
+            if (attachment.texture != nullptr) {
+                m_draw_buffers.push_back(
+                    static_cast<gl::Color_buffer>(static_cast<unsigned int>(gl::Color_buffer::color_attachment0) + color_index)
+                );
+            }
+            ++color_index;
+        }
+    }
 
-    s_all_framebuffers.push_back(this);
-
-    create();
+    ensure_created_on_current_context();
 }
 
 Render_pass_impl::~Render_pass_impl() noexcept
 {
-    const std::lock_guard lock{s_mutex};
-
-    s_all_framebuffers.erase(
-        std::remove(
-            s_all_framebuffers.begin(),
-            s_all_framebuffers.end(),
-            this
-        ),
-        s_all_framebuffers.end()
-    );
-}
-
-void Render_pass_impl::on_thread_enter()
-{
-    ERHE_PROFILE_FUNCTION();
-
-    const std::lock_guard lock{s_mutex};
-
-    for (auto* framebuffer : s_all_framebuffers) {
-        if (framebuffer->m_owner_thread == std::thread::id{}) {
-            framebuffer->create();
+    // Deleting a per-context GL object is only possible on its own context.
+    // Until worker contexts exist, every populated slot belongs to the
+    // destroying thread's current context; the deferred per-context delete
+    // queues arrive with the accessor commit. The mutex excludes a
+    // concurrent first-use adoption storing fresh names into a slot the
+    // walk has already passed.
+    const std::lock_guard<std::mutex> lock{m_adoption_mutex};
+    const int context_index = get_gl_context_index();
+    for (int slot = 0; slot < gl_context_slot_count; ++slot) {
+        unsigned int name = m_context_slots[slot].framebuffer.load(std::memory_order_relaxed);
+        unsigned int multisample_resolve_name = m_context_slots[slot].multisample_resolve_framebuffer.load(std::memory_order_relaxed);
+        if ((name == 0) && (multisample_resolve_name == 0)) {
+            continue;
+        }
+        ERHE_VERIFY(slot == context_index);
+        if (name != 0) {
+            m_device.get_impl().get_binding_state().on_framebuffer_deleted(name);
+            gl::delete_framebuffers(1, &name);
+            m_context_slots[slot].framebuffer.store(0, std::memory_order_relaxed);
+        }
+        if (multisample_resolve_name != 0) {
+            m_device.get_impl().get_binding_state().on_framebuffer_deleted(multisample_resolve_name);
+            gl::delete_framebuffers(1, &multisample_resolve_name);
+            m_context_slots[slot].multisample_resolve_framebuffer.store(0, std::memory_order_relaxed);
         }
     }
 }
 
-void Render_pass_impl::on_thread_exit()
+auto Render_pass_impl::ensure_created_on_current_context() const -> unsigned int
 {
     ERHE_PROFILE_FUNCTION();
 
-    const std::lock_guard lock{s_mutex};
-
-    gl::bind_framebuffer(gl::Framebuffer_target::read_framebuffer, 0);
-    gl::bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, 0);
-    auto this_thread_id = std::this_thread::get_id();
-    for (auto* framebuffer : s_all_framebuffers) {
-        if (framebuffer->m_owner_thread == this_thread_id) {
-            framebuffer->reset();
-        }
-    }
-}
-
-void Render_pass_impl::reset()
-{
-    m_owner_thread = {};
-    m_draw_buffers.clear();
-    m_gl_framebuffer.reset();
-    m_gl_multisample_resolve_framebuffer.reset();
-}
-
-void Render_pass_impl::create()
-{
-    ERHE_PROFILE_FUNCTION();
-
-    m_draw_buffers.clear();
     if (m_swapchain != nullptr) {
-        m_draw_buffers.push_back(gl::Color_buffer::back);
-        return;
+        // Default framebuffer; nothing to create on any context.
+        return 0;
     }
 
-    if (m_gl_framebuffer.has_value()) {
-        ERHE_VERIFY(m_owner_thread == std::this_thread::get_id());
-        return;
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+
+    // Populated fast path: relaxed load of our own slot, no lock.
+    Context_slot& slot = m_context_slots[context_index];
+    const unsigned int existing_name = slot.framebuffer.load(std::memory_order_relaxed);
+    if (existing_name != 0) {
+        return existing_name;
     }
 
-    m_owner_thread = std::this_thread::get_id();
-    m_gl_framebuffer.emplace(m_device.get_impl().create_framebuffer());
+    // First use on this context: create and attach under the adoption
+    // mutex, so destruction cannot race a concurrent adoption.
+    const std::lock_guard<std::mutex> lock{m_adoption_mutex};
+    const unsigned int recheck_name = slot.framebuffer.load(std::memory_order_relaxed);
+    if (recheck_name != 0) {
+        return recheck_name;
+    }
 
+    GLuint framebuffer_name{0};
+    gl::create_framebuffers(1, &framebuffer_name);
+    ERHE_VERIFY(framebuffer_name != 0);
+    GLuint multisample_resolve_name{0};
     if (m_uses_multisample_resolve) {
-        m_gl_multisample_resolve_framebuffer.emplace(m_device.get_impl().create_framebuffer());
+        gl::create_framebuffers(1, &multisample_resolve_name);
+        ERHE_VERIFY(multisample_resolve_name != 0);
     }
 
     auto process_attachment = [](
-        const GLuint                       fbo_name,
-        const gl::Framebuffer_attachment   attachment_point,
-        Render_pass_attachment_descriptor& attachment
-    ) -> bool {
+        const GLuint                             fbo_name,
+        const gl::Framebuffer_attachment         attachment_point,
+        const Render_pass_attachment_descriptor& attachment
+    ) {
         if (attachment.texture != nullptr) {
             ERHE_VERIFY(attachment.texture->get_width() >= 1);
             ERHE_VERIFY(attachment.texture->get_height() >= 1);
@@ -269,8 +277,8 @@ void Render_pass_impl::create()
 
     auto process_multisample_resolve_attachment = [](
         const GLuint                       fbo_name,
-        const gl::Framebuffer_attachment   attachment_point,
-        Render_pass_attachment_descriptor& attachment
+        const gl::Framebuffer_attachment         attachment_point,
+        const Render_pass_attachment_descriptor& attachment
     ) {
         if (attachment.resolve_texture != nullptr) {
             ERHE_VERIFY(attachment.resolve_texture->get_width() >= 1);
@@ -295,62 +303,62 @@ void Render_pass_impl::create()
         }
     };
 
-    m_draw_buffers.clear();
     {
         unsigned int color_index = 0;
-        for (auto& attachment : m_color_attachments) {
+        for (const Render_pass_attachment_descriptor& attachment : m_color_attachments) {
             const gl::Framebuffer_attachment attachment_point = static_cast<gl::Framebuffer_attachment>(
                 static_cast<unsigned int>(gl::Framebuffer_attachment::color_attachment0) + color_index
             );
-            bool has_attachment = process_attachment(gl_name(), attachment_point, attachment);
-            if (has_attachment) {
-                const gl::Color_buffer color_buffer = static_cast<gl::Color_buffer>(
-                    static_cast<unsigned int>(gl::Color_buffer::color_attachment0) + color_index
-                );
-                m_draw_buffers.push_back(color_buffer);
-            }
+            process_attachment(framebuffer_name, attachment_point, attachment);
             ++color_index;
         }
     }
-    process_attachment(gl_name(), gl::Framebuffer_attachment::depth_attachment,   m_depth_attachment);
-    process_attachment(gl_name(), gl::Framebuffer_attachment::stencil_attachment, m_stencil_attachment);
-    
+    process_attachment(framebuffer_name, gl::Framebuffer_attachment::depth_attachment,   m_depth_attachment);
+    process_attachment(framebuffer_name, gl::Framebuffer_attachment::stencil_attachment, m_stencil_attachment);
+
     if (!m_draw_buffers.empty()) {
-        gl::named_framebuffer_draw_buffers(gl_name(), static_cast<GLsizei>(m_draw_buffers.size()), m_draw_buffers.data());
-        gl::named_framebuffer_read_buffer(gl_name(), m_draw_buffers.front());
+        gl::named_framebuffer_draw_buffers(framebuffer_name, static_cast<GLsizei>(m_draw_buffers.size()), m_draw_buffers.data());
+        gl::named_framebuffer_read_buffer(framebuffer_name, m_draw_buffers.front());
     } else {
         // No color attachments (e.g. depth-only shadow maps): set draw/read
         // buffer to GL_NONE so the framebuffer is complete.
-        gl::named_framebuffer_draw_buffers(gl_name(), 0, nullptr);
-        gl::named_framebuffer_read_buffer(gl_name(), gl::Color_buffer::none);
+        gl::named_framebuffer_draw_buffers(framebuffer_name, 0, nullptr);
+        gl::named_framebuffer_read_buffer(framebuffer_name, gl::Color_buffer::none);
     }
 
     if (m_device.get_info().use_debug_output) {
-        erhe::utility::Debug_label debug_label{ fmt::format("(F:{}) {}", gl_name(), m_debug_label.string_view()) };
-        gl::object_label(gl::Object_identifier::framebuffer, gl_name(), -1, debug_label.data());
+        erhe::utility::Debug_label debug_label{ fmt::format("(F:{}) {}", framebuffer_name, m_debug_label.string_view()) };
+        gl::object_label(gl::Object_identifier::framebuffer, framebuffer_name, -1, debug_label.data());
     }
 
     if (m_uses_multisample_resolve) {
         unsigned int color_index = 0;
-        for (auto& attachment : m_color_attachments) {
+        for (const Render_pass_attachment_descriptor& attachment : m_color_attachments) {
             const gl::Framebuffer_attachment attachment_point = static_cast<gl::Framebuffer_attachment>(static_cast<unsigned int>(
                 gl::Framebuffer_attachment::color_attachment0) + color_index
             );
-            process_multisample_resolve_attachment(gl_multisample_resolve_name(), attachment_point, attachment);
+            process_multisample_resolve_attachment(multisample_resolve_name, attachment_point, attachment);
         }
-        process_multisample_resolve_attachment(gl_multisample_resolve_name(), gl::Framebuffer_attachment::depth_attachment,   m_depth_attachment);
-        process_multisample_resolve_attachment(gl_multisample_resolve_name(), gl::Framebuffer_attachment::stencil_attachment, m_stencil_attachment);
+        process_multisample_resolve_attachment(multisample_resolve_name, gl::Framebuffer_attachment::depth_attachment,   m_depth_attachment);
+        process_multisample_resolve_attachment(multisample_resolve_name, gl::Framebuffer_attachment::stencil_attachment, m_stencil_attachment);
 
         const std::string multisample_resolve_debug_label = fmt::format(
             "(F:{}) {} Multisample Resolve",
-            gl_multisample_resolve_name(), m_debug_label.string_view()
+            multisample_resolve_name, m_debug_label.string_view()
         );
         if (m_device.get_info().use_debug_output) {
-            gl::object_label(gl::Object_identifier::framebuffer, gl_multisample_resolve_name(), -1, multisample_resolve_debug_label.c_str());
+            gl::object_label(gl::Object_identifier::framebuffer, multisample_resolve_name, -1, multisample_resolve_debug_label.c_str());
         }
     }
 
+    // Publish the names; gl_name() reads on this context from here on.
+    slot.framebuffer.store(framebuffer_name, std::memory_order_relaxed);
+    if (m_uses_multisample_resolve) {
+        slot.multisample_resolve_framebuffer.store(multisample_resolve_name, std::memory_order_relaxed);
+    }
+
     ERHE_VERIFY(check_status());
+    return framebuffer_name;
 }
 
 auto Render_pass_impl::get_sample_count() const -> unsigned int
@@ -411,12 +419,18 @@ auto Render_pass_impl::check_status() const -> bool
 
 auto Render_pass_impl::gl_name() const -> unsigned int
 {
-    return m_gl_framebuffer.has_value() ? m_gl_framebuffer.value().gl_name() : 0;
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    return m_context_slots[context_index].framebuffer.load(std::memory_order_relaxed);
 }
 
 auto Render_pass_impl::gl_multisample_resolve_name() const -> unsigned int
 {
-    return m_gl_multisample_resolve_framebuffer.has_value() ? m_gl_multisample_resolve_framebuffer.value().gl_name() : 0;
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    return m_context_slots[context_index].multisample_resolve_framebuffer.load(std::memory_order_relaxed);
 }
 
 auto Render_pass_impl::get_render_target_width() const -> int

@@ -120,8 +120,9 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
 {
     ERHE_PROFILE_FUNCTION();
 
-    // The constructing thread owns the drawing context.
+    // The constructing thread owns the drawing context, context index 0.
     set_gl_thread_role(Gl_thread_role::main);
+    set_gl_context_index(0);
 
     // Single source of truth for the bound VAO. The per-draw tracker and the
     // VAO-setup push/pop guards in Vertex_input_state_impl must share state,
@@ -515,8 +516,9 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     }
 
     // The vertex-input tracker binds a persistent empty VAO for pipelines that
-    // declare no vertex input (core-profile GL rejects glDraw* with VAO 0). The
-    // VAO is created lazily on first use; see get_default_vertex_input_state().
+    // declare no vertex input (core-profile GL rejects glDraw* with VAO 0).
+    // The VAO is created eagerly per context by create_per_context_resources()
+    // (called from Device::Device's body, once m_impl is wired).
     m_gl_state_tracker.vertex_input.set_device(&m_device);
 
     if (surface_create_info.context_window != nullptr) {
@@ -1123,6 +1125,7 @@ void Device_impl::add_completion_handler(std::function<void(Device_impl&)> callb
 void Device_impl::on_thread_enter()
 {
     set_gl_thread_role(Gl_thread_role::main);
+    set_gl_context_index(0);
     m_gl_state_tracker.on_thread_enter();
 }
 
@@ -1670,14 +1673,22 @@ auto Device_impl::get_binding_state() -> Gl_binding_state&
 
 auto Device_impl::get_default_vertex_input_state() -> const Vertex_input_state*
 {
-    // Lazily created on first use (a draw), by which point the public Device's
-    // m_impl is wired so Vertex_input_state_impl::create() can reach get_impl().
-    // Owned here so the per-thread VAO migration manages it and it is destroyed
-    // while the GL context is still current.
-    if (!m_default_vertex_input_state) {
-        m_default_vertex_input_state = std::make_unique<Vertex_input_state>(m_device);
-    }
+    ERHE_VERIFY(m_default_vertex_input_state);
     return m_default_vertex_input_state.get();
+}
+
+void Device_impl::create_per_context_resources()
+{
+    // The main context's default vertex input state: a single device-owned
+    // object that lives for the process and that every context needs, so it
+    // is created eagerly rather than lazily on first draw. Created here -
+    // from Device::Device's body - rather than in Device_impl's constructor,
+    // because its destructor reaches Device::get_impl(), which requires
+    // Device::m_impl to be wired for the object's whole lifetime. Each
+    // future pool context populates its own slot as the last step of
+    // creating that context, while it is current.
+    ERHE_VERIFY(!m_default_vertex_input_state);
+    m_default_vertex_input_state = std::make_unique<Vertex_input_state>(m_device);
 }
 
 // GL object creation
@@ -1721,15 +1732,6 @@ auto Device_impl::create_buffer() -> Gl_buffer
     return Gl_buffer{name, &m_gl_binding_state};
 }
 
-auto Device_impl::create_framebuffer() -> Gl_framebuffer
-{
-    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
-    GLuint name{0};
-    gl::create_framebuffers(1, &name);
-    ERHE_VERIFY(name != 0);
-    return Gl_framebuffer{name, &m_gl_binding_state};
-}
-
 auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
@@ -1746,15 +1748,6 @@ auto Device_impl::create_sampler() -> Gl_sampler
     gl::create_samplers(1, &name);
     ERHE_VERIFY(name != 0);
     return Gl_sampler{name, &m_gl_binding_state};
-}
-
-auto Device_impl::create_vertex_array() -> Gl_vertex_array
-{
-    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
-    GLuint name{0};
-    gl::create_vertex_arrays(1, &name);
-    ERHE_VERIFY(name != 0);
-    return Gl_vertex_array{name, &m_gl_binding_state};
 }
 
 auto Device_impl::create_query(gl::Query_target target) -> Gl_query

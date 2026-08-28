@@ -1,72 +1,15 @@
-#include <fmt/core.h>
-#include <fmt/ostream.h>
-
 #include "erhe_graphics/gl/gl_vertex_input_state.hpp"
 #include "erhe_graphics/gl/gl_binding_state.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_graphics/buffer.hpp"
-#include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
 #include "erhe_verify/verify.hpp"
 
-#include <optional>
-
-#include <memory>
-#include <sstream>
+#include <mutex>
 
 namespace erhe::graphics {
-
-ERHE_PROFILE_MUTEX(std::mutex,   Vertex_input_state_impl::s_mutex);
-std::vector<Vertex_input_state_impl*> Vertex_input_state_impl::s_all_vertex_input_states;
-
-void Vertex_input_state_impl::on_thread_enter()
-{
-    const std::lock_guard lock{s_mutex};
-
-    std::stringstream this_thread_id_ss;
-    this_thread_id_ss << std::this_thread::get_id();
-    const std::string this_thread_id_string = this_thread_id_ss.str();
-
-    for (auto* vertex_input_state : s_all_vertex_input_states) {
-        std::stringstream owner_thread_ss;
-        owner_thread_ss << vertex_input_state->m_owner_thread;
-        log_threads->trace(
-            "{}: on thread enter: vertex input state @ {} owned by thread {}",
-            this_thread_id_string, //std::this_thread::get_id(),
-            fmt::ptr(vertex_input_state),
-            owner_thread_ss.str() //vertex_input_state->m_owner_thread
-        );
-        if (vertex_input_state->m_owner_thread == std::thread::id{}) {
-            vertex_input_state->create();
-        }
-    }
-}
-
-void Vertex_input_state_impl::on_thread_exit()
-{
-    const std::lock_guard lock{s_mutex};
-
-    gl::bind_vertex_array(0);
-    auto this_thread_id = std::this_thread::get_id();
-    std::stringstream this_thread_id_ss;
-    this_thread_id_ss << this_thread_id;
-    const std::string this_thread_id_string = this_thread_id_ss.str();
-    for (auto* vertex_input_state : s_all_vertex_input_states) {
-        std::stringstream owner_thread_ss;
-        owner_thread_ss << vertex_input_state->m_owner_thread;
-        log_threads->trace(
-            "{}: on thread exit: vertex input state @ {} owned by thread {}",
-            this_thread_id_string, //std::this_thread::get_id(),
-            fmt::ptr(vertex_input_state),
-            owner_thread_ss.str() // vertex_input_state->m_owner_thread
-        );
-        if (vertex_input_state->m_owner_thread == this_thread_id) {
-            vertex_input_state->reset();
-        }
-    }
-}
 
 auto get_gl_attribute_type(const erhe::dataformat::Format format) -> gl::Attribute_type
 {
@@ -314,81 +257,69 @@ auto get_gl_normalized(erhe::dataformat::Format format) -> bool
 Vertex_input_state_impl::Vertex_input_state_impl(Device& device)
     : m_device{device}
 {
-    const std::lock_guard lock{s_mutex};
-
-    s_all_vertex_input_states.push_back(this);
-
-    create();
+    ensure_created_on_current_context();
 }
 
 Vertex_input_state_impl::Vertex_input_state_impl(Device& device, Vertex_input_state_data&& create_info)
     : m_device{device}
     , m_data  {std::move(create_info)}
 {
-    const std::lock_guard lock{s_mutex};
-
-    s_all_vertex_input_states.push_back(this);
-
-    create();
+    ensure_created_on_current_context();
 }
 
 Vertex_input_state_impl::~Vertex_input_state_impl() noexcept
 {
-    if (!m_gl_vertex_array.has_value()) {
-        return;
+    // Deleting a per-context GL object is only possible on its own context.
+    // Until worker contexts exist, every populated slot belongs to the
+    // destroying thread's current context; the deferred per-context delete
+    // queues arrive with the accessor commit. The mutex excludes a
+    // concurrent first-use adoption storing a fresh name into a slot the
+    // walk has already passed.
+    const std::lock_guard<std::mutex> lock{m_adoption_mutex};
+    const int context_index = get_gl_context_index();
+    for (int slot = 0; slot < gl_context_slot_count; ++slot) {
+        unsigned int name = m_gl_names[slot].load(std::memory_order_relaxed);
+        if (name == 0) {
+            continue;
+        }
+        ERHE_VERIFY(slot == context_index);
+        m_device.get_impl().get_binding_state().on_vertex_array_deleted(name);
+        gl::delete_vertex_arrays(1, &name);
+        m_gl_names[slot].store(0, std::memory_order_relaxed);
+    }
+}
+
+auto Vertex_input_state_impl::ensure_created_on_current_context() const -> unsigned int
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+
+    // Populated fast path: relaxed load of our own slot, no lock.
+    const unsigned int existing_name = m_gl_names[context_index].load(std::memory_order_relaxed);
+    if (existing_name != 0) {
+        return existing_name;
     }
 
-    const std::lock_guard lock{s_mutex};
-
-    s_all_vertex_input_states.erase(
-        std::remove(s_all_vertex_input_states.begin(), s_all_vertex_input_states.end(), this),
-        s_all_vertex_input_states.end()
-    );
-}
-
-void Vertex_input_state_impl::set(const Vertex_input_state_data& data)
-{
-    m_data = data;
-    update();
-}
-
-void Vertex_input_state_impl::reset()
-{
-    // Delete VAO
-    std::stringstream this_thread_id_ss;
-    this_thread_id_ss << std::this_thread::get_id();
-    //log_threads.trace("{}: reset @ {}\n", std::this_thread::get_id(), fmt::ptr(this));
-    log_threads->trace("{}: reset @ {}", this_thread_id_ss.str(), fmt::ptr(this));
-    m_owner_thread = {};
-    m_gl_vertex_array.reset();
-
-    ERHE_VERIFY(!m_gl_vertex_array.has_value());
-}
-
-void Vertex_input_state_impl::create()
-{
-    std::stringstream this_thread_id_ss;
-    this_thread_id_ss << std::this_thread::get_id();
-    //log_threads.trace("{}: create @ {}\n", std::this_thread::get_id(), fmt::ptr(this));
-    log_threads->trace("{}: create @ {}", this_thread_id_ss.str(), fmt::ptr(this));
-    if (m_gl_vertex_array.has_value()) {
-        ERHE_VERIFY(m_owner_thread == std::this_thread::get_id());
-        return;
+    // First use on this context: create and configure under the adoption
+    // mutex, so destruction cannot race a concurrent adoption.
+    const std::lock_guard<std::mutex> lock{m_adoption_mutex};
+    const unsigned int recheck_name = m_gl_names[context_index].load(std::memory_order_relaxed);
+    if (recheck_name != 0) {
+        return recheck_name;
     }
-
-    m_owner_thread = std::this_thread::get_id();
-    m_gl_vertex_array.emplace(m_device.get_impl().create_vertex_array());
-
-    update();
-
-    ERHE_VERIFY(m_gl_vertex_array.has_value());
+    GLuint new_name{0};
+    gl::create_vertex_arrays(1, &new_name);
+    ERHE_VERIFY(new_name != 0);
+    update(new_name);
+    m_gl_names[context_index].store(new_name, std::memory_order_relaxed);
+    return new_name;
 }
 
-void Vertex_input_state_impl::update()
+void Vertex_input_state_impl::update(const unsigned int vao_name) const
 {
-    ERHE_VERIFY(m_owner_thread == std::this_thread::get_id());
-    ERHE_VERIFY(m_gl_vertex_array.has_value());
-    ERHE_VERIFY(gl_name() > 0);
+    ERHE_VERIFY(vao_name > 0);
 
     for (const auto& attribute : m_data.attributes) {
         switch (get_gl_attribute_type(attribute.format)) {
@@ -406,7 +337,7 @@ void Vertex_input_state_impl::update()
             case gl::Attribute_type::unsigned_int_vec3:
             case gl::Attribute_type::unsigned_int_vec4: {
                 gl::vertex_array_attrib_i_format(
-                    gl_name(),
+                    vao_name,
                     attribute.layout_location,
                     static_cast<GLint>(erhe::dataformat::get_component_count(attribute.format)),
                     static_cast<gl::Vertex_attrib_i_type>(get_gl_vertex_attrib_type(attribute.format)),
@@ -429,7 +360,7 @@ void Vertex_input_state_impl::update()
             case gl::Attribute_type::float_mat4x2:
             case gl::Attribute_type::float_mat4x3: {
                 gl::vertex_array_attrib_format(
-                    gl_name(),
+                    vao_name,
                     attribute.layout_location,
                     static_cast<GLint>(erhe::dataformat::get_component_count(attribute.format)),
                     get_gl_vertex_attrib_type(attribute.format),
@@ -454,7 +385,7 @@ void Vertex_input_state_impl::update()
             case gl::Attribute_type::double_mat4x2:
             case gl::Attribute_type::double_mat4x3: {
                 gl::vertex_array_attrib_l_format(
-                    gl_name(),
+                    vao_name,
                     attribute.layout_location,
                     static_cast<GLint>(erhe::dataformat::get_component_count(attribute.format)),
                     static_cast<gl::Vertex_attrib_l_type>(get_gl_vertex_attrib_type(attribute.format)),
@@ -468,22 +399,21 @@ void Vertex_input_state_impl::update()
             }
         }
 
-        gl::vertex_array_attrib_binding(gl_name(), attribute.layout_location, static_cast<GLuint>(attribute.binding));
-        gl::enable_vertex_array_attrib(gl_name(), attribute.layout_location);
+        gl::vertex_array_attrib_binding(vao_name, attribute.layout_location, static_cast<GLuint>(attribute.binding));
+        gl::enable_vertex_array_attrib(vao_name, attribute.layout_location);
     }
 
     for (const Vertex_input_binding& binding : m_data.bindings) {
-        gl::vertex_array_binding_divisor(gl_name(), static_cast<GLuint>(binding.binding), binding.divisor);
+        gl::vertex_array_binding_divisor(vao_name, static_cast<GLuint>(binding.binding), binding.divisor);
     }
 }
 
 auto Vertex_input_state_impl::gl_name() const -> unsigned int
 {
-    ERHE_VERIFY(m_owner_thread == std::this_thread::get_id());
-
-    return m_gl_vertex_array.has_value()
-        ? m_gl_vertex_array.value().gl_name()
-        : 0;
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    return m_gl_names[context_index].load(std::memory_order_relaxed);
 }
 
 auto Vertex_input_state_impl::get_data() const -> const Vertex_input_state_data&

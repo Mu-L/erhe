@@ -88,6 +88,8 @@ public:
     void upload_to_buffer          (const Buffer& buffer, size_t offset, const void* data, size_t length);
     void add_completion_handler    (std::function<void(Device_impl&)> callback);
     void on_thread_enter           ();
+    // No per-context resources in the null backend; see Device::Device.
+    void create_per_context_resources() {}
 
     [[nodiscard]] auto get_surface                        () -> Surface*;
     [[nodiscard]] auto get_native_handles                 () const -> Native_device_handles;

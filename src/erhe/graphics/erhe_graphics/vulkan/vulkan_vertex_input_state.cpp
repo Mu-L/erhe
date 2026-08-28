@@ -30,12 +30,6 @@ Vertex_input_state_impl::~Vertex_input_state_impl() noexcept
 {
 }
 
-void Vertex_input_state_impl::set(const Vertex_input_state_data& data)
-{
-    m_data = data;
-    update();
-}
-
 void Vertex_input_state_impl::reset()
 {
 }

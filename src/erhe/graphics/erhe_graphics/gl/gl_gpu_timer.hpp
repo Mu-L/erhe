@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
-#include <thread>
 #include <vector>
 
 namespace erhe::graphics {
@@ -24,6 +23,11 @@ class Render_pass;
 //
 // Constraint: GL allows only one GL_TIME_ELAPSED query active at a time, so
 // only one Gpu_timer per Render_pass scope is supported.
+//
+// Main-thread-only by design: query objects are per-context (unshared), the
+// per-timer state is a ring of queries no per-context slot can represent,
+// and nothing wants GPU timing off the drawing thread. Creation and the
+// begin/end timestamps assert the draw-capable role.
 class Gpu_timer_impl
 {
 public:
@@ -41,15 +45,12 @@ public:
     void write_begin_timestamp(Command_buffer& command_buffer);
     void write_end_timestamp  (Command_buffer& command_buffer);
 
-    // Walk every live Gpu_timer_impl on this thread and poll for available
-    // query results. Called from Gl_device::end_frame.
-    static void on_thread_enter();
-    static void on_thread_exit ();
-    static void end_frame      ();
+    // Walk every live Gpu_timer_impl and poll for available query results.
+    // Called from Gl_device::end_frame; the registry exists for this walk.
+    static void end_frame();
 
 private:
     void create();
-    void reset ();
     void poll  ();
 
     class Query
@@ -67,7 +68,6 @@ private:
     Render_pass*               m_render_pass{nullptr};
     Device*                    m_device     {nullptr};
     std::array<Query, s_count> m_queries;
-    std::thread::id            m_owner_thread;
     uint64_t                   m_last_result{0};
     const char*                m_label      {nullptr};
 };
