@@ -122,7 +122,7 @@ void dump_fbo(Device& device, const int fbo_name)
 
 
 // TODO move to graphics::Device?
-Render_pass_impl* Device_impl::s_active_render_pass = nullptr;
+thread_local Render_pass_impl* Device_impl::s_active_render_pass = nullptr;
 
 
 Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor& descriptor)
@@ -479,10 +479,13 @@ void Render_pass_impl::start_render_pass(Command_buffer& command_buffer, Render_
         m_device.get_impl().reset_shader_stages_state_tracker();
     }
 
+    // Resolve the calling thread's per-context caches once for the pass.
+    OpenGL_state_tracker& tracker = m_device.get_impl().get_state_tracker();
+
     m_device.get_impl().get_binding_state().bind_framebuffer(gl::Framebuffer_target::draw_framebuffer, gl_name());
 
     if ((m_render_target_width > 0) && (m_render_target_height > 0)) {
-        m_device.get_impl().m_gl_state_tracker.viewport_rect.execute(
+        tracker.viewport_rect.execute(
             Viewport_rect_state{
                 .x      = 0.0f,
                 .y      = 0.0f,
@@ -490,7 +493,7 @@ void Render_pass_impl::start_render_pass(Command_buffer& command_buffer, Render_
                 .height = static_cast<float>(m_render_target_height)
             }
         );
-        m_device.get_impl().m_gl_state_tracker.scissor.execute(
+        tracker.scissor.execute(
             Scissor_state{
                 .x      = 0,
                 .y      = 0,
@@ -501,7 +504,7 @@ void Render_pass_impl::start_render_pass(Command_buffer& command_buffer, Render_
     }
 
     // To be able to clear color the color write masks must be enabled (part of color blend state)
-    m_device.get_impl().m_gl_state_tracker.color_blend.execute(
+    tracker.color_blend.execute(
         Color_blend_state{
             .write_mask = {
                 .red   = true,
@@ -512,7 +515,7 @@ void Render_pass_impl::start_render_pass(Command_buffer& command_buffer, Render_
         }
     );
     // To be able to clear depth/stencil the depth write masks / stencil must write_mask be enabled (part of depth stencil state)
-    m_device.get_impl().m_gl_state_tracker.depth_stencil.execute(
+    tracker.depth_stencil.execute(
         Depth_stencil_state{
             .depth_write_enable = true,
             .stencil_front = {

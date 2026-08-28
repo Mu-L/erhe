@@ -80,8 +80,10 @@ public:
     void start_frame_capture       ();
     void end_frame_capture         ();
 
-    // Active render pass tracking
-    static Render_pass_impl* s_active_render_pass;
+    // Active render pass tracking. Per-context, not process-wide: a GL
+    // context is current on exactly one thread, so thread_local keys the
+    // active pass by the calling thread's current context.
+    static thread_local Render_pass_impl* s_active_render_pass;
     void memory_barrier            (Memory_barrier_mask barriers);
     void clear_texture             (const Texture& texture, std::array<double, 4> clear_value);
     void transition_texture_layout (const Texture& texture, Image_layout new_layout);
@@ -138,7 +140,13 @@ public:
     // glLinkProgram on GLSL < 4.30 -- without leaving
     // Shader_stages_tracker desynchronized from real GL state.
     [[nodiscard]] auto push_program(unsigned int program) -> Program_binding_guard;
+
+    // The CURRENT context's software caches, resolved through the
+    // thread-local context index. Hot paths (command encoders, render
+    // passes) resolve once at construction / pass start and hold the
+    // reference rather than paying the TLS lookup per call.
     [[nodiscard]] auto get_binding_state() -> Gl_binding_state&;
+    [[nodiscard]] auto get_state_tracker() -> OpenGL_state_tracker&;
 
     // Persistent empty VAO bound by the vertex-input tracker for draws whose
     // pipeline declares no vertex input. Created eagerly per context - the
@@ -191,8 +199,13 @@ private:
     Graphics_config               m_graphics_config;
     std::unique_ptr<Surface>      m_surface{};
     Shader_monitor                m_shader_monitor;
-    OpenGL_state_tracker          m_gl_state_tracker;
-    Gl_binding_state              m_gl_binding_state;
+    // Per-context software caches: one wired {tracker, binding state} pair
+    // per context slot (main = 0, worker pool contexts 1..), indexed by the
+    // thread-local context index. The constructor wires each tracker to its
+    // own binding state; the pairs are never mixed - each context's tracker
+    // describes only that context's GL state.
+    std::array<OpenGL_state_tracker, gl_context_slot_count> m_gl_state_trackers;
+    std::array<Gl_binding_state, gl_context_slot_count>     m_gl_binding_states;
     Gl_context_provider           m_gl_context_provider;
     Device_info                   m_info;
     erhe::window::Context_window* m_context_window{nullptr};

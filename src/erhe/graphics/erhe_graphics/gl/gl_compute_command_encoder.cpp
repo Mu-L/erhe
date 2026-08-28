@@ -16,6 +16,7 @@ namespace erhe::graphics {
 
 Compute_command_encoder_impl::Compute_command_encoder_impl(Device& device, Command_buffer& command_buffer)
     : Command_encoder_impl{device, command_buffer}
+    , m_tracker{device.get_impl().get_state_tracker()}
 {
     ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
 }
@@ -71,7 +72,7 @@ void Compute_command_encoder_impl::set_acceleration_structure(uint32_t binding_p
 
 void Compute_command_encoder_impl::set_compute_pipeline_state(const Compute_pipeline_state& pipeline)
 {
-    m_device.get_impl().m_gl_state_tracker.execute_(pipeline);
+    m_tracker.execute_(pipeline);
 }
 
 void Compute_command_encoder_impl::set_compute_pipeline(const Compute_pipeline& pipeline)
@@ -79,7 +80,7 @@ void Compute_command_encoder_impl::set_compute_pipeline(const Compute_pipeline& 
     // GL uses the pipeline data to set shader program via state tracker
     const Compute_pipeline_data& data = pipeline.get_data();
     Compute_pipeline_state state{Compute_pipeline_data{data}};
-    m_device.get_impl().m_gl_state_tracker.execute_(state);
+    m_tracker.execute_(state);
 }
 
 void Compute_command_encoder_impl::dispatch_compute(

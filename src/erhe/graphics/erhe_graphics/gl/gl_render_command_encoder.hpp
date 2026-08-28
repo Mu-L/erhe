@@ -5,6 +5,8 @@
 
 namespace erhe::graphics {
 
+class OpenGL_state_tracker;
+
 class Render_command_encoder_impl final : public Command_encoder_impl
 {
 public:
@@ -40,6 +42,12 @@ public:
     ) const;
 
     void dump_state(const char* label) const;
+
+private:
+    // The constructing thread's per-context state tracker, resolved once
+    // here (encoder construction) rather than per call - the per-context
+    // lookup is a TLS hit and set_render_pipeline* are hot.
+    OpenGL_state_tracker& m_tracker;
 };
 
 } // namespace erhe::graphics

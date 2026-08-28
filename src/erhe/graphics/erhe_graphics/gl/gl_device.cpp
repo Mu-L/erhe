@@ -116,7 +116,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     : m_device             {device}
     , m_graphics_config    {graphics_config}
     , m_shader_monitor     {device}
-    , m_gl_context_provider{device, m_gl_state_tracker}
+    , m_gl_context_provider{device, m_gl_state_trackers[0]}
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -124,10 +124,14 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     set_gl_thread_role(Gl_thread_role::main);
     set_gl_context_index(0);
 
-    // Single source of truth for the bound VAO. The per-draw tracker and the
-    // VAO-setup push/pop guards in Vertex_input_state_impl must share state,
-    // or the per-draw cache can skip a needed bind after a guard restores 0.
-    m_gl_state_tracker.set_binding_state(&m_gl_binding_state);
+    // Wire each context slot's {tracker, binding state} pair. Within one
+    // context the binding state is the single source of truth for the bound
+    // VAO: the per-draw tracker and the VAO-setup push/pop guards in
+    // Vertex_input_state_impl must share state, or the per-draw cache can
+    // skip a needed bind after a guard restores 0.
+    for (int slot = 0; slot < gl_context_slot_count; ++slot) {
+        m_gl_state_trackers[slot].set_binding_state(&m_gl_binding_states[slot]);
+    }
 
     gl_helpers::set_error_callback(
         [&device](const std::string& message) {
@@ -521,7 +525,9 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     // (called from Device::Device's body, once m_impl is wired). The tracker
     // also needs the device for the Scoped_vertex_input_state adoption at
     // pipeline bind.
-    m_gl_state_tracker.set_device(&m_device);
+    for (int slot = 0; slot < gl_context_slot_count; ++slot) {
+        m_gl_state_trackers[slot].set_device(&m_device);
+    }
 
     if (surface_create_info.context_window != nullptr) {
         if (initial_clear) {
@@ -1128,7 +1134,7 @@ void Device_impl::on_thread_enter()
 {
     set_gl_thread_role(Gl_thread_role::main);
     set_gl_context_index(0);
-    m_gl_state_tracker.on_thread_enter();
+    m_gl_state_trackers[0].on_thread_enter();
 }
 
 void Device_impl::install_gl_debug_callback()
@@ -1659,22 +1665,36 @@ auto Device_impl::make_render_command_encoder(Command_buffer& command_buffer) ->
 
 void Device_impl::reset_shader_stages_state_tracker()
 {
-    m_gl_state_tracker.shader_stages.reset();
+    get_state_tracker().shader_stages.reset();
 }
 
 auto Device_impl::push_program(const unsigned int program) -> Program_binding_guard
 {
-    return m_gl_state_tracker.shader_stages.push_program(program);
+    return get_state_tracker().shader_stages.push_program(program);
 }
 
 auto Device_impl::get_draw_id_uniform_location() const -> GLint
 {
-    return m_gl_state_tracker.shader_stages.get_draw_id_uniform_location();
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    return m_gl_state_trackers[context_index].shader_stages.get_draw_id_uniform_location();
 }
 
 auto Device_impl::get_binding_state() -> Gl_binding_state&
 {
-    return m_gl_binding_state;
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    return m_gl_binding_states[context_index];
+}
+
+auto Device_impl::get_state_tracker() -> OpenGL_state_tracker&
+{
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    return m_gl_state_trackers[context_index];
 }
 
 auto Device_impl::get_default_vertex_input_state() -> const Vertex_input_state*
@@ -1726,12 +1746,12 @@ void Device_impl::drain_container_object_deletes_for_current_context()
     Deferred_container_deletes& queue = m_deferred_container_deletes[context_index];
     const std::lock_guard<std::mutex> lock{queue.mutex};
     for (unsigned int name : queue.vertex_arrays) {
-        m_gl_binding_state.on_vertex_array_deleted(name);
+        m_gl_binding_states[context_index].on_vertex_array_deleted(name);
         gl::delete_vertex_arrays(1, &name);
     }
     queue.vertex_arrays.clear();
     for (unsigned int name : queue.framebuffers) {
-        m_gl_binding_state.on_framebuffer_deleted(name);
+        m_gl_binding_states[context_index].on_framebuffer_deleted(name);
         gl::delete_framebuffers(1, &name);
     }
     queue.framebuffers.clear();
@@ -1754,7 +1774,7 @@ auto Device_impl::create_texture(gl::Texture_target target) -> Gl_texture
     GLuint name{0};
     gl::create_textures(target, 1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_texture{name, /*owned=*/true, &m_gl_binding_state};
+    return Gl_texture{name, /*owned=*/true, &get_binding_state()};
 }
 
 auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
@@ -1766,7 +1786,7 @@ auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
     GLuint name{0};
     gl::gen_textures(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_texture{name, /*owned=*/true, &m_gl_binding_state};
+    return Gl_texture{name, /*owned=*/true, &get_binding_state()};
 }
 
 auto Device_impl::create_buffer() -> Gl_buffer
@@ -1775,7 +1795,7 @@ auto Device_impl::create_buffer() -> Gl_buffer
     GLuint name{0};
     gl::create_buffers(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_buffer{name, &m_gl_binding_state};
+    return Gl_buffer{name, &get_binding_state()};
 }
 
 auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
@@ -1784,7 +1804,7 @@ auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
     GLuint name{0};
     gl::create_renderbuffers(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_renderbuffer{name, &m_gl_binding_state};
+    return Gl_renderbuffer{name, &get_binding_state()};
 }
 
 auto Device_impl::create_sampler() -> Gl_sampler
@@ -1793,7 +1813,7 @@ auto Device_impl::create_sampler() -> Gl_sampler
     GLuint name{0};
     gl::create_samplers(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_sampler{name, &m_gl_binding_state};
+    return Gl_sampler{name, &get_binding_state()};
 }
 
 auto Device_impl::create_query(gl::Query_target target) -> Gl_query
@@ -1813,7 +1833,7 @@ auto Device_impl::create_program() -> Gl_program
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name = gl::create_program();
     ERHE_VERIFY(name != 0);
-    return Gl_program{name, &m_gl_binding_state};
+    return Gl_program{name, &get_binding_state()};
 }
 
 auto Device_impl::create_shader(gl::Shader_type type) -> Gl_shader

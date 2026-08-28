@@ -115,7 +115,7 @@ void Command_buffer_impl::signal_cpu(Command_buffer& /*other*/)
 }
 
 // GL has no native command buffer, so the recording state lives on
-// Device_impl (m_staging_buffer, m_gl_binding_state, etc.). The
+// Device_impl (m_staging_buffer, the per-context caches, etc.). The
 // Command_buffer_impl just forwards: the public Command_buffer is
 // the user-facing API but the GL device still does the work.
 void Command_buffer_impl::upload_to_buffer(const Buffer& buffer, std::size_t offset, const void* data, std::size_t length)

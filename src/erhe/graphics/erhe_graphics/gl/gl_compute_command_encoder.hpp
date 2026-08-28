@@ -5,6 +5,8 @@
 
 namespace erhe::graphics {
 
+class OpenGL_state_tracker;
+
 class Compute_command_encoder_impl final : public Command_encoder_impl
 {
 public:
@@ -22,6 +24,11 @@ public:
     void set_compute_pipeline_state(const Compute_pipeline_state& pipeline);
     void set_compute_pipeline      (const Compute_pipeline& pipeline);
     void dispatch_compute          (std::uintptr_t x_size, std::uintptr_t y_size, std::uintptr_t z_size);
+
+private:
+    // The constructing thread's per-context state tracker, resolved once
+    // here (encoder construction) rather than per call.
+    OpenGL_state_tracker& m_tracker;
 };
 
 } // namespace erhe::graphics

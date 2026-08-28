@@ -20,6 +20,7 @@ namespace erhe::graphics {
 
 Render_command_encoder_impl::Render_command_encoder_impl(Device& device, Command_buffer& command_buffer)
     : Command_encoder_impl{device, command_buffer}
+    , m_tracker{device.get_impl().get_state_tracker()}
 {
     ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
 }
@@ -42,8 +43,7 @@ void Render_command_encoder_impl::set_render_pipeline(const Render_pipeline& pip
     const Render_pipeline_create_info&      ci            = pipeline.get_create_info();
     const Base_render_pipeline_create_info& base          = ci.base;
     const Shader_stages*                    shader_stages = ci.shader_stages;
-    OpenGL_state_tracker& tracker = m_device.get_impl().m_gl_state_tracker;
-    tracker.shader_stages       .execute(shader_stages);
+    m_tracker.shader_stages       .execute(shader_stages);
     // Adoption point (pipeline bind, not per draw): ensure the pipeline's
     // vertex input state has a VAO on the calling thread's current context.
     unsigned int vertex_input_gl_name{0};
@@ -51,19 +51,19 @@ void Render_command_encoder_impl::set_render_pipeline(const Render_pipeline& pip
         const Scoped_vertex_input_state scoped_vertex_input_state{m_device, *ci.vertex_input};
         vertex_input_gl_name = scoped_vertex_input_state.gl_name();
     }
-    tracker.vertex_input        .execute(ci.vertex_input, vertex_input_gl_name);
-    tracker.input_assembly      .execute(base.input_assembly);
-    tracker.rasterization       .execute(base.rasterization);
-    tracker.multisample         .execute(base.multisample);
-    tracker.viewport_depth_range.execute(base.viewport_depth_range);
-    tracker.depth_stencil       .execute(base.depth_stencil);
+    m_tracker.vertex_input        .execute(ci.vertex_input, vertex_input_gl_name);
+    m_tracker.input_assembly      .execute(base.input_assembly);
+    m_tracker.rasterization       .execute(base.rasterization);
+    m_tracker.multisample         .execute(base.multisample);
+    m_tracker.viewport_depth_range.execute(base.viewport_depth_range);
+    m_tracker.depth_stencil       .execute(base.depth_stencil);
     const Color_blend_state& color_blend = (base.color_blend != nullptr) ? *base.color_blend : Color_blend_state::color_blend_disabled;
-    tracker.color_blend         .execute(color_blend);
+    m_tracker.color_blend         .execute(color_blend);
 }
 
 void Render_command_encoder_impl::set_render_pipeline_state(const Render_pipeline_state& pipeline)
 {
-    m_device.get_impl().m_gl_state_tracker.execute_(pipeline, false);
+    m_tracker.execute_(pipeline, false);
 }
 
 void Render_command_encoder_impl::set_render_pipeline_state(
@@ -71,13 +71,13 @@ void Render_command_encoder_impl::set_render_pipeline_state(
     const Shader_stages* const   override_shader_stages
 )
 {
-    m_device.get_impl().m_gl_state_tracker.execute_(pipeline, true);
-    m_device.get_impl().m_gl_state_tracker.shader_stages.execute(override_shader_stages);
+    m_tracker.execute_(pipeline, true);
+    m_tracker.shader_stages.execute(override_shader_stages);
 }
 
 void Render_command_encoder_impl::set_viewport_rect(const int x, const int y, const int width, const int height)
 {
-    m_device.get_impl().m_gl_state_tracker.viewport_rect.execute(
+    m_tracker.viewport_rect.execute(
         Viewport_rect_state{
             .x      = static_cast<float>(x),
             .y      = static_cast<float>(y),
@@ -89,7 +89,7 @@ void Render_command_encoder_impl::set_viewport_rect(const int x, const int y, co
 
 void Render_command_encoder_impl::set_viewport_depth_range(const float min_depth, const float max_depth)
 {
-    m_device.get_impl().m_gl_state_tracker.viewport_depth_range.execute(
+    m_tracker.viewport_depth_range.execute(
         Viewport_depth_range_state{
             .min_depth = min_depth,
             .max_depth = max_depth
@@ -99,7 +99,7 @@ void Render_command_encoder_impl::set_viewport_depth_range(const float min_depth
 
 void Render_command_encoder_impl::set_scissor_rect(const int x, const int y, const int width, const int height)
 {
-    m_device.get_impl().m_gl_state_tracker.scissor.execute(
+    m_tracker.scissor.execute(
         Scissor_state{
             .x      = x,
             .y      = y,
@@ -121,7 +121,7 @@ void Render_command_encoder_impl::set_depth_bias(const float constant_factor, co
 
 void Render_command_encoder_impl::set_index_buffer(const Buffer* const buffer)
 {
-    m_device.get_impl().m_gl_state_tracker.vertex_input.set_index_buffer(buffer);
+    m_tracker.vertex_input.set_index_buffer(buffer);
 }
 
 void Render_command_encoder_impl::set_vertex_buffer(
@@ -130,7 +130,7 @@ void Render_command_encoder_impl::set_vertex_buffer(
     const std::uintptr_t index
 )
 {
-    m_device.get_impl().m_gl_state_tracker.vertex_input.set_vertex_buffer(index, buffer, offset);
+    m_tracker.vertex_input.set_vertex_buffer(index, buffer, offset);
 }
 
 [[nodiscard]] auto to_gl(const Primitive_type primitive_type) -> gl::Primitive_type
@@ -285,7 +285,7 @@ void Render_command_encoder_impl::multi_draw_indexed_primitives_indirect(
 
 void Render_command_encoder_impl::dump_state(const char* label) const
 {
-    std::string dump = m_device.get_impl().m_gl_state_tracker.dump_state(
+    std::string dump = m_tracker.dump_state(
         label,
         m_device.get_impl().get_binding_state()
     );
