@@ -95,7 +95,13 @@ class Vertex_input_state_tracker
 {
 public:
     void reset  ();
-    void execute(const Vertex_input_state* state);
+    // resolved_gl_name is the VAO name the pipeline-bind site resolved
+    // through Scoped_vertex_input_state (0 when state is nullptr - the
+    // device's default state is substituted here and its own-context slot
+    // is populated eagerly, so no adoption is needed for it). Adoption is
+    // NOT folded in here: this runs per draw, and gl_name() is a getter,
+    // never a creation point.
+    void execute(const Vertex_input_state* state, unsigned int resolved_gl_name);
 
     void set_index_buffer (const Buffer* buffer) const;
     void set_vertex_buffer(std::uintptr_t binding, const Buffer* buffer, std::uintptr_t offset);
@@ -146,10 +152,12 @@ public:
     void execute_         (const Render_pipeline_state& pipeline, bool skip_shader_stages = false);
     void execute_         (const Compute_pipeline_state& pipeline);
     void set_binding_state(Gl_binding_state* binding_state);
+    void set_device       (Device* device);
     auto dump_state       (const char* label, const Gl_binding_state& binding_state) const -> std::string;
 
     Shader_stages_tracker              shader_stages;
     Vertex_input_state_tracker         vertex_input;
+    Device*                            m_device{nullptr};
     Input_assembly_state_tracker       input_assembly;
     Multisample_state_tracker          multisample;
     Viewport_rect_state_tracker        viewport_rect;

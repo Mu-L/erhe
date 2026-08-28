@@ -6,11 +6,13 @@
 #include "erhe_graphics/gl/gl_context_provider.hpp"
 #include "erhe_graphics/gl/gl_objects.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
+#include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/shader_monitor.hpp"
 
 #include <array>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -153,6 +155,17 @@ public:
     // is assigned).
     void create_per_context_resources();
 
+    // Per-context deferred container-object deletion. A per-context GL
+    // object (VAO, framebuffer) can only be deleted on its own context, so
+    // a destructor running on some other context queues the name here for
+    // the owning context to delete. Each context drains its own queue:
+    // future worker contexts at acquire, and the MAIN context in
+    // wait_frame() - it never becomes current again, so "drain on next
+    // make-current" would never fire for it.
+    void queue_vertex_array_delete_on_context(int context_index, unsigned int name);
+    void queue_framebuffer_delete_on_context (int context_index, unsigned int name);
+    void drain_container_object_deletes_for_current_context();
+
     // GL object creation
     [[nodiscard]] auto create_texture     (gl::Texture_target target) -> Gl_texture;
     [[nodiscard]] auto create_texture_view(gl::Texture_target target) -> Gl_texture;
@@ -192,6 +205,18 @@ private:
     // Declared after m_gl_context_provider so it is destroyed while the GL
     // context is still current.
     std::unique_ptr<Vertex_input_state> m_default_vertex_input_state;
+
+    // See queue_*_delete_on_context() above. One queue per context; the
+    // mutex serializes producers (destructors on other contexts) against
+    // the owning context's drain.
+    class Deferred_container_deletes
+    {
+    public:
+        std::mutex                mutex;
+        std::vector<unsigned int> vertex_arrays;
+        std::vector<unsigned int> framebuffers;
+    };
+    std::array<Deferred_container_deletes, gl_context_slot_count> m_deferred_container_deletes;
 
     std::unordered_map<gl::Internal_format, Format_properties> format_properties;
 

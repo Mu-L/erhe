@@ -269,12 +269,11 @@ Vertex_input_state_impl::Vertex_input_state_impl(Device& device, Vertex_input_st
 
 Vertex_input_state_impl::~Vertex_input_state_impl() noexcept
 {
-    // Deleting a per-context GL object is only possible on its own context.
-    // Until worker contexts exist, every populated slot belongs to the
-    // destroying thread's current context; the deferred per-context delete
-    // queues arrive with the accessor commit. The mutex excludes a
-    // concurrent first-use adoption storing a fresh name into a slot the
-    // walk has already passed.
+    // Deleting a per-context GL object is only possible on its own context:
+    // the destroying thread deletes its own context's instance directly and
+    // queues every other context's name for that context to delete at its
+    // drain point. The mutex excludes a concurrent first-use adoption
+    // storing a fresh name into a slot the walk has already passed.
     const std::lock_guard<std::mutex> lock{m_adoption_mutex};
     const int context_index = get_gl_context_index();
     for (int slot = 0; slot < gl_context_slot_count; ++slot) {
@@ -282,9 +281,12 @@ Vertex_input_state_impl::~Vertex_input_state_impl() noexcept
         if (name == 0) {
             continue;
         }
-        ERHE_VERIFY(slot == context_index);
-        m_device.get_impl().get_binding_state().on_vertex_array_deleted(name);
-        gl::delete_vertex_arrays(1, &name);
+        if (slot == context_index) {
+            m_device.get_impl().get_binding_state().on_vertex_array_deleted(name);
+            gl::delete_vertex_arrays(1, &name);
+        } else {
+            m_device.get_impl().queue_vertex_array_delete_on_context(slot, name);
+        }
         m_gl_names[slot].store(0, std::memory_order_relaxed);
     }
 }

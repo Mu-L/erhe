@@ -7,6 +7,7 @@
 #include "erhe_graphics/gl/gl_gpu_timer.hpp"
 #include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/gl/gl_vertex_input_state.hpp"
+#include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_graphics/compute_pipeline_state.hpp"
@@ -487,19 +488,24 @@ void Vertex_input_state_tracker::reset()
     m_bindings.clear();
 }
 
-void Vertex_input_state_tracker::execute(const Vertex_input_state* const state)
+void Vertex_input_state_tracker::execute(const Vertex_input_state* const state, const unsigned int resolved_gl_name)
 {
     ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
     ERHE_VERIFY(m_binding_state != nullptr);
     // Core-profile GL requires a non-zero vertex array object bound for every draw,
     // even when the pipeline declares no vertex input (e.g. a gl_VertexID-driven
     // fullscreen triangle). Substitute the device's persistent empty VAO for the
-    // null state so glDraw* does not raise GL_INVALID_OPERATION on VAO 0.
+    // null state so glDraw* does not raise GL_INVALID_OPERATION on VAO 0. The
+    // default state's own-context slot is created eagerly at context creation,
+    // so reading gl_name() here on the const per-draw path is well-formed.
     const Vertex_input_state* const effective_state =
         (state != nullptr)
             ? state
             : ((m_device != nullptr) ? m_device->get_impl().get_default_vertex_input_state() : nullptr);
-    const unsigned int name = (effective_state != nullptr) ? effective_state->get_impl().gl_name() : 0;
+    const unsigned int name =
+        (state != nullptr)
+            ? resolved_gl_name
+            : ((effective_state != nullptr) ? effective_state->get_impl().gl_name() : 0);
     m_binding_state->bind_vertex_array(name);
 
     // For set_vertex_buffer() and set_index_buffer().
@@ -620,6 +626,12 @@ void OpenGL_state_tracker::set_binding_state(Gl_binding_state* const binding_sta
     vertex_input.set_binding_state(binding_state);
 }
 
+void OpenGL_state_tracker::set_device(Device* const device)
+{
+    m_device = device;
+    vertex_input.set_device(device);
+}
+
 // Container objects (VAOs, framebuffers) are per-context instances now, and
 // Gpu_timer is main-thread-only - there is no per-thread object migration
 // left to dispatch. These hooks remain only to reset the software caches on
@@ -661,7 +673,15 @@ void OpenGL_state_tracker::execute_(const Render_pipeline_state& pipeline, const
     if (!skip_shader_stages) {
         shader_stages.execute(pipeline.data.shader_stages);
     }
-    vertex_input  .execute(pipeline.data.vertex_input);
+    // Adoption point (pipeline bind, not per draw): ensure the pipeline's
+    // vertex input state has a VAO on the calling thread's current context.
+    unsigned int vertex_input_gl_name{0};
+    if (pipeline.data.vertex_input != nullptr) {
+        ERHE_VERIFY(m_device != nullptr);
+        const Scoped_vertex_input_state scoped_vertex_input_state{*m_device, *pipeline.data.vertex_input};
+        vertex_input_gl_name = scoped_vertex_input_state.gl_name();
+    }
+    vertex_input  .execute(pipeline.data.vertex_input, vertex_input_gl_name);
     input_assembly.execute(pipeline.data.input_assembly);
     // tessellation
 

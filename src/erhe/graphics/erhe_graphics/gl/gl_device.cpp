@@ -518,8 +518,10 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     // The vertex-input tracker binds a persistent empty VAO for pipelines that
     // declare no vertex input (core-profile GL rejects glDraw* with VAO 0).
     // The VAO is created eagerly per context by create_per_context_resources()
-    // (called from Device::Device's body, once m_impl is wired).
-    m_gl_state_tracker.vertex_input.set_device(&m_device);
+    // (called from Device::Device's body, once m_impl is wired). The tracker
+    // also needs the device for the Scoped_vertex_input_state adoption at
+    // pipeline bind.
+    m_gl_state_tracker.set_device(&m_device);
 
     if (surface_create_info.context_window != nullptr) {
         if (initial_clear) {
@@ -1171,6 +1173,10 @@ void Device_impl::frame_completed(const uint64_t completed_frame)
 auto Device_impl::wait_frame() -> bool
 {
     ERHE_VERIFY(m_state == Device_frame_state::idle);
+    // The main context's drain point for per-context container-object
+    // deletion: it never becomes current again, so this is where names
+    // queued by destructors on other contexts get deleted.
+    drain_container_object_deletes_for_current_context();
     // Drop the previous frame's Command_buffer wrappers. GL serializes
     // through the driver context and submit_command_buffers is a
     // (mostly) no-op, so by the time we get back here the cbs from the
@@ -1689,6 +1695,46 @@ void Device_impl::create_per_context_resources()
     // creating that context, while it is current.
     ERHE_VERIFY(!m_default_vertex_input_state);
     m_default_vertex_input_state = std::make_unique<Vertex_input_state>(m_device);
+}
+
+void Device_impl::queue_vertex_array_delete_on_context(const int context_index, const unsigned int name)
+{
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    ERHE_VERIFY(name != 0);
+    Deferred_container_deletes& queue = m_deferred_container_deletes[context_index];
+    const std::lock_guard<std::mutex> lock{queue.mutex};
+    queue.vertex_arrays.push_back(name);
+}
+
+void Device_impl::queue_framebuffer_delete_on_context(const int context_index, const unsigned int name)
+{
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    ERHE_VERIFY(name != 0);
+    Deferred_container_deletes& queue = m_deferred_container_deletes[context_index];
+    const std::lock_guard<std::mutex> lock{queue.mutex};
+    queue.framebuffers.push_back(name);
+}
+
+void Device_impl::drain_container_object_deletes_for_current_context()
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    Deferred_container_deletes& queue = m_deferred_container_deletes[context_index];
+    const std::lock_guard<std::mutex> lock{queue.mutex};
+    for (unsigned int name : queue.vertex_arrays) {
+        m_gl_binding_state.on_vertex_array_deleted(name);
+        gl::delete_vertex_arrays(1, &name);
+    }
+    queue.vertex_arrays.clear();
+    for (unsigned int name : queue.framebuffers) {
+        m_gl_binding_state.on_framebuffer_deleted(name);
+        gl::delete_framebuffers(1, &name);
+    }
+    queue.framebuffers.clear();
 }
 
 // GL object creation

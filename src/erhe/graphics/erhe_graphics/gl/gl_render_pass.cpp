@@ -180,29 +180,32 @@ Render_pass_impl::Render_pass_impl(Device& device, const Render_pass_descriptor&
 
 Render_pass_impl::~Render_pass_impl() noexcept
 {
-    // Deleting a per-context GL object is only possible on its own context.
-    // Until worker contexts exist, every populated slot belongs to the
-    // destroying thread's current context; the deferred per-context delete
-    // queues arrive with the accessor commit. The mutex excludes a
-    // concurrent first-use adoption storing fresh names into a slot the
-    // walk has already passed.
+    // Deleting a per-context GL object is only possible on its own context:
+    // the destroying thread deletes its own context's instances directly
+    // and queues every other context's names for that context to delete at
+    // its drain point. The mutex excludes a concurrent first-use adoption
+    // storing fresh names into a slot the walk has already passed.
     const std::lock_guard<std::mutex> lock{m_adoption_mutex};
     const int context_index = get_gl_context_index();
     for (int slot = 0; slot < gl_context_slot_count; ++slot) {
         unsigned int name = m_context_slots[slot].framebuffer.load(std::memory_order_relaxed);
         unsigned int multisample_resolve_name = m_context_slots[slot].multisample_resolve_framebuffer.load(std::memory_order_relaxed);
-        if ((name == 0) && (multisample_resolve_name == 0)) {
-            continue;
-        }
-        ERHE_VERIFY(slot == context_index);
         if (name != 0) {
-            m_device.get_impl().get_binding_state().on_framebuffer_deleted(name);
-            gl::delete_framebuffers(1, &name);
+            if (slot == context_index) {
+                m_device.get_impl().get_binding_state().on_framebuffer_deleted(name);
+                gl::delete_framebuffers(1, &name);
+            } else {
+                m_device.get_impl().queue_framebuffer_delete_on_context(slot, name);
+            }
             m_context_slots[slot].framebuffer.store(0, std::memory_order_relaxed);
         }
         if (multisample_resolve_name != 0) {
-            m_device.get_impl().get_binding_state().on_framebuffer_deleted(multisample_resolve_name);
-            gl::delete_framebuffers(1, &multisample_resolve_name);
+            if (slot == context_index) {
+                m_device.get_impl().get_binding_state().on_framebuffer_deleted(multisample_resolve_name);
+                gl::delete_framebuffers(1, &multisample_resolve_name);
+            } else {
+                m_device.get_impl().queue_framebuffer_delete_on_context(slot, multisample_resolve_name);
+            }
             m_context_slots[slot].multisample_resolve_framebuffer.store(0, std::memory_order_relaxed);
         }
     }

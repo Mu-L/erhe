@@ -15,6 +15,7 @@
 
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/gpu_timer.hpp"
+#include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_verify/verify.hpp"
 
@@ -243,6 +244,15 @@ void Render_pass::start_render_pass(Command_buffer& command_buffer, Render_pass*
         );
     }
     m_device.set_active_render_pass(this);
+    {
+        // Adoption point (once per pass, GL only): ensure this pass's
+        // framebuffer(s) exist on the calling thread's current context
+        // before the impl binds them. end_render_pass needs no accessor of
+        // its own - it reads the names this adoption populated on the same
+        // context.
+        const Scoped_framebuffer scoped_framebuffer{m_device, *this};
+        static_cast<void>(scoped_framebuffer);
+    }
     m_impl->start_render_pass(command_buffer, render_pass_before, render_pass_after);
     m_active_command_buffer = &command_buffer;
     for (Gpu_timer* timer : m_gpu_timers) {

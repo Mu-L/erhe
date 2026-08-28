@@ -10,6 +10,7 @@
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
 #include "erhe_graphics/gl/gl_thread_role.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
+#include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
 #include "erhe_graphics/render_pipeline_state.hpp"
 #include "erhe_graphics/state/viewport_state.hpp"
@@ -43,7 +44,14 @@ void Render_command_encoder_impl::set_render_pipeline(const Render_pipeline& pip
     const Shader_stages*                    shader_stages = ci.shader_stages;
     OpenGL_state_tracker& tracker = m_device.get_impl().m_gl_state_tracker;
     tracker.shader_stages       .execute(shader_stages);
-    tracker.vertex_input        .execute(ci.vertex_input);
+    // Adoption point (pipeline bind, not per draw): ensure the pipeline's
+    // vertex input state has a VAO on the calling thread's current context.
+    unsigned int vertex_input_gl_name{0};
+    if (ci.vertex_input != nullptr) {
+        const Scoped_vertex_input_state scoped_vertex_input_state{m_device, *ci.vertex_input};
+        vertex_input_gl_name = scoped_vertex_input_state.gl_name();
+    }
+    tracker.vertex_input        .execute(ci.vertex_input, vertex_input_gl_name);
     tracker.input_assembly      .execute(base.input_assembly);
     tracker.rasterization       .execute(base.rasterization);
     tracker.multisample         .execute(base.multisample);

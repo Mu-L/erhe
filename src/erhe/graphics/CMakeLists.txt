@@ -66,6 +66,8 @@ erhe_target_sources_grouped(
     erhe_graphics/ring_buffer_client.hpp
     erhe_graphics/sampler.cpp
     erhe_graphics/sampler.hpp
+    erhe_graphics/scoped_container_access.cpp
+    erhe_graphics/scoped_container_access.hpp
     erhe_graphics/scoped_debug_group.cpp
     erhe_graphics/scoped_debug_group.hpp
     erhe_graphics/scoped_transient_object_pool.cpp
