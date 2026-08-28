@@ -308,7 +308,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     // ARB_debug_output has glDebugMessageCallbackARB but not push/pop_debug_group,
     // and the ARB-suffixed functions are not in the generated GL wrapper.
     // For now, only use debug output when GL >= 4.3 (core functions available).
-    // TODO: Add ARB_debug_output support for macOS GL 4.1
     m_info.use_debug_output = (m_info.gl_version >= 430);
     m_info.use_debug_groups = (m_info.gl_version >= 430);
     Scoped_debug_group_impl::s_enabled = m_info.use_debug_groups;

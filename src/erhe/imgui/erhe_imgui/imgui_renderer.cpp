@@ -996,19 +996,6 @@ void Imgui_renderer::update_texture(ImTextureData* tex, erhe::graphics::Command_
         log_imgui->trace("created texture {}", fmt::ptr(texture.get()));
 
         // Upload pixel data
-#if defined(ERHE_OS_MACOS) && defined(ERHE_GRAPHICS_API_OPENGL)
-        // macOS GL driver has broken glCopyBufferSubData; use direct upload
-        command_buffer.upload_to_texture(
-            *texture.get(),
-            0,                    // level
-            0, 0,                 // x, y
-            tex->Width,
-            tex->Height,
-            texture->get_pixelformat(),
-            tex->GetPixels(),
-            tex->GetPitch()       // row_stride
-        );
-#else
         {
             const std::span<const std::uint8_t> src_span{
                 static_cast<const std::uint8_t*>(tex->GetPixels()),
@@ -1036,7 +1023,6 @@ void Imgui_renderer::update_texture(ImTextureData* tex, erhe::graphics::Command_
             );
             buffer_range.release();
         }
-#endif
 
         tex->SetTexID(
             Erhe_ImTextureID{
@@ -1059,22 +1045,6 @@ void Imgui_renderer::update_texture(ImTextureData* tex, erhe::graphics::Command_
         ERHE_VERIFY(texture != nullptr);
         log_imgui->trace("updating texture {}", fmt::ptr(texture));
 
-#if defined(ERHE_OS_MACOS) && defined(ERHE_GRAPHICS_API_OPENGL)
-        auto update_rect = [&command_buffer, texture, tex](ImTextureRect& r) -> void
-        {
-            const std::size_t  src_offset = r.x * tex->BytesPerPixel + r.y * tex->GetPitch();
-            const void*        src_data   = static_cast<const std::uint8_t*>(tex->GetPixels()) + src_offset;
-            command_buffer.upload_to_texture(
-                *texture,
-                0,                    // level
-                r.x, r.y,            // x, y
-                r.w, r.h,            // width, height
-                texture->get_pixelformat(),
-                src_data,
-                tex->GetPitch()       // row_stride
-            );
-        };
-#else
         erhe::graphics::Blit_command_encoder encoder = m_graphics_device.make_blit_command_encoder(command_buffer);
         auto update_rect = [this, &encoder, texture, tex](ImTextureRect& r) -> void
         {
@@ -1105,7 +1075,6 @@ void Imgui_renderer::update_texture(ImTextureData* tex, erhe::graphics::Command_
             );
             buffer_range.release();
         };
-#endif
 
         if (tex->Updates.Size < 20) {
             for (ImTextureRect& r : tex->Updates) {

@@ -128,7 +128,7 @@ attempt and the launch must be retried.
 
 | Option | Description | Recognized values | Default |
 | :--- | :--- | :--- | :--- |
-| `ERHE_GRAPHICS_API` | Graphics backend | `opengl`, `vulkan`, `metal` (macOS only), `none` (headless) | `vulkan` |
+| `ERHE_GRAPHICS_API` | Graphics backend | `opengl` (not on Apple platforms), `vulkan`, `metal` (macOS only), `none` (headless) | `vulkan` |
 | `ERHE_WINDOW_LIBRARY` | Window library | `sdl`, `glfw` (deprecated), `none` (headless) | `sdl` |
 | `ERHE_PHYSICS_LIBRARY` | Physics library | `jolt`, `none` | `jolt` |
 | `ERHE_RAYTRACE_LIBRARY` | Raytrace library | `bvh`, `tinybvh`, `embree`, `none` | `bvh` |

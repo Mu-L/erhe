@@ -85,18 +85,18 @@ failures in its output means the file is clean.
 
 ### macOS (Xcode)
 
+The OpenGL backend is not supported on Apple platforms; use Metal or Vulkan.
 Use the build scripts in `scripts/`:
 
 ```bash
-scripts/configure_xcode_opengl.sh       # OpenGL backend -> build_xcode_opengl/
 scripts/configure_xcode_metal.sh        # Metal backend  -> build_xcode_metal/
-scripts/configure_xcode_opengl_asan.sh  # OpenGL + ASAN  -> build_xcode_opengl_asan/
+scripts/configure_xcode_vulkan.sh       # Vulkan backend -> build_xcode_vulkan/
 ```
 
 Then build with:
 ```bash
-cmake --build build_xcode_opengl --target editor --config Debug
 cmake --build build_xcode_metal  --target editor --config Debug
+cmake --build build_xcode_vulkan --target editor --config Debug
 ```
 
 **Always use the `scripts/` build scripts on macOS.** Do not use CMake presets directly on macOS.
@@ -122,7 +122,7 @@ Required packages: `libwayland-dev libxkbcommon-dev xorg-dev` (Ubuntu) or equiva
 
 | Option | Default | Notes |
 |--------|---------|-------|
-| `ERHE_GRAPHICS_API` | `vulkan` | `vulkan`, `opengl`, `metal` (macOS), or `none` (headless) |
+| `ERHE_GRAPHICS_API` | `vulkan` | `vulkan`, `opengl` (not on Apple platforms), `metal` (macOS), or `none` (headless) |
 | `ERHE_NAVIGATION_LIBRARY` | `none` | `recastnavigation` or `none` |
 | `ERHE_PHYSICS_LIBRARY` | `jolt` | `jolt` or `none` |
 | `ERHE_RAYTRACE_LIBRARY` | `bvh` | `bvh`, `tinybvh`, `embree`, or `none` (none uses GPU ID-buffer picking) |

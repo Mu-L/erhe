@@ -1320,10 +1320,6 @@ public:
 #if defined(ERHE_GRAPHICS_API_OPENGL)
         configuration.gl_major                 = window_config.gl_major;
         configuration.gl_minor                 = window_config.gl_minor;
-# if defined(ERHE_OS_MACOS)
-        configuration.gl_major                 = 4;
-        configuration.gl_minor                 = 1;
-# endif
 #endif
         configuration.size                     = window_config.size;
         configuration.swap_interval            = window_config.swap_interval;

@@ -221,89 +221,6 @@ void Blit_command_encoder_impl::copy_from_buffer(
     const int  storage_dimensions = destination_texture->get_impl().get_storage_dimensions(gl_destination_texture_target);
     const bool is_cube_map        = (gl_destination_texture_target == gl::Texture_target::texture_cube_map);
 
-#if defined(__APPLE__)
-    // macOS OpenGL driver does not reliably support PBO-based texture uploads.
-    // Read the data from the GPU buffer back to CPU, then upload directly.
-    const std::size_t read_byte_count = source_bytes_per_image;
-    std::vector<std::byte> cpu_buffer(read_byte_count);
-    {
-        auto guard = m_device.get_impl().get_binding_state().push_buffer(
-            gl::Buffer_target::copy_read_buffer, source_buffer->get_impl().gl_name()
-        );
-        gl::get_buffer_sub_data(
-            gl::Buffer_target::copy_read_buffer,
-            static_cast<GLintptr>(source_offset),
-            static_cast<GLsizeiptr>(read_byte_count),
-            cpu_buffer.data()
-        );
-    }
-    const void* cpu_data = cpu_buffer.data();
-
-    gl::bind_buffer(gl::Buffer_target::pixel_unpack_buffer, 0);
-    gl::pixel_store_i(gl::Pixel_store_parameter::unpack_alignment,    alignment);
-    gl::pixel_store_i(gl::Pixel_store_parameter::unpack_image_height, static_cast<int>(gl_unpack_image_height));
-    gl::pixel_store_i(gl::Pixel_store_parameter::unpack_row_length,   static_cast<int>(gl_unpack_row_length));
-
-    constexpr GLuint scratch_unit = Gl_binding_state::s_max_texture_units - 1;
-    auto texture_guard = m_device.get_impl().get_binding_state().push_texture(
-        scratch_unit, gl_destination_texture_target, destination_texture->get_impl().gl_name()
-    );
-
-    if (is_cube_map) {
-        // Classic GL (the only path on macOS GL 4.1): a cube face is uploaded
-        // through its per-face 2D target with the cube bound to GL_TEXTURE_CUBE_MAP;
-        // GL_TEXTURE_CUBE_MAP itself is not a valid glTexSubImage3D target. This
-        // uploads exactly one face; a multi-face copy (gl_depth > 1) is not supported
-        // on the per-face 2D path, so require a single face here rather than silently
-        // writing only the first.
-        ERHE_VERIFY(gl_depth == 1);
-        const gl::Texture_target face_target = static_cast<gl::Texture_target>(
-            static_cast<unsigned int>(gl::Texture_target::texture_cube_map_positive_x) +
-            static_cast<unsigned int>(gl_destination_z)
-        );
-        gl::tex_sub_image_2d(
-            face_target,
-            static_cast<GLint>(destination_level),
-            gl_destination_x, gl_destination_y,
-            gl_width, gl_height, gl_format, gl_type, cpu_data
-        );
-    } else {
-        switch (storage_dimensions) {
-            case 1: {
-                gl::tex_sub_image_1d(
-                    gl_destination_texture_target,
-                    static_cast<GLint>(destination_level),
-                    gl_destination_x, gl_width, gl_format, gl_type, cpu_data
-                );
-                break;
-            }
-
-            case 2: {
-                gl::tex_sub_image_2d(
-                    gl_destination_texture_target,
-                    static_cast<GLint>(destination_level),
-                    gl_destination_x, gl_destination_y,
-                    gl_width, gl_height, gl_format, gl_type, cpu_data
-                );
-                break;
-            }
-
-            case 3: {
-                gl::tex_sub_image_3d(
-                    gl_destination_texture_target,
-                    static_cast<GLint>(destination_level),
-                    gl_destination_x, gl_destination_y, gl_destination_z,
-                    gl_width, gl_height, gl_depth, gl_format, gl_type, cpu_data
-                );
-                break;
-            }
-
-            default: {
-                ERHE_FATAL("Bad texture target");
-            }
-        }
-    }
-#else
     gl::bind_buffer(gl::Buffer_target::pixel_unpack_buffer, source_buffer->get_impl().gl_name());
 
     gl::pixel_store_i(gl::Pixel_store_parameter::unpack_alignment,    alignment);
@@ -414,7 +331,6 @@ void Blit_command_encoder_impl::copy_from_buffer(
             }
         }
     }
-#endif
 }
 
 // Block-compressed destination path of buffer->texture copy_from_buffer.
@@ -444,29 +360,9 @@ void Blit_command_encoder_impl::copy_from_buffer_compressed(
     const int  storage_dimensions = destination_texture->get_impl().get_storage_dimensions(gl_destination_texture_target);
     const bool is_cube_map        = (gl_destination_texture_target == gl::Texture_target::texture_cube_map);
 
-#if defined(__APPLE__)
-    // See copy_from_buffer: PBO-based uploads are unreliable on the macOS GL
-    // driver, so read back to CPU and upload directly.
-    std::vector<std::byte> cpu_buffer(static_cast<std::size_t>(image_size));
-    {
-        auto guard = m_device.get_impl().get_binding_state().push_buffer(
-            gl::Buffer_target::copy_read_buffer, source_buffer->get_impl().gl_name()
-        );
-        gl::get_buffer_sub_data(
-            gl::Buffer_target::copy_read_buffer,
-            static_cast<GLintptr>(source_offset),
-            static_cast<GLsizeiptr>(image_size),
-            cpu_buffer.data()
-        );
-    }
-    const char* data_pointer = reinterpret_cast<const char*>(cpu_buffer.data());
-    gl::bind_buffer(gl::Buffer_target::pixel_unpack_buffer, 0);
-    const bool use_dsa = false;
-#else
     gl::bind_buffer(gl::Buffer_target::pixel_unpack_buffer, source_buffer->get_impl().gl_name());
     const char* data_pointer = reinterpret_cast<const char*>(source_offset);
     const bool use_dsa = m_device.get_info().use_direct_state_access;
-#endif
 
     std::optional<Texture_binding_guard> texture_guard;
     if (!use_dsa) {
