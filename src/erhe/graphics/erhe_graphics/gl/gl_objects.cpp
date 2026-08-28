@@ -1,6 +1,6 @@
 #include "erhe_graphics/gl/gl_objects.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
-#include "erhe_graphics/gl/gl_binding_state.hpp"
+#include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <new>
@@ -10,17 +10,17 @@ namespace erhe::graphics {
 
 // Gl_texture
 
-Gl_texture::Gl_texture(GLuint gl_name, bool owned, Gl_binding_state* binding_state)
-    : m_binding_state{binding_state}
-    , m_gl_name      {gl_name}
-    , m_owned        {owned}
+Gl_texture::Gl_texture(GLuint gl_name, bool owned, Device_impl* device_impl)
+    : m_device_impl{device_impl}
+    , m_gl_name    {gl_name}
+    , m_owned      {owned}
 {
 }
 
 Gl_texture::Gl_texture(Gl_texture&& old) noexcept
-    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
-    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
-    , m_owned        {std::exchange(old.m_owned, false)}
+    : m_device_impl{std::exchange(old.m_device_impl, nullptr)}
+    , m_gl_name    {std::exchange(old.m_gl_name, 0)}
+    , m_owned      {std::exchange(old.m_owned, false)}
 {
 }
 
@@ -36,8 +36,8 @@ auto Gl_texture::operator=(Gl_texture&& old) noexcept -> Gl_texture&
 Gl_texture::~Gl_texture() noexcept
 {
     if (m_owned && (m_gl_name != 0)) {
-        if (m_binding_state != nullptr) {
-            m_binding_state->on_texture_deleted(m_gl_name);
+        if (m_device_impl != nullptr) {
+            m_device_impl->on_shared_object_deleted(Gl_shared_object_kind::texture, m_gl_name);
         }
         gl::delete_textures(1, &m_gl_name);
     }
@@ -50,15 +50,15 @@ auto Gl_texture::gl_name() const -> GLuint
 
 // Gl_program
 
-Gl_program::Gl_program(GLuint gl_name, Gl_binding_state* binding_state)
-    : m_binding_state{binding_state}
-    , m_gl_name      {gl_name}
+Gl_program::Gl_program(GLuint gl_name, Device_impl* device_impl)
+    : m_device_impl{device_impl}
+    , m_gl_name    {gl_name}
 {
 }
 
 Gl_program::Gl_program(Gl_program&& old) noexcept
-    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
-    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
+    : m_device_impl{std::exchange(old.m_device_impl, nullptr)}
+    , m_gl_name    {std::exchange(old.m_gl_name, 0)}
 {
 }
 
@@ -74,8 +74,8 @@ auto Gl_program::operator=(Gl_program&& old) noexcept -> Gl_program&
 Gl_program::~Gl_program() noexcept
 {
     if (m_gl_name != 0) {
-        if (m_binding_state != nullptr) {
-            m_binding_state->on_program_deleted(m_gl_name);
+        if (m_device_impl != nullptr) {
+            m_device_impl->on_shared_object_deleted(Gl_shared_object_kind::program, m_gl_name);
         }
         gl::delete_program(m_gl_name);
     }
@@ -121,25 +121,25 @@ auto Gl_shader::gl_name() const -> unsigned int
 
 // Gl_sampler
 
-Gl_sampler::Gl_sampler(GLuint gl_name, Gl_binding_state* binding_state)
-    : m_binding_state{binding_state}
-    , m_gl_name      {gl_name}
+Gl_sampler::Gl_sampler(GLuint gl_name, Device_impl* device_impl)
+    : m_device_impl{device_impl}
+    , m_gl_name    {gl_name}
 {
 }
 
 Gl_sampler::~Gl_sampler() noexcept
 {
     if (m_gl_name != 0) {
-        if (m_binding_state != nullptr) {
-            m_binding_state->on_sampler_deleted(m_gl_name);
+        if (m_device_impl != nullptr) {
+            m_device_impl->on_shared_object_deleted(Gl_shared_object_kind::sampler, m_gl_name);
         }
         gl::delete_samplers(1, &m_gl_name);
     }
 }
 
 Gl_sampler::Gl_sampler(Gl_sampler&& old) noexcept
-    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
-    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
+    : m_device_impl{std::exchange(old.m_device_impl, nullptr)}
+    , m_gl_name    {std::exchange(old.m_gl_name, 0)}
 {
 }
 
@@ -159,25 +159,25 @@ auto Gl_sampler::gl_name() const -> unsigned int
 
 // Gl_renderbuffer
 
-Gl_renderbuffer::Gl_renderbuffer(GLuint gl_name, Gl_binding_state* binding_state)
-    : m_binding_state{binding_state}
-    , m_gl_name      {gl_name}
+Gl_renderbuffer::Gl_renderbuffer(GLuint gl_name, Device_impl* device_impl)
+    : m_device_impl{device_impl}
+    , m_gl_name    {gl_name}
 {
 }
 
 Gl_renderbuffer::~Gl_renderbuffer() noexcept
 {
     if (m_gl_name != 0) {
-        if (m_binding_state != nullptr) {
-            m_binding_state->on_renderbuffer_deleted(m_gl_name);
+        if (m_device_impl != nullptr) {
+            m_device_impl->on_shared_object_deleted(Gl_shared_object_kind::renderbuffer, m_gl_name);
         }
         gl::delete_renderbuffers(1, &m_gl_name);
     }
 }
 
 Gl_renderbuffer::Gl_renderbuffer(Gl_renderbuffer&& old) noexcept
-    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
-    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
+    : m_device_impl{std::exchange(old.m_device_impl, nullptr)}
+    , m_gl_name    {std::exchange(old.m_gl_name, 0)}
 {
 }
 
@@ -197,25 +197,25 @@ auto Gl_renderbuffer::gl_name() const -> GLuint
 
 // Gl_buffer
 
-Gl_buffer::Gl_buffer(GLuint gl_name, Gl_binding_state* binding_state)
-    : m_binding_state{binding_state}
-    , m_gl_name      {gl_name}
+Gl_buffer::Gl_buffer(GLuint gl_name, Device_impl* device_impl)
+    : m_device_impl{device_impl}
+    , m_gl_name    {gl_name}
 {
 }
 
 Gl_buffer::~Gl_buffer() noexcept
 {
     if (m_gl_name != 0) {
-        if (m_binding_state != nullptr) {
-            m_binding_state->on_buffer_deleted(m_gl_name);
+        if (m_device_impl != nullptr) {
+            m_device_impl->on_shared_object_deleted(Gl_shared_object_kind::buffer, m_gl_name);
         }
         gl::delete_buffers(1, &m_gl_name);
     }
 }
 
 Gl_buffer::Gl_buffer(Gl_buffer&& old) noexcept
-    : m_binding_state{std::exchange(old.m_binding_state, nullptr)}
-    , m_gl_name      {std::exchange(old.m_gl_name, 0)}
+    : m_device_impl{std::exchange(old.m_device_impl, nullptr)}
+    , m_gl_name    {std::exchange(old.m_gl_name, 0)}
 {
 }
 

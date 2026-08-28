@@ -490,7 +490,7 @@ void Vertex_input_state_tracker::reset()
 
 void Vertex_input_state_tracker::execute(const Vertex_input_state* const state, const unsigned int resolved_gl_name)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(m_binding_state != nullptr);
     // Core-profile GL requires a non-zero vertex array object bound for every draw,
     // even when the pipeline declares no vertex input (e.g. a gl_VertexID-driven
@@ -527,7 +527,7 @@ void Vertex_input_state_tracker::execute(const Vertex_input_state* const state, 
 
 void Vertex_input_state_tracker::set_index_buffer(const Buffer* buffer) const
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(m_binding_state != nullptr);
     const GLuint vao = m_binding_state->get_bound_vertex_array();
     ERHE_VERIFY(vao != 0); // Must have VAO bound
@@ -541,7 +541,7 @@ void Vertex_input_state_tracker::set_vertex_buffer(
     const std::uintptr_t offset
 )
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(m_binding_state != nullptr);
     const GLuint vao = m_binding_state->get_bound_vertex_array();
     ERHE_VERIFY(vao != 0); // Must have VAO bound
@@ -652,7 +652,7 @@ void OpenGL_state_tracker::reset()
 {
     ERHE_PROFILE_FUNCTION();
 
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     shader_stages       .reset();
     vertex_input        .reset();
     input_assembly      .reset();
@@ -669,7 +669,7 @@ void OpenGL_state_tracker::execute_(const Render_pipeline_state& pipeline, const
 {
     ERHE_PROFILE_FUNCTION();
 
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     if (!skip_shader_stages) {
         shader_stages.execute(pipeline.data.shader_stages);
     }
@@ -696,7 +696,7 @@ void OpenGL_state_tracker::execute_(const Render_pipeline_state& pipeline, const
 
 void OpenGL_state_tracker::execute_(const Compute_pipeline_state& pipeline)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     shader_stages.execute(pipeline.data.shader_stages);
 }
 

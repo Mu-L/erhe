@@ -10,7 +10,9 @@
 #include "erhe_graphics/shader_monitor.hpp"
 
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -47,6 +49,18 @@ enum class Device_frame_state : uint8_t
     waited,
     recording,
     in_swapchain_frame
+};
+
+// Shared (share-group-wide) GL object kinds whose deletion must scrub
+// every context's binding cache, not only the deleting context's.
+// Container objects (vertex arrays, framebuffers) are per-context and go
+// through the deferred container-delete queues instead.
+enum class Gl_shared_object_kind : int {
+    buffer = 0,
+    texture,
+    sampler,
+    renderbuffer,
+    program
 };
 
 class Device;
@@ -174,6 +188,17 @@ public:
     void queue_framebuffer_delete_on_context (int context_index, unsigned int name);
     void drain_container_object_deletes_for_current_context();
 
+    // Shared-object deletion, called from Gl_* destructors right before the
+    // glDelete* call. Scrubs the CURRENT context's binding cache directly
+    // (GL auto-unbinds the object in the deleting context, so this mirrors
+    // that cache-only), and enqueues a scrub entry - with the target
+    // context's bind-epoch snapshot, the name-recycling guard - for every
+    // OTHER live context. Each context drains its own queue at the same
+    // points as the container-delete queues: the MAIN context in
+    // wait_frame(), future worker contexts at acquire.
+    void on_shared_object_deleted(Gl_shared_object_kind kind, unsigned int name);
+    void drain_shared_object_scrubs_for_current_context();
+
     // GL object creation
     [[nodiscard]] auto create_texture     (gl::Texture_target target) -> Gl_texture;
     [[nodiscard]] auto create_texture_view(gl::Texture_target target) -> Gl_texture;
@@ -230,6 +255,35 @@ private:
         std::vector<unsigned int> framebuffers;
     };
     std::array<Deferred_container_deletes, gl_context_slot_count> m_deferred_container_deletes;
+
+    // See on_shared_object_deleted() above. One queue per context; the
+    // mutex serializes producers (deleting threads on other contexts)
+    // against the owning context's drain.
+    class Deferred_shared_object_scrubs
+    {
+    public:
+        class Entry
+        {
+        public:
+            Gl_shared_object_kind kind;
+            unsigned int          name;
+            // The target context's bind epoch at enqueue time; a slot
+            // bound after this epoch holds a recycled name and is not
+            // scrubbed.
+            uint64_t              enqueue_epoch;
+        };
+        std::mutex         mutex;
+        std::vector<Entry> entries;
+    };
+    std::array<Deferred_shared_object_scrubs, gl_context_slot_count> m_deferred_shared_object_scrubs;
+
+    // Which context slots have a live GL context (and so will eventually
+    // drain their queues). Producers skip dead slots - enqueueing to a
+    // context that never exists (headless, or before the worker pool is
+    // created) would grow its queue without bound. Slot 0 (main) is set in
+    // the constructor; worker slots are set when the pool context is
+    // created (commit 12).
+    std::array<std::atomic<bool>, gl_context_slot_count> m_context_slot_live{};
 
     std::unordered_map<gl::Internal_format, Format_properties> format_properties;
 

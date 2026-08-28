@@ -6,12 +6,12 @@ typedef unsigned int GLuint;
 
 namespace erhe::graphics {
 
-class Gl_binding_state;
+class Device_impl;
 
 class Gl_texture final
 {
 public:
-    explicit Gl_texture(GLuint gl_name, bool owned = true, Gl_binding_state* binding_state = nullptr);
+    explicit Gl_texture(GLuint gl_name, bool owned = true, Device_impl* device_impl = nullptr);
     ~Gl_texture   () noexcept;
     Gl_texture    (const Gl_texture&) = delete;
     void operator=(const Gl_texture&) = delete;
@@ -21,16 +21,16 @@ public:
     [[nodiscard]] auto gl_name() const -> GLuint;
 
 private:
-    Gl_binding_state* m_binding_state{nullptr};
-    GLuint            m_gl_name      {0};
-    bool              m_owned        {true};
+    Device_impl* m_device_impl{nullptr};
+    GLuint       m_gl_name    {0};
+    bool         m_owned      {true};
 };
 
 class Gl_program final
 {
 public:
     Gl_program() = default;
-    explicit Gl_program(GLuint gl_name, Gl_binding_state* binding_state = nullptr);
+    explicit Gl_program(GLuint gl_name, Device_impl* device_impl = nullptr);
     ~Gl_program   () noexcept;
     Gl_program    (const Gl_program&) = delete;
     void operator=(const Gl_program&) = delete;
@@ -40,8 +40,8 @@ public:
     [[nodiscard]] auto gl_name() const -> GLuint;
 
 private:
-    Gl_binding_state* m_binding_state{nullptr};
-    GLuint            m_gl_name      {0};
+    Device_impl* m_device_impl{nullptr};
+    GLuint       m_gl_name    {0};
 };
 
 class Gl_shader final
@@ -64,7 +64,7 @@ class Gl_sampler final
 {
 public:
     Gl_sampler() = default;
-    explicit Gl_sampler(GLuint gl_name, Gl_binding_state* binding_state = nullptr);
+    explicit Gl_sampler(GLuint gl_name, Device_impl* device_impl = nullptr);
     ~Gl_sampler   () noexcept;
     Gl_sampler    (const Gl_sampler&) = delete;
     void operator=(const Gl_sampler&) = delete;
@@ -74,14 +74,14 @@ public:
     [[nodiscard]] auto gl_name() const -> unsigned int;
 
 private:
-    Gl_binding_state* m_binding_state{nullptr};
-    GLuint            m_gl_name      {0};
+    Device_impl* m_device_impl{nullptr};
+    GLuint       m_gl_name    {0};
 };
 
 class Gl_renderbuffer final
 {
 public:
-    explicit Gl_renderbuffer(GLuint gl_name, Gl_binding_state* binding_state = nullptr);
+    explicit Gl_renderbuffer(GLuint gl_name, Device_impl* device_impl = nullptr);
     ~Gl_renderbuffer() noexcept;
     Gl_renderbuffer (const Gl_renderbuffer&) = delete;
     void operator=  (const Gl_renderbuffer&) = delete;
@@ -91,15 +91,15 @@ public:
     [[nodiscard]] auto gl_name() const -> GLuint;
 
 private:
-    Gl_binding_state* m_binding_state{nullptr};
-    GLuint            m_gl_name      {0};
+    Device_impl* m_device_impl{nullptr};
+    GLuint       m_gl_name    {0};
 };
 
 class Gl_buffer final
 {
 public:
     Gl_buffer() = default;
-    explicit Gl_buffer(GLuint gl_name, Gl_binding_state* binding_state = nullptr);
+    explicit Gl_buffer(GLuint gl_name, Device_impl* device_impl = nullptr);
     ~Gl_buffer    () noexcept;
     Gl_buffer     (const Gl_buffer&) = delete;
     void operator=(const Gl_buffer&) = delete;
@@ -109,8 +109,8 @@ public:
     [[nodiscard]] auto gl_name() const -> GLuint;
 
 private:
-    Gl_binding_state* m_binding_state{nullptr};
-    GLuint            m_gl_name      {0};
+    Device_impl* m_device_impl{nullptr};
+    GLuint       m_gl_name    {0};
 };
 
 class Gl_query final

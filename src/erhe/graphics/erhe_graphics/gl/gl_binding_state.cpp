@@ -1,12 +1,9 @@
 #include "erhe_graphics/gl/gl_binding_state.hpp"
 #include "erhe_graphics/gl/gl_thread_role.hpp"
-#include "erhe_graphics/graphics_log.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <atomic>
-#include <sstream>
-#include <thread>
 #include <utility>
 
 namespace erhe::graphics {
@@ -115,6 +112,16 @@ Gl_binding_state::Gl_binding_state()
 
 void Gl_binding_state::reset()
 {
+    // Slot epochs reset with the slots: epoch 0 always reads as stale,
+    // matching a slot that holds no binding.
+    m_bound_buffer_epochs.fill(0);
+    for (auto& unit_epochs : m_bound_texture_epochs) {
+        unit_epochs.fill(0);
+    }
+    m_bound_sampler_epochs.fill(0);
+    m_renderbuffer_epoch = 0;
+    m_program_epoch      = 0;
+
     m_bound_buffers.fill(0);
     for (auto& stack : m_buffer_stack) {
         stack.clear();
@@ -183,7 +190,7 @@ auto Gl_binding_state::texture_target_to_index(const gl::Texture_target target) 
 
 auto Gl_binding_state::push_buffer(const gl::Buffer_target target, const GLuint buffer) -> Buffer_binding_guard
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(target != gl::Buffer_target::element_array_buffer);
     const std::size_t index = buffer_target_to_index(target);
     m_buffer_stack[index].push_back(m_bound_buffers[index]);
@@ -193,7 +200,7 @@ auto Gl_binding_state::push_buffer(const gl::Buffer_target target, const GLuint 
 
 void Gl_binding_state::pop_buffer(const gl::Buffer_target target)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(target != gl::Buffer_target::element_array_buffer);
     const std::size_t index = buffer_target_to_index(target);
     ERHE_VERIFY(!m_buffer_stack[index].empty());
@@ -204,7 +211,7 @@ void Gl_binding_state::pop_buffer(const gl::Buffer_target target)
 
 void Gl_binding_state::bind_buffer(const gl::Buffer_target target, const GLuint buffer)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     // element_array_buffer binding is part of VAO state, not global state.
     // We do not track it here; let it pass through directly to GL.
     if (target == gl::Buffer_target::element_array_buffer) {
@@ -213,7 +220,8 @@ void Gl_binding_state::bind_buffer(const gl::Buffer_target target, const GLuint 
     }
     const std::size_t index = buffer_target_to_index(target);
     if (m_bound_buffers[index] != buffer) {
-        m_bound_buffers[index] = buffer;
+        m_bound_buffers[index]       = buffer;
+        m_bound_buffer_epochs[index] = bump_bind_epoch();
         gl::bind_buffer(target, buffer);
     }
 }
@@ -228,7 +236,7 @@ auto Gl_binding_state::get_bound_buffer(const gl::Buffer_target target) const ->
 
 auto Gl_binding_state::push_texture(const GLuint unit, const gl::Texture_target target, const GLuint texture) -> Texture_binding_guard
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(unit < s_max_texture_units);
     const std::size_t target_index = texture_target_to_index(target);
     m_texture_stack[unit][target_index].push_back(m_bound_textures[unit][target_index]);
@@ -238,7 +246,7 @@ auto Gl_binding_state::push_texture(const GLuint unit, const gl::Texture_target 
 
 void Gl_binding_state::pop_texture(const GLuint unit, const gl::Texture_target target)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(unit < s_max_texture_units);
     const std::size_t target_index = texture_target_to_index(target);
     ERHE_VERIFY(!m_texture_stack[unit][target_index].empty());
@@ -249,7 +257,7 @@ void Gl_binding_state::pop_texture(const GLuint unit, const gl::Texture_target t
 
 void Gl_binding_state::bind_texture(const GLuint unit, const gl::Texture_target target, const GLuint texture)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(unit < s_max_texture_units);
     const std::size_t target_index = texture_target_to_index(target);
     if (m_bound_textures[unit][target_index] != texture) {
@@ -257,7 +265,8 @@ void Gl_binding_state::bind_texture(const GLuint unit, const gl::Texture_target 
             m_active_texture_unit = unit;
             gl::active_texture(gl::Texture_unit{static_cast<unsigned int>(gl::Texture_unit::texture0) + unit});
         }
-        m_bound_textures[unit][target_index] = texture;
+        m_bound_textures[unit][target_index]       = texture;
+        m_bound_texture_epochs[unit][target_index] = bump_bind_epoch();
         gl::bind_texture(target, texture);
     }
 }
@@ -272,7 +281,7 @@ auto Gl_binding_state::get_bound_texture(const GLuint unit, const gl::Texture_ta
 
 auto Gl_binding_state::push_framebuffer(const gl::Framebuffer_target target, const GLuint framebuffer) -> Framebuffer_binding_guard
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     switch (target) {
         case gl::Framebuffer_target::draw_framebuffer: {
             m_draw_framebuffer_stack.push_back(m_draw_framebuffer);
@@ -294,7 +303,7 @@ auto Gl_binding_state::push_framebuffer(const gl::Framebuffer_target target, con
 
 void Gl_binding_state::pop_framebuffer(const gl::Framebuffer_target target)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     switch (target) {
         case gl::Framebuffer_target::draw_framebuffer: {
             ERHE_VERIFY(!m_draw_framebuffer_stack.empty());
@@ -330,7 +339,7 @@ void Gl_binding_state::pop_framebuffer(const gl::Framebuffer_target target)
 
 void Gl_binding_state::bind_framebuffer(const gl::Framebuffer_target target, const GLuint framebuffer)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     switch (target) {
         case gl::Framebuffer_target::draw_framebuffer: {
             if (m_draw_framebuffer != framebuffer) {
@@ -373,7 +382,7 @@ auto Gl_binding_state::get_read_framebuffer() const -> GLuint
 
 auto Gl_binding_state::push_renderbuffer(const GLuint renderbuffer) -> Renderbuffer_binding_guard
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     m_renderbuffer_stack.push_back(m_bound_renderbuffer);
     bind_renderbuffer(renderbuffer);
     return Renderbuffer_binding_guard{*this};
@@ -381,7 +390,7 @@ auto Gl_binding_state::push_renderbuffer(const GLuint renderbuffer) -> Renderbuf
 
 void Gl_binding_state::pop_renderbuffer()
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(!m_renderbuffer_stack.empty());
     const GLuint old = m_renderbuffer_stack.back();
     m_renderbuffer_stack.pop_back();
@@ -390,9 +399,10 @@ void Gl_binding_state::pop_renderbuffer()
 
 void Gl_binding_state::bind_renderbuffer(const GLuint renderbuffer)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     if (m_bound_renderbuffer != renderbuffer) {
         m_bound_renderbuffer = renderbuffer;
+        m_renderbuffer_epoch = bump_bind_epoch();
         gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, renderbuffer);
     }
 }
@@ -406,7 +416,7 @@ auto Gl_binding_state::get_bound_renderbuffer() const -> GLuint
 
 auto Gl_binding_state::push_vertex_array(const GLuint vao) -> Vertex_array_binding_guard
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     m_vertex_array_stack.push_back(m_bound_vertex_array);
     bind_vertex_array(vao);
     return Vertex_array_binding_guard{*this};
@@ -414,7 +424,7 @@ auto Gl_binding_state::push_vertex_array(const GLuint vao) -> Vertex_array_bindi
 
 void Gl_binding_state::pop_vertex_array()
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(!m_vertex_array_stack.empty());
     const GLuint old = m_vertex_array_stack.back();
     m_vertex_array_stack.pop_back();
@@ -423,7 +433,7 @@ void Gl_binding_state::pop_vertex_array()
 
 void Gl_binding_state::bind_vertex_array(const GLuint vao)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     if (m_bound_vertex_array != vao) {
         m_bound_vertex_array = vao;
         gl::bind_vertex_array(vao);
@@ -439,10 +449,11 @@ auto Gl_binding_state::get_bound_vertex_array() const -> GLuint
 
 void Gl_binding_state::bind_sampler(const GLuint unit, const GLuint sampler)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(unit < s_max_texture_units);
     if (m_bound_samplers[unit] != sampler) {
-        m_bound_samplers[unit] = sampler;
+        m_bound_samplers[unit]       = sampler;
+        m_bound_sampler_epochs[unit] = bump_bind_epoch();
         gl::bind_sampler(unit, sampler);
     }
 }
@@ -457,9 +468,10 @@ auto Gl_binding_state::get_bound_sampler(const GLuint unit) const -> GLuint
 
 void Gl_binding_state::use_program(const GLuint program)
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     if (m_current_program != program) {
         m_current_program = program;
+        m_program_epoch   = bump_bind_epoch();
         gl::use_program(program);
     }
 }
@@ -471,29 +483,12 @@ auto Gl_binding_state::get_current_program() const -> GLuint
 
 // -- Object deletion hooks ---------------------------------------------------
 //
+// The hooks run on the DELETING context's binding state (per-context since
+// commit 10), so they are cache-only edits on state the calling thread
+// owns; the cross-context scrub queue covers every other context.
+//
 // A helper that scrubs a single-slot value.
 namespace {
-
-// The delete hooks scrub the shared binding cache, which only the draw
-// thread may touch - but worker-side destruction has not been audited to be
-// unreachable, so an off-thread call logs once per hook instead of aborting.
-// Transitional: the per-context scrub queue (plan section 10, commit 11)
-// routes worker-side deletion through deferred queues and retires this
-// check entirely - do not promote it to ERHE_VERIFY.
-void log_once_off_thread_delete(std::atomic<bool>& logged, const char* hook, const GLuint name)
-{
-    if (get_gl_thread_role() == Gl_thread_role::main) {
-        return;
-    }
-    if (!logged.exchange(true)) {
-        std::stringstream thread_id;
-        thread_id << std::this_thread::get_id();
-        log_threads->warn(
-            "Gl_binding_state::{}({}) called off the GL draw thread (thread {}); the shared binding cache scrub is unsynchronized",
-            hook, name, thread_id.str()
-        );
-    }
-}
 
 void scrub(GLuint& slot, GLuint deleted)
 {
@@ -515,8 +510,6 @@ void scrub(std::vector<GLuint>& stack, GLuint deleted)
 
 void Gl_binding_state::on_texture_deleted(const GLuint texture)
 {
-    static std::atomic<bool> s_logged{false};
-    log_once_off_thread_delete(s_logged, "on_texture_deleted", texture);
     if (texture == 0) {
         return;
     }
@@ -534,8 +527,6 @@ void Gl_binding_state::on_texture_deleted(const GLuint texture)
 
 void Gl_binding_state::on_buffer_deleted(const GLuint buffer)
 {
-    static std::atomic<bool> s_logged{false};
-    log_once_off_thread_delete(s_logged, "on_buffer_deleted", buffer);
     if (buffer == 0) {
         return;
     }
@@ -549,8 +540,6 @@ void Gl_binding_state::on_buffer_deleted(const GLuint buffer)
 
 void Gl_binding_state::on_sampler_deleted(const GLuint sampler)
 {
-    static std::atomic<bool> s_logged{false};
-    log_once_off_thread_delete(s_logged, "on_sampler_deleted", sampler);
     if (sampler == 0) {
         return;
     }
@@ -561,8 +550,6 @@ void Gl_binding_state::on_sampler_deleted(const GLuint sampler)
 
 void Gl_binding_state::on_framebuffer_deleted(const GLuint framebuffer)
 {
-    static std::atomic<bool> s_logged{false};
-    log_once_off_thread_delete(s_logged, "on_framebuffer_deleted", framebuffer);
     if (framebuffer == 0) {
         return;
     }
@@ -574,8 +561,6 @@ void Gl_binding_state::on_framebuffer_deleted(const GLuint framebuffer)
 
 void Gl_binding_state::on_renderbuffer_deleted(const GLuint renderbuffer)
 {
-    static std::atomic<bool> s_logged{false};
-    log_once_off_thread_delete(s_logged, "on_renderbuffer_deleted", renderbuffer);
     if (renderbuffer == 0) {
         return;
     }
@@ -585,8 +570,6 @@ void Gl_binding_state::on_renderbuffer_deleted(const GLuint renderbuffer)
 
 void Gl_binding_state::on_vertex_array_deleted(const GLuint vertex_array)
 {
-    static std::atomic<bool> s_logged{false};
-    log_once_off_thread_delete(s_logged, "on_vertex_array_deleted", vertex_array);
     if (vertex_array == 0) {
         return;
     }
@@ -596,12 +579,142 @@ void Gl_binding_state::on_vertex_array_deleted(const GLuint vertex_array)
 
 void Gl_binding_state::on_program_deleted(const GLuint program)
 {
-    static std::atomic<bool> s_logged{false};
-    log_once_off_thread_delete(s_logged, "on_program_deleted", program);
     if (program == 0) {
         return;
     }
     scrub(m_current_program, program);
+}
+
+// -- Deferred cross-context scrub ---------------------------------------------
+//
+// See the header comment: these run on the owning context's thread, for a
+// shared object some OTHER context deleted. They must issue real GL unbinds
+// (GL auto-unbinds only in the deleting context) and must leave alone any
+// slot rebound after the entry was enqueued (the name may have been
+// recycled for a new, live object). The stale check is
+// slot_epoch <= enqueue_epoch: the slot was last bound before the delete
+// was enqueued, so the name it holds is the deleted object's.
+//
+// Stack entries (push/pop guard save slots) are scrubbed to 0 without an
+// epoch check: they are not bound, so no GL call is involved, and a guard
+// can not be alive across a drain point on its own thread.
+
+namespace {
+
+auto buffer_target_from_index(const std::size_t index) -> gl::Buffer_target
+{
+    // Inverse of Gl_binding_state::buffer_target_to_index().
+    constexpr gl::Buffer_target targets[] = {
+        gl::Buffer_target::array_buffer,
+        gl::Buffer_target::copy_read_buffer,
+        gl::Buffer_target::copy_write_buffer,
+        gl::Buffer_target::draw_indirect_buffer,
+        gl::Buffer_target::pixel_pack_buffer,
+        gl::Buffer_target::pixel_unpack_buffer,
+        gl::Buffer_target::texture_buffer,
+        gl::Buffer_target::transform_feedback_buffer,
+        gl::Buffer_target::uniform_buffer,
+        gl::Buffer_target::shader_storage_buffer,
+        gl::Buffer_target::atomic_counter_buffer
+    };
+    ERHE_VERIFY(index < sizeof(targets) / sizeof(targets[0]));
+    return targets[index];
+}
+
+auto texture_target_from_index(const std::size_t index) -> gl::Texture_target
+{
+    // Inverse of Gl_binding_state::texture_target_to_index().
+    constexpr gl::Texture_target targets[] = {
+        gl::Texture_target::texture_1d,
+        gl::Texture_target::texture_2d,
+        gl::Texture_target::texture_3d,
+        gl::Texture_target::texture_1d_array,
+        gl::Texture_target::texture_2d_array,
+        gl::Texture_target::texture_cube_map,
+        gl::Texture_target::texture_cube_map_array,
+        gl::Texture_target::texture_2d_multisample,
+        gl::Texture_target::texture_2d_multisample_array,
+        gl::Texture_target::texture_buffer
+    };
+    ERHE_VERIFY(index < sizeof(targets) / sizeof(targets[0]));
+    return targets[index];
+}
+
+} // anonymous namespace
+
+auto Gl_binding_state::bump_bind_epoch() -> uint64_t
+{
+    return m_bind_epoch.fetch_add(1, std::memory_order_relaxed) + 1;
+}
+
+auto Gl_binding_state::get_bind_epoch() const -> uint64_t
+{
+    return m_bind_epoch.load(std::memory_order_acquire);
+}
+
+void Gl_binding_state::scrub_deleted_buffer(const GLuint name, const uint64_t enqueue_epoch)
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    ERHE_VERIFY(name != 0);
+    for (std::size_t index = 0; index < s_buffer_target_count; ++index) {
+        if ((m_bound_buffers[index] == name) && (m_bound_buffer_epochs[index] <= enqueue_epoch)) {
+            bind_buffer(buffer_target_from_index(index), 0);
+        }
+    }
+    for (std::vector<GLuint>& stack : m_buffer_stack) {
+        scrub(stack, name);
+    }
+}
+
+void Gl_binding_state::scrub_deleted_texture(const GLuint name, const uint64_t enqueue_epoch)
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    ERHE_VERIFY(name != 0);
+    for (std::size_t unit = 0; unit < s_max_texture_units; ++unit) {
+        for (std::size_t target_index = 0; target_index < s_texture_target_count; ++target_index) {
+            if (
+                (m_bound_textures[unit][target_index] == name) &&
+                (m_bound_texture_epochs[unit][target_index] <= enqueue_epoch)
+            ) {
+                bind_texture(static_cast<GLuint>(unit), texture_target_from_index(target_index), 0);
+            }
+        }
+    }
+    for (auto& unit_stacks : m_texture_stack) {
+        for (std::vector<GLuint>& stack : unit_stacks) {
+            scrub(stack, name);
+        }
+    }
+}
+
+void Gl_binding_state::scrub_deleted_sampler(const GLuint name, const uint64_t enqueue_epoch)
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    ERHE_VERIFY(name != 0);
+    for (std::size_t unit = 0; unit < s_max_texture_units; ++unit) {
+        if ((m_bound_samplers[unit] == name) && (m_bound_sampler_epochs[unit] <= enqueue_epoch)) {
+            bind_sampler(static_cast<GLuint>(unit), 0);
+        }
+    }
+}
+
+void Gl_binding_state::scrub_deleted_renderbuffer(const GLuint name, const uint64_t enqueue_epoch)
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    ERHE_VERIFY(name != 0);
+    if ((m_bound_renderbuffer == name) && (m_renderbuffer_epoch <= enqueue_epoch)) {
+        bind_renderbuffer(0);
+    }
+    scrub(m_renderbuffer_stack, name);
+}
+
+void Gl_binding_state::scrub_deleted_program(const GLuint name, const uint64_t enqueue_epoch)
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    ERHE_VERIFY(name != 0);
+    if ((m_current_program == name) && (m_program_epoch <= enqueue_epoch)) {
+        use_program(0);
+    }
 }
 
 } // namespace erhe::graphics

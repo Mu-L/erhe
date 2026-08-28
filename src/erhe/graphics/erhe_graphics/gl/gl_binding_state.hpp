@@ -3,7 +3,9 @@
 #include "erhe_gl/wrapper_enums.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 typedef unsigned int GLuint;
@@ -143,10 +145,14 @@ public:
 
     // -- Object deletion hooks -------------------------------------------
     //
-    // Called from Gl_* destructors right before the underlying glDelete*
-    // call. GL auto-unbinds deleted objects from every binding point; this
-    // hook mirrors that behavior in the cached state so the cache cannot
-    // hold a stale gl_name (which GL may later recycle for a new object).
+    // Called on the DELETING context's binding state, right before the
+    // underlying glDelete* call. GL auto-unbinds a deleted object only in
+    // the context that deletes it - NOT in every context of the share
+    // group - so these hooks mirror that auto-unbind in this context's
+    // cached state only. Every OTHER context's cache is scrubbed later,
+    // through Device_impl's deferred scrub queue, by the scrub_deleted_*
+    // methods below (which must issue real GL unbinds, because the other
+    // contexts' real binding points still hold the orphaned object).
     void on_texture_deleted     (GLuint texture);
     void on_buffer_deleted      (GLuint buffer);
     void on_sampler_deleted     (GLuint sampler);
@@ -155,18 +161,54 @@ public:
     void on_vertex_array_deleted(GLuint vertex_array);
     void on_program_deleted     (GLuint program);
 
+    // -- Deferred cross-context scrub -------------------------------------
+    //
+    // Drain-side handlers for shared objects deleted on ANOTHER context.
+    // Must run on the thread this binding state's context is current on.
+    // Each one real-unbinds (glBind* 0) every binding point that still
+    // holds `name` and updates the cache to match - a cache-only edit
+    // would leave the orphan bound in real GL state, and the next
+    // bind(0) would be skipped as redundant.
+    //
+    // enqueue_epoch guards against name recycling: GL frees a deleted
+    // name for reuse immediately, so this context may have bound a NEW
+    // object under the same name after the delete was enqueued. A slot
+    // whose last-bind epoch is newer than enqueue_epoch holds such a
+    // recycled binding and is left alone.
+    void scrub_deleted_buffer      (GLuint name, uint64_t enqueue_epoch);
+    void scrub_deleted_texture     (GLuint name, uint64_t enqueue_epoch);
+    void scrub_deleted_sampler     (GLuint name, uint64_t enqueue_epoch);
+    void scrub_deleted_renderbuffer(GLuint name, uint64_t enqueue_epoch);
+    void scrub_deleted_program     (GLuint name, uint64_t enqueue_epoch);
+
+    // Snapshot of the monotonically increasing bind counter, read by the
+    // DELETING thread when it enqueues a scrub entry for this context.
+    [[nodiscard]] auto get_bind_epoch() const -> uint64_t;
+
     static constexpr std::size_t s_max_texture_units = 32;
 
 private:
     auto buffer_target_to_index (gl::Buffer_target target) const -> std::size_t;
     auto texture_target_to_index(gl::Texture_target target) const -> std::size_t;
 
+    // Owner thread only: advance the bind counter and return the new value
+    // for storing in the bound slot's epoch.
+    [[nodiscard]] auto bump_bind_epoch() -> uint64_t;
+
     // element_array_buffer is excluded - it is part of VAO state
     static constexpr std::size_t s_buffer_target_count  = 11;
     static constexpr std::size_t s_texture_target_count = 10;
 
+    // Bumped on every real bind of a scrub-relevant object type (buffer,
+    // texture, sampler, renderbuffer, program) and recorded per slot in the
+    // m_*_epochs arrays below. Atomic only for the deleting thread's
+    // get_bind_epoch() snapshot; slot epochs are touched by the owning
+    // thread alone. 0 (the initial slot value) is always stale.
+    std::atomic<uint64_t> m_bind_epoch{0};
+
     // Per-target buffer bindings (current + stack)
     std::array<GLuint, s_buffer_target_count>              m_bound_buffers{};
+    std::array<uint64_t, s_buffer_target_count>            m_bound_buffer_epochs{};
     std::array<std::vector<GLuint>, s_buffer_target_count> m_buffer_stack;
 
     // Active texture unit
@@ -174,10 +216,12 @@ private:
 
     // Per-unit, per-target texture bindings (current + stack)
     std::array<std::array<GLuint, s_texture_target_count>, s_max_texture_units>              m_bound_textures{};
+    std::array<std::array<uint64_t, s_texture_target_count>, s_max_texture_units>            m_bound_texture_epochs{};
     std::array<std::array<std::vector<GLuint>, s_texture_target_count>, s_max_texture_units> m_texture_stack;
 
     // Per-unit sampler bindings
-    std::array<GLuint, s_max_texture_units> m_bound_samplers{};
+    std::array<GLuint, s_max_texture_units>   m_bound_samplers{};
+    std::array<uint64_t, s_max_texture_units> m_bound_sampler_epochs{};
 
     // Framebuffer bindings (current + stacks)
     GLuint              m_draw_framebuffer{0};
@@ -187,6 +231,7 @@ private:
 
     // Renderbuffer binding (current + stack)
     GLuint              m_bound_renderbuffer{0};
+    uint64_t            m_renderbuffer_epoch{0};
     std::vector<GLuint> m_renderbuffer_stack;
 
     // Vertex array binding (current + stack)
@@ -194,7 +239,8 @@ private:
     std::vector<GLuint> m_vertex_array_stack;
 
     // Program binding
-    GLuint m_current_program{0};
+    GLuint   m_current_program{0};
+    uint64_t m_program_epoch{0};
 };
 
 } // namespace erhe::graphics

@@ -123,6 +123,7 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     // The constructing thread owns the drawing context, context index 0.
     set_gl_thread_role(Gl_thread_role::main);
     set_gl_context_index(0);
+    m_context_slot_live[0].store(true, std::memory_order_release);
 
     // Wire each context slot's {tracker, binding state} pair. Within one
     // context the binding state is the single source of truth for the bound
@@ -1180,9 +1181,10 @@ auto Device_impl::wait_frame() -> bool
 {
     ERHE_VERIFY(m_state == Device_frame_state::idle);
     // The main context's drain point for per-context container-object
-    // deletion: it never becomes current again, so this is where names
-    // queued by destructors on other contexts get deleted.
+    // deletion and shared-object binding scrubs: it never becomes current
+    // again, so "drain on next make-current" would never fire for it.
     drain_container_object_deletes_for_current_context();
+    drain_shared_object_scrubs_for_current_context();
     // Drop the previous frame's Command_buffer wrappers. GL serializes
     // through the driver context and submit_command_buffers is a
     // (mostly) no-op, so by the time we get back here the cbs from the
@@ -1757,6 +1759,64 @@ void Device_impl::drain_container_object_deletes_for_current_context()
     queue.framebuffers.clear();
 }
 
+void Device_impl::on_shared_object_deleted(const Gl_shared_object_kind kind, const unsigned int name)
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    ERHE_VERIFY(name != 0);
+    const int current_index = get_gl_context_index();
+    ERHE_VERIFY(current_index >= 0);
+    ERHE_VERIFY(current_index < gl_context_slot_count);
+
+    // The deleting context: GL auto-unbinds the object here, so mirror the
+    // auto-unbind in this context's cache only - no GL calls.
+    Gl_binding_state& current_binding_state = m_gl_binding_states[current_index];
+    switch (kind) {
+        case Gl_shared_object_kind::buffer:       current_binding_state.on_buffer_deleted      (name); break;
+        case Gl_shared_object_kind::texture:      current_binding_state.on_texture_deleted     (name); break;
+        case Gl_shared_object_kind::sampler:      current_binding_state.on_sampler_deleted     (name); break;
+        case Gl_shared_object_kind::renderbuffer: current_binding_state.on_renderbuffer_deleted(name); break;
+        case Gl_shared_object_kind::program:      current_binding_state.on_program_deleted     (name); break;
+        default: ERHE_FATAL("bad Gl_shared_object_kind %d", static_cast<int>(kind)); break;
+    }
+
+    // Every OTHER live context still has the orphan in its real binding
+    // points; queue a scrub with that context's bind-epoch snapshot.
+    for (int slot = 0; slot < gl_context_slot_count; ++slot) {
+        if (slot == current_index) {
+            continue;
+        }
+        if (!m_context_slot_live[slot].load(std::memory_order_acquire)) {
+            continue;
+        }
+        const uint64_t enqueue_epoch = m_gl_binding_states[slot].get_bind_epoch();
+        Deferred_shared_object_scrubs& queue = m_deferred_shared_object_scrubs[slot];
+        const std::lock_guard<std::mutex> lock{queue.mutex};
+        queue.entries.push_back(Deferred_shared_object_scrubs::Entry{kind, name, enqueue_epoch});
+    }
+}
+
+void Device_impl::drain_shared_object_scrubs_for_current_context()
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    const int context_index = get_gl_context_index();
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    Gl_binding_state& binding_state = m_gl_binding_states[context_index];
+    Deferred_shared_object_scrubs& queue = m_deferred_shared_object_scrubs[context_index];
+    const std::lock_guard<std::mutex> lock{queue.mutex};
+    for (const Deferred_shared_object_scrubs::Entry& entry : queue.entries) {
+        switch (entry.kind) {
+            case Gl_shared_object_kind::buffer:       binding_state.scrub_deleted_buffer      (entry.name, entry.enqueue_epoch); break;
+            case Gl_shared_object_kind::texture:      binding_state.scrub_deleted_texture     (entry.name, entry.enqueue_epoch); break;
+            case Gl_shared_object_kind::sampler:      binding_state.scrub_deleted_sampler     (entry.name, entry.enqueue_epoch); break;
+            case Gl_shared_object_kind::renderbuffer: binding_state.scrub_deleted_renderbuffer(entry.name, entry.enqueue_epoch); break;
+            case Gl_shared_object_kind::program:      binding_state.scrub_deleted_program     (entry.name, entry.enqueue_epoch); break;
+            default: ERHE_FATAL("bad Gl_shared_object_kind %d", static_cast<int>(entry.kind)); break;
+        }
+    }
+    queue.entries.clear();
+}
+
 // GL object creation
 //
 // gl::create_* creates the object immediately (no bind needed).
@@ -1774,7 +1834,7 @@ auto Device_impl::create_texture(gl::Texture_target target) -> Gl_texture
     GLuint name{0};
     gl::create_textures(target, 1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_texture{name, /*owned=*/true, &get_binding_state()};
+    return Gl_texture{name, /*owned=*/true, this};
 }
 
 auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
@@ -1786,7 +1846,7 @@ auto Device_impl::create_texture_view(gl::Texture_target target) -> Gl_texture
     GLuint name{0};
     gl::gen_textures(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_texture{name, /*owned=*/true, &get_binding_state()};
+    return Gl_texture{name, /*owned=*/true, this};
 }
 
 auto Device_impl::create_buffer() -> Gl_buffer
@@ -1795,7 +1855,7 @@ auto Device_impl::create_buffer() -> Gl_buffer
     GLuint name{0};
     gl::create_buffers(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_buffer{name, &get_binding_state()};
+    return Gl_buffer{name, this};
 }
 
 auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
@@ -1804,7 +1864,7 @@ auto Device_impl::create_renderbuffer() -> Gl_renderbuffer
     GLuint name{0};
     gl::create_renderbuffers(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_renderbuffer{name, &get_binding_state()};
+    return Gl_renderbuffer{name, this};
 }
 
 auto Device_impl::create_sampler() -> Gl_sampler
@@ -1813,7 +1873,7 @@ auto Device_impl::create_sampler() -> Gl_sampler
     GLuint name{0};
     gl::create_samplers(1, &name);
     ERHE_VERIFY(name != 0);
-    return Gl_sampler{name, &get_binding_state()};
+    return Gl_sampler{name, this};
 }
 
 auto Device_impl::create_query(gl::Query_target target) -> Gl_query
@@ -1833,7 +1893,7 @@ auto Device_impl::create_program() -> Gl_program
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     GLuint name = gl::create_program();
     ERHE_VERIFY(name != 0);
-    return Gl_program{name, &get_binding_state()};
+    return Gl_program{name, this};
 }
 
 auto Device_impl::create_shader(gl::Shader_type type) -> Gl_shader
