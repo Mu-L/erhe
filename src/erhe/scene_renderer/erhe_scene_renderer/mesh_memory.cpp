@@ -389,12 +389,14 @@ Mesh_memory::Mesh_memory(
         if (attribute.usage_type == usage::color) {
             return erhe::dataformat::Format::format_8_vec4_unorm;
         }
-        // Lightmap UVs (channel 2) are in [0, 1] by construction, so unorm16
-        // needs no affine and no side data: -4 bytes. vec2 in GLSL either way,
-        // so no decode. The lightmap atlas region composition
-        // (primitive.lightmap_scale_offset) is unchanged - which is exactly why
-        // this UV set must NOT pick up an affine of its own.
-        if ((attribute.usage_type == usage::tex_coord) && (attribute.usage_index == 2)) {
+        // Texcoords are unorm16: -4 bytes each. Channels 0 and 1 can carry
+        // tiling UVs, so they are additionally normalized into the primitive's
+        // own per-channel UV range (get_texcoord_quantization(), decoded in
+        // erhe_vertex_texcoord.glsl). Channel 2 is the lightmap set, in [0, 1]
+        // by construction, so it needs no affine and no side data - which is
+        // exactly why it must NOT pick one up: the atlas region composition
+        // (primitive.lightmap_scale_offset) composes with it unchanged.
+        if (attribute.usage_type == usage::tex_coord) {
             return erhe::dataformat::Format::format_16_vec2_unorm;
         }
         // The tangent attribute becomes the whole tangent frame, as a

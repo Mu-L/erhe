@@ -1,6 +1,11 @@
 # Compact attribute encodings for the optimized mesh variant
 
-Initial plan. Scope of this document: **which encoding to use for each
+**Status: implemented.** All six steps are in, the optimized vertex is 36
+bytes as planned, and the A/B image set is in `logs/attr_encoding_ab/`
+awaiting visual inspection (see Verification). Unit tests, the wider build
+sweep and the headless interaction sanity pass have NOT been run.
+
+Scope of this document: **which encoding to use for each
 non-position vertex attribute** of the optimized variant, what
 meshoptimizer gives us, and what each choice costs. It deliberately stops
 there -- no phase breakdown, no file-level task list.
@@ -127,12 +132,19 @@ Two things this forces:
   lane, and reading through the hardware snorm conversion would mean
   recovering it by multiplying back by 32767 and rounding. Exact integer
   access is cleaner and the decode is doing arithmetic anyway.
-- **Handedness needs an explicit carrier.** `q` and `-q` are the same
-  rotation, so the quaternion's sign is the conventional place to put the
-  bitangent sign -- but whether that survives meshopt's
-  drop-the-largest-component layout has to be checked against the filter
-  before committing to it. If it does not, the fallback is our own
-  largest-component-dropped encoding in the same 8 bytes.
+- **Handedness needs an explicit carrier, and meshopt cannot carry it.**
+  `q` and `-q` are the same rotation, so the quaternion's sign is the
+  conventional place to put the bitangent sign -- but
+  `meshopt_encodeFilterQuat()` canonicalizes on the largest component and
+  *discards* that sign, and its decode recovers its scale from the w lane
+  with `| 3`, so the spare bits there are not spare either. **Checked
+  against the filter, answer no**, so the implementation took this
+  section's recorded fallback: erhe's own largest-component-dropped
+  encoding in the same 8 bytes (`encode_tbn_quaternion()` in
+  `erhe_primitive/mesh_optimizer.cpp`), structurally identical, with the
+  control lane holding the omitted component index in bits 0..1 and the
+  handedness in bit 2. `res/shaders/erhe_vertex_tbn.glsl` is the matching
+  decode; the two must be read together.
 - erhe's tangent is not guaranteed orthogonal to the normal, so the encode
   Gram-Schmidts first. That is a real (small) precision change, distinct
   from the quantization itself.
@@ -189,9 +201,10 @@ the optimized format on the same footing.
 
 ## What meshoptimizer gives us, and what it does not
 
-- `meshopt_encodeFilterQuat` / `meshopt_decodeFilterQuat` -- the TBN
-  quaternion, natively. The decode is a reference implementation to port to
-  GLSL, not a library call we can make from a shader.
+- `meshopt_encodeFilterQuat` / `meshopt_decodeFilterQuat` -- **turned out
+  not to be usable**, see the TBN section: the encoder discards the
+  double-cover sign the handedness bit needs, and the w lane has no spare
+  bits. The scheme is still the model erhe's own encoder follows.
 - `meshopt_quantizeSnorm` / `meshopt_quantizeUnorm` -- drop straight in.
   They are redundant with `erhe::dataformat::convert()`, but routing the
   quantization through meshopt where the two agree is the precedent
@@ -247,13 +260,52 @@ lossy by design, so the expected result is a small non-zero difference, the
 same way the position quantization epsilon is expected and is itself the
 proof the optimized variant is being rendered.
 
-The acceptance criterion is **user visual inspection**. Using the A/B
-harness in `doc/meshoptimizer-integration.md` ("How to verify") -- MCP port
-3743, DDGI off, paused time, pinned layout, control pair first, mutation
-check -- captures go into `logs/attr_encoding_ab/`, one pair per encoding
-step (off vs on) plus the all-on pair, on **ABeautifulGame only**. Bistro
-is out of scope for this work. That folder is what to look at; nothing
-here has been run yet.
+The acceptance criterion is **user visual inspection**.
+`scripts/attr_encoding_ab.py` produces the image set, on **ABeautifulGame
+only** -- Bistro is out of scope for this work. It builds on the harness in
+`doc/meshoptimizer-integration.md` ("How to verify"): MCP port 3743, DDGI
+off, paused time, pinned layout, control pair first. Four editor launches,
+into `logs/attr_encoding_ab/`:
+
+| capture | `optimize_meshes` | `quantize_vertex_positions` |
+|---|---|---|
+| `off_a`, `off_b` | false | false |
+| `on_qoff` | true | false |
+| `on_qon` | true | true |
+
+There is only one `off` side because `quantize_vertex_positions` affects
+the optimized variant alone -- which is what makes the `on_qoff` / `on_qon`
+split separate the attribute encodings from the already-accepted position
+epsilon. Each comparison gets a side-by-side PNG, a difference PNG
+amplified 8x so a 1-LSB difference is actually visible, and a percentage
+over the cropped viewport.
+
+Measured (differing pixels of the cropped viewport, VS 2026 Vulkan Debug):
+
+| comparison | differing | worst | within 4 LSB |
+|---|---|---|---|
+| control `off_a` vs `off_b` | **0.000%** | 0 | -- |
+| attributes `off_a` vs `on_qoff` | 1.085% | 17 LSB | 99.9% |
+| all `off_a` vs `on_qon` | 1.492% | 107 LSB | 97.1% |
+| positions `on_qoff` vs `on_qon` | 1.037% | 107 LSB | 95.9% |
+
+So the attribute encodings together move about 1% of viewport pixels,
+99.9% of the differing channel samples by 4 LSB or less, on top of a
+control pair that is exactly identical. Side by side the two renders are
+indistinguishable by eye.
+
+Two harness notes worth keeping:
+
+- **A non-zero control row invalidates the whole batch.** Two identical
+  runs must render identically; one batch here came back with a 0.398%
+  control (255-LSB outliers, a shot taken before the scene had settled)
+  and every other row in it was measuring that too. The script says so in
+  its own summary now. Re-run.
+- **A passing control pair is necessary and not sufficient** -- it cannot
+  tell you the optimized variant was built or selected at all. The script
+  therefore also dumps the per-variant GPU strides and attribute formats,
+  and that dump is what caught the texcoord substitution being missing
+  from step 4 while every other part of that step was in place.
 
 ## Implementation plan
 
@@ -357,7 +409,8 @@ must fall back to the same epsilon rule the position affine uses.
 The largest step. Normal and tangent leave the format, one `16_vec4_sint`
 attribute replaces them.
 
-- Encode in both paths via `meshopt_encodeFilterQuat`: Gram-Schmidt the
+- Encode in both paths (via erhe's own encoder -- see the TBN section for
+  why `meshopt_encodeFilterQuat` could not be used): Gram-Schmidt the
   tangent against the normal, build the frame, encode, and carry the
   bitangent sign. **Settle the sign carrier first** -- negating the
   quaternion is the conventional home for it, and whether that survives
