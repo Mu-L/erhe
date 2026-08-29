@@ -60,6 +60,7 @@ Buffer_pool::Buffer_pool(
     , m_vertex_stream        {vertex_stream}
     , m_source_vertex_stream {&vertex_stream}
     , m_block_create_info    {std::move(block_create_info)}
+    , m_blocks               {m_block_create_info.max_blocks}
     , m_pool_id              {pool_id}
 {
     log_mesh_memory->trace(
@@ -79,6 +80,7 @@ Buffer_pool::Buffer_pool(
     , m_vertex_stream    {erhe::dataformat::Vertex_stream::binding_unused_dummy}
     , m_index_format     {index_format}
     , m_block_create_info{std::move(block_create_info)}
+    , m_blocks           {m_block_create_info.max_blocks}
     , m_pool_id          {pool_id}
 {
     log_mesh_memory->trace(
@@ -88,7 +90,6 @@ Buffer_pool::Buffer_pool(
     );
 }
 
-Buffer_pool::Buffer_pool(Buffer_pool&&) noexcept = default;
 Buffer_pool::~Buffer_pool() = default;
 
 auto Buffer_pool::is_compatible(const erhe::dataformat::Vertex_stream& vertex_stream) const -> bool
@@ -131,10 +132,10 @@ auto Buffer_pool::allocate_internal(
 ) -> std::optional<std::pair<Pool_block*, std::size_t>>
 {
     for (int i = 0; i < 2; ++i) {
-        for (const std::unique_ptr<Pool_block>& block : m_blocks) {
-            const std::optional<std::size_t> byte_offset_opt = block->allocator.allocate(allocation_byte_count, allocation_alignment);
+        for (Pool_block& block : m_blocks) {
+            const std::optional<std::size_t> byte_offset_opt = block.allocator.allocate(allocation_byte_count, allocation_alignment);
             if (byte_offset_opt.has_value()) {
-                return std::make_pair(block.get(), byte_offset_opt.value());
+                return std::make_pair(&block, byte_offset_opt.value());
             }
         }
         if (!create_new_block(allocation_byte_count)) {
@@ -146,8 +147,8 @@ auto Buffer_pool::allocate_internal(
 
 void Buffer_pool::collect_retired(std::vector<Retired_range>& out_retired)
 {
-    for (const std::unique_ptr<Pool_block>& block : m_blocks) {
-        block->collect_retired(out_retired);
+    for (Pool_block& block : m_blocks) {
+        block.collect_retired(out_retired);
     }
 }
 
@@ -155,15 +156,12 @@ auto Buffer_pool::get_statistics() const -> Buffer_pool::Statistics
 {
     Statistics statistics;
     statistics.block_count = m_blocks.size();
-    for (const std::unique_ptr<Pool_block>& block : m_blocks) {
-        if (!block) {
-            continue;
-        }
-        statistics.capacity_bytes       += block->allocator.get_capacity();
-        statistics.used_bytes           += block->allocator.get_used();
-        statistics.free_bytes           += block->allocator.get_free();
-        statistics.allocation_count     += block->allocator.get_allocation_count();
-        statistics.pending_retired_bytes += block->get_pending_retired_byte_count();
+    for (const Pool_block& block : m_blocks) {
+        statistics.capacity_bytes       += block.allocator.get_capacity();
+        statistics.used_bytes           += block.allocator.get_used();
+        statistics.free_bytes           += block.allocator.get_free();
+        statistics.allocation_count     += block.allocator.get_allocation_count();
+        statistics.pending_retired_bytes += block.get_pending_retired_byte_count();
     }
     return statistics;
 }
@@ -183,8 +181,8 @@ void Buffer_pool::apply_retired(const std::vector<Retired_range>& retired)
 auto Buffer_pool::describe() const -> std::string
 {
     std::size_t pending_retired_byte_count = 0;
-    for (const std::unique_ptr<Pool_block>& block : m_blocks) {
-        pending_retired_byte_count += block->get_pending_retired_byte_count();
+    for (const Pool_block& block : m_blocks) {
+        pending_retired_byte_count += block.get_pending_retired_byte_count();
     }
     if (m_index_format == erhe::dataformat::Format::format_undefined) {
         return fmt::format("pool_id = {}, stream = {}, blocks = {}, pending retired bytes = {}",
@@ -235,12 +233,10 @@ auto Buffer_pool::create_new_block(const std::size_t min_capacity_bytes) -> bool
         describe()
     );
 
-    m_blocks.push_back(
-        std::make_unique<Pool_block>(
-            m_next_buffer_id++,
-            std::make_unique<erhe::graphics::Buffer>(m_graphics_device, buffer_ci),
-            erhe::buffer::Free_list_allocator{capacity_bytes}
-        )
+    m_blocks.emplace_back(
+        m_next_buffer_id++,
+        std::make_unique<erhe::graphics::Buffer>(m_graphics_device, buffer_ci),
+        erhe::buffer::Free_list_allocator{capacity_bytes}
     );
     return true;
 }
@@ -310,7 +306,7 @@ auto Buffer_pool::allocate(const std::size_t element_count) -> erhe::primitive::
 
 auto Buffer_pool::get_buffer(const uint64_t buffer_id) const -> erhe::graphics::Buffer*
 {
-    return m_blocks.at(buffer_id)->buffer.get();
+    return m_blocks.at(buffer_id).buffer.get();
 }
 
 auto Buffer_pool::get_vertex_stream() const -> const erhe::dataformat::Vertex_stream&

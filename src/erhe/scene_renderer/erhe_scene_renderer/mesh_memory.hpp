@@ -10,6 +10,7 @@
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene_renderer/buffer_pool.hpp"
 #include "erhe_scene_renderer/generated/mesh_memory_config.hpp"
+#include "erhe_scene_renderer/published_vector.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_scene_renderer/shader_key.hpp"
 
@@ -331,8 +332,21 @@ private:
     // that coupling instead of relying on it silently.
     std::thread::id                       m_owner_thread_id{std::this_thread::get_id()};
     bool                                  m_vertex_input_entries_frozen{false};
-    std::vector<Buffer_pool>              m_vertex_pools;
-    std::vector<Buffer_pool>              m_index_pools;
+    // Appended by allocate_vertex_buffer_range() / allocate_index_buffer_range()
+    // under buffer_mesh_allocation_mutex() (typically on a worker), read with no
+    // lock by the main thread (flush, the get_*_buffer family, statistics) -
+    // the concurrent append-vs-read shape Published_vector exists for.
+    //
+    // Capacities: a vertex pool exists per Vertex_stream INSTANCE, and every
+    // stream handed to a pool is a member of one of the Vertex_formats this
+    // Mesh_memory owns (get_all_vertex_formats(): 9 formats of at most 4
+    // streams each, 22 streams today), so 64 is comfortably above the hard
+    // bound. Index pools exist per index Format in use; 8 covers every
+    // integer index format. Exceeding a capacity is a loud ERHE_VERIFY.
+    static constexpr std::size_t          max_vertex_pool_count{64};
+    static constexpr std::size_t          max_index_pool_count {8};
+    Published_vector<Buffer_pool>         m_vertex_pools{max_vertex_pool_count};
+    Published_vector<Buffer_pool>         m_index_pools {max_index_pool_count};
     erhe::graphics::Buffer_transfer_queue m_buffer_transfer_queue;
     erhe::graphics::Buffer_transfer_queue m_loader_transfer_queue;
     Loader_buffer_sink                    m_loader_sink;

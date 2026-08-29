@@ -525,7 +525,7 @@ auto Mesh_memory::allocate_vertex_buffer_range(
     const erhe::graphics::Buffer_usage ray_trace_usage = m_graphics_device.get_info().use_ray_query
         ? (erhe::graphics::Buffer_usage::acceleration_structure_build_input | erhe::graphics::Buffer_usage::shader_device_address)
         : erhe::graphics::Buffer_usage::none;
-    m_vertex_pools.emplace_back(
+    Buffer_pool& new_pool = m_vertex_pools.emplace_back(
         m_graphics_device,
         m_vertex_pools.size(),
         vertex_stream,
@@ -543,7 +543,7 @@ auto Mesh_memory::allocate_vertex_buffer_range(
             .debug_label_prefix                 = fmt::format("Mesh vertex pool {}", m_vertex_pools.size())
         }
     );
-    return m_vertex_pools.back().allocate(vertex_count);
+    return new_pool.allocate(vertex_count);
 }
 
 void Mesh_memory::enqueue_vertex_data_to(
@@ -612,7 +612,7 @@ auto Mesh_memory::allocate_index_buffer_range(
     const erhe::graphics::Buffer_usage ray_trace_usage = m_graphics_device.get_info().use_ray_query
         ? (erhe::graphics::Buffer_usage::acceleration_structure_build_input | erhe::graphics::Buffer_usage::shader_device_address)
         : erhe::graphics::Buffer_usage::none;
-    m_index_pools.emplace_back(
+    Buffer_pool& new_pool = m_index_pools.emplace_back(
         m_graphics_device,
         m_index_pools.size(),
         index_format,
@@ -625,7 +625,7 @@ auto Mesh_memory::allocate_index_buffer_range(
             .debug_label_prefix                 = fmt::format("Mesh index pool {}", m_index_pools.size())
         }
     );
-    return m_index_pools.back().allocate(index_count);
+    return new_pool.allocate(index_count);
 }
 
 void Mesh_memory::enqueue_index_data_to(

@@ -5,6 +5,7 @@
 #include "erhe_graphics/enums.hpp"
 #include "erhe_primitive/buffer_sink.hpp"
 #include "erhe_profile/profile.hpp"
+#include "erhe_scene_renderer/published_vector.hpp"
 #include "erhe_utility/debug_label.hpp"
 
 #include <cstddef>
@@ -140,9 +141,12 @@ public:
         Buffer_pool_block_create_info block_create_info
     );
 
+    // Not movable: Mesh_memory readers hold references across worker-side
+    // pool appends, so a pool must never relocate (Published_vector stores
+    // pools behind stable heap slots and needs no move).
     Buffer_pool(const Buffer_pool&)            = delete;
     Buffer_pool& operator=(const Buffer_pool&) = delete;
-    Buffer_pool(Buffer_pool&&) noexcept;
+    Buffer_pool(Buffer_pool&&)                 = delete;
     Buffer_pool& operator=(Buffer_pool&&)      = delete;
 
     ~Buffer_pool();
@@ -197,7 +201,14 @@ private:
     const erhe::dataformat::Vertex_stream*   m_source_vertex_stream{nullptr};
     erhe::dataformat::Format                 m_index_format{erhe::dataformat::Format::format_undefined};
     Buffer_pool_block_create_info            m_block_create_info;
-    std::vector<std::unique_ptr<Pool_block>> m_blocks;
+    // Appended by create_new_block() under buffer_mesh_allocation_mutex()
+    // (possibly on a worker), read with no lock by get_buffer() /
+    // collect_retired() / get_statistics() on the main thread - which is
+    // exactly the concurrent append-vs-read shape Published_vector exists
+    // for. Capacity is m_block_create_info.max_blocks, which
+    // create_new_block() already enforces. Declared after
+    // m_block_create_info: constructed from it in the init list.
+    Published_vector<Pool_block>             m_blocks;
     uint64_t                                 m_pool_id;
     uint64_t                                 m_next_buffer_id{0};
 };

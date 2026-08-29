@@ -384,19 +384,6 @@ Still manual / not covered by the tests:
 
 ## Future work
 
-- **`Mesh_memory` pool-vector race** -- known, pre-existing, made reachable
-  by this work; needs its own commit or an explicit written deferral.
-  `allocate_vertex_buffer_range` does `m_vertex_pools.emplace_back` on a
-  worker under `buffer_mesh_allocation_mutex()`, while main-thread readers
-  (`flush`, `get_vertex_buffer`, both `get_index_buffer` overloads,
-  `get_memory_usage`, the allocate-path reads -- roughly a dozen across
-  `mesh_memory.cpp`) iterate the vectors without the mutex. `Pool_block` is
-  `unique_ptr`-owned so handed-out `Buffer*` stay stable; the race is on the
-  **vector**. A mutex retrofit is only correct if exhaustive -- re-derive
-  the reader list from `grep -n 'm_vertex_pools\|m_index_pools'
-  mesh_memory.cpp`, never trust a written list -- which is why the
-  **stable-address container is the better option**: correct without an
-  enumeration. Decide explicitly; do not leave it unstated.
 - **Nested taskflows inside `parse_gltf`** (gltf_fastgltf.cpp runs nested
   taskflows on a worker) -- never explicitly examined. Parse is otherwise
   CPU-only, but if a scope were taken on the parse thread and a nested flow
