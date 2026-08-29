@@ -185,6 +185,17 @@ public:
     // DELETING thread when it enqueues a scrub entry for this context.
     [[nodiscard]] auto get_bind_epoch() const -> uint64_t;
 
+    // Pending-scrub bracketing, called by Device_impl: the deleting thread
+    // notes each scrub entry it enqueues for this context, and this
+    // context's drain notes how many it processed. While the count is
+    // nonzero, bind elision against the cache is UNSOUND for shared object
+    // kinds - a cached name may belong to a deleted object whose name GL
+    // has recycled, so an equal name is not proof the object is already
+    // bound. The bind paths then bind for real (and bump the slot epoch,
+    // which is what lets the later drain spare the rebound name).
+    void note_scrub_enqueued();
+    void note_scrubs_drained(std::size_t count);
+
     static constexpr std::size_t s_max_texture_units = 32;
 
 private:
@@ -205,6 +216,20 @@ private:
     // get_bind_epoch() snapshot; slot epochs are touched by the owning
     // thread alone. 0 (the initial slot value) is always stale.
     std::atomic<uint64_t> m_bind_epoch{0};
+
+    // Scrub entries queued for this context and not yet drained on it.
+    // Same cross-thread pattern as m_bind_epoch: the deleting thread
+    // increments (under the queue mutex), the owning thread's drain
+    // decrements (under the same mutex); the owning thread's bind paths
+    // read it relaxed and lock-free to decide whether elision is sound.
+    std::atomic<uint32_t> m_pending_scrub_count{0};
+
+    // True while elision against the cache is sound - see
+    // note_scrub_enqueued(). Owner-thread read on every bind.
+    [[nodiscard]] auto may_elide_binds() const -> bool
+    {
+        return m_pending_scrub_count.load(std::memory_order_relaxed) == 0;
+    }
 
     // Per-target buffer bindings (current + stack)
     std::array<GLuint, s_buffer_target_count>              m_bound_buffers{};

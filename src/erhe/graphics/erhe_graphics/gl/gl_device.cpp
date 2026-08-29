@@ -1886,6 +1886,10 @@ void Device_impl::on_shared_object_deleted(const Gl_shared_object_kind kind, con
         Deferred_shared_object_scrubs& queue = m_deferred_shared_object_scrubs[slot];
         const std::lock_guard<std::mutex> lock{queue.mutex};
         queue.entries.push_back(Deferred_shared_object_scrubs::Entry{kind, name, enqueue_epoch});
+        // Disables bind elision on the target context until its drain: a
+        // cached name may now refer to a deleted object whose name GL
+        // recycles, so an equal name no longer proves the object is bound.
+        m_gl_binding_states[slot].note_scrub_enqueued();
     }
 }
 
@@ -1908,6 +1912,7 @@ void Device_impl::drain_shared_object_scrubs_for_current_context()
             default: ERHE_FATAL("bad Gl_shared_object_kind %d", static_cast<int>(entry.kind)); break;
         }
     }
+    binding_state.note_scrubs_drained(queue.entries.size());
     queue.entries.clear();
 }
 

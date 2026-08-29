@@ -219,7 +219,7 @@ void Gl_binding_state::bind_buffer(const gl::Buffer_target target, const GLuint 
         return;
     }
     const std::size_t index = buffer_target_to_index(target);
-    if (m_bound_buffers[index] != buffer) {
+    if ((m_bound_buffers[index] != buffer) || !may_elide_binds()) {
         m_bound_buffers[index]       = buffer;
         m_bound_buffer_epochs[index] = bump_bind_epoch();
         gl::bind_buffer(target, buffer);
@@ -260,7 +260,7 @@ void Gl_binding_state::bind_texture(const GLuint unit, const gl::Texture_target 
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(unit < s_max_texture_units);
     const std::size_t target_index = texture_target_to_index(target);
-    if (m_bound_textures[unit][target_index] != texture) {
+    if ((m_bound_textures[unit][target_index] != texture) || !may_elide_binds()) {
         if (m_active_texture_unit != unit) {
             m_active_texture_unit = unit;
             gl::active_texture(gl::Texture_unit{static_cast<unsigned int>(gl::Texture_unit::texture0) + unit});
@@ -400,7 +400,7 @@ void Gl_binding_state::pop_renderbuffer()
 void Gl_binding_state::bind_renderbuffer(const GLuint renderbuffer)
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
-    if (m_bound_renderbuffer != renderbuffer) {
+    if ((m_bound_renderbuffer != renderbuffer) || !may_elide_binds()) {
         m_bound_renderbuffer = renderbuffer;
         m_renderbuffer_epoch = bump_bind_epoch();
         gl::bind_renderbuffer(gl::Renderbuffer_target::renderbuffer, renderbuffer);
@@ -451,7 +451,7 @@ void Gl_binding_state::bind_sampler(const GLuint unit, const GLuint sampler)
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     ERHE_VERIFY(unit < s_max_texture_units);
-    if (m_bound_samplers[unit] != sampler) {
+    if ((m_bound_samplers[unit] != sampler) || !may_elide_binds()) {
         m_bound_samplers[unit]       = sampler;
         m_bound_sampler_epochs[unit] = bump_bind_epoch();
         gl::bind_sampler(unit, sampler);
@@ -469,7 +469,7 @@ auto Gl_binding_state::get_bound_sampler(const GLuint unit) const -> GLuint
 void Gl_binding_state::use_program(const GLuint program)
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
-    if (m_current_program != program) {
+    if ((m_current_program != program) || !may_elide_binds()) {
         m_current_program = program;
         m_program_epoch   = bump_bind_epoch();
         gl::use_program(program);
@@ -650,6 +650,18 @@ auto Gl_binding_state::bump_bind_epoch() -> uint64_t
 auto Gl_binding_state::get_bind_epoch() const -> uint64_t
 {
     return m_bind_epoch.load(std::memory_order_acquire);
+}
+
+void Gl_binding_state::note_scrub_enqueued()
+{
+    m_pending_scrub_count.fetch_add(1u, std::memory_order_relaxed);
+}
+
+void Gl_binding_state::note_scrubs_drained(const std::size_t count)
+{
+    if (count > 0) {
+        m_pending_scrub_count.fetch_sub(static_cast<uint32_t>(count), std::memory_order_relaxed);
+    }
 }
 
 void Gl_binding_state::scrub_deleted_buffer(const GLuint name, const uint64_t enqueue_epoch)
