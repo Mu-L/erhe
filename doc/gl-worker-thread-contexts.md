@@ -1,20 +1,11 @@
 # OpenGL worker-thread GL contexts
 
 Live document for the GL worker-context subsystem: requirements, design,
-implementation record, future work, traps. Implemented 2026-08-28 (commit
-table below). The motivating bug -- the OpenGL build could not load any glTF
--- is fixed: glTF scenes load with zero stderr, the log confirms "Created 4
-GL worker share contexts", and MCP-driven Catmull-Clark subdivides exercised
-the worker mesh-operation path end to end.
-
-A 2026-08-29 follow-up series (second table in Implementation) collapsed
-the thread-role enum into the context index, hardened the publication
-consumer side, routed GL debug output into the Device message callback,
-and added the dedicated multithreaded test suite -- which found and drove
-the fix for a real scrub-queue defect (elided rebind of a recycled name).
-Caveat: the full cross-backend build + ctest sweep has NOT been re-run
-after that series; only the OpenGL editor, the gpu test suite and an ASAN
-run of the worker tests are verified.
+verification, future work, traps. The subsystem is implemented and in use:
+glTF scenes load on the OpenGL build, the log confirms "Created 4 GL worker
+share contexts", and a dedicated multithreaded test suite covers the
+worker-prepare / main-consume contract (see Verification). History lives in
+the git log, not here.
 
 The GL spec grounding for the cross-context rules is transcribed in
 `doc/gl-spec-section-5.md` (the "Shared Objects and Multiple Contexts"
@@ -47,11 +38,10 @@ What the subsystem must provide:
    thread an instance on its *own* context.
 3. Anything a worker may not do **asserts loudly at the call site**
    (`ERHE_VERIFY`-backed, on in Release too).
-4. Baseline (phase 0, prerequisite): OpenGL 4.5 + DSA mandatory, macOS OpenGL
-   support removed, compute shaders / SSBOs strictly required on every
-   backend. Every non-DSA fallback was deleted, so DSA-cleanness is
-   structural: no code path exists that binds through the caches to emulate a
-   DSA call.
+4. Baseline (prerequisite): OpenGL 4.5 + DSA mandatory, no macOS OpenGL
+   support, compute shaders / SSBOs strictly required on every backend.
+   There are no non-DSA fallbacks, so DSA-cleanness is structural: no code
+   path exists that binds through the caches to emulate a DSA call.
 5. The API is backend-shared code: a no-op on the main thread and on every
    backend with no per-thread context concept (Vulkan, Metal, null).
 6. When no worker context can exist (headless / null window, or a creation
@@ -83,14 +73,12 @@ is the single source of truth for what the calling thread may do -- `-1` =
 no GL context current, `0` = the main (drawing) context, `1..pool size` = a
 worker share context. The same index keys the per-object container slots
 and the per-context cache pairs, so permission and identity cannot drift
-apart. (An earlier `Gl_thread_role {none, main, worker}` enum was a second
-thread-local carrying the same information, kept in sync by hand; it was
-collapsed into the index once the per-context caches removed the
-cache-protection meaning of "draw-capable".) It is set in exactly three
-places: `Device_impl`'s constructor and `Device_impl::on_thread_enter()`
-set 0; worker-slot acquire sets the slot index and release resets to -1. A
-thread that makes a context current without going through the API keeps -1
-and trips the first guard rather than faulting in the driver.
+apart -- deliberately ONE thread-local, not a parallel role enum kept in
+sync by hand. It is set in exactly three places: `Device_impl`'s
+constructor and `Device_impl::on_thread_enter()` set 0; worker-slot acquire
+sets the slot index and release resets to -1. A thread that makes a context
+current without going through the API keeps -1 and trips the first guard
+rather than faulting in the driver.
 
 - `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT()` (index >= 0): shared-object
   creators (`Device_impl::create_buffer/texture/texture_view/renderbuffer/
@@ -106,8 +94,6 @@ and trips the first guard rather than faulting in the driver.
   model (worker-mapped writes would need publication points of their own);
   `Gpu_timer` keeps a main-context query ring; and worker-side rendering /
   readback have no publication protocol or call site yet (see Future work).
-  The original guard set was much larger; most sites relaxed to
-  `HAS_CONTEXT` when the caches went per-context.
 - `allocate_storage` asserts that a worker only ever allocates
   **non-persistent** buffers -- it calls `map_bytes` for persistent mappings,
   which is main-only. The permission is narrowed, not the guard holed.
@@ -143,14 +129,12 @@ access is a property of the *work*, not the context -- a tier cannot say
 per-context state (legal) from shared state (not). Tried and reverted; do
 not re-propose.
 
-The API **replaced `Gl_context_provider` entirely** (both files, their
-CMakeLists lines, `Gl_worker_context`, `Scoped_gl_context`,
-`provide_worker_contexts`). The old provider's acquire was a busy spin (a
-condition-variable wait with an always-true predicate); note that "fixing
-the predicate" over the lock-free queue would have converted the spin into a
-lost-wakeup deadlock (no exact `empty()`, notify outside the mutex). The
-free-slot list under one mutex is the correct shape for a 4-entry pool
-acquired around globally serialized work.
+The pool acquire is a plain free-slot list under one mutex with a
+condition variable -- the correct shape for a 4-entry pool acquired around
+globally serialized work. Do not replace it with a lock-free queue plus a
+condition-variable predicate: there is no exact `empty()` to write a
+predicate against, and a notify outside the mutex loses wakeups (see
+Traps).
 
 ### Per-context container instances
 
@@ -226,16 +210,15 @@ deleting context's cache directly; every other context gets an entry on its
 - The **main context has an explicit drain point** in
   `Device_impl::wait_frame()` / `begin_frame` -- "drain on next
   make-current" never fires for the one context that draws.
-- **Bind elision is suspended while scrubs are pending** (found by the
-  scrub tests, 2026-08-29): between a delete's enqueue and this context's
-  drain, the cache may hold a deleted object's name that GL has recycled,
-  so an equal name is not proof the object is bound -- the elided rebind
-  left the orphan attached (a wrong-draw window), recorded no epoch, and
-  the drain then unbound the live object. Each `Gl_binding_state` carries
-  a pending-scrub count (enqueue increments, drain decrements, bind paths
-  read it relaxed); while nonzero the five shared-object bind paths bind
-  for real and bump the slot epoch, which is what lets the drain spare
-  the rebound name.
+- **Bind elision is suspended while scrubs are pending.** Between a
+  delete's enqueue and this context's drain, the cache may hold a deleted
+  object's name that GL has recycled, so an equal name is not proof the
+  object is bound -- an elided rebind would leave the orphan attached (a
+  wrong-draw window), record no epoch, and let the drain unbind the live
+  object. Each `Gl_binding_state` therefore carries a pending-scrub count
+  (enqueue increments, drain decrements, bind paths read it relaxed);
+  while nonzero the five shared-object bind paths bind for real and bump
+  the slot epoch, which is what lets the drain spare the rebound name.
 
 ### Cross-context publication
 
@@ -314,8 +297,8 @@ next tick.
   quiesced and pending publication syncs drained / consumed before pool
   contexts are destroyed, and no pool context may still be current on any
   worker at `~Context_window`.
-- **Deviation as landed**: a share-context creation failure aborts via
-  `Context_window`'s verify rather than degrading to a smaller pool.
+- A share-context creation failure aborts via `Context_window`'s verify
+  rather than degrading to a smaller pool.
 - When the pool cannot exist at all (headless / null window):
   `supports_worker_contexts()` is false and call sites branch to their
   budgeted main-thread fallback.
@@ -344,81 +327,23 @@ wraps the op in a `Scoped_worker_context` and runs it inline on main when
 `!supports_worker_contexts()`. Audited CPU-only, no context needed:
 `Asset_browser` glTF scan, `Texture_file_loader` decode (pixels only; upload
 is on main), `Lightmap_streamer` tile read, the BVH TLAS build,
-`Gltf_load_task`'s scan. The list is not proven complete -- a site-by-site
-audit missed items 4 and 5 once; the structural check is that every
-`silent_async` / `silent_dependent_async` / `subflow->emplace` in
+`Gltf_load_task`'s scan. The list is not proven complete -- site-by-site
+auditing has missed worker call sites before; the structural check is that
+every `silent_async` / `silent_dependent_async` / `subflow->emplace` in
 `src/editor` is accounted for.
 
-## Implementation
-
-Landed as 14 commits, 2026-08-28 (in order; each behaviour-neutral or
-independently verifiable at its point in the sequence):
-
-| # | commit | change |
-|---|---|---|
-| 1 | `b946ab07a` | drop macOS OpenGL support |
-| 2 | `ad669c051` | require OpenGL 4.5, delete the non-DSA emulation |
-| 3 | `865917704` | require compute shaders, remove compute / geometry fallbacks |
-| 4 | `f70a756ae` | GL thread-role guards (crash becomes a named assert; delete hooks landed log-once, retired by 11) |
-| 5 | `711e13939` | Context_window event-watch + GL teardown fixes, per-context debug callback (doc follow-up `c54c67059`) |
-| 6 | `5abcb5bfa` | retire ERHE_PARALLEL_INIT (dead blocks; last `Gl_context_provider` references) |
-| 7 | `11c0da86a` | build brush Build_info on the main thread + `get_vertex_input_from_vertex_format` invariant asserts |
-| 8 | `836cb0afb` | per-context container objects (slot arrays; migration hooks and registries deleted; Gpu_timer main-only) |
-| 9 | `d79a86255` | per-object scoped accessors + deferred per-context delete queues, adopted main-thread-first at all four points |
-| 10 | `4292ee42b` | per-context Gl_binding_state + OpenGL_state_tracker wired pairs |
-| 11 | `17520f004` | cross-context scrub queue for shared-object deletion; DRAW_CAPABLE relaxed to HAS_CONTEXT |
-| 12 | `90fc6efaa` | GL worker contexts, publication fences, pool, provider deletion, and the call sites -- **the fix** |
-| 13 | `f199094f1` | Blit_command_encoder guard split per method |
-| 14 | `7aa667d05` | crash handler prints a callstack for structured exceptions |
-
-Sequencing that mattered: 8-11 land while only the main context exists, so
-the per-context machinery is exercised by every frame before any worker can
-stress it; 12 is one commit with its call sites because contexts nothing
-acquires are a pure regression; 10-11 land before 12 so workers arrive on a
-tree with no shared cache left to corrupt.
-
-**Verified after the 2026-08-28 series**: the repro assets load on GL with
-zero stderr and a clean `quit_after_frames` exit; "Created 4 GL worker
-share contexts" in the log; MCP-driven Catmull-Clark subdivides on the GL
-build (cube 6->24->96 facets, icosahedron 20->60, tetrahedron 4->12)
-exercised the worker mesh-operation path; sweep green (ninja Vulkan Debug,
-VS null backend, Quest APK, build_tests + ctest 645/645); the user
-minimally verified the Vulkan VS build interactively.
-
-### Follow-up series, 2026-08-29
-
-| commit | change |
-|---|---|
-| `9325be993` | collapse `Gl_thread_role` into the context index; `DRAW_CAPABLE` renamed `MAIN_CONTEXT` with its real (non-cache) justification |
-| `824d5c462` | publication waits on every blit-encoder path; tex-to-tex copies gain their missing worker publication |
-| `30ba963ff` | `Worker_context_test`: worker-prepared buffers consumed on main (round trip, pool contention, re-entrancy) |
-| `7f65fdc72` | GL debug messages routed into `Device::device_message` (per-context; errors are fatal in the editor, fail the owning test in the gpu suite) |
-| `0c6b7bd23` | `Worker_context_gl_test`: worker texture create + upload, mipmaps, fill, context-index tracking, error observability |
-| `c19873e88` | accessor tests: two-context adoption, idempotence, destruction drain (via the `get_pending_container_delete_count` test hook), worker blit |
-| `f32832555` | **fix**: suspend bind elision while shared-object scrubs are pending (the elided-rebind defect the scrub tests found) |
-| `bc3617dd3` | scrub-queue tests: real unbind at the main drain, name-recycling epoch (mutation-proven against the pre-fix tree) |
-| `1ec3cb668` | `Buffer_impl::publish_for_handoff()` (the reverse-direction fence, landed with its first consumer) + its test + the guard death test |
-
-**Verified after this series**: OpenGL editor build; `erhe_graphics_gpu_tests`
-on the OpenGL `build_tests` tree, 64 passed / 1 pre-existing skip (16 of
-them the worker-context tests); the 16 worker tests clean under ASAN
-(`build_tests_asan`), including environment teardown with a populated
-pool. NOT re-run: the full ctest suite and the ninja-vulkan / null-backend /
-Quest builds -- run those before relying on a swept-green state.
-
-## Future work
-
-### Verification status (2026-08-29: dedicated tests landed)
+## Verification
 
 `Worker_context_test` / `Worker_context_gl_test` in
 `erhe_graphics_gpu_tests` (`src/erhe/graphics/test/test_worker_context.cpp`
-and `test_worker_context_gl.cpp`, the latter OpenGL-only) now cover, with
-repeatable tests run green on the OpenGL `build_tests` tree and under ASAN:
+and `test_worker_context_gl.cpp`, the latter OpenGL-only) cover, as
+repeatable tests runnable on the OpenGL `build_tests` tree and under ASAN
+(`build_tests_asan`):
 
 - **Worker GL errors are observable** -- a deliberate worker-side GL error
   reaches the environment's message list through the per-context debug
-  callback, which now routes into `Device::device_message` (errors fail
-  the owning test; in the editor they hit the fatal device-error handler).
+  callback, which routes into `Device::device_message` (errors fail the
+  owning test; in the editor they hit the fatal device-error handler).
 - **Buffers prepared on workers, consumed on main**: round trip,
   8-threads-on-a-4-context-pool contention, nested-scope refcounting, the
   main-thread no-op, and context-index tracking across scopes.
@@ -436,8 +361,8 @@ repeatable tests run green on the OpenGL `build_tests` tree and under ASAN:
   the orphan bound until the `wait_frame` drain issues a REAL unbind
   (verified with a raw GL binding query), and a name rebound after the
   enqueue survives the drain -- the name IS recycled on this driver, so
-  the epoch guard is exercised for real. This test found and drove the
-  fix for the elided-rebind defect (see the design section).
+  the epoch guard and the pending-scrub elision suspension are exercised
+  for real.
 - **The guard**: a death test proves off-scope worker creation dies on
   `HAS_CONTEXT` instead of faulting in the driver.
 
@@ -457,7 +382,7 @@ Still manual / not covered by the tests:
    observe breakage) -- the fences are exercised end to end by the tests
    above, but not mutation-tested; this driver may mask a missing fence.
 
-### Open items
+## Future work
 
 - **`Mesh_memory` pool-vector race** -- known, pre-existing, made reachable
   by this work; needs its own commit or an explicit written deferral.
@@ -520,13 +445,13 @@ Each of these cost a review or debugging round. Do not rediscover them.
   only the cache leaves the orphan bound (next bind-to-0 elided); scrubbing
   without the epoch unbinds a live object that received the recycled name.
   Names recycle the instant `glDelete*` runs, not at last use.
-- **Cache elision is unsound while scrubs are pending** (found by the
-  tests, not the reviews): rebinding a recycled name during the
-  delete-to-drain window compared equal to the stale cache entry, so the
-  real bind was elided, no epoch recorded, and the epoch guard above was
-  unreachable exactly when it was needed. Elision must be suspended while
-  the pending-scrub count is nonzero -- and any future cache that elides
-  by name comparison has the same hole.
+- **Cache elision is unsound while scrubs are pending**: rebinding a
+  recycled name during the delete-to-drain window compares equal to the
+  stale cache entry, so an elided bind attaches nothing, records no
+  epoch, and makes the epoch guard above unreachable exactly when it is
+  needed. Elision must stay suspended while the pending-scrub count is
+  nonzero -- and any future cache that elides by name comparison has the
+  same hole. Reviews did not catch this; the scrub tests did.
 - **The main context never re-acquires** -- any "on next make-current"
   hook never fires for it. It needs explicit per-frame drain points.
 - **Adoption never goes in `gl_name()`** (per-draw; hides object creation
@@ -560,14 +485,13 @@ Each of these cost a review or debugging round. Do not rediscover them.
   is what the save / restore re-entrancy design defends against.
 - **`ERHE_VERIFY` is on in Release** -- a guard placed on a destruction
   path aborts shipping runs. Audit worker-side destruction before guarding
-  it (the commit-4 log-once lesson: those hooks were never promoted, and
-  the scrub queue retired them).
+  it; prefer log-once over an abort on an unaudited path.
 - **"No assert fired" is not evidence when the guard is unreachable** (the
   `Scene_builder` lesson: the constructor pre-registration made the guarded
   path unreachable; the invariant is asserted where it actually holds, in
   `get_vertex_input_from_vertex_format` -- miss path main-only AND the
   vector frozen after construction).
-- **Do not trust derived lists in documents; re-derive from code.** The
-  plan's DSA branch list and the worker-call-site audit each drifted or
-  missed sites once. `grep` the identifier, enumerate the async entry
-  points, count the `#if` ranges.
+- **Do not trust derived lists in documents; re-derive from code.**
+  Hand-enumerated branch and call-site lists drift and miss sites. `grep`
+  the identifier, enumerate the async entry points, count the `#if`
+  ranges.

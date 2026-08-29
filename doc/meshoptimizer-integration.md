@@ -2,13 +2,13 @@
 
 Live document for the mesh-optimization subsystem built on
 [zeux/meshoptimizer](https://github.com/zeux/meshoptimizer) (vanilla
-upstream, pinned via CPM): requirements, design, implementation record,
-future work, traps.
+upstream, pinned via CPM): requirements, design, verification, future
+work, traps. History lives in the git log, not here.
 
-Status (2026-08-29): implementation is COMPLETE and verified except for the
-items in "Future work": the real-mouse interactive session, the perf
-measurement, and flipping `optimize_meshes` on by default -- both config
-booleans still default to **false**.
+Status: implemented and verified except for the items in "Future work" --
+the real-mouse interactive session, the perf measurement, and flipping
+`optimize_meshes` on by default; both config booleans still default to
+**false**.
 
 ## Requirements
 
@@ -53,8 +53,7 @@ variant is an ordinary geometry-less render shape -- a category that already
 existed and was in use -- holding its own triangle soup, its own composed
 `Element_mappings`, and its own `Buffer_mesh`.
 
-Two alternatives were rejected after comparison at the cheapest possible
-moment (variant plumbing landed, nothing yet constructing a variant):
+Two alternatives are rejected:
 parallel variant arrays inside `Primitive_shape` / `Primitive_render_shape`
 (pays for the second slot in every primitive whether or not the feature is
 on, and pairs mesh with mappings by matching array index instead of by
@@ -245,88 +244,58 @@ not a copy -- a copy froze the Settings toggle at its startup value.
 `Mesh_optimize_options` flows through `Buffer_info` / `Build_info`,
 populated in `make_primitive_buffer_info()`.
 
-## Implementation
+## Verification
 
-Landed 2026-08-26..28 on main (dates are the verification records below).
-The work in order, with the key commits:
+Rendering identity is verified with A/B screenshot runs per the harness in
+"Future work"; figures are differing viewport pixels of 2 198 250, each
+against a same-config control pair (always 0).
 
-| step | commits | change |
-|---|---|---|
-| 0 | (own commit) | remove the ID-buffer edge-line method end to end |
-| 1-2 | (own commits) | CPM dependency + wrapper skeleton; codegen config fields |
-| plumbing | `84937fee5` | variant selection points (~21 sites), bucket-carried `Buffer_mesh*` |
-| decision | `5e05c9ed`, `4ca59ec93` | variants move to `Primitive`; shapes revert to single-mesh by deletion |
-| 3 | `a5558a551` | soup-path optimization + import wiring |
-| 4 | `6f73e1ca2` | filesystem cache (remap-based entries) |
-| 5a | `35aad371` | geometry path: GPU allocation deferred after the build |
-| 5b | `3082b6cba` `3ac523860` `1892fcc19` `31ae79c70` | config through `Buffer_info`; multi-stream optimizer core; mode-aware variant resolution; the geometry-path variant |
-| 6 | `1849f8fe2` | statistics surfacing |
-| 7 | `c8581b535` | live-edit invalidation (the documented-but-unenforced rule) |
-| 7 | `999724299` | the optimized build's own vertex format (facet id dropped) |
-| 7 | `303e91e5a` `3be1daf67` `2f21602b9` | clang build repairs (zstd BMI2, MSVC STL `_Find_vectorized`, script `--target`) |
-| 7 | (mcp) | `get_mesh_buffer_info` / `get_mesh_buffer_data` MCP tools |
+- **Soup path** (ABeautifulGame): off vs on **0**, with 15 primitives
+  genuinely optimized (15 distinct meshes across 49 nodes -- the sharing
+  dedup at work). Uncached optimize cost is ~30-190 ms per primitive,
+  which is what justifies the cache.
+- **Cache**: baseline vs fully-cached **0**; cold vs warm **0**;
+  deliberately corrupted entries re-optimize and still compare at **0**.
+  Content addressing dedups identical geometry (15 primitives -> 8 entries
+  on this asset). Hit cost ~0 ms.
+- **Deferred allocation** (not flag-gated, affects every build):
+  optimizer-off output compares at **0** against the pre-restructure
+  build.
+- **Geometry path**: off vs on **0** on imported and procedural scenes,
+  and **mutation-checked** -- halving the optimized index buffer moves
+  34.0% of viewport pixels, ruling out "the variant is never selected".
+  Measured characteristics: the corner-per-vertex geometry build welds
+  141 696 -> 25 957 vertices (-81.7%), ACMR 3.000 -> 0.704 on
+  ABeautifulGame's chess pieces; the soup path welds +0.0% there (the
+  glTF is already welded), and procedural platonic solids weld +0.0%
+  (distinct flat corner normals) -- both correct.
+- **Overdraw stays on**: import-time fetch is +5.9% on an already-welded
+  asset, but the session total after geometry finalize is vertices
+  2 138 692 -> 833 132, fetch 199 387 520 -> 76 520 960 bytes (**-62%**),
+  ACMR 1.956 -> 0.866, overdraw 1.207 -> 1.044 -- the weld's fetch win
+  dwarfs what the reordering trades away.
+- **Bistro**: off vs on is **3575 pixels (0.163%)** with control pairs at
+  0 -- explained, not a defect: with the two reorder passes off (weld +
+  fetch on) the run is **0**, so the welded build rasterizes bit-exactly
+  and the residue is triangle order meeting order-dependent shading in
+  alpha-blended foliage (one-LSB differences, visually
+  indistinguishable). See Traps.
+- **Interaction sanity** (headless, run on and off): 52 `pick_at` probes
+  hit the same node / mesh / **facet id** in both runs (hit positions may
+  differ ~1e-6 m -- the reordered BVH's rounding); a convex-hull drop
+  onto a mesh collision shape rests at a **bit-identical** position; glTF
+  export/import round-trips to exactly the source
+  vertex/edge/facet/corner counts.
+- **Position-quantization byte check** (via the `get_mesh_buffer_info` /
+  `get_mesh_buffer_data` MCP tools, which read the actual GPU bytes and
+  name which build they read): stored int16 position triples match both
+  quantizers exactly, and a 0.01% AABB-scale perturbation flips every
+  comparison -- the negative control that makes the zeros meaningful. The
+  tools also make the variant invariants observable (fill-only index
+  ranges, the narrower facet-id-free stride).
 
-### Verification record
-
-All A/B figures are differing viewport pixels of 2 198 250, each against a
-same-config control pair (always 0), per the harness in "Future work".
-
-- **Soup path** (ABeautifulGame): off vs on **0**, not vacuous -- 15
-  primitives optimized (15 distinct meshes across 49 nodes: the sharing
-  dedup at work). Optimize cost ~30-190 ms per primitive is what justifies
-  the cache.
-- **Cache**: baseline vs fully-cached **0**; cold vs warm **0**; with three
-  entries deliberately corrupted, 12 replayed + 3 re-optimized, **0**, no
-  errors. 15 primitives produced 8 entries (identical black/white chess
-  geometry hashes the same). Hit cost ~0 ms.
-- **5a** (not flag-gated, changes every build): pre vs post with optimizer
-  off **0**.
-- **5b**: off vs on, imported and procedural scenes, **0** -- and
-  **mutation-checked**: halving the optimized index buffer moved 34.0% of
-  viewport pixels, ruling out "the variant is never selected". Weld on the
-  geometry path: 141 696 -> 25 957 vertices (-81.7%), ACMR 3.000 -> 0.704
-  on the chess pieces; the soup path welds +0.0% on the same asset (already
-  welded) -- the geometry path is the win, as predicted. Procedural
-  platonic solids weld +0.0% (distinct flat corner normals) -- correct.
-- **Statistics settled the overdraw-versus-fetch question: keep overdraw
-  on.** Import-time fetch is +5.9% on an already-welded asset, but the
-  session total after geometry finalize is vertices 2 138 692 -> 833 132,
-  fetch 199 387 520 -> 76 520 960 bytes (**-62%**), ACMR 1.956 -> 0.866,
-  overdraw 1.207 -> 1.044.
-- **Builds**: ninja vulkan Debug+Release, VS opengl, VS null backend, VS
-  vulkan-headless, Quest APK, build_tests -- green; clang green again after
-  the three repairs (broken since 2026-07-05, none of it from this work).
-  Tests **645/645** (638 + 3 multi-stream optimizer + 4
-  variant-invalidation).
-- **Visual A/B, three scenes**: ABeautifulGame **0**, procedural startup
-  **0**, Bistro post-format-change **3575 (0.163%)** with both control
-  pairs 0 -- diagnosed, not a defect: with vertex_cache and overdraw
-  temporarily off (weld + fetch on) the run is **0**, so the welded build
-  rasterizes bit-exactly and the residue is the *triangle reordering*
-  meeting order-dependent shading in Bistro's alpha-blended foliage (3287
-  of 3575 differ by one LSB; visually indistinguishable). The earlier
-  "Bistro: 0" predates the facet-id removal, when the weld merged nothing
-  and the reorder had nothing to work with. The facet-id removal itself was
-  ruled out first (`a_custom_0` is read only under `ERHE_VARIANT_ID_RENDER`,
-  which never selects the optimized variant).
-- **Headless interaction sanity**, each run twice (on and off),
-  optimization confirmed active via `get_memory_usage`: 52 `pick_at`
-  probes hit the same node / mesh / **facet id** in both runs (8 hit
-  positions differ ~1e-6 m -- the reordered BVH's rounding); a convex-hull
-  pawn dropped on a mesh-shape chessboard rests at a **bit-identical**
-  position on and off; glTF export/import round-trips four meshes to
-  exactly their source vertex/edge/facet/corner counts.
-- **Position-quantization byte check** (via the new
-  `get_mesh_buffer_info` / `get_mesh_buffer_data` MCP tools, which read the
-  actual GPU bytes and name which build they read): 4608 vertices across
-  three meshes, **zero mismatches** against both quantizers, which
-  disagreed on none. Negative control: multiplying the AABB scale by
-  1.0001 mismatches 512 of 512, so the comparison can fail. The tools also
-  make the variant invariants observable (fill-only index ranges, stream
-  stride 20 vs 24 = the absent facet id).
-- **One real gap found and fixed** (`c8581b535`): three live-edit call
-  sites carried the comment "an optimized variant is invalidated by the
-  edit rather than written through" and nothing invalidated anything.
+Unit tests cover the multi-stream optimizer core and live-edit variant
+invalidation. What verification remains is listed in "Future work".
 
 ## Future work
 
@@ -407,11 +376,10 @@ costs one RPC per node -- thousands of round trips on Bistro, minutes per
 run, looks like a hang -- and the authored camera is just as deterministic.
 Both sides of one comparison must use the same executable.
 
-Baselines (all 0 differing viewport pixels, in the untracked `logs/` of the
-machine the runs were made on): post-format-change `logs/p7b_off_a.png` /
-`p7b_off_b.png` (control), `p7b_on.png`, `p7c_on.png`, `p7c_proc_off.png`,
-`p7c_proc_on.png`; pre-format-change `logs/p5b_*.png`,
-`logs/p7_bistro_*.png`.
+Reference baselines for the current vertex format (all 0 differing
+viewport pixels; untracked, in `logs/` of the machine the runs were made
+on): `logs/p7b_off_a.png` / `p7b_off_b.png` (control), `p7b_on.png`,
+`p7c_on.png`, `p7c_proc_off.png`, `p7c_proc_on.png`.
 
 ## Traps
 
