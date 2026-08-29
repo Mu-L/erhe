@@ -391,6 +391,36 @@ against a snorm optimized build and is expected **non-zero** (the
 quantization epsilon); the order-only expectations (0 on ABeautifulGame,
 ~0.163% on Bistro) hold at `quantize_vertex_positions=false`.
 
+**Encoding-split sweep (2026-08-29, ABeautifulGame, Debug vulkan, control
+pair 2 px / 2 198 250 = noise floor):**
+
+- quantize=false, optimize off-vs-on: **2 px** (= control) -- the
+  order-only expectation holds.
+- quantize=true, optimize off-vs-on: **18 531 px (0.84%)** -- the expected
+  epsilon, and simultaneously the selection proof (the quantized variant
+  demonstrably renders). 96% of differing channel samples are 1-4 LSB; the
+  handful of larger deltas are silhouette-edge pixels.
+- Base render with quantize=true vs quantize=false, optimizer off:
+  **2 px** (= control) -- requirement 9 observable at pixel level: the
+  base variant is float regardless of the flag.
+- Byte check (`get_mesh_buffer_info` / `get_mesh_buffer_data`, King_B):
+  base = `format_32_vec3_float` stride 12, `passthrough`; optimized =
+  `format_16_vec3_snorm` stride 8 (4-aligned), `snorm16x3_aabb`,
+  fill-only, no facet-id attribute, welded 161 920 -> 29 162; decoded
+  int16 positions land inside the primitive AABB.
+- Session aggregate unchanged in character: weld 2 138 692 -> 833 132,
+  ACMR 1.955 -> 0.866, overdraw 1.207 -> 1.044, fetch -62%.
+- Unit tests: 529 pass across every test directory (including the new
+  optimized-variant-build and edit-bracket tests) + 66/67 GPU tests (the
+  1 skip is the pre-existing snorm_color_render_readback skip). Note:
+  `ctest` at the build_tests root aborts on the erhe_graphics_gpu_tests
+  discovery include when that target has not been built (it is not in the
+  default target) -- build it explicitly or run ctest per test directory.
+- Build sweep: ninja vulkan Debug, VS opengl Debug, Quest APK all green.
+- Not re-run: the 52-probe pick / physics / glTF round-trip suite --
+  those read source-side data (CPU BVH, geometry, collision) this change
+  does not touch.
+
 Unit tests cover the multi-stream optimizer core, the geometry-path
 encoded-and-welded optimized build (box round-trip through CPU sinks),
 live-edit variant invalidation, the edit bracket and the publish gate.
@@ -398,22 +428,17 @@ What verification remains is listed in "Future work".
 
 ## Future work
 
-1. **Verification sweep of the requirements 9-11 implementation.** The
-   code landed (encoding split, edit bracket + publish gate, durable paint,
-   background re-optimization) but the sweep has not run: the A/B matrix
-   (control pairs; old-vs-new tree with optimizer off at quantize=false =
-   0; optimizer off-vs-on at quantize=false = order residue only;
-   optimizer off-vs-on at quantize=true = recorded quantization epsilon +
-   mutation check), MCP byte checks (base float3, optimized snorm16 with
-   the facet-id-free stride), the interaction sanity re-run, the unit-test
-   suite, the cross-backend build sweep, and a real-mouse session: paint
-   (now undoable), an out-of-AABB drag (no clamp, no pop), weight paint,
-   with the optimized variant returning after each edit
-   (`get_memory_usage` / Properties).
-   Memory consequence to re-measure: the always-resident base variant is
-   back to 12 bytes/position; the steady-state fill win (welded +
-   quantized optimized variant) is what quantization keeps, and the
-   minimal `id_renderer`-variant seam below is the recorded way to
+1. **Real-mouse session on the requirements 9-11 implementation.** The
+   headless sweep is done (Verification above); what remains needs a
+   human: paint (now undoable -- check undo/redo of a stroke), an
+   out-of-AABB vertex drag (no clamp, no pop, mesh follows the mouse
+   exactly), weight paint, and the optimized variant RETURNING after each
+   edit ends (`get_memory_usage` / Properties show it re-attached by the
+   background re-optimization).
+   Memory consequence to re-measure while there: the always-resident base
+   variant is back to 12 bytes/position; the steady-state fill win
+   (welded + quantized optimized variant) is what quantization keeps, and
+   the minimal `id_renderer`-variant seam below is the recorded way to
    reclaim the base cost later.
 2. **Perf.** Not measurable headlessly (the frame pacer reports tier "OFF"
    and no MCP surface reports GPU frame time). Use the Frame Pacing window
