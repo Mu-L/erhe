@@ -1,0 +1,498 @@
+# OpenGL worker-thread GL contexts
+
+Live document for the GL worker-context subsystem: requirements, design,
+implementation record, future work, traps. Implemented 2026-08-28 (commit
+table below). The motivating bug -- the OpenGL build could not load any glTF
+-- is fixed: glTF scenes load with zero stderr, the log confirms "Created 4
+GL worker share contexts", and MCP-driven Catmull-Clark subdivides exercised
+the worker mesh-operation path end to end.
+
+The GL spec grounding for the cross-context rules is transcribed in
+`doc/gl-spec-section-5.md` (the "Shared Objects and Multiple Contexts"
+chapter); consult it when touching publication or teardown.
+
+## Requirements
+
+**The motivating bug.** The OpenGL build faulted in the driver at
+`glCreateBuffers`, called from a taskflow worker that had no GL context:
+
+```
+atio6axx.dll  (access violation)
+gl::create_buffers <- Device_impl::create_buffer <- Buffer_impl
+  <- Buffer_pool::create_new_block <- Mesh_memory::allocate_vertex_buffer_range
+  <- Primitive_builder::build <- prepare_geometry_buffer_mesh
+  <- deferred_finalize_mesh_items  ... tf::Executor worker
+```
+
+Any glTF load reproduced it (`build_vs2026_opengl`, `--scene
+res/editor/assets/ABeautifulGame.glb`); Vulkan and the procedural default
+scene were unaffected.
+
+What the subsystem must provide:
+
+1. Worker threads can create and operate on **shared** GL objects -- buffers,
+   textures (including pixel upload), samplers, programs -- via DSA, safely
+   and concurrently with main-thread rendering.
+2. **Container** objects (VAOs, framebuffers; per-context by GL's rules) are
+   reached only through explicit per-object accessors that give the calling
+   thread an instance on its *own* context.
+3. Anything a worker may not do **asserts loudly at the call site**
+   (`ERHE_VERIFY`-backed, on in Release too).
+4. Baseline (phase 0, prerequisite): OpenGL 4.5 + DSA mandatory, macOS OpenGL
+   support removed, compute shaders / SSBOs strictly required on every
+   backend. Every non-DSA fallback was deleted, so DSA-cleanness is
+   structural: no code path exists that binds through the caches to emulate a
+   DSA call.
+5. The API is backend-shared code: a no-op on the main thread and on every
+   backend with no per-thread context concept (Vulkan, Metal, null).
+6. When no worker context can exist (headless / null window, or a creation
+   failure), `Device::supports_worker_contexts()` returns false and every
+   GPU-touching worker call site takes a **budgeted** main-thread fallback --
+   never unbounded work inline in `Editor::tick`.
+
+## Design
+
+### The invariant
+
+A worker may never touch mutable state shared with the drawing thread. Since
+the binding caches became per-context, the only shared mutable state left is
+the GL objects themselves, governed by the publication rules below.
+
+- **Per-context GL state on the worker's own context is fine**: pixel-store
+  parameters, the pixel-unpack binding, its own cache pair. The stronger
+  reading -- "a worker may never change a binding" -- is WRONG: it would
+  forbid all texture upload and make `blit_framebuffer` look impossible.
+  Both are worker-legal.
+- **Container objects are per-context instances, never migrated.** A worker
+  gets its own VAO / FBO through the accessors. (Queries are also unshared,
+  for a different spec reason; `Gpu_timer` is main-thread-only, below.)
+
+### Thread roles and guards
+
+`erhe_graphics/gl/gl_thread_role.hpp`: thread-local
+`Gl_thread_role { none, main, worker }`. Set in exactly three places:
+`Device_impl`'s constructor and `Device_impl::on_thread_enter()` set `main`;
+`Scoped_worker_context` acquire sets `worker` and release restores the
+*previous* role (re-entrancy). An explicit role, not an "is main thread"
+test: a thread that makes a context current without going through the API
+gets `none` and trips the first guard.
+
+- `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT()` (role != none): shared-object
+  creators (`Device_impl::create_buffer/texture/texture_view/renderbuffer/
+  sampler/program/shader`), `Buffer_impl::allocate_storage`, the container
+  creators reached through accessors, the blit encoder's upload / copy
+  methods.
+- `ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()` (role == main): buffer mapping
+  (`map_bytes` family), readback / pack paths, render / compute encoder
+  construction, `Gpu_timer`. Most of the originally guarded cache-mutation
+  sites relaxed to `HAS_CONTEXT` once the caches went per-context.
+- `allocate_storage` asserts that a worker only ever allocates
+  **non-persistent** buffers -- it calls `map_bytes` for persistent mappings,
+  which is main-only. The permission is narrowed, not the guard holed.
+- `Blit_command_encoder` is guarded per method, not at construction: upload /
+  copy take `HAS_CONTEXT`; `blit_framebuffer` takes `HAS_CONTEXT` and
+  requires a `Scoped_framebuffer` for each of its two render passes; readback
+  keeps `DRAW_CAPABLE`.
+
+### The API
+
+`scoped_worker_context.hpp`, `scoped_container_access.hpp`:
+
+- `Scoped_worker_context(Device&)` -- grants the calling worker a share
+  context and the right to create / operate on shared objects via DSA. Does
+  NOT by itself grant container-object access. **Re-entrant**: nested
+  construction on one thread refcounts and keeps the same context; acquire
+  saves the previously-current context and release restores context and role.
+  Blocking: with all pool contexts in use, construction blocks until one is
+  released (mutex + condition-variable free-slot list on `Device_impl`).
+- `Scoped_vertex_input_state(Device&, const Vertex_input_state&)` /
+  `Scoped_framebuffer(Device&, const Render_pass&)` -- ensure the object has
+  a GL instance on the calling thread's current context and yield its
+  name(s). Cheap and idempotent after first use on a given context. Both
+  take **const** references: every adoption site holds only a const pointer
+  (`blit_framebuffer` takes `const Render_pass&`), which is well-formed
+  because adoption mutates only the atomic per-context slot, never the
+  logical object -- slots and the adoption mutex are `mutable`.
+
+**Rejected: tiered contexts** (a `limited` / `full` pair). Container-object
+access is a property of the *work*, not the context -- a tier cannot say
+"this task may touch *this* framebuffer" -- and a tier cannot distinguish
+per-context state (legal) from shared state (not). Tried and reverted; do
+not re-propose.
+
+The API **replaced `Gl_context_provider` entirely** (both files, their
+CMakeLists lines, `Gl_worker_context`, `Scoped_gl_context`,
+`provide_worker_contexts`). The old provider's acquire was a busy spin (a
+condition-variable wait with an always-true predicate); note that "fixing
+the predicate" over the lock-free queue would have converted the spin into a
+lost-wakeup deadlock (no exact `empty()`, notify outside the mutex). The
+free-slot list under one mutex is the correct shape for a 4-entry pool
+acquired around globally serialized work.
+
+### Per-context container instances
+
+- **Context identity**: a dense index assigned at context creation (main =
+  0, pool entries 1..N), stored thread-locally.
+- **Fixed slot array per object**, sized `1 + configured pool size` (the
+  constant 4, NOT the number of contexts actually created -- creation can
+  fail and the main instance predates the pool), each slot an
+  `std::atomic<unsigned int>` GL name, 0 = not created.
+- **The populated fast path is a relaxed atomic load of your own slot, no
+  lock.** First-use adoption and cross-slot enumeration (the destruction
+  walk) take a per-object mutex -- the mutex is what stops an adoption
+  racing the destruction walk into a silent leak. Relaxed ordering is
+  sufficient on both sides: no context ever uses another context's name, so
+  there is no second datum to order.
+- **Adoption points** (never in `gl_name()`, which is per-draw and would
+  hide GPU object creation behind a getter): the three pipeline-bind sites
+  `Render_command_encoder_impl::set_render_pipeline`,
+  `set_render_pipeline_state` and its override-shader-stages overload; and
+  `Render_pass::start_render_pass` -- the backend-neutral wrapper, not the
+  impl, which has no owner back-pointer. `end_render_pass` needs no
+  accessor: it reads a slot the start side populated on the same context.
+- **Deferred per-context delete queue**: a per-context GL object must be
+  deleted on its own context, so destroying a `Vertex_input_state` /
+  `Render_pass` queues the other contexts' instances; each context drains
+  its own queue at the next acquire and at teardown; the main context drains
+  at an explicit per-frame point (it never re-acquires).
+- **`Gpu_timer_impl` is excluded** from the accessor mechanism and is
+  main-thread-only: its per-context state is a ring of four queries, and
+  nothing wants worker-side GPU timing. Its migration hooks and
+  `m_owner_thread` were deleted like the others'; `s_all_gpu_timers` +
+  mutex stay because `end_frame` walks the registry to poll -- that is not
+  migration.
+- **The default vertex input state** (substituted for VAO-less draws inside
+  the const per-draw path) is per-context and **eager**: the main context's
+  instance is created in `Device::Device`'s *body* (while `Device_impl`'s
+  constructor runs, `Device::m_impl` is still null, so it cannot be created
+  earlier), each pool context's instance as the last step of creating that
+  context, while it is current. The pool is *declared* in `Device_impl` (for
+  destruction order against the per-context objects) but *populated* from
+  `Device::Device`'s body, after the main instance exists.
+- Worker-context `Gl_vertex_array` / `Gl_framebuffer` instances carry a
+  **null `binding_state`** -- their destructors must not write another
+  context's cache, and container names are per-context so the scrub would be
+  wrong anyway.
+- `Render_pass_impl::m_draw_buffers` is computed once in the constructor
+  (context-independent), and `reset()` does not clear it -- `create()` /
+  `reset()` run per context under this design, and a shared member either
+  hoists (context-independent) or moves into the slot (per-context).
+
+### Per-context binding caches and the scrub queue
+
+`Gl_binding_state` and `OpenGL_state_tracker` describe a GL *context's*
+state; they are per-context **wired pairs** keyed by the context index (the
+tracker holds its own binding-state and device pointers).
+`Vertex_input_state_tracker`'s cached draw state (`m_last_state`,
+`m_attributes`, `m_bindings`) and the active-render-pass slot are
+per-context with them. Hot-path access resolves the pair once per command
+encoder / render pass and passes it down rather than a TLS hit per call.
+
+**Shared-object deletion needs a cross-context scrub.** Deleting a shared
+object (buffer, texture, sampler, program, renderbuffer) scrubs only the
+deleting context's cache directly; every other context gets an entry on its
+**per-context scrub queue**. Three properties of the drain are load-bearing:
+
+- It issues **real `glBind*` unbinds**, then updates the cache. GL
+  auto-unbinds a deleted object only in the context that deleted it; a drain
+  that merely zeroes the cache entry leaves the orphan bound and the next
+  bind-to-0 elided -- a silent wrong draw.
+- Entries carry an **epoch / generation**: shared names are freed for reuse
+  the instant `glDelete*` runs (spec 5.1.3), so a name rebound to a new
+  object between enqueue and drain must NOT be scrubbed.
+- The **main context has an explicit drain point** in
+  `Device_impl::wait_frame()` / `begin_frame` -- "drain on next
+  make-current" never fires for the one context that draws.
+
+### Cross-context publication
+
+GL share contexts do not synchronize automatically. The spec conditions
+cross-context visibility on **completion** -- `FenceSync` in the producing
+context plus `WaitSync` in the consuming one; a flush alone is WGL/GLX
+folklore, not a guarantee. The dangerous ordering is *use-before-release*:
+a worker enqueues a buffer's name into `Buffer_transfer_queue` while still
+holding its context, and the main thread may copy into that name on the very
+next tick.
+
+**Mechanism: publication-point fencing, the sync travels with the object.**
+
+- Producer (worker), at each publication point: `fence_sync` then `flush`
+  (the flush is what submits the fence -- `glWaitSync` does not flush the
+  producing context, so an unflushed fence may never signal). The sync +
+  consumed flag live on the impl (`Gl_publication_sync` on `Buffer_impl` /
+  `Texture_impl`); null for main-created objects. A later publication on the
+  same context may replace an unconsumed sync.
+- Consumer (main thread), before first use: `wait_publication()` --
+  server-side `glWaitSync`, delete, mark consumed. Once per object, not per
+  use. As landed the waits sit in `upload_to_buffer`, `set_sampled_image`,
+  `set_storage_image` and `Texture_heap` allocate.
+- Publication points: buffer storage (`allocate_storage`, once per pool
+  block -- rare), texture storage, each texture upload **method** (once per
+  method call, not per `*_sub_image_*` inside the mip / cube-face loops),
+  and a worker `blit_framebuffer`'s destination. **This is a rule about
+  producers, not a fixed list**: every operation legalized for workers that
+  writes a shared object is a publication point.
+- The spec's rule 4 (consumer must attach / re-attach): vertex / index
+  buffers are satisfied by the per-draw `set_vertex_buffer` /
+  `set_index_buffer` re-issue -- **load-bearing: if those attaches are ever
+  cached or elided as redundant, rule 4 silently breaks**. The first main
+  touch of a worker buffer is a DSA copy with no bind at all -- a known gap
+  between the spec's letter and DSA-era reality, covered in practice by the
+  WaitSync ordering and recorded as such. Textures: a worker may only
+  create-and-upload a texture the main context has not yet bound; the first
+  main bind after the wait is the attach. Texture views: the re-attach must
+  be of whichever view the consumer samples through.
+- **Reverse direction** (worker consuming main-written shared data -- the
+  staging buffer feeding a worker texture upload, a blit source the main
+  context rendered): rules are symmetric, so the handoff must carry a fence
+  created on the **main** context, waited on by the worker. No such site
+  exists yet; whichever commit adds the first one must add the fence.
+
+### Pool, creation and lifetime
+
+- **Fixed pool of 4, created eagerly on the main thread at startup.** Lazy
+  creation is unimplementable: SDL's share-context path make-currents the
+  main context first (i.e. *steals it* from whichever thread holds it),
+  creates a window, mutates a global non-atomically, and registers an event
+  watch -- all main-thread-only. Sizing at `num_workers` is pointless: the
+  GL work behind these contexts is globally serialized under
+  `buffer_mesh_allocation_mutex()`. Caveat: pool size and *scope width* are
+  one decision -- 4 contexts only give full throughput while scopes stay
+  narrow (around the allocation), because a scope hoisted over expensive CPU
+  work caps that work at 4 concurrent tasks.
+- **Context lifetime fixes that predate the pool** (would have been
+  pool-scale bugs): `SDL_RemoveEventWatch` in `~Context_window` (was a
+  shutdown use-after-free), `SDL_GL_DestroyContext` actually called, and the
+  GL debug callback installed **per context**
+  (`Device_impl::install_gl_debug_callback()`) -- `glDebugMessageCallback`
+  is per-context state, so without this every worker GL error is silently
+  discarded.
+- **Teardown constraints** (spec 5.1.1): the main context must outlive the
+  pool (shared objects survive only while the share list is non-empty -- the
+  current member ordering satisfies this; do not reorder). Workers must be
+  quiesced and pending publication syncs drained / consumed before pool
+  contexts are destroyed, and no pool context may still be current on any
+  worker at `~Context_window`.
+- **Deviation as landed**: a share-context creation failure aborts via
+  `Context_window`'s verify rather than degrading to a smaller pool.
+- When the pool cannot exist at all (headless / null window):
+  `supports_worker_contexts()` is false and call sites branch to their
+  budgeted main-thread fallback.
+
+### The worker call sites
+
+GPU-allocating worker tasks, all covered:
+
+1. `deferred_finalize_mesh_items` (async_raytrace_kickoff_operation.cpp) --
+   the site with the original repro; one task per mesh.
+2. `Gltf_load_task::start_build`'s async lambda --
+   `build_imported_buffer_meshes`, the same crash one code path over.
+3. `Lightmap_partitioner::process_piece` -- NOT `process_region`; the scope
+   sits in the piece so region tasks park in `join()` holding no context
+   (the subflow-steal trap below). The serial path also reaches
+   `process_piece` on the main thread, exercising the no-op behaviour in
+   production.
+4. Geometry-graph evaluation (`geometry_graph_window.cpp` async ->
+   `Geometry_output_node::evaluate` / `build_preview_primitive` ->
+   `make_renderable_mesh`).
+5. Mesh operations constructed on workers (`Operations::async_mesh_operation`
+   -> operation constructors -> `make_renderable_mesh`; CSG likewise).
+
+`async_for_nodes_with_mesh` gained `op_builds_gpu_meshes` (default true): it
+wraps the op in a `Scoped_worker_context` and runs it inline on main when
+`!supports_worker_contexts()`. Audited CPU-only, no context needed:
+`Asset_browser` glTF scan, `Texture_file_loader` decode (pixels only; upload
+is on main), `Lightmap_streamer` tile read, the BVH TLAS build,
+`Gltf_load_task`'s scan. The list is not proven complete -- a site-by-site
+audit missed items 4 and 5 once; the structural check is that every
+`silent_async` / `silent_dependent_async` / `subflow->emplace` in
+`src/editor` is accounted for.
+
+## Implementation
+
+Landed as 14 commits, 2026-08-28 (in order; each behaviour-neutral or
+independently verifiable at its point in the sequence):
+
+| # | commit | change |
+|---|---|---|
+| 1 | `b946ab07a` | drop macOS OpenGL support |
+| 2 | `ad669c051` | require OpenGL 4.5, delete the non-DSA emulation |
+| 3 | `865917704` | require compute shaders, remove compute / geometry fallbacks |
+| 4 | `f70a756ae` | GL thread-role guards (crash becomes a named assert; delete hooks landed log-once, retired by 11) |
+| 5 | `711e13939` | Context_window event-watch + GL teardown fixes, per-context debug callback (doc follow-up `c54c67059`) |
+| 6 | `5abcb5bfa` | retire ERHE_PARALLEL_INIT (dead blocks; last `Gl_context_provider` references) |
+| 7 | `11c0da86a` | build brush Build_info on the main thread + `get_vertex_input_from_vertex_format` invariant asserts |
+| 8 | `836cb0afb` | per-context container objects (slot arrays; migration hooks and registries deleted; Gpu_timer main-only) |
+| 9 | `d79a86255` | per-object scoped accessors + deferred per-context delete queues, adopted main-thread-first at all four points |
+| 10 | `4292ee42b` | per-context Gl_binding_state + OpenGL_state_tracker wired pairs |
+| 11 | `17520f004` | cross-context scrub queue for shared-object deletion; DRAW_CAPABLE relaxed to HAS_CONTEXT |
+| 12 | `90fc6efaa` | GL worker contexts, publication fences, pool, provider deletion, and the call sites -- **the fix** |
+| 13 | `f199094f1` | Blit_command_encoder guard split per method |
+| 14 | `7aa667d05` | crash handler prints a callstack for structured exceptions |
+
+Sequencing that mattered: 8-11 land while only the main context exists, so
+the per-context machinery is exercised by every frame before any worker can
+stress it; 12 is one commit with its call sites because contexts nothing
+acquires are a pure regression; 10-11 land before 12 so workers arrive on a
+tree with no shared cache left to corrupt.
+
+**Verified so far**: the repro assets load on GL with zero stderr and a
+clean `quit_after_frames` exit; "Created 4 GL worker share contexts" in the
+log; MCP-driven Catmull-Clark subdivides on the GL build (cube 6->24->96
+facets, icosahedron 20->60, tetrahedron 4->12) exercised the worker
+mesh-operation path; sweep green (ninja Vulkan Debug, VS null backend,
+Quest APK, build_tests + ctest 645/645); the user minimally verified the
+Vulkan VS build interactively.
+
+## Future work
+
+### Remaining verification (no code, needs scaffolding or specific drives)
+
+1. **Worker GL errors are observable**: provoke a deliberate GL error on a
+   worker and see the per-context debug callback log it. Every other check
+   is worthless while worker GL errors are discarded.
+2. **Publication fences**: mutation-check (remove a `wait_publication()` or
+   a producer fence and observe breakage), or failing that on this driver,
+   check the plumbing structurally -- every worker-published object carries
+   a sync when its name escapes, consumed before the first main touch.
+3. **Guards**: after a full glTF load plus a few hundred frames, no
+   `HAS_CONTEXT` / remaining `DRAW_CAPABLE` assert fired; mutation-check by
+   placing a `DRAW_CAPABLE` verify inside the worker prepare loop. A
+   happy-path load exercises no error paths -- worker-side handle
+   destruction happens only on failure paths (`create_new_block` returning
+   false), which is also what exercises the scrub-queue routing; force one
+   or record the limit.
+4. **Clean shutdown under ASan** with the pool populated: no event-watch
+   use-after-free, no leaked contexts.
+5. **The per-object accessors** (needs dedicated scaffolding; no natural
+   call site): same object adopted on two contexts concurrently, both
+   succeed -- check the per-context map (two entries, two context indices),
+   NOT GL names, which are per-context and expectedly equal; a worker-side
+   `blit_framebuffer` between two accessor-held passes with the destination
+   fence waited before main reads it; idempotence (re-entry creates no
+   second object, no driver path); destruction drains the deferred queues
+   (ASan + GL object-count check -- a leak here is silent); mutation-check
+   `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT` by reaching
+   `Vertex_input_state_impl::create` from a worker without an accessor.
+6. **The mesh-edit call-site remainder**: CSG, geometry-graph evaluation,
+   and a lightmap partition run (parallel path, and serial for the main
+   no-op) on the GL build -- drivable over the editor MCP server
+   (127.0.0.1:3743). The Catmull-Clark half is done.
+7. **Worker-side texture create + upload** (nothing does this today; the
+   mechanism is in place and dormant): main writes staging pixels and
+   fences (the reverse-direction rule), worker waits, creates, uploads;
+   main samples and reads back expected texels. Set worker pixel-store
+   state explicitly -- it is per-context and inherits nothing.
+8. **The scrub queue**: a worker deletes a shared object the main context
+   has bound; the main drain issues a *real* unbind (verify with a GL
+   binding query, not the cache) within a frame; a name recycled between
+   delete and drain is not scrubbed (the epoch check); mutation-check the
+   per-context tracker wiring via a mis-wired pair failing a pixel check.
+
+### Open items
+
+- **`Mesh_memory` pool-vector race** -- known, pre-existing, made reachable
+  by this work; needs its own commit or an explicit written deferral.
+  `allocate_vertex_buffer_range` does `m_vertex_pools.emplace_back` on a
+  worker under `buffer_mesh_allocation_mutex()`, while main-thread readers
+  (`flush`, `get_vertex_buffer`, both `get_index_buffer` overloads,
+  `get_memory_usage`, the allocate-path reads -- roughly a dozen across
+  `mesh_memory.cpp`) iterate the vectors without the mutex. `Pool_block` is
+  `unique_ptr`-owned so handed-out `Buffer*` stay stable; the race is on the
+  **vector**. A mutex retrofit is only correct if exhaustive -- re-derive
+  the reader list from `grep -n 'm_vertex_pools\|m_index_pools'
+  mesh_memory.cpp`, never trust a written list -- which is why the
+  **stable-address container is the better option**: correct without an
+  enumeration. Decide explicitly; do not leave it unstated.
+- **Nested taskflows inside `parse_gltf`** (gltf_fastgltf.cpp runs nested
+  taskflows on a worker) -- never explicitly examined. Parse is otherwise
+  CPU-only, but if a scope were taken on the parse thread and a nested flow
+  stole work to other threads, re-entrancy would not help (the lightmap
+  subflow shape). Confirm, or fold into the verification sweep.
+- **Optional gate collapse** (required by nothing): the remaining
+  constant-true capability gates (`use_texture_view`, `use_clear_texture`,
+  `use_base_instance`, `use_debug_output` / `use_debug_groups`,
+  `use_clip_control`, `use_solid_wireframe`,
+  `use_multi_draw_indirect_core`, `primitive_restart_fixed_index`) and the
+  GLSL-version emulation for `glsl_version < 420/430`. Bindless textures
+  stay conditional (extension, not 4.5 core), as does the
+  `GL_ARB_shading_language_packing` polyfill.
+- **`Vertex_input_state::set()` is dormant and silently broken** under
+  per-context instances (reconfiguring in place would need to re-run
+  `update()` on every context's VAO). No caller in the tree. Delete it, or
+  give it an explicit invalidation rule (clear every slot under the
+  adoption mutex; contexts re-adopt on next use).
+- **`Programs`' shader compile / link taskflow** is commented out; if
+  revived it needs a worker context.
+- **Worker-side rendering / compute** ("a worker could run a full render
+  pass") is now structurally possible -- per-context caches, per-context
+  active-render-pass slot -- but has no call site. The moment one lands,
+  every shared object it writes needs the per-object publication sync and
+  the consumer re-attach: the publication-point set grows with every newly
+  legalized producer.
+
+## Traps
+
+Each of these cost a review or debugging round. Do not rediscover them.
+
+- **The naive fix corrupts main rendering.** Wiring the old draw-capable
+  `Scoped_gl_context` into a worker loads the scene and then fails
+  `ERHE_VERIFY(vao != 0)` on the main thread: its enter / exit hooks write
+  what were then shared caches. The worker API never runs those hooks.
+- **Fence-then-flush, in that order, and the flush is mandatory** --
+  `glWaitSync` does not flush the producing context; an unflushed fence may
+  never signal and the wait is indefinite.
+- **Rule-4 attach rides on the per-draw re-issue** of `set_vertex_buffer` /
+  `set_index_buffer`. Caching or eliding those as redundant silently breaks
+  cross-context visibility.
+- **Never compare container-object GL names across contexts** -- name
+  spaces are per-context; equal names are expected, not a bug. Check the
+  per-context map instead.
+- **The scrub drain must issue real unbinds and honor the epoch.** Editing
+  only the cache leaves the orphan bound (next bind-to-0 elided); scrubbing
+  without the epoch unbinds a live object that received the recycled name.
+  Names recycle the instant `glDelete*` runs, not at last use.
+- **The main context never re-acquires** -- any "on next make-current"
+  hook never fires for it. It needs explicit per-frame drain points.
+- **Adoption never goes in `gl_name()`** (per-draw; hides object creation
+  behind a getter), and there are FOUR adoption points, not one --
+  converting only `set_render_pipeline` breaks the two
+  `set_render_pipeline_state` paths and `Render_pass::start_render_pass`.
+- **`Device::m_impl` is null while `Device_impl`'s constructor body runs**
+  -- anything reaching `Device::get_impl()` (e.g. creating the default
+  vertex input state, populating the pool) must run from `Device::Device`'s
+  body, not from `Device_impl`'s constructor. And the pool stays *declared*
+  in `Device_impl` for destruction order; only its population moves.
+- **Size per-object slot arrays from the configured pool constant**, never
+  from contexts-created-so-far: creation can fail entirely, and the main
+  instance is constructed before any pool context exists.
+- **A shared member written by a per-context `create()` / cleared by
+  `reset()` is a race** (the `m_draw_buffers` lesson): hoist
+  context-independent members to the constructor AND remove the clear from
+  `reset()`, or the bug returns from the other side.
+- **SDL share-context creation steals the current context** (it
+  make-currents the main context before setting the share attribute) and is
+  main-thread-only -- pool creation is eager, on the main thread, at
+  startup. Full stop.
+- **Do not "fix" a condition-variable predicate over a lock-free queue** --
+  the old provider's busy spin becomes a lost-wakeup deadlock that looks
+  *idle* instead of busy. Use a semaphore or a plain deque under the mutex.
+- **Subflow scope placement cuts both ways** (the lightmap case): scope in
+  the parent task and stolen children have no context; scope in every
+  parent against a pool of 4 and `join()` parks all of them holding
+  contexts. Scope in the leaf that allocates. Taskflow's co-run during
+  `join()` can execute arbitrary queued tasks on the parked thread, which
+  is what the save / restore re-entrancy design defends against.
+- **`ERHE_VERIFY` is on in Release** -- a guard placed on a destruction
+  path aborts shipping runs. Audit worker-side destruction before guarding
+  it (the commit-4 log-once lesson: those hooks were never promoted, and
+  the scrub queue retired them).
+- **"No assert fired" is not evidence when the guard is unreachable** (the
+  `Scene_builder` lesson: the constructor pre-registration made the guarded
+  path unreachable; the invariant is asserted where it actually holds, in
+  `get_vertex_input_from_vertex_format` -- miss path main-only AND the
+  vector frozen after construction).
+- **Do not trust derived lists in documents; re-derive from code.** The
+  plan's DSA branch list and the worker-call-site audit each drifted or
+  missed sites once. `grep` the identifier, enumerate the async entry
+  points, count the `#if` ranges.

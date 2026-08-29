@@ -18,7 +18,7 @@ class Device;
 // Blocking: with all pool contexts in use, construction blocks until one is
 // released. Callers must check Device::supports_worker_contexts() first on
 // configurations where the pool may not exist (GL with no window) - see
-// gl-worker-thread-contexts-plan.md section 8; constructing a scope on a
+// gl-worker-thread-contexts.md, "Pool, creation and lifetime"; constructing a scope on a
 // worker thread with no pool is an error (asserts).
 class Scoped_worker_context final
 {

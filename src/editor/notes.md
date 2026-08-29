@@ -157,7 +157,7 @@ Geometry operations can run asynchronously via `tf::Executor`. `async_for_nodes_
 
 ### Parallel Initialization
 
-Initialization is serial. The retired `ERHE_PARALLEL_INIT` experiment (parallel Taskflow tasks with explicit dependency edges over `Gl_context_provider` worker contexts) was deleted; any future parallel init should build on the GL worker-context API of `doc/gl-worker-thread-contexts-plan.md` instead.
+Initialization is serial. The retired `ERHE_PARALLEL_INIT` experiment (parallel Taskflow tasks with explicit dependency edges over `Gl_context_provider` worker contexts) was deleted; any future parallel init should build on the GL worker-context API of `doc/gl-worker-thread-contexts.md` instead.
 
 ### Physics Integration
 

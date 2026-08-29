@@ -548,7 +548,7 @@ public:
     // on GL, when the worker share-context pool exists (it does not when
     // the device has no window to share from). GPU-touching worker call
     // sites branch on this and take their main-thread fallback when false;
-    // see gl-worker-thread-contexts-plan.md section 8.
+    // see gl-worker-thread-contexts.md, "Pool, creation and lifetime".
     [[nodiscard]] auto supports_worker_contexts() const -> bool;
 
     // Reads the most recently composited frame back to host memory as tightly

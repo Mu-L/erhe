@@ -12,7 +12,7 @@ thread that draws it.
 
 This document captures the shape of the work that becomes necessary
 if init ever goes parallel (on the GL worker-context API of
-`doc/gl-worker-thread-contexts-plan.md`).
+`doc/gl-worker-thread-contexts.md`).
 
 ## Goal
 
