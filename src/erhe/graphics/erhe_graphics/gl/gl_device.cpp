@@ -23,7 +23,7 @@
 #include "erhe_graphics/gl/gl_debug.hpp"
 #include "erhe_graphics/gl/gl_render_command_encoder.hpp"
 #include "erhe_graphics/gl/gl_scoped_debug_group.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_graphics/render_pass.hpp"
@@ -121,7 +121,6 @@ Device_impl::Device_impl(Device& device, const Surface_create_info& surface_crea
     ERHE_PROFILE_FUNCTION();
 
     // The constructing thread owns the drawing context, context index 0.
-    set_gl_thread_role(Gl_thread_role::main);
     set_gl_context_index(0);
     m_context_slot_live[0].store(true, std::memory_order_release);
 
@@ -1139,7 +1138,6 @@ void Device_impl::add_completion_handler(std::function<void(Device_impl&)> callb
 
 void Device_impl::on_thread_enter()
 {
-    set_gl_thread_role(Gl_thread_role::main);
     set_gl_context_index(0);
 }
 
@@ -1772,7 +1770,7 @@ auto Device_impl::acquire_worker_context_slot() -> int
     // Only a thread with no context current may acquire: the main thread
     // never comes here (Scoped_worker_context no-ops for it) and nested
     // worker scopes refcount instead of re-acquiring.
-    ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::none);
+    ERHE_VERIFY(!gl_thread_has_context());
     ERHE_VERIFY(!m_worker_context_windows.empty());
     int slot = -1;
     {
@@ -1782,7 +1780,6 @@ auto Device_impl::acquire_worker_context_slot() -> int
         m_free_worker_context_slots.pop_back();
     }
     m_worker_context_windows[slot - 1]->make_current();
-    set_gl_thread_role(Gl_thread_role::worker);
     set_gl_context_index(slot);
     // This context's drain point: names queued by destructors on other
     // contexts, and shared-object scrubs, since the last time this context
@@ -1794,12 +1791,11 @@ auto Device_impl::acquire_worker_context_slot() -> int
 
 void Device_impl::release_worker_context_slot(const int slot)
 {
-    ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::worker);
+    ERHE_VERIFY(gl_thread_is_worker_context());
     ERHE_VERIFY(get_gl_context_index() == slot);
     ERHE_VERIFY(slot >= 1);
     ERHE_VERIFY(slot <= static_cast<int>(m_worker_context_windows.size()));
     m_worker_context_windows[slot - 1]->clear_current();
-    set_gl_thread_role(Gl_thread_role::none);
     set_gl_context_index(-1);
     {
         const std::lock_guard<std::mutex> lock{m_worker_context_pool_mutex};
@@ -1915,7 +1911,7 @@ void Device_impl::drain_shared_object_scrubs_for_current_context()
 // (vertex arrays, framebuffers) are per-context; their creators also take
 // HAS_CONTEXT because per-object accessors guarantee the object being
 // created belongs to the calling thread's own context. create_query is the
-// exception: Gpu_timer is main-thread-only, so it takes DRAW_CAPABLE.
+// exception: Gpu_timer is main-thread-only, so it takes MAIN_CONTEXT.
 
 auto Device_impl::create_texture(gl::Texture_target target) -> Gl_texture
 {
@@ -1969,7 +1965,7 @@ auto Device_impl::create_query(gl::Query_target target) -> Gl_query
 {
     // Only Gpu_timer_impl::create() calls this, and Gpu_timer is
     // main-thread-only (its per-context state is a ring of four queries).
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     GLuint name{0};
     gl::create_queries(target, 1, &name);
     ERHE_VERIFY(name != 0);

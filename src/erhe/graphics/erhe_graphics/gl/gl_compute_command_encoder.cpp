@@ -2,7 +2,7 @@
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_graphics/compute_pipeline_state.hpp"
 #include "erhe_graphics/texture.hpp"
 
@@ -18,7 +18,7 @@ Compute_command_encoder_impl::Compute_command_encoder_impl(Device& device, Comma
     : Command_encoder_impl{device, command_buffer}
     , m_tracker{device.get_impl().get_state_tracker()}
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
 }
 
 Compute_command_encoder_impl::~Compute_command_encoder_impl() noexcept

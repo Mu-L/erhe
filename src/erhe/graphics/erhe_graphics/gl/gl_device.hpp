@@ -5,7 +5,7 @@
 #include "erhe_graphics/gl/gl_binding_state.hpp"
 #include "erhe_graphics/gl/gl_objects.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_graphics/shader_monitor.hpp"
 
 #include <array>
@@ -206,13 +206,13 @@ public:
     // supports_worker_contexts() is then false.
     [[nodiscard]] auto supports_worker_contexts() const -> bool;
     // Blocks until a pool context is free, makes it current on the calling
-    // thread, sets the thread role and context index, and drains this
-    // context's deferred container-delete and shared-scrub queues. Returns
-    // the context slot index (1..pool size). The calling thread must have
-    // no context current (role none).
+    // thread, sets the thread's context index, and drains this context's
+    // deferred container-delete and shared-scrub queues. Returns the
+    // context slot index (1..pool size). The calling thread must have no
+    // context current (context index -1).
     [[nodiscard]] auto acquire_worker_context_slot() -> int;
-    // Clears the context from the calling thread, resets role and index,
-    // and returns the slot to the pool.
+    // Clears the context from the calling thread, resets the context index
+    // to -1, and returns the slot to the pool.
     void release_worker_context_slot(int slot);
 
     // GL object creation

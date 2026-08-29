@@ -4,7 +4,7 @@
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_graphics/gl/gl_gpu_timer.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_graphics/gpu_timer.hpp"
 #include "erhe_graphics/graphics_log.hpp"
 #include "erhe_graphics/render_pass.hpp"
@@ -55,7 +55,7 @@ Gpu_timer_impl::~Gpu_timer_impl() noexcept
 void Gpu_timer_impl::create()
 {
 #if defined(ERHE_USE_TIME_QUERY)
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     for (Query& query : m_queries) {
         if (!query.query_object.has_value()) {
             query.query_object.emplace(
@@ -70,7 +70,7 @@ void Gpu_timer_impl::write_begin_timestamp(Command_buffer& command_buffer)
 {
     static_cast<void>(command_buffer);
 #if defined(ERHE_USE_TIME_QUERY)
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{s_mutex};
 
     Query& query = m_queries[s_index % s_count];
@@ -91,7 +91,7 @@ void Gpu_timer_impl::write_end_timestamp(Command_buffer& command_buffer)
 {
     static_cast<void>(command_buffer);
 #if defined(ERHE_USE_TIME_QUERY)
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{s_mutex};
 
     Query& query = m_queries[s_index % s_count];

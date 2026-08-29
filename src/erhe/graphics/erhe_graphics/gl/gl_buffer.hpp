@@ -34,7 +34,7 @@ public:
     auto map_all_bytes        () noexcept -> std::span<std::byte>;
     auto map_bytes            (std::size_t byte_offset, std::size_t byte_count) noexcept -> std::span<std::byte>;
 
-    // Cross-context publication (plan section 5): a worker-created buffer
+    // Cross-context publication (gl-worker-thread-contexts.md, "Cross-context publication"): a worker-created buffer
     // carries a fence sync issued (and flushed) on the worker right after
     // storage allocation, before the name escapes to the main thread. The
     // main thread calls wait_publication() - a server-side glWaitSync, once

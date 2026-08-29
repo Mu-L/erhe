@@ -1,5 +1,5 @@
 #include "erhe_graphics/gl/gl_binding_state.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_verify/verify.hpp"
 

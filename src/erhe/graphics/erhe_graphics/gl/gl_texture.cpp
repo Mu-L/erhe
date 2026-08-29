@@ -2,7 +2,7 @@
 
 #include "erhe_graphics/gl/gl_texture.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_gl/enum_string_functions.hpp"
 #include "erhe_gl/gl_helpers.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
@@ -501,7 +501,7 @@ Texture_impl::Texture_impl(Texture_impl&&) noexcept = default;
 
 void Texture_impl::publish_from_worker() const
 {
-    ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::worker);
+    ERHE_VERIFY(gl_thread_is_worker_context());
     m_publication_sync.publish_from_worker();
 }
 
@@ -906,11 +906,11 @@ Texture_impl::Texture_impl(Device& device, const Texture_create_info& create_inf
 
         m_allocated = true;
 
-        // Publication (plan section 5): texture storage allocated on a
+        // Publication (gl-worker-thread-contexts.md, "Cross-context publication"): texture storage allocated on a
         // worker context must be published before the name escapes to the
         // main thread. Pixel upload is a separate publication point (the
         // blit encoder's copy_from_buffer methods).
-        if (get_gl_thread_role() == Gl_thread_role::worker) {
+        if (gl_thread_is_worker_context()) {
             publish_from_worker();
         }
 

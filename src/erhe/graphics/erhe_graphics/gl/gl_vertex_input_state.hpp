@@ -1,7 +1,7 @@
 #pragma once
 
 #include "erhe_graphics/state/vertex_input_state.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_dataformat/vertex_format.hpp"
 #include "erhe_gl/wrapper_enums.hpp"
 

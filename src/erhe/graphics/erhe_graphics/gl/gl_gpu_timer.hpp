@@ -27,7 +27,7 @@ class Render_pass;
 // Main-thread-only by design: query objects are per-context (unshared), the
 // per-timer state is a ring of queries no per-context slot can represent,
 // and nothing wants GPU timing off the drawing thread. Creation and the
-// begin/end timestamps assert the draw-capable role.
+// begin/end timestamps assert the main context.
 class Gpu_timer_impl
 {
 public:

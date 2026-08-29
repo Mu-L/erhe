@@ -1,6 +1,6 @@
 #include "erhe_graphics/gl/gl_buffer.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_utility/bit_helpers.hpp"
 #include "erhe_gl/command_info.hpp"
 #include "erhe_gl/enum_string_functions.hpp"
@@ -260,21 +260,21 @@ void Buffer_impl::allocate_storage(const void* init_data)
 
     m_allocated = true;
 
-    // Mapping is draw-thread-only, so a worker may only ever allocate
+    // Mapping is main-context-only, so a worker may only ever allocate
     // non-persistent buffers - state the invariant here rather than letting
     // a worker-allocated host-visible buffer trip the map_bytes guard below.
     const bool map_persistent = erhe::utility::test_bit_set(gl_storage_mask, gl::Buffer_storage_mask::map_persistent_bit);
-    ERHE_VERIFY(!map_persistent || (get_gl_thread_role() == Gl_thread_role::main));
+    ERHE_VERIFY(!map_persistent || gl_thread_is_main_context());
     if (map_persistent) {
         map_bytes(0, m_capacity_byte_count);
     }
 
-    // Publication (plan section 5): a buffer allocated on a worker context
+    // Publication (gl-worker-thread-contexts.md, "Cross-context publication"): a buffer allocated on a worker context
     // must be published - fence issued and flushed on the worker - before
     // its name escapes into anything the main thread can read. init_data is
     // passed at storage time and workers may not map, so storage allocation
     // is the buffer's only publication point.
-    if (get_gl_thread_role() == Gl_thread_role::worker) {
+    if (gl_thread_is_worker_context()) {
         publish_from_worker();
     }
 
@@ -284,7 +284,7 @@ void Buffer_impl::allocate_storage(const void* init_data)
 
 void Buffer_impl::publish_from_worker() const
 {
-    ERHE_VERIFY(get_gl_thread_role() == Gl_thread_role::worker);
+    ERHE_VERIFY(gl_thread_is_worker_context());
     m_publication_sync.publish_from_worker();
 }
 
@@ -431,7 +431,7 @@ void Buffer_impl::end_write(const std::size_t byte_offset, const std::size_t byt
 
 auto Buffer_impl::map_all_bytes() noexcept -> std::span<std::byte>
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     ERHE_VERIFY(m_map.empty());
     ERHE_VERIFY(gl_name() != 0);
 
@@ -471,7 +471,7 @@ auto Buffer_impl::map_bytes(const std::size_t byte_offset, const std::size_t byt
 {
     ERHE_PROFILE_FUNCTION();
 
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     ERHE_VERIFY(byte_count > 0);
     ERHE_VERIFY(gl_name() != 0);
 
@@ -575,7 +575,7 @@ void Buffer_impl::unmap() noexcept
 {
     ERHE_PROFILE_FUNCTION();
 
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     ERHE_VERIFY(!m_map.empty());
     ERHE_VERIFY(gl_name() != 0);
 
@@ -622,7 +622,7 @@ void Buffer_impl::invalidate(const std::size_t byte_offset, const std::size_t by
 
 void Buffer_impl::flush_bytes(const std::size_t byte_offset, const std::size_t byte_count) noexcept
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     ERHE_VERIFY(gl_name() != 0);
     ERHE_VERIFY(byte_offset + byte_count <= m_capacity_byte_count);
 

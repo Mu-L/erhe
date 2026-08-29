@@ -67,32 +67,45 @@ the GL objects themselves, governed by the publication rules below.
   gets its own VAO / FBO through the accessors. (Queries are also unshared,
   for a different spec reason; `Gpu_timer` is main-thread-only, below.)
 
-### Thread roles and guards
+### Context identity and guards
 
-`erhe_graphics/gl/gl_thread_role.hpp`: thread-local
-`Gl_thread_role { none, main, worker }`. Set in exactly three places:
-`Device_impl`'s constructor and `Device_impl::on_thread_enter()` set `main`;
-`Scoped_worker_context` acquire sets `worker` and release restores the
-*previous* role (re-entrancy). An explicit role, not an "is main thread"
-test: a thread that makes a context current without going through the API
-gets `none` and trips the first guard.
+`erhe_graphics/gl/gl_context_index.hpp`: one thread-local **context index**
+is the single source of truth for what the calling thread may do -- `-1` =
+no GL context current, `0` = the main (drawing) context, `1..pool size` = a
+worker share context. The same index keys the per-object container slots
+and the per-context cache pairs, so permission and identity cannot drift
+apart. (An earlier `Gl_thread_role {none, main, worker}` enum was a second
+thread-local carrying the same information, kept in sync by hand; it was
+collapsed into the index once the per-context caches removed the
+cache-protection meaning of "draw-capable".) It is set in exactly three
+places: `Device_impl`'s constructor and `Device_impl::on_thread_enter()`
+set 0; worker-slot acquire sets the slot index and release resets to -1. A
+thread that makes a context current without going through the API keeps -1
+and trips the first guard rather than faulting in the driver.
 
-- `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT()` (role != none): shared-object
+- `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT()` (index >= 0): shared-object
   creators (`Device_impl::create_buffer/texture/texture_view/renderbuffer/
   sampler/program/shader`), `Buffer_impl::allocate_storage`, the container
   creators reached through accessors, the blit encoder's upload / copy
   methods.
-- `ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE()` (role == main): buffer mapping
+- `ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT()` (index == 0): buffer mapping
   (`map_bytes` family), readback / pack paths, render / compute encoder
-  construction, `Gpu_timer`. Most of the originally guarded cache-mutation
-  sites relaxed to `HAS_CONTEXT` once the caches went per-context.
+  construction, `Gpu_timer`. **These are NOT cache-protection guards** --
+  the caches are per-context -- each encodes a different reason the
+  operation is main-only: the window's default framebuffer / swapchain
+  exists only on the main context; mapping backs the main-thread frame-ring
+  model (worker-mapped writes would need publication points of their own);
+  `Gpu_timer` keeps a main-context query ring; and worker-side rendering /
+  readback have no publication protocol or call site yet (see Future work).
+  The original guard set was much larger; most sites relaxed to
+  `HAS_CONTEXT` when the caches went per-context.
 - `allocate_storage` asserts that a worker only ever allocates
   **non-persistent** buffers -- it calls `map_bytes` for persistent mappings,
   which is main-only. The permission is narrowed, not the guard holed.
 - `Blit_command_encoder` is guarded per method, not at construction: upload /
   copy take `HAS_CONTEXT`; `blit_framebuffer` takes `HAS_CONTEXT` and
   requires a `Scoped_framebuffer` for each of its two render passes; readback
-  keeps `DRAW_CAPABLE`.
+  keeps `MAIN_CONTEXT`.
 
 ### The API
 
@@ -101,10 +114,11 @@ gets `none` and trips the first guard.
 - `Scoped_worker_context(Device&)` -- grants the calling worker a share
   context and the right to create / operate on shared objects via DSA. Does
   NOT by itself grant container-object access. **Re-entrant**: nested
-  construction on one thread refcounts and keeps the same context; acquire
-  saves the previously-current context and release restores context and role.
-  Blocking: with all pool contexts in use, construction blocks until one is
-  released (mutex + condition-variable free-slot list on `Device_impl`).
+  construction on one thread refcounts and keeps the same context (only the
+  outermost scope acquires and releases); a no-op on the main thread, and
+  acquire asserts the calling thread has no context current. Blocking: with
+  all pool contexts in use, construction blocks until one is released
+  (mutex + condition-variable free-slot list on `Device_impl`).
 - `Scoped_vertex_input_state(Device&, const Vertex_input_state&)` /
   `Scoped_framebuffer(Device&, const Render_pass&)` -- ensure the object has
   a GL instance on the calling thread's current context and yield its
@@ -356,8 +370,8 @@ Vulkan VS build interactively.
    check the plumbing structurally -- every worker-published object carries
    a sync when its name escapes, consumed before the first main touch.
 3. **Guards**: after a full glTF load plus a few hundred frames, no
-   `HAS_CONTEXT` / remaining `DRAW_CAPABLE` assert fired; mutation-check by
-   placing a `DRAW_CAPABLE` verify inside the worker prepare loop. A
+   `HAS_CONTEXT` / remaining `MAIN_CONTEXT` assert fired; mutation-check by
+   placing a `MAIN_CONTEXT` verify inside the worker prepare loop. A
    happy-path load exercises no error paths -- worker-side handle
    destruction happens only on failure paths (`create_new_block` returning
    false), which is also what exercises the scrub-queue routing; force one

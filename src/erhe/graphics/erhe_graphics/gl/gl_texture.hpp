@@ -44,7 +44,7 @@ public:
     void clear();
     void set_buffer(Buffer& buffer);
 
-    // Cross-context publication (plan section 5): a worker-created or
+    // Cross-context publication (gl-worker-thread-contexts.md, "Cross-context publication"): a worker-created or
     // worker-uploaded texture carries a fence sync issued (and flushed) on
     // the worker. The main thread calls wait_publication() - a server-side
     // glWaitSync, once per object - before its first bind of the texture

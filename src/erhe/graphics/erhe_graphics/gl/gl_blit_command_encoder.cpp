@@ -3,7 +3,7 @@
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_render_pass.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_gl/gl_helpers.hpp"
@@ -20,10 +20,11 @@ namespace erhe::graphics {
 Blit_command_encoder_impl::Blit_command_encoder_impl(Device& device, Command_buffer& command_buffer)
     : Command_encoder_impl{device, command_buffer}
 {
-    // Guards are per METHOD (plan section 4): upload and copy take
-    // HAS_CONTEXT, blit_framebuffer additionally adopts per-context
-    // framebuffers through Scoped_framebuffer, and readback (texture ->
-    // buffer) keeps DRAW_CAPABLE. Construction itself needs no context.
+    // Guards are per METHOD (gl-worker-thread-contexts.md, "Context
+    // identity and guards"): upload and copy take HAS_CONTEXT,
+    // blit_framebuffer additionally adopts per-context framebuffers through
+    // Scoped_framebuffer, and readback (texture -> buffer) keeps
+    // MAIN_CONTEXT. Construction itself needs no context.
 }
 
 Blit_command_encoder_impl::~Blit_command_encoder_impl() noexcept = default;
@@ -66,13 +67,13 @@ void Blit_command_encoder_impl::blit_framebuffer(
         gl::Blit_framebuffer_filter::nearest     // filter
     );
 
-    // Publication (plan section 5): a worker-side blit writes the shared
+    // Publication (gl-worker-thread-contexts.md, "Cross-context publication"): a worker-side blit writes the shared
     // texture attached to the destination framebuffer - publish it so the
     // main thread can wait before sampling. The reverse direction (a
     // main-rendered SOURCE consumed by a worker blit) is a stated design
     // rule with no call site yet: whichever commit adds one must hand the
     // worker a main-side fence with the source.
-    if (get_gl_thread_role() == Gl_thread_role::worker) {
+    if (gl_thread_is_worker_context()) {
         const Texture* const destination_texture = destination_renderpass.get_descriptor().color_attachments[0].texture;
         if (destination_texture != nullptr) {
             destination_texture->get_impl().publish_from_worker();
@@ -280,11 +281,11 @@ void Blit_command_encoder_impl::copy_from_buffer(
         }
     }
 
-    // Publication (plan section 5): one fence per upload METHOD call, not
-    // per sub-image - the fence covers every command before it. Dormant
-    // until worker-side blit-encoder use is legalized (the constructor's
-    // DRAW_CAPABLE guard), but the publication point belongs to the write.
-    if (get_gl_thread_role() == Gl_thread_role::worker) {
+    // Publication (gl-worker-thread-contexts.md, "Cross-context
+    // publication"): one fence per upload METHOD call, not per sub-image -
+    // the fence covers every command before it. No worker-side upload call
+    // site exists yet, but the publication point belongs to the write.
+    if (gl_thread_is_worker_context()) {
         destination_texture->get_impl().publish_from_worker();
     }
 }
@@ -357,7 +358,7 @@ void Blit_command_encoder_impl::copy_from_buffer_compressed(
 
     // Publication: see the tail of copy_from_buffer above - once per
     // method call, covering every compressed sub-image write before it.
-    if (get_gl_thread_role() == Gl_thread_role::worker) {
+    if (gl_thread_is_worker_context()) {
         destination_texture->get_impl().publish_from_worker();
     }
 }
@@ -375,8 +376,9 @@ void Blit_command_encoder_impl::copy_from_texture(
     const std::uintptr_t destination_bytes_per_image
 )
 {
-    // Readback stays main-thread-only (plan section 4).
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    // Readback stays main-thread-only (gl-worker-thread-contexts.md,
+    // "Context identity and guards").
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     const gl::Texture_target gl_source_texture_target = convert_to_gl_texture_target(
         source_texture->get_texture_type(),
         source_texture->get_sample_count() != 0,
@@ -465,7 +467,7 @@ void Blit_command_encoder_impl::generate_mipmaps(const Texture* texture)
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
     gl::generate_texture_mipmap(texture->get_impl().gl_name());
     // Writes the shared texture: a worker-side call is a publication point.
-    if (get_gl_thread_role() == Gl_thread_role::worker) {
+    if (gl_thread_is_worker_context()) {
         texture->get_impl().publish_from_worker();
     }
 }
@@ -488,7 +490,7 @@ void Blit_command_encoder_impl::fill_buffer(
         &value
     );
     // Writes the shared buffer: a worker-side call is a publication point.
-    if (get_gl_thread_role() == Gl_thread_role::worker) {
+    if (gl_thread_is_worker_context()) {
         buffer->get_impl().publish_from_worker();
     }
 }
@@ -592,7 +594,7 @@ void Blit_command_encoder_impl::copy_from_buffer(
     );
     // Writes the shared destination buffer: a worker-side call is a
     // publication point.
-    if (get_gl_thread_role() == Gl_thread_role::worker) {
+    if (gl_thread_is_worker_context()) {
         destination_buffer->get_impl().publish_from_worker();
     }
 }

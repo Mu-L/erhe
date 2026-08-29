@@ -8,7 +8,7 @@
 #include "erhe_graphics/gl/gl_render_pass.hpp"
 #include "erhe_graphics/gl/gl_sampler.hpp"
 #include "erhe_graphics/gl/gl_state_tracker.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
@@ -22,7 +22,7 @@ Render_command_encoder_impl::Render_command_encoder_impl(Device& device, Command
     : Command_encoder_impl{device, command_buffer}
     , m_tracker{device.get_impl().get_state_tracker()}
 {
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
 }
 
 Render_command_encoder_impl::~Render_command_encoder_impl() noexcept = default;

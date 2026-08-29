@@ -3,7 +3,7 @@
 #include "erhe_graphics/gl/gl_debug.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_graphics/gl/gl_texture.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_gl/enum_string_functions.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 #include "erhe_graphics/graphics_log.hpp"
@@ -465,7 +465,7 @@ void Render_pass_impl::start_render_pass(Command_buffer& command_buffer, Render_
     static_cast<void>(render_pass_before);
     static_cast<void>(render_pass_after);
 
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     ERHE_VERIFY(Device_impl::s_active_render_pass == nullptr);
     Device_impl::s_active_render_pass = this;
     ERHE_VERIFY(!m_is_active);
@@ -639,7 +639,7 @@ void Render_pass_impl::end_render_pass(Command_buffer& command_buffer, Render_pa
 {
     static_cast<void>(render_pass_after);
 
-    ERHE_VERIFY_GL_THREAD_DRAW_CAPABLE();
+    ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
     ERHE_VERIFY(Device_impl::s_active_render_pass == this);
     Device_impl::s_active_render_pass = nullptr;
 

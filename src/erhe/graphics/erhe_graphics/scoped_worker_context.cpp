@@ -3,7 +3,7 @@
 #if defined(ERHE_GRAPHICS_API_OPENGL)
 # include "erhe_graphics/device.hpp"
 # include "erhe_graphics/gl/gl_device.hpp"
-# include "erhe_graphics/gl/gl_thread_role.hpp"
+# include "erhe_graphics/gl/gl_context_index.hpp"
 #endif
 
 namespace erhe::graphics {
@@ -24,7 +24,7 @@ Scoped_worker_context::Scoped_worker_context(Device& device)
 {
     // No-op on the drawing thread: it already holds the main context and
     // may do everything a worker context would allow.
-    if (get_gl_thread_role() == Gl_thread_role::main) {
+    if (gl_thread_is_main_context()) {
         return;
     }
     m_counted = true;

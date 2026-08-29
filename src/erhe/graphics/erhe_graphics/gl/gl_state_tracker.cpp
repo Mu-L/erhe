@@ -5,7 +5,7 @@
 #include "erhe_graphics/gl/gl_helpers.hpp"
 #include "erhe_graphics/gl/gl_render_pass.hpp"
 #include "erhe_graphics/gl/gl_gpu_timer.hpp"
-#include "erhe_graphics/gl/gl_thread_role.hpp"
+#include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_graphics/gl/gl_vertex_input_state.hpp"
 #include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
