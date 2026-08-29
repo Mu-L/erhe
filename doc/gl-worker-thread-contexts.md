@@ -7,6 +7,15 @@ table below). The motivating bug -- the OpenGL build could not load any glTF
 GL worker share contexts", and MCP-driven Catmull-Clark subdivides exercised
 the worker mesh-operation path end to end.
 
+A 2026-08-29 follow-up series (second table in Implementation) collapsed
+the thread-role enum into the context index, hardened the publication
+consumer side, routed GL debug output into the Device message callback,
+and added the dedicated multithreaded test suite -- which found and drove
+the fix for a real scrub-queue defect (elided rebind of a recycled name).
+Caveat: the full cross-backend build + ctest sweep has NOT been re-run
+after that series; only the OpenGL editor, the gpu test suite and an ASAN
+run of the worker tests are verified.
+
 The GL spec grounding for the cross-context rules is transcribed in
 `doc/gl-spec-section-5.md` (the "Shared Objects and Multiple Contexts"
 chapter); consult it when touching publication or teardown.
@@ -368,13 +377,34 @@ stress it; 12 is one commit with its call sites because contexts nothing
 acquires are a pure regression; 10-11 land before 12 so workers arrive on a
 tree with no shared cache left to corrupt.
 
-**Verified so far**: the repro assets load on GL with zero stderr and a
-clean `quit_after_frames` exit; "Created 4 GL worker share contexts" in the
-log; MCP-driven Catmull-Clark subdivides on the GL build (cube 6->24->96
-facets, icosahedron 20->60, tetrahedron 4->12) exercised the worker
-mesh-operation path; sweep green (ninja Vulkan Debug, VS null backend,
-Quest APK, build_tests + ctest 645/645); the user minimally verified the
-Vulkan VS build interactively.
+**Verified after the 2026-08-28 series**: the repro assets load on GL with
+zero stderr and a clean `quit_after_frames` exit; "Created 4 GL worker
+share contexts" in the log; MCP-driven Catmull-Clark subdivides on the GL
+build (cube 6->24->96 facets, icosahedron 20->60, tetrahedron 4->12)
+exercised the worker mesh-operation path; sweep green (ninja Vulkan Debug,
+VS null backend, Quest APK, build_tests + ctest 645/645); the user
+minimally verified the Vulkan VS build interactively.
+
+### Follow-up series, 2026-08-29
+
+| commit | change |
+|---|---|
+| `9325be993` | collapse `Gl_thread_role` into the context index; `DRAW_CAPABLE` renamed `MAIN_CONTEXT` with its real (non-cache) justification |
+| `824d5c462` | publication waits on every blit-encoder path; tex-to-tex copies gain their missing worker publication |
+| `30ba963ff` | `Worker_context_test`: worker-prepared buffers consumed on main (round trip, pool contention, re-entrancy) |
+| `7f65fdc72` | GL debug messages routed into `Device::device_message` (per-context; errors are fatal in the editor, fail the owning test in the gpu suite) |
+| `0c6b7bd23` | `Worker_context_gl_test`: worker texture create + upload, mipmaps, fill, context-index tracking, error observability |
+| `c19873e88` | accessor tests: two-context adoption, idempotence, destruction drain (via the `get_pending_container_delete_count` test hook), worker blit |
+| `f32832555` | **fix**: suspend bind elision while shared-object scrubs are pending (the elided-rebind defect the scrub tests found) |
+| `bc3617dd3` | scrub-queue tests: real unbind at the main drain, name-recycling epoch (mutation-proven against the pre-fix tree) |
+| `1ec3cb668` | `Buffer_impl::publish_for_handoff()` (the reverse-direction fence, landed with its first consumer) + its test + the guard death test |
+
+**Verified after this series**: OpenGL editor build; `erhe_graphics_gpu_tests`
+on the OpenGL `build_tests` tree, 64 passed / 1 pre-existing skip (16 of
+them the worker-context tests); the 16 worker tests clean under ASAN
+(`build_tests_asan`), including environment teardown with a populated
+pool. NOT re-run: the full ctest suite and the ninja-vulkan / null-backend /
+Quest builds -- run those before relying on a swept-green state.
 
 ## Future work
 
@@ -490,6 +520,13 @@ Each of these cost a review or debugging round. Do not rediscover them.
   only the cache leaves the orphan bound (next bind-to-0 elided); scrubbing
   without the epoch unbinds a live object that received the recycled name.
   Names recycle the instant `glDelete*` runs, not at last use.
+- **Cache elision is unsound while scrubs are pending** (found by the
+  tests, not the reviews): rebinding a recycled name during the
+  delete-to-drain window compared equal to the stale cache entry, so the
+  real bind was elided, no epoch recorded, and the epoch guard above was
+  unreachable exactly when it was needed. Elision must be suspended while
+  the pending-scrub count is nonzero -- and any future cache that elides
+  by name comparison has the same hole.
 - **The main context never re-acquires** -- any "on next make-current"
   hook never fires for it. It needs explicit per-frame drain points.
 - **Adoption never goes in `gl_name()`** (per-draw; hides object creation
