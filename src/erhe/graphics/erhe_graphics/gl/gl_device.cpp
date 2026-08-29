@@ -1844,6 +1844,15 @@ void Device_impl::drain_container_object_deletes_for_current_context()
     queue.framebuffers.clear();
 }
 
+auto Device_impl::get_pending_container_delete_count(const int context_index) -> std::size_t
+{
+    ERHE_VERIFY(context_index >= 0);
+    ERHE_VERIFY(context_index < gl_context_slot_count);
+    Deferred_container_deletes& queue = m_deferred_container_deletes[context_index];
+    const std::lock_guard<std::mutex> lock{queue.mutex};
+    return queue.vertex_arrays.size() + queue.framebuffers.size();
+}
+
 void Device_impl::on_shared_object_deleted(const Gl_shared_object_kind kind, const unsigned int name)
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();

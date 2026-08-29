@@ -187,6 +187,10 @@ public:
     void queue_vertex_array_delete_on_context(int context_index, unsigned int name);
     void queue_framebuffer_delete_on_context (int context_index, unsigned int name);
     void drain_container_object_deletes_for_current_context();
+    // TEST HOOK (erhe_graphics_gpu_tests): container-object deletes queued
+    // for a context and not yet drained on it. Observes the deferred-delete
+    // mechanism; not for production use.
+    [[nodiscard]] auto get_pending_container_delete_count(int context_index) -> std::size_t;
 
     // Shared-object deletion, called from Gl_* destructors right before the
     // glDelete* call. Scrubs the CURRENT context's binding cache directly

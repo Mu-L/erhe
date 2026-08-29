@@ -16,8 +16,12 @@
 #include "erhe_graphics/command_buffer.hpp"
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/scoped_worker_context.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/scoped_container_access.hpp"
+#include "erhe_graphics/state/vertex_input_state.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_graphics/gl/gl_context_index.hpp"
+#include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
 
 #include <glm/glm.hpp>
@@ -82,8 +86,9 @@ protected:
         const erhe::graphics::Texture_create_info create_info{
             .device      = device(),
             .usage_mask  =
-                erhe::graphics::Image_usage_flag_bit_mask::sampled      |
-                erhe::graphics::Image_usage_flag_bit_mask::transfer_src |
+                erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
+                erhe::graphics::Image_usage_flag_bit_mask::sampled          |
+                erhe::graphics::Image_usage_flag_bit_mask::transfer_src     |
                 erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
             .type        = erhe::graphics::Texture_type::texture_2d,
             .pixelformat = erhe::dataformat::Format::format_8_vec4_unorm,
@@ -290,6 +295,182 @@ TEST_F(Worker_context_gl_test, worker_gl_errors_are_observable)
 
     const std::vector<Gpu_test_environment::Message> messages = Gpu_test_environment::get().take_messages();
     ASSERT_FALSE(messages.empty()) << "worker GL error was silently discarded - the per-context debug callback is not installed or not routed";
+}
+
+// T7 + T8: one Vertex_input_state adopted on two contexts concurrently -
+// both must succeed - and the accessor is idempotent per context: re-entry
+// yields the same name. GL names are NEVER compared across contexts (name
+// spaces are per-context; equal names are expected, not a bug).
+TEST_F(Worker_context_gl_test, vertex_input_state_on_two_contexts)
+{
+    require_worker_contexts();
+
+    erhe::graphics::Vertex_input_state vertex_input_state{device()};
+
+    unsigned int worker_name_first  = 0;
+    unsigned int worker_name_second = 0;
+    std::thread worker{
+        [&]() {
+            erhe::graphics::Scoped_worker_context worker_context{device()};
+            const erhe::graphics::Scoped_vertex_input_state first{device(), vertex_input_state};
+            worker_name_first = first.gl_name();
+            // Concurrent with the main-thread adoption below is exercised
+            // by the pool-contention test; here the property under test is
+            // per-context idempotence.
+            const erhe::graphics::Scoped_vertex_input_state second{device(), vertex_input_state};
+            worker_name_second = second.gl_name();
+        }
+    };
+
+    const erhe::graphics::Scoped_vertex_input_state main_first{device(), vertex_input_state};
+    const erhe::graphics::Scoped_vertex_input_state main_second{device(), vertex_input_state};
+    worker.join();
+
+    ASSERT_NE(main_first.gl_name(), 0u);
+    ASSERT_EQ(main_first.gl_name(), main_second.gl_name()) << "re-adoption on the main context must not create a second VAO";
+    ASSERT_NE(worker_name_first, 0u);
+    ASSERT_EQ(worker_name_first, worker_name_second) << "re-adoption on the worker context must not create a second VAO";
+}
+
+// T9: destroying container-object owners on the main thread while worker
+// contexts hold instances queues those instances on the owning contexts'
+// deferred-delete queues, and re-acquiring the contexts drains them.
+TEST_F(Worker_context_gl_test, destruction_drains_deferred_deletes)
+{
+    require_worker_contexts();
+
+    erhe::graphics::Device_impl& device_impl = device().get_impl();
+
+    // Adopt a VAO and an FBO on one worker context.
+    int worker_context_index = -1;
+    {
+        auto vertex_input_state = std::make_unique<erhe::graphics::Vertex_input_state>(device());
+
+        const std::shared_ptr<erhe::graphics::Texture> attachment = make_worker_texture(1, "T9 attachment");
+        erhe::graphics::Render_pass_descriptor descriptor{};
+        descriptor.color_attachments[0].texture       = attachment.get();
+        descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+        descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::transfer_src_optimal;
+        descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+        descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::transfer_src_optimal;
+        descriptor.render_target_width  = texture_width;
+        descriptor.render_target_height = texture_height;
+        descriptor.debug_label = erhe::utility::Debug_label{"T9 render pass"};
+        auto render_pass = std::make_unique<erhe::graphics::Render_pass>(device(), descriptor);
+
+        std::thread worker{
+            [&]() {
+                erhe::graphics::Scoped_worker_context worker_context{device()};
+                worker_context_index = get_gl_context_index();
+                const erhe::graphics::Scoped_vertex_input_state scoped_state{device(), *vertex_input_state};
+                const erhe::graphics::Scoped_framebuffer        scoped_framebuffer{device(), *render_pass};
+                ASSERT_NE(scoped_state.gl_name(), 0u);
+                ASSERT_NE(scoped_framebuffer.gl_name(), 0u);
+            }
+        };
+        worker.join();
+        ASSERT_GE(worker_context_index, 1);
+        ASSERT_EQ(device_impl.get_pending_container_delete_count(worker_context_index), 0u);
+
+        // Destroy both owners on the main thread: the worker context's VAO
+        // and FBO cannot be deleted from here, so they must be queued.
+        vertex_input_state.reset();
+        render_pass.reset();
+    }
+    ASSERT_EQ(device_impl.get_pending_container_delete_count(worker_context_index), 2u)
+        << "main-thread destruction must queue the worker context's VAO and FBO for deferred deletion";
+
+    // Re-acquiring pool contexts drains each acquired context's queue. The
+    // free-slot list is LIFO, so the first acquire normally lands on the
+    // same context; loop over the whole pool to be robust against ordering.
+    for (int attempt = 0; attempt < gl_worker_context_pool_size; ++attempt) {
+        if (device_impl.get_pending_container_delete_count(worker_context_index) == 0u) {
+            break;
+        }
+        std::thread worker{
+            [&]() {
+                erhe::graphics::Scoped_worker_context worker_context{device()};
+            }
+        };
+        worker.join();
+    }
+    ASSERT_EQ(device_impl.get_pending_container_delete_count(worker_context_index), 0u)
+        << "re-acquiring the context must drain its deferred-delete queue";
+}
+
+// T10: a worker blits between two render passes it holds framebuffer
+// accessors for (adoption happens inside blit_framebuffer); the source
+// pixels were produced on the same worker (create + upload), so no
+// main-side fence is involved, and the destination's publication is waited
+// on by the main-thread readback.
+TEST_F(Worker_context_gl_test, worker_blit_between_accessor_held_framebuffers)
+{
+    require_worker_contexts();
+
+    std::vector<std::uint8_t> expected(texture_bytes);
+    fill_pixel_pattern(expected);
+
+    std::shared_ptr<erhe::graphics::Texture> source_texture{};
+    std::shared_ptr<erhe::graphics::Texture> destination_texture{};
+    std::unique_ptr<erhe::graphics::Render_pass> source_pass{};
+    std::unique_ptr<erhe::graphics::Render_pass> destination_pass{};
+    std::thread worker{
+        [&]() {
+            erhe::graphics::Scoped_worker_context worker_context{device()};
+            const std::shared_ptr<erhe::graphics::Buffer> staging = make_staging_buffer(expected, "T10 staging");
+            source_texture      = make_worker_texture(1, "T10 source");
+            destination_texture = make_worker_texture(1, "T10 destination");
+            erhe::graphics::Command_buffer worker_command_buffer{device(), erhe::utility::Debug_label{"T10 worker cb"}};
+            worker_command_buffer.begin();
+            erhe::graphics::Blit_command_encoder blit = device().make_blit_command_encoder(worker_command_buffer);
+            blit.copy_from_buffer(
+                staging.get(), 0, bytes_per_row, texture_bytes,
+                glm::ivec3{texture_width, texture_height, 1},
+                source_texture.get(), 0, 0, glm::ivec3{0, 0, 0}
+            );
+
+            erhe::graphics::Render_pass_descriptor source_descriptor{};
+            source_descriptor.color_attachments[0].texture       = source_texture.get();
+            source_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+            source_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::transfer_src_optimal;
+            source_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+            source_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::transfer_src_optimal;
+            source_descriptor.render_target_width  = texture_width;
+            source_descriptor.render_target_height = texture_height;
+            source_descriptor.debug_label = erhe::utility::Debug_label{"T10 source pass"};
+            source_pass = std::make_unique<erhe::graphics::Render_pass>(device(), source_descriptor);
+
+            erhe::graphics::Render_pass_descriptor destination_descriptor{};
+            destination_descriptor.color_attachments[0].texture       = destination_texture.get();
+            destination_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+            destination_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::transfer_src_optimal;
+            destination_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::transfer_src;
+            destination_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::transfer_src_optimal;
+            destination_descriptor.render_target_width  = texture_width;
+            destination_descriptor.render_target_height = texture_height;
+            destination_descriptor.debug_label = erhe::utility::Debug_label{"T10 destination pass"};
+            destination_pass = std::make_unique<erhe::graphics::Render_pass>(device(), destination_descriptor);
+
+            blit.blit_framebuffer(
+                *source_pass,
+                glm::ivec2{0, 0},
+                glm::ivec2{texture_width, texture_height},
+                *destination_pass,
+                glm::ivec2{0, 0}
+            );
+            worker_command_buffer.end();
+        }
+    };
+    worker.join();
+    ASSERT_TRUE(destination_texture);
+
+    const std::vector<std::uint8_t> actual = read_texture_rgba8(*destination_texture);
+    ASSERT_EQ(actual, expected);
+
+    // The passes still hold worker-context FBO instances; destroying them
+    // here queues deferred deletes, drained by later acquires / teardown.
+    source_pass.reset();
+    destination_pass.reset();
 }
 
 } // namespace erhe::graphics::test
