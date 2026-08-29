@@ -92,6 +92,15 @@ if (_gpu_tests_supported)
         test_worker_context.cpp
     )
 
+    # GL-specific worker-context tests: worker-side texture upload and
+    # context-index introspection reach GL internals (Device::get_impl(),
+    # erhe_graphics/gl headers, raw gl:: calls), so they exist only on the
+    # OpenGL backend.
+    if (ERHE_GRAPHICS_API STREQUAL "opengl")
+        target_sources(${_gpu_target} PRIVATE test_worker_context_gl.cpp)
+        target_link_libraries(${_gpu_target} PRIVATE erhe::gl)
+    endif ()
+
     target_link_libraries(${_gpu_target}
         PRIVATE
             erhe::graphics
