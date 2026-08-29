@@ -12,13 +12,16 @@ set(_target "erhe_primitive_tests")
 add_executable(${_target}
     main.cpp
     test_mesh_optimizer.cpp
+    test_optimized_variant_build.cpp
 )
 
 target_link_libraries(${_target}
     PRIVATE
         erhe::primitive
+        erhe::buffer
         erhe::dataformat
         erhe::file
+        erhe::geometry
         erhe::log
         erhe::verify
         GTest::gtest

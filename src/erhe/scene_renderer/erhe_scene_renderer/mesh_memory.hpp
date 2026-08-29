@@ -204,14 +204,16 @@ public:
     void enqueue_index_data         (const erhe::primitive::Buffer_range& buffer_range, std::vector<uint8_t>&& data) override;
     void index_writer_ready         (erhe::primitive::Index_buffer_writer&  writer)                                  override;
 
-    // Storage format of the stream-0 position in every content vertex format.
-    // format_16_vec3_snorm when Mesh_memory_config::quantize_vertex_positions is
-    // set AND the device can use that format for both vertex input and
-    // acceleration structure build input; format_32_vec3_float otherwise.
+    // Storage format of the stream-0 position in the two OPTIMIZED vertex
+    // formats - the only formats position quantization applies to; the content
+    // (base) formats always store float3 so in-place GPU edits can express any
+    // position. format_16_vec3_snorm when
+    // Mesh_memory_config::quantize_vertex_positions is set AND the device can
+    // use that format as vertex input; format_32_vec3_float otherwise.
     //
     // Declared before the formats: member initialization order is declaration
-    // order, and they are built from it.
-    erhe::dataformat::Format        position_format;
+    // order.
+    erhe::dataformat::Format        optimized_position_format;
 
     erhe::dataformat::Vertex_format vertex_format_empty;
     erhe::dataformat::Vertex_format vertex_format_skinned;

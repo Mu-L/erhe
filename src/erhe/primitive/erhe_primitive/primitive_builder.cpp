@@ -1048,6 +1048,27 @@ auto Build_context::take_optimizable_snapshot(
         return false;
     }
 
+    // The optimized format is the only place position quantization applies: the
+    // staged (base) position is always float3, and when the optimized format
+    // stores format_16_vec3_snorm the gather encodes during the copy. Encoding
+    // here - before the meshopt passes - keeps the weld running on the final
+    // bytes (quantization merges more, and GPU data equals staged data exactly).
+    // Same affine as the primitive record / shader decode; the pre-clamp is what
+    // keeps meshopt_quantizeSnorm() bit-identical to float_to_snorm16().
+    GEO::vec3f position_encode_center   {0.0f, 0.0f, 0.0f};
+    GEO::vec3f position_encode_inv_scale{1.0f, 1.0f, 1.0f};
+    {
+        constexpr float epsilon = 1e-6f;
+        const erhe::math::Aabb& bounding_box = root.buffer_mesh.bounding_box;
+        if (bounding_box.is_valid()) {
+            const glm::vec3 center      = bounding_box.center();
+            const glm::vec3 half_extent = 0.5f * bounding_box.diagonal();
+            const glm::vec3 scale       = glm::max(half_extent, glm::vec3{epsilon});
+            position_encode_center    = GEO::vec3f{center.x, center.y, center.z};
+            position_encode_inv_scale = GEO::vec3f{1.0f / scale.x, 1.0f / scale.y, 1.0f / scale.z};
+        }
+    }
+
     std::vector<Mesh_optimize_stream> streams;
     streams.reserve(optimized_format.streams.size());
     for (std::size_t stream_index = 0, stream_end = optimized_format.streams.size(); stream_index < stream_end; ++stream_index) {
@@ -1063,10 +1084,38 @@ auto Build_context::take_optimizable_snapshot(
             const erhe::dataformat::Attribute_stream source = root.vertex_format.find_attribute(
                 optimized_attribute.usage_type, optimized_attribute.usage_index
             );
-            if ((source.attribute == nullptr) || (source.attribute->format != optimized_attribute.format)) {
+            if (source.attribute == nullptr) {
                 // The optimized format asks for something this build did not
-                // stage, or stages differently. Decline rather than ship a
-                // variant with an attribute left at zero.
+                // stage. Decline rather than ship a variant with an attribute
+                // left at zero.
+                return false;
+            }
+            const bool encode_position =
+                (optimized_attribute.usage_type  == erhe::dataformat::Vertex_attribute_usage::position) &&
+                (optimized_attribute.usage_index == 0) &&
+                (source.attribute->format    == erhe::dataformat::Format::format_32_vec3_float) &&
+                (optimized_attribute.format  == erhe::dataformat::Format::format_16_vec3_snorm);
+            if (encode_position) {
+                for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
+                    float position[3];
+                    memcpy(position, writer.vertex_data.data() + vertex * writer.stride + source.attribute->offset, sizeof(position));
+                    const GEO::vec3f biased{
+                        position[0] - position_encode_center.x,
+                        position[1] - position_encode_center.y,
+                        position[2] - position_encode_center.z
+                    };
+                    const int16_t encoded[3] = {
+                        static_cast<int16_t>(meshopt_quantizeSnorm(std::clamp(biased.x * position_encode_inv_scale.x, -1.0f, 1.0f), 16)),
+                        static_cast<int16_t>(meshopt_quantizeSnorm(std::clamp(biased.y * position_encode_inv_scale.y, -1.0f, 1.0f), 16)),
+                        static_cast<int16_t>(meshopt_quantizeSnorm(std::clamp(biased.z * position_encode_inv_scale.z, -1.0f, 1.0f), 16))
+                    };
+                    memcpy(stream.data.data() + vertex * optimized_stream.stride + optimized_attribute.offset, encoded, sizeof(encoded));
+                }
+                continue;
+            }
+            if (source.attribute->format != optimized_attribute.format) {
+                // The optimized format stages this attribute differently and no
+                // conversion is defined for it. Decline rather than guess.
                 return false;
             }
             const std::size_t size = erhe::dataformat::get_format_size_bytes(optimized_attribute.format);

@@ -25,23 +25,19 @@ using Vertex_attribute_usage = erhe::dataformat::Vertex_attribute_usage;
 
 namespace {
 
-// Smallest stride a quantized stream 0 can have: a snorm16x3 position (6 bytes)
-// padded up to the 4-byte-multiple stride the constructor's packing enforces, with
-// nothing else in the stream. The skinned stream is 16. Used to answer, before any
-// vertex format exists, whether a backend's minimum acceleration structure vertex
-// stride can be met at all.
-constexpr std::size_t min_quantized_stream_0_stride = 8;
-
-// Storage format of the stream-0 position for every content vertex format, and
-// therefore the encoding the whole session runs on (doc 6.1: one encoding per
-// Mesh_memory, because Buffer_pools are keyed on Vertex_stream instance address
-// and a second set of formats would allocate a parallel set of pools).
+// Storage format of the stream-0 position for the two OPTIMIZED vertex formats.
+// The content (base) formats always store float3: they are the always-present,
+// always-renderable variant that in-place GPU edits write through, and a float
+// position can express any value - no AABB clamp, ever (meshoptimizer doc,
+// requirement 9). Quantization, when requested and supported, lives only in the
+// optimized variant (requirement 10).
 //
-// Quantization is refused on a device that cannot use the format as ray tracing
-// acceleration structure build input: a BLAS build is the one consumer with no
-// fallback, and the failure mode is geometry silently disappearing from the
-// TLAS rather than rendering wrong.
-[[nodiscard]] auto choose_position_format(
+// No acceleration-structure gate: every BLAS source is pinned to the original
+// variant (scene TLAS, lightmap baker), which is float3 by construction, so a
+// quantized optimized format can never reach an acceleration structure build.
+// get_blas_position_input() still answers per Buffer_mesh and returns early on a
+// passthrough format.
+[[nodiscard]] auto choose_optimized_position_format(
     const Mesh_memory_config&     mesh_memory_config,
     const erhe::graphics::Device& graphics_device
 ) -> erhe::dataformat::Format
@@ -51,31 +47,6 @@ constexpr std::size_t min_quantized_stream_0_stride = 8;
     }
     const erhe::graphics::Device_info& device_info = graphics_device.get_info();
     if (!device_info.use_16_vec3_snorm_vertex_buffer) {
-        return erhe::dataformat::Format::format_32_vec3_float;
-    }
-    // The acceleration structure format only has to hold where acceleration
-    // structures are actually built. Requiring it unconditionally would decline
-    // quantization on every device WITHOUT ray tracing - the AS feature bit comes
-    // from VK_KHR_acceleration_structure, so a device lacking the extension
-    // reports 0 - which is the opposite of what is wanted: those are exactly the
-    // devices where the memory saving matters most.
-    //
-    // use_ray_query is the session's ray tracing capability, and it is what gates
-    // every BLAS build, so when it is false no quantized mesh can ever reach one.
-    // Either acceleration structure format will do: the 3-component one directly, or
-    // the mandatory 4-component one read in place over the padded stride (see
-    // get_blas_position_input). Only a device offering neither has to fall back.
-    //
-    // The stride minimum is the second half of the same question: Metal's triangle
-    // geometry descriptor documents a 12 byte minimum vertex stride, and the
-    // smallest quantized stream-0 stride is 8 (unskinned - see the packing below),
-    // so such a device cannot build from a quantized stream at all. Declining here
-    // keeps that from turning into meshes silently missing from the TLAS.
-    const bool acceleration_structure_ok =
-        (device_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer ||
-         device_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer) &&
-        (device_info.min_acceleration_structure_vertex_stride <= min_quantized_stream_0_stride);
-    if (device_info.use_ray_query && !acceleration_structure_ok) {
         return erhe::dataformat::Format::format_32_vec3_float;
     }
     return erhe::dataformat::Format::format_16_vec3_snorm;
@@ -153,14 +124,14 @@ Mesh_memory::Mesh_memory(
     const Mesh_memory_config& mesh_memory_config,
     erhe::graphics::Device&   graphics_device
 )
-    : position_format{choose_position_format(mesh_memory_config, graphics_device)}
+    : optimized_position_format{choose_optimized_position_format(mesh_memory_config, graphics_device)}
     , vertex_format_empty{}
     , vertex_format_skinned{
         erhe::dataformat::Vertex_format{
             {
                 0,
                 {
-                    { position_format,              Vertex_attribute_usage::position,      0},
+                    { Format::format_32_vec3_float, Vertex_attribute_usage::position,      0},
                     { Format::format_8_vec4_uint,   Vertex_attribute_usage::joint_indices, 0},
                     { Format::format_8_vec4_unorm,  Vertex_attribute_usage::joint_weights, 0}
                 }
@@ -192,7 +163,7 @@ Mesh_memory::Mesh_memory(
             {
                 0,
                 {
-                    { position_format,              Vertex_attribute_usage::position, 0}
+                    { Format::format_32_vec3_float, Vertex_attribute_usage::position, 0}
                 }
             },
             {
@@ -222,7 +193,7 @@ Mesh_memory::Mesh_memory(
             {
                 0,
                 {
-                    { position_format,              Vertex_attribute_usage::position, 0}
+                    { Format::format_32_vec3_float, Vertex_attribute_usage::position, 0}
                 }
             },
             {
@@ -258,7 +229,7 @@ Mesh_memory::Mesh_memory(
             {
                 0,
                 {
-                    { position_format,              Vertex_attribute_usage::position,      0},
+                    { Format::format_32_vec3_float, Vertex_attribute_usage::position,      0},
                     { Format::format_8_vec4_uint,   Vertex_attribute_usage::joint_indices, 0},
                     { Format::format_8_vec4_unorm,  Vertex_attribute_usage::joint_weights, 0}
                 }
@@ -320,28 +291,21 @@ Mesh_memory::Mesh_memory(
     , m_loader_sink          {*this}
     , m_alive_token          {std::make_shared<int>(0)}
 {
-    // Say which position encoding the session runs on, and why - a silently
-    // declined quantization request would otherwise look like the feature simply
-    // not working.
-    if (mesh_memory_config.quantize_vertex_positions && (position_format != erhe::dataformat::Format::format_16_vec3_snorm)) {
+    // Say which position encoding the optimized variant runs on, and why - a
+    // silently declined quantization request would otherwise look like the
+    // feature simply not working. The content (base) formats are always float3.
+    if (mesh_memory_config.quantize_vertex_positions && (optimized_position_format != erhe::dataformat::Format::format_16_vec3_snorm)) {
         const erhe::graphics::Device_info& device_info = graphics_device.get_info();
         log_startup->warn(
             "Vertex position quantization requested but declined: the device reports "
-            "format_16_vec3_snorm as vertex buffer input = {}, as acceleration structure build input = {}, "
-            "format_16_vec4_snorm as acceleration structure build input = {}, minimum acceleration "
-            "structure vertex stride = {} (quantized stream 0 is {}) (ray query {}). "
-            "Positions stay unquantized (float3).",
-            device_info.use_16_vec3_snorm_vertex_buffer,
-            device_info.use_16_vec3_snorm_acceleration_structure_vertex_buffer,
-            device_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer,
-            device_info.min_acceleration_structure_vertex_stride,
-            min_quantized_stream_0_stride,
-            device_info.use_ray_query ? "enabled" : "not available"
+            "format_16_vec3_snorm as vertex buffer input = {}. "
+            "Optimized-variant positions stay unquantized (float3).",
+            device_info.use_16_vec3_snorm_vertex_buffer
         );
     } else {
         log_startup->info(
-            "Vertex position storage: {}",
-            (position_format == erhe::dataformat::Format::format_16_vec3_snorm)
+            "Vertex position storage: base variant float3, optimized variant {}",
+            (optimized_position_format == erhe::dataformat::Format::format_16_vec3_snorm)
                 ? "snorm16x3 quantized into the primitive AABB"
                 : "float3"
         );
@@ -366,17 +330,21 @@ Mesh_memory::Mesh_memory(
     //   buffer reference declared buffer_reference_align = 4 and index it as a uint
     //   array. A range starting at 2 mod 4 would read every position 2 bytes off.
     //
-    // For float3 positions every stride is already a multiple of 4, so this is inert
-    // until quantization is on; with it, stream 0 becomes 8 / 16 rather than 6 / 14.
+    // The content formats are all-float, so every stride is already a multiple of
+    // 4 and this is inert for them; a quantized optimized format's stream 0
+    // becomes 8 / 16 rather than 6 / 14.
     const erhe::dataformat::Vertex_stream_packing packing{
         .min_attribute_alignment = device_info.min_vertex_attribute_alignment,
         .min_stride_alignment    = std::max(device_info.min_vertex_stream_stride_alignment, std::size_t{4})
     };
     // The optimized content formats are the content formats minus the per-corner
-    // facet id, derived here rather than written out again so an edit to the
-    // source format cannot leave them behind. Done BEFORE the repack below, so
-    // their offsets and strides are recomputed for the shortened attribute list.
-    const auto without_facet_id = [](const erhe::dataformat::Vertex_format& source) -> erhe::dataformat::Vertex_format
+    // facet id and with the position stored in optimized_position_format (the
+    // ONLY place position quantization applies - the base formats stay float3 so
+    // in-place GPU edits can express any position). Derived here rather than
+    // written out again so an edit to the source format cannot leave them
+    // behind. Done BEFORE the repack below, so their offsets and strides are
+    // recomputed for the changed attribute list.
+    const auto make_optimized_format = [this](const erhe::dataformat::Vertex_format& source) -> erhe::dataformat::Vertex_format
     {
         erhe::dataformat::Vertex_format optimized = source;
         for (erhe::dataformat::Vertex_stream& stream : optimized.streams) {
@@ -395,11 +363,16 @@ Mesh_memory::Mesh_memory(
             // No stream of these formats consists of the id alone, and an empty
             // stream would allocate a zero stride the pools cannot serve.
             ERHE_VERIFY(!attributes.empty());
+            for (erhe::dataformat::Vertex_attribute& attribute : attributes) {
+                if ((attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::position) && (attribute.usage_index == 0)) {
+                    attribute.format = optimized_position_format;
+                }
+            }
         }
         return optimized;
     };
-    vertex_format_not_skinned_optimized = without_facet_id(vertex_format_not_skinned);
-    vertex_format_skinned_optimized     = without_facet_id(vertex_format_skinned);
+    vertex_format_not_skinned_optimized = make_optimized_format(vertex_format_not_skinned);
+    vertex_format_skinned_optimized     = make_optimized_format(vertex_format_skinned);
 
     for (erhe::dataformat::Vertex_format* format : get_all_vertex_formats()) {
         format->repack(packing);

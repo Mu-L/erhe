@@ -27,7 +27,9 @@ constexpr uint32_t c_magic = 0x434f4d45u; // 'EMOC' little-endian
 // Bump whenever the meaning of a stored entry changes - a different pass order,
 // a different remap convention, a meshoptimizer upgrade that alters output.
 // Old entries then miss and are rewritten rather than being replayed wrongly.
-constexpr uint32_t c_format_version = 1;
+// 2: position quantization moved from the content formats into the optimized
+//    variant only (base float3, optimized snorm16).
+constexpr uint32_t c_format_version = 2;
 
 class Header
 {

@@ -47,7 +47,7 @@ struct("Mesh_memory_config",
             added_in=2,
             default="false",
             short_desc="Quantize Vertex Positions",
-            long_desc="Store vertex positions as snorm16x3 normalized into the primitive AABB (6 bytes instead of 12). Ignored on a device that cannot use that format as ray tracing acceleration structure build input.",
+            long_desc="Store the optimized mesh variant's vertex positions as snorm16x3 normalized into the primitive AABB (6 bytes instead of 12). Applies to the optimized variant only, so it has no effect unless Optimize Meshes is enabled; the base variant always stores full-float positions. Ignored on a device that cannot use snorm16x3 as vertex input.",
             visible=True,
             developer=True
         ),
