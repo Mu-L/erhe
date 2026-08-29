@@ -47,6 +47,15 @@ public:
     void publish_from_worker() const;
     void wait_publication   () const;
 
+    // The REVERSE direction of the same contract (gl-worker-thread-
+    // contexts.md, "Cross-context publication"): a MAIN-written buffer
+    // handed to a worker for consumption (e.g. staging pixels for a
+    // worker-side texture upload) must carry a fence issued on the main
+    // context after the write. Fence-then-flush on the CURRENT context,
+    // any thread; the consuming context's wait_publication() - the blit
+    // encoder's per-method waits - orders the read after it.
+    void publish_for_handoff() const;
+
     template <typename T>
     [[nodiscard]]
     auto map_elements(const std::size_t element_offset, const std::size_t element_count) noexcept -> std::span<T>

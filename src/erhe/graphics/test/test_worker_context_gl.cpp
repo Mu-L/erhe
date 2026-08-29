@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -573,6 +574,76 @@ TEST_F(Worker_context_gl_test, scrub_queue_epoch_spares_rebound_name)
     main_binding_state.bind_buffer(gl::Buffer_target::array_buffer, 0);
     second.reset();
     submit_and_wait([](erhe::graphics::Command_buffer&) {});
+}
+
+// T6: the REVERSE handoff direction - the main thread writes staging
+// pixels (map / unmap, main-only) and fences the handoff
+// (publish_for_handoff); a worker waits on that fence (the blit encoder's
+// source wait) and uploads the pixels into a texture it created; the main
+// thread reads the texture back.
+TEST_F(Worker_context_gl_test, main_written_staging_consumed_by_worker)
+{
+    require_worker_contexts();
+
+    std::vector<std::uint8_t> expected(texture_bytes);
+    fill_pixel_pattern(expected);
+
+    // Main-created mappable staging buffer, written on main.
+    const std::shared_ptr<erhe::graphics::Buffer> staging =
+        make_host_buffer(texture_bytes, erhe::graphics::Buffer_usage::transfer_src, "T6 main staging");
+    {
+        const std::span<std::byte> mapped = staging->map_bytes(0, texture_bytes);
+        std::memcpy(mapped.data(), expected.data(), texture_bytes);
+        staging->unmap();
+    }
+    // The handoff fence: without it the worker's read of the staging bytes
+    // has no GL-side ordering against the main context's write.
+    staging->get_impl().publish_for_handoff();
+
+    std::shared_ptr<erhe::graphics::Texture> texture{};
+    std::thread worker{
+        [&]() {
+            erhe::graphics::Scoped_worker_context worker_context{device()};
+            texture = make_worker_texture(1, "T6 worker texture");
+            erhe::graphics::Command_buffer worker_command_buffer{device(), erhe::utility::Debug_label{"T6 worker cb"}};
+            worker_command_buffer.begin();
+            erhe::graphics::Blit_command_encoder blit = device().make_blit_command_encoder(worker_command_buffer);
+            blit.copy_from_buffer(
+                staging.get(), 0, bytes_per_row, texture_bytes,
+                glm::ivec3{texture_width, texture_height, 1},
+                texture.get(), 0, 0, glm::ivec3{0, 0, 0}
+            );
+            worker_command_buffer.end();
+        }
+    };
+    worker.join();
+    ASSERT_TRUE(texture);
+
+    const std::vector<std::uint8_t> actual = read_texture_rgba8(*texture);
+    ASSERT_EQ(actual, expected);
+}
+
+// T14: the guard actually guards - GPU work from a thread with NO worker
+// scope must die on ERHE_VERIFY (HAS_CONTEXT) instead of faulting in the
+// driver. Without this, the accessor / scope discipline is a convention
+// rather than a mechanism.
+TEST_F(Worker_context_gl_test, guard_aborts_offscope_worker_creation)
+{
+    require_worker_contexts();
+
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    EXPECT_DEATH(
+        {
+            std::thread offscope_thread{
+                [this]() {
+                    const std::vector<std::uint8_t> bytes(16, 0u);
+                    make_staging_buffer(bytes, "T14 off-scope buffer");
+                }
+            };
+            offscope_thread.join();
+        },
+        ""
+    );
 }
 
 } // namespace erhe::graphics::test

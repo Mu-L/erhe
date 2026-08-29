@@ -288,6 +288,12 @@ void Buffer_impl::publish_from_worker() const
     m_publication_sync.publish_from_worker();
 }
 
+void Buffer_impl::publish_for_handoff() const
+{
+    ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    m_publication_sync.publish_from_worker();
+}
+
 void Buffer_impl::wait_publication() const
 {
     m_publication_sync.wait_and_consume();
