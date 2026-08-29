@@ -117,9 +117,6 @@ private:
     std::vector<Group>  m_groups;        // persistent scratch, cleared per gather()
     bool                m_active{false};
     bool                m_extrude{false};       // captured at begin(): mode is any Extrude (plain / group / vertex)
-    // One-shot per drag: a vertex was dragged outside the primitive bounding box
-    // the quantized positions are encoded against, so the live preview clamps it.
-    bool                m_position_clamped_warned{false};
     Mesh_transform_mode m_transform_mode{};     // captured at begin(): the exact transform mode (value-inits to move)
 
     // Per-frame scratch for update_group_normals(), kept across frames so the live

@@ -23,7 +23,6 @@
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
-#include "erhe_scene_renderer/primitive_buffer.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <geogram/mesh/mesh.h>
@@ -456,7 +455,6 @@ void Mesh_component_transform::begin(App_context& context)
         }
     }
     m_active = true;
-    m_position_clamped_warned = false;
 }
 
 void Mesh_component_transform::apply(App_context& context, Transform_tool_shared& shared, const glm::mat4& updated_world_from_anchor)
@@ -751,39 +749,15 @@ void Mesh_component_transform::enqueue_gpu_position(App_context& context, const 
 
         std::vector<std::uint8_t> buffer;
         if (format == erhe::dataformat::Format::format_32_vec3_float) {
+            // The base variant's position is float3 by construction (position
+            // quantization applies only to the optimized variant, which this
+            // edit dropped above), so any dragged position is representable -
+            // no AABB clamp, ever.
             buffer.resize(sizeof(float) * 3);
             auto* const ptr = reinterpret_cast<float*>(buffer.data());
             ptr[0] = local_position.x;
             ptr[1] = local_position.y;
             ptr[2] = local_position.z;
-        } else if (format == erhe::dataformat::Format::format_16_vec3_snorm) {
-            // Quantized: encode against the AABB the primitive was BUILT with, which
-            // is what every shader decodes with. A vertex dragged outside that box
-            // cannot be represented and clamps to the box face, so the live preview
-            // pins it there; commit queues a Move_mesh_vertices_operation, which
-            // rebuilds the primitive and recomputes the AABB, so the committed result
-            // is exact. Log the first clamp per drag so the artifact is explicable.
-            const erhe::scene_renderer::Position_quantization quantization =
-                erhe::scene_renderer::get_position_quantization(buffer_mesh.bounding_box);
-            const glm::vec3 normalized =
-                (local_position - glm::vec3{quantization.offset}) / glm::vec3{quantization.scale};
-            if (glm::any(glm::greaterThan(glm::abs(normalized), glm::vec3{1.0f}))) {
-                if (!m_position_clamped_warned) {
-                    m_position_clamped_warned = true;
-                    log_tools->info(
-                        "Vertex dragged outside its primitive bounding box; the preview clamps to the box "
-                        "until commit rebuilds the primitive"
-                    );
-                }
-            }
-            const glm::vec3 clamped = glm::clamp(normalized, glm::vec3{-1.0f}, glm::vec3{1.0f});
-            buffer.resize(sizeof(int16_t) * 3);
-            auto* const ptr = reinterpret_cast<int16_t*>(buffer.data());
-            for (int i = 0; i < 3; ++i) {
-                // Same rounding as erhe::dataformat::float_to_snorm16, so the encode
-                // round-trips against the GPU snorm decode.
-                ptr[i] = static_cast<int16_t>(std::lround(clamped[i] * 32767.0f));
-            }
         } else if (format == erhe::dataformat::Format::format_32_vec4_float) {
             buffer.resize(sizeof(float) * 4);
             auto* const ptr = reinterpret_cast<float*>(buffer.data());
