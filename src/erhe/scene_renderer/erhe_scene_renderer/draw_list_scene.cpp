@@ -141,9 +141,14 @@ public:
             result.key.set(Shader_bool::USE_SKINNING, full.get(Shader_bool::USE_SKINNING));
             // Derived from buffer_mesh->vertex_input_key, while the variant is
             // compiled against buffer_set.vertex_input_key (the *expanded* format
-            // for solid wireframe). Those always agree under the one-encoding-per-
-            // session MVP; a per-primitive encoding would have to derive from the
-            // bound key instead. See doc/vertex-position-quantization.md 6.3.
+            // for solid wireframe). Those agree for every mode even with the
+            // per-variant encoding split (doc/meshoptimizer-integration.md,
+            // requirements 9-10): a draw resolved to the optimized variant is
+            // fill-only, where the bound key IS buffer_mesh's own; every other
+            // mode resolves to the original variant, whose content and expanded
+            // formats are both float3 (encoding 0). A variant whose non-fill
+            // modes could bind a differently-encoded format would have to derive
+            // from the bound key instead.
             result.key.set(Shader_int::VERTEX_POSITION_ENCODING, full.get(Shader_int::VERTEX_POSITION_ENCODING));
             break;
         }

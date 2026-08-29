@@ -766,21 +766,21 @@ void Shadow_renderer::prewarm_pipelines(
     // Draw-list shadow keys (doc/draw_list_renderer_requirements.md R4/R22):
     // the persistent shadow draw lists resolve the coarsened key
     // {USE_SKINNING?} + VARIANT_DEPTH_ONLY with an empty environment and no
-    // material bits, one variant per skinning state regardless of vertex
-    // format. Warm those too, so enabling the draw-list path does not
-    // compile on the first shadow frame. Shader_variant_cache is keyed on the
-    // Shader_key alone: the vertex format only matters at first compile, and
-    // the position (and joints / weights) attributes sit at the same locations
-    // in every mesh format. What makes one variant per skinning state valid is
-    // that plus the position *encoding* being one per session
-    // (Mesh_memory_config::quantize_vertex_positions builds every content format
-    // with the same position format, doc/vertex-position-quantization.md 6.1) -
-    // the lambda below reads it off each format so the two cannot disagree. A
-    // per-primitive encoding (6.3) would multiply these variants.
+    // material bits, one variant per {skinning state, position encoding}. Warm
+    // those too, so enabling the draw-list path does not compile on the first
+    // shadow frame. Shader_variant_cache is keyed on the Shader_key alone: the
+    // vertex format only matters at first compile, and the position (and
+    // joints / weights) attributes sit at the same locations in every mesh
+    // format. The position encoding is per VARIANT, not per session: the
+    // content (base) formats are always float3 while the optimized formats may
+    // be snorm16 (doc/meshoptimizer-integration.md, requirements 9-10), so the
+    // optimized formats are warmed beside the content ones. When quantization
+    // is off both derive the same key and the extra gets are cache hits.
     {
         // All three sub-variants (depth-only, depth-only + distance, cube) x
-        // {not skinned, skinned}: six variants, so neither the distance
-        // technique nor the first point light compiles on the draw-list path.
+        // {not skinned, skinned} x {content, optimized}: neither the distance
+        // technique, the first point light, nor the first optimized-variant
+        // caster compiles on the draw-list path.
         const uint32_t sub_variant_masks[] = {
             make_shader_bool_mask(Shader_bool::VARIANT_DEPTH_ONLY),
             make_shader_bool_mask(Shader_bool::VARIANT_DEPTH_ONLY) | make_shader_bool_mask(Shader_bool::VARIANT_SHADOW_DISTANCE),
@@ -802,8 +802,10 @@ void Shadow_renderer::prewarm_pipelines(
             Shader_key key{};
             key.bool_mask = mask;
             prewarm(key, m_mesh_memory.vertex_format_not_skinned);
+            prewarm(key, m_mesh_memory.vertex_format_not_skinned_optimized);
             key.set(Shader_bool::USE_SKINNING, true);
             prewarm(key, m_mesh_memory.vertex_format_skinned);
+            prewarm(key, m_mesh_memory.vertex_format_skinned_optimized);
         }
     }
 

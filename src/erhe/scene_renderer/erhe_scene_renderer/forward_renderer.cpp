@@ -669,25 +669,30 @@ auto Forward_renderer::prewarm_standard_variants(const Prewarm_parameters& param
             }
 
             // Content-library materials whose meshes are not yet attached:
-            // key each against the fallback Vertex_format with both
+            // key each against the fallback Vertex_formats with both
             // mesh_has_skin = false and mesh_has_skin = true so a later
-            // runtime mesh-attach hits the cache. When the fallback format
-            // carries no joint attributes, the skinned variant collapses to
-            // the same key and the second get() is a cache hit.
+            // runtime mesh-attach hits the cache. The optimized formats are
+            // warmed beside the content ones: they can differ in the position
+            // encoding (quantized optimized variant) and in the attribute
+            // gates (no facet id), so a fill draw resolved to the optimized
+            // variant derives its own key. When the formats collapse to the
+            // same key the extra get() is a cache hit.
             for (const std::shared_ptr<erhe::primitive::Material>& material : parameters.extra_materials) {
                 if (!material) {
                     continue;
                 }
                 for (const bool has_skin : { false, true }) {
-                    const erhe::dataformat::Vertex_format& vertex_format = has_skin
-                        ? parameters.mesh_memory.vertex_format_skinned
-                        : parameters.mesh_memory.vertex_format_not_skinned;
+                    const erhe::dataformat::Vertex_format* const vertex_formats[] = {
+                        has_skin ? &parameters.mesh_memory.vertex_format_skinned           : &parameters.mesh_memory.vertex_format_not_skinned,
+                        has_skin ? &parameters.mesh_memory.vertex_format_skinned_optimized : &parameters.mesh_memory.vertex_format_not_skinned_optimized
+                    };
+                    for (const erhe::dataformat::Vertex_format* const vertex_format : vertex_formats) {
+                        Shader_key derived = environment_key.derive(material.get(), vertex_format, has_skin);
+                        derived.bool_mask |=  parameters.shader_key_force_enable_mask;
+                        derived.bool_mask &= ~parameters.shader_key_force_disable_mask;
 
-                    Shader_key derived = environment_key.derive(material.get(), &vertex_format, has_skin);
-                    derived.bool_mask |=  parameters.shader_key_force_enable_mask;
-                    derived.bool_mask &= ~parameters.shader_key_force_disable_mask;
-
-                    static_cast<void>(m_shader_variant_cache.get(derived, &vertex_format));
+                        static_cast<void>(m_shader_variant_cache.get(derived, vertex_format));
+                    }
                 }
             }
         }
