@@ -5,10 +5,14 @@ Live document for the mesh-optimization subsystem built on
 upstream, pinned via CPM): requirements, design, verification, future
 work, traps. History lives in the git log, not here.
 
-Status: implemented and verified except for the items in "Future work" --
-the real-mouse interactive session and the perf measurement.
-`optimize_meshes` defaults to **true** in `config/editor/mesh_memory.json`;
-`mesh_optimize_cache` stays **false** (the user's call).
+Status: implemented and verified as described below, including the
+real-mouse interactive session -- but the 2026-08-29 requirements 9-11
+(base variant never quantized, quantization only in the optimized variant,
+edit-blocked background re-optimization) are a planned rework, NOT yet
+implemented: today position quantization applies to both variants. See
+Future work item 1. `optimize_meshes` defaults to **true** in
+`config/editor/mesh_memory.json`; `mesh_optimize_cache` stays **false**
+(the user's call).
 
 ## Requirements
 
@@ -41,6 +45,23 @@ User-confirmed; the first is a hard requirement.
    (`content_edge_lines.use_id_buffer`) was **removed end to end** -- after
    that, the per-corner facet-id attribute (`a_custom_0`) has exactly one
    consumer, the ID renderer, which uses the always-built original variant.
+
+Added 2026-08-29, after the real-mouse session exposed the out-of-AABB drag
+clamp (the snorm16 encode of the base variant's GPU buffer cannot represent
+a position outside the build-time AABB). **NOT yet implemented** -- Future
+work item 1:
+
+9. The unoptimized **base** variant never uses position quantization:
+   full-float positions. In the editor, every primitive always maintains
+   this variant, so it is always renderable -- and in-place GPU edits can
+   express any position (the drag clamp disappears with the encoding).
+10. The **optimized** variant is the only build that applies quantization.
+    Because the base variant is always available, the optimized variant can
+    be built lazily on request, in the background.
+11. During a mesh edit operation (paint, weight paint, active mesh-component
+    move) the optimized variant is invalidated as soon as the edit starts,
+    re-optimization is blocked for the duration of the edit, and at edit end
+    an optimization task can start on a background thread.
 
 ## Design
 
@@ -207,6 +228,11 @@ instances share Primitives). Renderers then see the variant missing and
 fall back to `original`. This also dissolves any weld-vs-addressability
 divergence: only one variant is live during an edit.
 
+Today nothing rebuilds the optimized variant after an invalidate (it stays
+gone until the next full primitive rebuild). Requirement 11 extends this:
+invalidate at edit start, block re-optimization for the edit's duration,
+background re-optimize at edit end -- Future work item 1.
+
 ### Statistics
 
 Per-primitive log line (counts, ACMR / overdraw / fetch before-after, weld
@@ -236,6 +262,11 @@ handing pre-scaled floats to the format-agnostic convert machinery. It is
 bit-identical to the old `float_to_snorm16` **only because both encode
 sites pre-clamp to [-1, 1]** (the two functions differ in clamp order,
 unreachable inside that interval). Shader decode unchanged.
+
+This section describes the current implementation, where quantization
+applies to **both** variants. Requirements 9-10 move it: the base variant
+returns to full-float positions and the snorm16 encode survives only in
+the optimized build -- Future work item 1 carries the consequences.
 
 ### Config plumbing
 
@@ -294,20 +325,46 @@ against a same-config control pair (always 0).
   tools also make the variant invariants observable (fill-only index
   ranges, the narrower facet-id-free stride).
 
+- **Real-mouse interactive session** (2026-08-29, `optimize_meshes` on):
+  paint, a shared-`Primitive` edit (two instances, one edited, both stay
+  correct), and an in-AABB vertex drag all behave correctly against a live
+  draw list -- the invalidate path works in a real frame, not just the 4
+  unit tests. No shader-compile stutter was noticed. The out-of-AABB drag
+  clamped-and-popped exactly as then designed -- which is the observation
+  that produced requirements 9-11: the design goal is now that the user
+  never sees the clamp.
+
 Unit tests cover the multi-stream optimizer core and live-edit variant
 invalidation. What verification remains is listed in "Future work".
 
 ## Future work
 
-1. **The real-mouse interactive session.** Paint and an out-of-AABB vertex
-   drag with `optimize_meshes` ON, confirming the mesh visibly follows the
-   edit -- the ONLY thing that exercises
-   `Mesh::invalidate_optimized_primitive_variant()` against a live draw
-   list (4 unit tests, never a real frame). Same session as the last open
-   item of doc/vertex-position-quantization.md (the drag *is* that item).
-   While there, watch for shader compile stutter: the second content vertex
-   format doubles content-shader variants while meshes of both formats
-   exist (the load window, and any mesh whose variant an edit dropped).
+1. **Move quantization into the optimized variant (requirements 9-11).**
+   Base variant builds full-float positions; the optimized variant is the
+   only quantized build; edits invalidate at edit start, block
+   re-optimization while active, and queue a background re-optimize at edit
+   end (lazy/on-request build is allowed because the base variant is always
+   renderable). Known consequences to design against:
+   - The content vertex format's position returns to
+     `format_32_vec3_float`; the optimized format takes the snorm16
+     position (it already has its own format and per-primitive
+     scale/offset in the record). Both flow through every
+     `get_all_vertex_formats()` consumer, and the shader position-encoding
+     axis becomes a property of which variant a draw uses.
+   - The snorm16 branch of the live-drag write-back
+     (`mesh_component_transform.cpp`, clamp + warn-once) goes dead --
+     remove it, and with it the third-quantizer seam recorded below.
+   - BLAS builds from the source/base shape, so its snorm16-input device
+     gate stops being exercised on that path.
+   - The disk-cache key covers vertex data + options; the encoding move
+     bumps the cache format-version constant.
+   - Memory: the always-resident base variant grows back to 12
+     bytes/position; the steady-state fill win (welded + quantized
+     optimized variant) is what quantization keeps. The minimal
+     `id_renderer`-variant seam below is the recorded way to reclaim the
+     base cost later.
+   - Doc/vertex-position-quantization.md describes the current
+     both-variants encoding; update it when this lands.
 2. **Perf.** Not measurable headlessly (the frame pacer reports tier "OFF"
    and no MCP surface reports GPU frame time). Use the Frame Pacing window
    or a GPU capture on the RELEASE build; Bistro is ~119 ms/frame in
@@ -320,19 +377,25 @@ invalidation. What verification remains is listed in "Future work".
    UNINSTALL + CLEAN REINSTALL (`migrate_android_assets_to_writable()`
    never overwrites an existing config), and every OpenXR launch needs a
    fresh user prompt + explicit confirmation.
+4. **Shader-compile stutter watch.** Nothing was noticed in the 2026-08-29
+   session, but the exposure window is real: two content vertex formats
+   double content-shader variants while meshes of both formats exist (the
+   load window, and any mesh whose variant an edit dropped). Keep watching;
+   the format split survives the item-1 rework in mirrored form.
 
 Recorded seams, deliberately not implemented: LOD chains
 (`meshopt_simplify`, natural fit on the deferred-allocation staging seam),
 meshlets, a cache size cap / LRU, a dedicated minimal `id_renderer` variant
 (position + facet id + joints/weights) that would let the full original
 variant be dropped and reclaim the accepted 2x GPU mesh memory, a
-geometry-path disk cache (only if profiling disagrees), an optimized
-rebuild queued at interaction end after an invalidate, converting
-`mesh_component_transform`'s live-drag quantizer (a third position
-quantizer whose `lround` rounding can differ by one from the other two near
-ties) to `meshopt_quantizeSnorm`, and an `ERHE_VERIFY(isfinite)` on the
-centroid position path (deliberately not added: it would turn
-previously-silent broken scenes into aborts).
+geometry-path disk cache (only if profiling disagrees), and an
+`ERHE_VERIFY(isfinite)` on the centroid position path (deliberately not
+added: it would turn previously-silent broken scenes into aborts). Two
+former seams are absorbed by Future work item 1: the optimized rebuild
+queued at interaction end is now required by requirement 11, and the
+live-drag quantizer branch (a third position quantizer whose `lround`
+rounding can differ by one from the other two near ties) is removed
+outright instead of converted to `meshopt_quantizeSnorm`.
 
 ### How to verify: the A/B screenshot harness
 
