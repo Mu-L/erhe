@@ -455,6 +455,18 @@ void Mesh_component_transform::begin(App_context& context)
         }
     }
     m_active = true;
+
+    // Requirement 11: the edit starts here, so the optimized variant goes now -
+    // not at the first GPU write - and an optimization hold keeps any
+    // concurrently finishing build from publishing a pre-edit variant
+    // mid-drag. commit() releases the holds; the commit operations' primitive
+    // rebuild is what brings the variant back.
+    for (Group& group : m_groups) {
+        const std::shared_ptr<erhe::scene::Mesh> mesh = group.mesh.lock();
+        if (mesh) {
+            group.held_primitive = mesh->begin_optimized_variant_edit(group.primitive_index);
+        }
+    }
 }
 
 void Mesh_component_transform::apply(App_context& context, Transform_tool_shared& shared, const glm::mat4& updated_world_from_anchor)
@@ -578,6 +590,17 @@ void Mesh_component_transform::commit(App_context& context)
         return;
     }
     m_active = false;
+
+    // Release the optimization holds begin() took (transferred by fork /
+    // extrude), one per group, before the commit operations run - their
+    // rebuild swaps in a fresh Primitive whose optimized variant must be
+    // publishable.
+    for (Group& group : m_groups) {
+        if (group.held_primitive) {
+            group.held_primitive->release_optimization_hold();
+            group.held_primitive.reset();
+        }
+    }
 
     std::vector<std::shared_ptr<Operation>> operations;
     for (Group& group : m_groups) {
@@ -706,10 +729,9 @@ void Mesh_component_transform::enqueue_gpu_position(App_context& context, const 
         return;
     }
 
-    // First write of this edit drops any optimized variant: the edit is
-    // expressed per corner, and the optimized build has welded corners that
-    // cannot represent it. Idempotent, so calling it per write is fine.
-    mesh->invalidate_optimized_primitive_variant(group.primitive_index);
+    // The optimized variant was dropped when begin() took the edit's
+    // optimization hold; while the hold is live no variant can be published,
+    // so this write always lands beside a base-only primitive.
 
     // GPU vertex edits always address the per-corner original buffer: the
     // element mappings only describe that variant, and an optimized variant is
@@ -1087,6 +1109,14 @@ void Mesh_component_transform::fork_group(App_context& context, Group& group)
     mesh->set_primitives(new_primitives);
     node->set_parent(parent);
 
+    // Transfer the drag's optimization hold to the fork: release the object
+    // begin() bracketed, bracket the swapped-in one (dropping its freshly
+    // built variant too). commit() then releases the fork's hold.
+    if (group.held_primitive) {
+        group.held_primitive->release_optimization_hold();
+    }
+    group.held_primitive = mesh->begin_optimized_variant_edit(group.primitive_index);
+
     // Preserve the component selection across fork/un-fork: add an entry keyed on the
     // fork geometry copying the indices from the shared-geometry entry. Both entries
     // are retained; is_live() shows whichever matches the mesh's current geometry, so
@@ -1166,6 +1196,13 @@ void Mesh_component_transform::extrude_group(App_context& context, Group& group)
     node->set_parent(std::shared_ptr<erhe::Hierarchy>{});
     mesh->set_primitives(new_primitives);
     node->set_parent(parent);
+
+    // Transfer the drag's optimization hold to the extruded copy - same
+    // reasoning as fork_group() above.
+    if (group.held_primitive) {
+        group.held_primitive->release_optimization_hold();
+    }
+    group.held_primitive = mesh->begin_optimized_variant_edit(group.primitive_index);
 
     // Redirect the component selection onto the extruded geometry, carrying the
     // post-extrude selection sets (the moved duplicates / re-pointed facets). The

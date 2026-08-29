@@ -159,3 +159,85 @@ TEST(optimized_variant_invalidation, ignores_an_out_of_range_primitive_index)
     EXPECT_TRUE(primitive->optimized_render_shape); // untouched
     EXPECT_TRUE(host.reregistered.empty());
 }
+
+// Requirement 11: the edit bracket. begin drops the variant, takes an
+// optimization hold and hands back the held Primitive; while held,
+// publish_optimized_render_shape() refuses, so a build finishing mid-edit (a
+// deferred finalize) cannot put a pre-edit variant beside the in-progress
+// edit. release_optimization_hold() on the held object re-enables publish.
+TEST(optimized_variant_edit, begin_drops_and_blocks_publish_until_release)
+{
+    Recording_scene_host host;
+    const std::shared_ptr<erhe::primitive::Primitive> primitive = make_optimized_primitive();
+    const std::shared_ptr<erhe::scene::Mesh>          mesh      = make_hosted_mesh(host, primitive);
+    ASSERT_TRUE(primitive->optimized_render_shape);
+
+    host.reregistered.clear();
+    const std::shared_ptr<erhe::primitive::Primitive> held = mesh->begin_optimized_variant_edit(0);
+    ASSERT_EQ(held, primitive);
+    EXPECT_FALSE(primitive->optimized_render_shape);
+    EXPECT_EQ(std::count(host.reregistered.begin(), host.reregistered.end(), mesh.get()), 1);
+
+    // A build landing mid-edit is refused and dropped.
+    primitive->publish_optimized_render_shape(
+        std::make_shared<erhe::primitive::Primitive_render_shape>(erhe::primitive::Buffer_mesh{})
+    );
+    EXPECT_FALSE(primitive->optimized_render_shape);
+
+    held->release_optimization_hold();
+    primitive->publish_optimized_render_shape(
+        std::make_shared<erhe::primitive::Primitive_render_shape>(erhe::primitive::Buffer_mesh{})
+    );
+    EXPECT_TRUE(primitive->optimized_render_shape);
+}
+
+TEST(optimized_variant_edit, begin_holds_even_without_a_live_variant)
+{
+    Recording_scene_host host;
+    const std::shared_ptr<erhe::primitive::Primitive> primitive = make_optimized_primitive();
+    const std::shared_ptr<erhe::scene::Mesh>          mesh      = make_hosted_mesh(host, primitive);
+    primitive->optimized_render_shape.reset();
+
+    // The hold is what blocks a concurrent finalize, so it must be taken even
+    // when there is nothing to drop.
+    const std::shared_ptr<erhe::primitive::Primitive> held = mesh->begin_optimized_variant_edit(0);
+    ASSERT_EQ(held, primitive);
+    primitive->publish_optimized_render_shape(
+        std::make_shared<erhe::primitive::Primitive_render_shape>(erhe::primitive::Buffer_mesh{})
+    );
+    EXPECT_FALSE(primitive->optimized_render_shape);
+    held->release_optimization_hold();
+}
+
+TEST(optimized_variant_edit, nested_holds_release_in_pairs)
+{
+    Recording_scene_host host;
+    const std::shared_ptr<erhe::primitive::Primitive> primitive = make_optimized_primitive();
+    const std::shared_ptr<erhe::scene::Mesh>          mesh      = make_hosted_mesh(host, primitive);
+
+    // Instances share Primitives, so two tools can bracket the same one; the
+    // publish stays refused until the LAST hold is released.
+    const std::shared_ptr<erhe::primitive::Primitive> held_a = mesh->begin_optimized_variant_edit(0);
+    const std::shared_ptr<erhe::primitive::Primitive> held_b = mesh->begin_optimized_variant_edit(0);
+    held_a->release_optimization_hold();
+    primitive->publish_optimized_render_shape(
+        std::make_shared<erhe::primitive::Primitive_render_shape>(erhe::primitive::Buffer_mesh{})
+    );
+    EXPECT_FALSE(primitive->optimized_render_shape);
+
+    held_b->release_optimization_hold();
+    primitive->publish_optimized_render_shape(
+        std::make_shared<erhe::primitive::Primitive_render_shape>(erhe::primitive::Buffer_mesh{})
+    );
+    EXPECT_TRUE(primitive->optimized_render_shape);
+}
+
+TEST(optimized_variant_edit, publish_null_clears_a_stale_variant)
+{
+    // The geometry-path commit clears a stale soup-path variant by publishing
+    // null; that must keep working outside a hold.
+    const std::shared_ptr<erhe::primitive::Primitive> primitive = make_optimized_primitive();
+    ASSERT_TRUE(primitive->optimized_render_shape);
+    primitive->publish_optimized_render_shape(nullptr);
+    EXPECT_FALSE(primitive->optimized_render_shape);
+}

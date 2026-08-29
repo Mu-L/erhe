@@ -91,6 +91,21 @@ public:
     // Idempotent, and free when there is no variant to drop - which is every
     // call while mesh optimization is off.
     void invalidate_optimized_primitive_variant(std::size_t primitive_index);
+    // Live-edit bracket around one primitive's optimized variant
+    // (doc/meshoptimizer-integration.md, requirement 11). Called when the edit
+    // STARTS (drag begin, stroke begin - before its first GPU write): takes an
+    // optimization hold on the Primitive and drops the live variant exactly
+    // like invalidate_optimized_primitive_variant(). While the hold is active
+    // Primitive::publish_optimized_render_shape() refuses, so a variant built
+    // from pre-edit data (a deferred finalize landing mid-stroke) can never
+    // appear beside the in-progress edit.
+    //
+    // Returns the held Primitive (null if nothing was held). The caller keeps
+    // it for the edit's duration and, when the edit ENDS, calls
+    // release_optimization_hold() ON THAT OBJECT - never through a
+    // (mesh, index) lookup, because an operation executing mid-edit (undo
+    // during a stroke) can swap the mesh's slot to a different Primitive.
+    [[nodiscard]] auto begin_optimized_variant_edit(std::size_t primitive_index) -> std::shared_ptr<erhe::primitive::Primitive>;
     void add_primitive       (const std::shared_ptr<erhe::primitive::Primitive>& primitive, const std::shared_ptr<erhe::primitive::Material>& material = {});
     void set_primitives      (const std::vector<Mesh_primitive>& primitives);
     // Reassign the material of one primitive. Use this instead of writing

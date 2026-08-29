@@ -203,7 +203,10 @@ void deferred_finalize_mesh_items(Mesh_operation_parameters&& parameters, const 
                         // normals and tangents the soup build never had.
                         std::shared_ptr<erhe::primitive::Primitive_render_shape> optimized;
                         if (primitive.render_shape->commit_geometry_buffer_mesh(optimized)) {
-                            primitive.optimized_render_shape = std::move(optimized);
+                            // publish refuses under a live-edit optimization
+                            // hold, so a variant built from pre-edit data can
+                            // never appear beside an in-progress edit.
+                            primitive.publish_optimized_render_shape(std::move(optimized));
                         }
                     }
                 }

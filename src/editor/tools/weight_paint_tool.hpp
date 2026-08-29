@@ -16,8 +16,9 @@
 #include <string>
 #include <unordered_map>
 
-namespace erhe::geometry { class Geometry; }
-namespace erhe::scene    { class Mesh; class Node; class Skin; }
+namespace erhe::geometry  { class Geometry; }
+namespace erhe::primitive { class Primitive; }
+namespace erhe::scene     { class Mesh; class Node; class Skin; }
 
 namespace editor {
 
@@ -130,6 +131,10 @@ private:
     bool                                            m_stroke_active{false};
     std::weak_ptr<erhe::scene::Mesh>                m_stroke_mesh;
     std::size_t                                     m_stroke_primitive_index{0};
+    // The Primitive begin_stroke() bracketed with an optimization hold;
+    // released via release_optimization_hold() on exactly this object in
+    // end_stroke() (requirement 11).
+    std::shared_ptr<erhe::primitive::Primitive>     m_stroke_held_primitive;
     std::shared_ptr<erhe::geometry::Geometry>       m_stroke_geometry;
     std::shared_ptr<erhe::scene::Skin>              m_stroke_skin;
     uint32_t                                        m_stroke_joint_local_index{0}; // index within the skin's joints

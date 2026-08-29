@@ -35,6 +35,7 @@
 #include <fmt/core.h>
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <string>
 
 using erhe::geometry::get_pointf;
@@ -80,6 +81,15 @@ auto Paint_vertex_command::try_call() -> bool
 
     m_context.paint_tool->paint();
     return true;
+}
+
+void Paint_vertex_command::on_inactive()
+{
+    // Stroke end: mouse release, hover loss, or XR trigger release. Releases
+    // the optimization holds the stroke took (requirement 11).
+    if (m_context.paint_tool != nullptr) {
+        m_context.paint_tool->end_stroke();
+    }
 }
 
 #pragma endregion Commands
@@ -311,6 +321,17 @@ auto Paint_tool::vertex_buffer_index_from_scnene_mesh_primitive_corner(
     return element_mappings.mesh_corner_to_vertex_buffer_index[geo_mesh_corner];
 }
 
+void Paint_tool::end_stroke()
+{
+    // The paint itself needs no commit step (the GPU writes already happened);
+    // this only releases the optimization holds so the primitives may be
+    // re-optimized again.
+    for (const std::shared_ptr<erhe::primitive::Primitive>& held : m_stroke_holds) {
+        held->release_optimization_hold();
+    }
+    m_stroke_holds.clear();
+}
+
 void Paint_tool::paint_corner(
     erhe::scene::Mesh& scene_mesh,
     const std::size_t  scene_mesh_primitive_index,
@@ -343,10 +364,25 @@ void Paint_tool::paint_vertex(
         return ;
     }
 
-    // First write of this edit drops any optimized variant: the edit is
-    // expressed per corner, and the optimized build has welded corners that
-    // cannot represent it. Idempotent, so calling it per write is fine.
-    scene_mesh.invalidate_optimized_primitive_variant(scene_mesh_primitive_index);
+    // Requirement 11: the first touch of this primitive in the stroke drops
+    // the optimized variant (the edit is per corner; the welded build cannot
+    // express it) and takes an optimization hold, so no variant built from
+    // pre-stroke data can be published until end_stroke() releases it. Lazy
+    // per touched primitive: a hover-driven stroke can cross meshes, and a
+    // mid-stroke primitive swap (undo) gets its own hold.
+    const bool already_held = std::any_of(
+        m_stroke_holds.begin(),
+        m_stroke_holds.end(),
+        [&mesh_primitive](const std::shared_ptr<erhe::primitive::Primitive>& held) {
+            return held == mesh_primitive.primitive;
+        }
+    );
+    if (!already_held) {
+        std::shared_ptr<erhe::primitive::Primitive> held = scene_mesh.begin_optimized_variant_edit(scene_mesh_primitive_index);
+        if (held) {
+            m_stroke_holds.push_back(std::move(held));
+        }
+    }
 
     // GPU vertex edits always address the per-corner original buffer: the
     // element mappings only describe that variant, and an optimized variant is

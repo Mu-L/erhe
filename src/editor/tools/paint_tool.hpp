@@ -18,6 +18,7 @@
 
 namespace erhe::geometry       { class Geometry; }
 namespace erhe::imgui          { class Imgui_windows; }
+namespace erhe::primitive      { class Primitive; }
 namespace erhe::scene          { class Mesh; }
 namespace erhe::scene_renderer { class Mesh_memory; }
 
@@ -29,8 +30,9 @@ class Paint_vertex_command : public erhe::commands::Command
 {
 public:
     Paint_vertex_command(erhe::commands::Commands& commands, App_context& context);
-    void try_ready() override;
-    auto try_call () -> bool override;
+    void try_ready  () override;
+    auto try_call   () -> bool override;
+    void on_inactive() override;
 
 private:
     App_context& m_context;
@@ -77,6 +79,9 @@ public:
 
     auto try_ready() -> bool;
     void paint();
+    // Stroke end (Paint_vertex_command deactivation): releases every
+    // optimization hold the stroke took. See m_stroke_holds.
+    void end_stroke();
 
 private:
     static auto vertex_buffer_index_from_scnene_mesh_primitive_corner(
@@ -105,6 +110,15 @@ private:
     Paint_vertex_command                m_paint_vertex_command;
     erhe::commands::Redirect_command    m_drag_redirect_update_command;
     erhe::commands::Drag_enable_command m_drag_enable_command;
+
+    // The Primitives the active stroke has bracketed with an optimization
+    // hold (requirement 11: invalidate at edit start, block re-optimization
+    // until edit end). Taken lazily in paint_vertex() - a hover-driven stroke
+    // can cross meshes - and released via release_optimization_hold() on
+    // exactly these objects by end_stroke(). Keyed on the Primitive itself so
+    // a mid-stroke primitive swap at the same (mesh, index) gets its own
+    // hold and the old object still gets its release.
+    std::vector<std::shared_ptr<erhe::primitive::Primitive>> m_stroke_holds;
 
     Paint_mode              m_paint_mode{Paint_mode::Point};
     size_t                  m_selected_palette_slot{0};

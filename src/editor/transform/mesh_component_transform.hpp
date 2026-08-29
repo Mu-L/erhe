@@ -61,6 +61,12 @@ private:
         std::vector<GEO::index_t>                 vertices;     // unique affected
         std::vector<glm::vec3>                    before_local; // captured at begin(), parallel to vertices
 
+        // The Primitive begin() bracketed with an optimization hold (null when
+        // none was taken). Released via release_optimization_hold() on exactly
+        // this object at commit(); fork/extrude transfer it to the swapped-in
+        // primitive mid-drag.
+        std::shared_ptr<erhe::primitive::Primitive> held_primitive;
+
         // Extrude-along-normal only: per moved vertex, the unit direction it slides along,
         // in WORLD space (parallel to `vertices`) - its disjoint subset's average normal
         // (group-normal mode) or its own original vertex normal (vertex-normal mode). The

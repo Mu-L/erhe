@@ -229,6 +229,13 @@ auto Weight_paint_tool::try_ready() -> bool
 
 auto Weight_paint_tool::begin_stroke() -> bool
 {
+    if (m_stroke_held_primitive) {
+        // A previous stroke never saw end_stroke() (re-ready without an
+        // inactive transition in between): release its optimization hold
+        // before this attempt re-brackets.
+        m_stroke_held_primitive->release_optimization_hold();
+        m_stroke_held_primitive.reset();
+    }
     m_stroke_active = false;
     m_stroke_vertices.clear();
 
@@ -295,6 +302,10 @@ auto Weight_paint_tool::begin_stroke() -> bool
     m_stroke_joint_local_index = joint_local_index;
     m_stroke_active            = true;
     m_status.clear();
+    // Requirement 11: the stroke starts here - drop the optimized variant and
+    // hold off re-optimization until end_stroke(), whose queued operation's
+    // primitive rebuild brings the variant back.
+    m_stroke_held_primitive = scene_mesh->begin_optimized_variant_edit(m_stroke_primitive_index);
     log_tools->trace(
         "WPT begin_stroke: OK mesh = '{}' primitive = {} joint = '{}' (local index {}) vertices = {}",
         scene_mesh->get_name(), m_stroke_primitive_index, joint->get_name(), joint_local_index, geo_mesh.vertices.nb()
@@ -592,10 +603,9 @@ void Weight_paint_tool::enqueue_gpu_joint_data(const uint32_t vertex_buffer_inde
     const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = stroke_mesh->get_primitives();
     const erhe::primitive::Primitive& primitive = *mesh_primitives.at(m_stroke_primitive_index).primitive.get();
 
-    // First write of this edit drops any optimized variant: the edit is
-    // expressed per corner, and the optimized build has welded corners that
-    // cannot represent it. Idempotent, so calling it per write is fine.
-    stroke_mesh->invalidate_optimized_primitive_variant(m_stroke_primitive_index);
+    // The optimized variant was dropped when begin_stroke() took the stroke's
+    // optimization hold; while the hold is live no variant can be published,
+    // so this write always lands beside a base-only primitive.
 
     // GPU vertex edits always address the per-corner original buffer: the
     // element mappings only describe that variant, and an optimized variant is
@@ -672,6 +682,14 @@ void Weight_paint_tool::end_stroke()
     }
     m_stroke_active = false;
     log_tools->trace("WPT end_stroke: {} touched vertices", m_stroke_vertices.size());
+
+    // Release the stroke's optimization hold on every exit path below: the
+    // queued operation swaps in a fresh primitive anyway, and an empty stroke
+    // leaves the (unheld) primitive free to re-optimize.
+    if (m_stroke_held_primitive) {
+        m_stroke_held_primitive->release_optimization_hold();
+        m_stroke_held_primitive.reset();
+    }
 
     std::shared_ptr<erhe::scene::Mesh> stroke_mesh = m_stroke_mesh.lock();
     if (!stroke_mesh || !m_stroke_geometry || m_stroke_vertices.empty()) {

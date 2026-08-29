@@ -1295,9 +1295,27 @@ auto Primitive::make_renderable_mesh(const Build_info& build_info, const Normal_
         return false;
     }
     if (optimized) {
-        optimized_render_shape = std::move(optimized);
+        publish_optimized_render_shape(std::move(optimized));
     }
     return true;
+}
+
+void Primitive::publish_optimized_render_shape(std::shared_ptr<Primitive_render_shape> shape)
+{
+    if (optimization_hold_count > 0) {
+        // A live edit is addressing the base variant in place; a shape built
+        // from pre-edit data must not become visible beside it. Drop the shape
+        // (its GPU ranges retire through ~Buffer_mesh) and leave the variant
+        // absent - the edit's end queues a fresh optimization.
+        return;
+    }
+    optimized_render_shape = std::move(shape);
+}
+
+void Primitive::release_optimization_hold()
+{
+    ERHE_VERIFY(optimization_hold_count > 0);
+    --optimization_hold_count;
 }
 
 auto Primitive::make_renderable_mesh(const Buffer_info& buffer_info) const -> bool

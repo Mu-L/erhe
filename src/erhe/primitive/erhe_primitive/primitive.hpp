@@ -368,7 +368,37 @@ public:
     // held. A caller that builds one shared Primitive from two threads at once
     // would tear this shared_ptr - which, before it existed, was merely
     // duplicated work.
+    //
+    // Publication goes through publish_optimized_render_shape() below, never a
+    // direct assignment (import-loop first construction aside): the publish is
+    // refused while an optimization hold is active.
     std::shared_ptr<Primitive_render_shape> optimized_render_shape;
+
+    // Live-edit optimization hold (meshoptimizer doc, requirement 11). A GPU
+    // edit (paint, weight paint, component drag) addresses the base variant's
+    // buffers in place, so an optimized shape built from pre-edit data must not
+    // become visible while the edit is active. Mesh::begin/end_optimized_variant_edit
+    // brackets the edit: begin increments this and drops the live variant, end
+    // decrements it; publish_optimized_render_shape() refuses while it is
+    // non-zero. A counter rather than a flag because instances share Primitives
+    // and two tools could in principle bracket the same one. Same threading
+    // discipline as optimized_render_shape: main-thread writers only, no lock.
+    int optimization_hold_count{0};
+
+    // The single publication point of optimized_render_shape after first
+    // construction: assigns (null allowed - a geometry-path commit clears a
+    // stale soup-path variant this way) unless an optimization hold is active,
+    // in which case the shape is dropped and the variant stays absent - the
+    // edit's end is responsible for queueing a fresh optimization.
+    void publish_optimized_render_shape(std::shared_ptr<Primitive_render_shape> shape);
+
+    // Releases one hold Mesh::begin_optimized_variant_edit() took ON THIS
+    // OBJECT. The holder keeps the Primitive shared_ptr it bracketed and
+    // releases through it, never through a (mesh, index) lookup: an operation
+    // executing mid-edit (undo during a stroke) can swap the mesh's slot to a
+    // different Primitive, and releasing the wrong object would corrupt both
+    // counts.
+    void release_optimization_hold();
 };
 
 auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, const Buffer_info& buffer_info) -> std::optional<Buffer_mesh>;

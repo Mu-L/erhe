@@ -119,6 +119,22 @@ void Mesh::invalidate_optimized_primitive_variant(const std::size_t primitive_in
     }
 }
 
+auto Mesh::begin_optimized_variant_edit(const std::size_t primitive_index) -> std::shared_ptr<erhe::primitive::Primitive>
+{
+    if (primitive_index >= m_primitives.size()) {
+        return {};
+    }
+    const std::shared_ptr<erhe::primitive::Primitive> primitive = m_primitives[primitive_index].primitive;
+    if (!primitive) {
+        return {};
+    }
+    // The hold is taken even when no variant is live: it is what keeps a
+    // concurrent finalize from publishing a pre-edit variant mid-edit.
+    ++primitive->optimization_hold_count;
+    invalidate_optimized_primitive_variant(primitive_index);
+    return primitive;
+}
+
 void Mesh::add_primitive(
     const std::shared_ptr<erhe::primitive::Primitive>& primitive,
     const std::shared_ptr<erhe::primitive::Material>&  material

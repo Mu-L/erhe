@@ -656,7 +656,7 @@ void attach_optimized_render_shape(
     if (!optimized) {
         return;
     }
-    primitive.optimized_render_shape = std::move(optimized);
+    primitive.publish_optimized_render_shape(std::move(optimized));
 }
 
 void finalize_imported_meshes(
