@@ -90,6 +90,14 @@ void write_vertex_tbn_encoding_define(std::stringstream& sb, const erhe::datafor
        << "\n";
 }
 
+// And for the skinning weights. See res/shaders/erhe_vertex_joint_weights.glsl.
+void write_vertex_joint_weights_encoding_define(std::stringstream& sb, const erhe::dataformat::Vertex_format* vertex_format)
+{
+    sb << "#define ERHE_VERTEX_JOINT_WEIGHTS_ENCODING "
+       << static_cast<uint32_t>(erhe::dataformat::get_vertex_joint_weights_encoding(vertex_format))
+       << "\n";
+}
+
 } // anonymous namespace
 
 auto Shader_stages_create_info::attributes_source() const -> std::string
@@ -112,6 +120,7 @@ auto Shader_stages_create_info::attributes_source() const -> std::string
         write_vertex_position_encoding_define(sb, vertex_format);
         write_vertex_texcoord_encoding_define(sb, vertex_format);
         write_vertex_tbn_encoding_define(sb, vertex_format);
+        write_vertex_joint_weights_encoding_define(sb, vertex_format);
         sb << "\n";
     }
 
@@ -135,6 +144,7 @@ auto Shader_stages_create_info::attribute_defines_source() const -> std::string
         write_vertex_position_encoding_define(sb, vertex_format);
         write_vertex_texcoord_encoding_define(sb, vertex_format);
         write_vertex_tbn_encoding_define(sb, vertex_format);
+        write_vertex_joint_weights_encoding_define(sb, vertex_format);
         sb << "\n";
     }
 

@@ -1115,6 +1115,21 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                 (sink_attribute.usage_type  == erhe::dataformat::Vertex_attribute_usage::tex_coord)  &&
                 (sink_attribute.usage_index <  affine_texcoord_channel_count)                        &&
                 (sink_attribute.format      == erhe::dataformat::Format::format_16_vec2_unorm);
+            // Skinning influences: sorted smallest-last with the indices
+            // permuted in lockstep, so both attributes read both sources.
+            const bool joint_weights_are_implicit_sum =
+                erhe::dataformat::get_vertex_joint_weights_encoding(&buffer_info.vertex_format) ==
+                erhe::dataformat::Vertex_joint_weights_encoding::unorm16x3_implicit_sum;
+            const bool encode_joint_weights = joint_weights_are_implicit_sum &&
+                (sink_attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::joint_weights);
+            const bool encode_joint_indices = joint_weights_are_implicit_sum &&
+                (sink_attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::joint_indices);
+            const erhe::dataformat::Attribute_stream source_joint_indices = (encode_joint_weights || encode_joint_indices)
+                ? triangle_soup.vertex_format.find_attribute(erhe::dataformat::Vertex_attribute_usage::joint_indices, 0)
+                : erhe::dataformat::Attribute_stream{};
+            const erhe::dataformat::Attribute_stream source_joint_weights = (encode_joint_weights || encode_joint_indices)
+                ? triangle_soup.vertex_format.find_attribute(erhe::dataformat::Vertex_attribute_usage::joint_weights, 0)
+                : erhe::dataformat::Attribute_stream{};
             // The tangent slot of a quantized sink carries the whole tangent
             // frame as a quaternion, so it reads TWO source attributes.
             const bool encode_tbn =
@@ -1134,6 +1149,39 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                 1.0f / texcoord_quantization.scale[texcoord_channel + 0],
                 1.0f / texcoord_quantization.scale[texcoord_channel + 1]
             };
+            // Handled before the has-source split below, because these two sinks
+            // read a PAIR of source attributes, not the one `src` resolved to.
+            // Missing either leaves the sink zero-filled, which the decoder reads
+            // as full influence from the first joint - what an unskinned vertex
+            // of a skinned mesh means anyway.
+            if (encode_joint_weights || encode_joint_indices) {
+                if ((source_joint_indices.attribute != nullptr) && (source_joint_weights.attribute != nullptr)) {
+                    for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
+                        uint8_t* sink = sink_attribute_base + vertex_index * sink_stream.stride;
+                        float indices[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                        float weights[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                        erhe::dataformat::convert(
+                            src_vertex_data_base + source_joint_indices.attribute->offset + vertex_index * source_joint_indices.stream->stride,
+                            source_joint_indices.attribute->format, &indices[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f
+                        );
+                        erhe::dataformat::convert(
+                            src_vertex_data_base + source_joint_weights.attribute->offset + vertex_index * source_joint_weights.stream->stride,
+                            source_joint_weights.attribute->format, &weights[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f
+                        );
+                        const Joint_influences influences = sort_joint_influences(
+                            glm::vec4{indices[0], indices[1], indices[2], indices[3]},
+                            glm::vec4{weights[0], weights[1], weights[2], weights[3]}
+                        );
+                        if (encode_joint_indices) {
+                            std::memcpy(sink, influences.indices.data(), influences.indices.size());
+                        } else {
+                            const std::array<uint16_t, 3> quantized = encode_implicit_sum_joint_weights(influences.weights);
+                            std::memcpy(sink, quantized.data(), quantized.size() * sizeof(uint16_t));
+                        }
+                    }
+                }
+                continue;
+            }
             if (src.attribute != nullptr) {
                 const uint8_t* src_attribute_base = src_vertex_data_base + src.attribute->offset;
                 for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {

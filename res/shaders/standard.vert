@@ -1,6 +1,7 @@
 #include "erhe_camera_view.glsl"
 #include "erhe_skinning.glsl"
 #include "erhe_standard_variant.glsl"
+#include "erhe_vertex_joint_weights.glsl"
 #include "erhe_vertex_position.glsl"
 #include "erhe_vertex_tbn.glsl"
 #include "erhe_vertex_texcoord.glsl"
@@ -128,6 +129,10 @@ void main()
     mat4 world_from_node_normal;
 
 #ifdef ERHE_USE_SKINNING
+    // The optimized variant stores only three weights and recovers the fourth
+    // from the fact that they sum to one; see erhe_vertex_joint_weights.glsl.
+    vec4 node_joint_weights = erhe_decode_vertex_joint_weights();
+
     if (primitive.primitives[ERHE_DRAW_ID].skinning_factor < 0.5) {
         world_from_node        = primitive.primitives[ERHE_DRAW_ID].world_from_node;
         world_from_node_normal = primitive.primitives[ERHE_DRAW_ID].world_from_node_normal;
@@ -135,7 +140,7 @@ void main()
         erhe_skin_matrices(
             primitive.primitives[ERHE_DRAW_ID].base_joint_index,
             a_joint_indices_0,
-            a_joint_weights_0,
+            node_joint_weights,
             world_from_node,
             world_from_node_normal
         );
@@ -246,10 +251,10 @@ void main()
         v_bone_color = vec4(0.3, 0.0, 0.3, 1.0);
     } else {
         v_bone_color =
-            a_joint_weights_0.x * joint.debug_joint_colors[(int(a_joint_indices_0.x) + primitive.primitives[ERHE_DRAW_ID].base_joint_index) % joint.debug_joint_color_count] +
-            a_joint_weights_0.y * joint.debug_joint_colors[(int(a_joint_indices_0.y) + primitive.primitives[ERHE_DRAW_ID].base_joint_index) % joint.debug_joint_color_count] +
-            a_joint_weights_0.z * joint.debug_joint_colors[(int(a_joint_indices_0.z) + primitive.primitives[ERHE_DRAW_ID].base_joint_index) % joint.debug_joint_color_count] +
-            a_joint_weights_0.w * joint.debug_joint_colors[(int(a_joint_indices_0.w) + primitive.primitives[ERHE_DRAW_ID].base_joint_index) % joint.debug_joint_color_count];
+            node_joint_weights.x * joint.debug_joint_colors[(int(a_joint_indices_0.x) + primitive.primitives[ERHE_DRAW_ID].base_joint_index) % joint.debug_joint_color_count] +
+            node_joint_weights.y * joint.debug_joint_colors[(int(a_joint_indices_0.y) + primitive.primitives[ERHE_DRAW_ID].base_joint_index) % joint.debug_joint_color_count] +
+            node_joint_weights.z * joint.debug_joint_colors[(int(a_joint_indices_0.z) + primitive.primitives[ERHE_DRAW_ID].base_joint_index) % joint.debug_joint_color_count] +
+            node_joint_weights.w * joint.debug_joint_colors[(int(a_joint_indices_0.w) + primitive.primitives[ERHE_DRAW_ID].base_joint_index) % joint.debug_joint_color_count];
     }
 #   endif
 
@@ -262,10 +267,10 @@ void main()
     } else {
         uint base_joint = primitive.primitives[ERHE_DRAW_ID].base_joint_index;
         float w =
-            ((joint.joints[int(a_joint_indices_0.x) + int(base_joint)].debug_flags.x != 0u) ? a_joint_weights_0.x : 0.0) +
-            ((joint.joints[int(a_joint_indices_0.y) + int(base_joint)].debug_flags.x != 0u) ? a_joint_weights_0.y : 0.0) +
-            ((joint.joints[int(a_joint_indices_0.z) + int(base_joint)].debug_flags.x != 0u) ? a_joint_weights_0.z : 0.0) +
-            ((joint.joints[int(a_joint_indices_0.w) + int(base_joint)].debug_flags.x != 0u) ? a_joint_weights_0.w : 0.0);
+            ((joint.joints[int(a_joint_indices_0.x) + int(base_joint)].debug_flags.x != 0u) ? node_joint_weights.x : 0.0) +
+            ((joint.joints[int(a_joint_indices_0.y) + int(base_joint)].debug_flags.x != 0u) ? node_joint_weights.y : 0.0) +
+            ((joint.joints[int(a_joint_indices_0.z) + int(base_joint)].debug_flags.x != 0u) ? node_joint_weights.z : 0.0) +
+            ((joint.joints[int(a_joint_indices_0.w) + int(base_joint)].debug_flags.x != 0u) ? node_joint_weights.w : 0.0);
         bool zero_black = joint.debug_joint_indices.y != 0u;
         v_weight = ((w <= 0.0) && zero_black) ? -1.0 : w;
     }

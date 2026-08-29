@@ -404,6 +404,15 @@ Mesh_memory::Mesh_memory(
         if (attribute.usage_type == usage::tangent) {
             return erhe::dataformat::Format::format_16_vec4_sint;
         }
+        // Skinning weights sum to one, so the smallest is redundant: store three
+        // and let the shader recover the fourth. Stride-neutral here (stream 0 of
+        // the skinned format is 16 bytes either way), so this buys precision -
+        // 16 bits per weight instead of 8, and exact normalization - rather than
+        // memory. The joint indices are permuted so the dropped influence is
+        // always the last.
+        if (attribute.usage_type == usage::joint_weights) {
+            return erhe::dataformat::Format::format_16_vec3_unorm;
+        }
         return {};
     };
 

@@ -254,4 +254,24 @@ enum class Vertex_tbn_encoding : uint32_t
 
 [[nodiscard]] auto get_vertex_tbn_encoding(const Vertex_format* vertex_format) -> Vertex_tbn_encoding;
 
+// How skinning weights are stored. Same mechanism again.
+//
+// unorm16x3_implicit_sum drops the smallest of the four weights and lets the
+// shader recover it from the fact that the four sum to one; the joint indices
+// are permuted in lockstep so the dropped influence is always the last. The
+// three that remain get 16 bits each rather than 8, which is why this is a
+// precision win at the same stride rather than a size win.
+//
+// Keep in sync with the ERHE_VERTEX_JOINT_WEIGHTS_ENCODING_* macros in
+// res/shaders/erhe_vertex_joint_weights.glsl.
+enum class Vertex_joint_weights_encoding : uint32_t
+{
+    passthrough            = 0, // a_joint_weights_0 is unorm8x4, all four weights stored
+    unorm16x3_implicit_sum = 1  // a_joint_weights_0 is unorm16x3; the fourth weight is 1 - their sum
+};
+
+[[nodiscard]] auto c_str(Vertex_joint_weights_encoding encoding) -> const char*;
+
+[[nodiscard]] auto get_vertex_joint_weights_encoding(const Vertex_format* vertex_format) -> Vertex_joint_weights_encoding;
+
 } // namespace erhe::dataformat

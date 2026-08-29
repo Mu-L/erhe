@@ -1192,6 +1192,66 @@ auto Build_context::take_optimizable_snapshot(
                 }
                 continue;
             }
+            // Skinning influences. The weights are sorted (smallest last) and
+            // the indices permuted in lockstep, so BOTH attributes read BOTH
+            // source attributes and each re-derives the same sort - cheaper than
+            // threading state between two independent gather entries, and
+            // order-independent.
+            const bool joint_weights_are_implicit_sum =
+                erhe::dataformat::get_vertex_joint_weights_encoding(&optimized_format) ==
+                erhe::dataformat::Vertex_joint_weights_encoding::unorm16x3_implicit_sum;
+            const bool is_joint_weights = (optimized_attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::joint_weights);
+            const bool is_joint_indices = (optimized_attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::joint_indices);
+            if (joint_weights_are_implicit_sum && (is_joint_weights || is_joint_indices)) {
+                const erhe::dataformat::Attribute_stream source_indices = root.vertex_format.find_attribute(
+                    erhe::dataformat::Vertex_attribute_usage::joint_indices, 0
+                );
+                const erhe::dataformat::Attribute_stream source_weights = root.vertex_format.find_attribute(
+                    erhe::dataformat::Vertex_attribute_usage::joint_weights, 0
+                );
+                if (
+                    (source_indices.attribute == nullptr) ||
+                    (source_weights.attribute == nullptr) ||
+                    (source_indices.attribute->format != erhe::dataformat::Format::format_8_vec4_uint) ||
+                    (source_weights.attribute->format != erhe::dataformat::Format::format_8_vec4_unorm)
+                ) {
+                    return false;
+                }
+                const std::size_t indices_stream_index = static_cast<std::size_t>(source_indices.stream - root.vertex_format.streams.data());
+                const std::size_t weights_stream_index = static_cast<std::size_t>(source_weights.stream - root.vertex_format.streams.data());
+                const Vertex_buffer_writer& indices_writer = *vertex_writers.at(indices_stream_index).get();
+                const Vertex_buffer_writer& weights_writer = *vertex_writers.at(weights_stream_index).get();
+                if (
+                    (indices_writer.vertex_data.size() < corner_count * indices_writer.stride) ||
+                    (weights_writer.vertex_data.size() < corner_count * weights_writer.stride)
+                ) {
+                    return false;
+                }
+                for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
+                    uint8_t raw_indices[4];
+                    uint8_t raw_weights[4];
+                    memcpy(raw_indices, indices_writer.vertex_data.data() + vertex * indices_writer.stride + source_indices.attribute->offset, sizeof(raw_indices));
+                    memcpy(raw_weights, weights_writer.vertex_data.data() + vertex * weights_writer.stride + source_weights.attribute->offset, sizeof(raw_weights));
+                    const Joint_influences influences = sort_joint_influences(
+                        glm::vec4{
+                            static_cast<float>(raw_indices[0]), static_cast<float>(raw_indices[1]),
+                            static_cast<float>(raw_indices[2]), static_cast<float>(raw_indices[3])
+                        },
+                        glm::vec4{
+                            erhe::dataformat::unorm8_to_float(raw_weights[0]), erhe::dataformat::unorm8_to_float(raw_weights[1]),
+                            erhe::dataformat::unorm8_to_float(raw_weights[2]), erhe::dataformat::unorm8_to_float(raw_weights[3])
+                        }
+                    );
+                    uint8_t* const destination = stream.data.data() + vertex * optimized_stream.stride + optimized_attribute.offset;
+                    if (is_joint_indices) {
+                        memcpy(destination, influences.indices.data(), influences.indices.size());
+                    } else {
+                        const std::array<uint16_t, 3> encoded = encode_implicit_sum_joint_weights(influences.weights);
+                        memcpy(destination, encoded.data(), encoded.size() * sizeof(uint16_t));
+                    }
+                }
+                continue;
+            }
             // The tangent slot of an optimized format carries the whole tangent
             // frame as a quaternion, so this reads TWO staged attributes
             // (normal and tangent) into one - the only gather entry that does.

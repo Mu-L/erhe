@@ -50,7 +50,8 @@ auto Shader_key::get_defines() const -> std::vector<std::pair<std::string, std::
 #define ERHE_X(PARAM) \
     if ((Shader_int::PARAM != Shader_int::VERTEX_POSITION_ENCODING) && \
         (Shader_int::PARAM != Shader_int::VERTEX_TEXCOORD_ENCODING) && \
-        (Shader_int::PARAM != Shader_int::VERTEX_TBN_ENCODING)) { \
+        (Shader_int::PARAM != Shader_int::VERTEX_TBN_ENCODING)      && \
+        (Shader_int::PARAM != Shader_int::VERTEX_JOINT_WEIGHTS_ENCODING)) { \
         defines.emplace_back(std::string{"ERHE_" #PARAM}, fmt::format("{}", get(Shader_int::PARAM))); \
     }
 
@@ -144,6 +145,10 @@ auto Shader_key::derive(
 
     const erhe::dataformat::Vertex_tbn_encoding tbn_encoding = erhe::dataformat::get_vertex_tbn_encoding(vertex_format);
     key.set(Shader_int::VERTEX_TBN_ENCODING, static_cast<uint32_t>(tbn_encoding));
+    key.set(
+        Shader_int::VERTEX_JOINT_WEIGHTS_ENCODING,
+        static_cast<uint32_t>(erhe::dataformat::get_vertex_joint_weights_encoding(vertex_format))
+    );
 
     using usage = erhe::dataformat::Vertex_attribute_usage;
     // A quaternion-encoded format has NO normal attribute - the frame lives

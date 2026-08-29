@@ -155,7 +155,8 @@ inline constexpr const char* c_shader_debug_strings[] = {
     X(CIRCULAR_BRUSHED_METAL_TEXGEN_MODE)       \
     X(VERTEX_POSITION_ENCODING)                 \
     X(VERTEX_TEXCOORD_ENCODING)                 \
-    X(VERTEX_TBN_ENCODING)
+    X(VERTEX_TBN_ENCODING)                      \
+    X(VERTEX_JOINT_WEIGHTS_ENCODING)
 
 enum class Shader_bool : uint32_t {
 #define ERHE_X(PARAM) PARAM,

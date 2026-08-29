@@ -291,6 +291,32 @@ public:
 // The decoder is res/shaders/erhe_vertex_tbn.glsl and must match exactly.
 [[nodiscard]] auto encode_tbn_quaternion(const glm::vec3& normal, const glm::vec4& tangent) -> std::array<int16_t, 4>;
 
+// One vertex's skinning influences, sorted so the SMALLEST weight is last.
+//
+// That ordering is what the implicit-sum weight encoding needs - the dropped
+// influence has to be the one whose reconstruction error matters least - and it
+// has the side benefit of being canonical, so two corners with the same
+// influences in different author order now compare equal to the geometry path's
+// bitwise weld.
+class Joint_influences
+{
+public:
+    std::array<uint8_t, 4> indices{0, 0, 0, 0};
+    glm::vec4              weights{1.0f, 0.0f, 0.0f, 0.0f};
+};
+
+// Normalizes the weights (glTF requires this of the asset, but does not make it
+// true) and sorts descending. A vertex with no positive weight collapses to
+// "fully influenced by the first joint", which is what an unskinned vertex of a
+// skinned mesh means.
+[[nodiscard]] auto sort_joint_influences(const glm::vec4& indices, const glm::vec4& weights) -> Joint_influences;
+
+// The three stored weights of Vertex_joint_weights_encoding::unorm16x3_implicit_sum,
+// from ALREADY SORTED influences. Quantized so that the three plus the implied
+// fourth sum to exactly one unorm16 unit, which is what lets the shader
+// reconstruct the fourth as 1 - (w0 + w1 + w2) without drift.
+[[nodiscard]] auto encode_implicit_sum_joint_weights(const glm::vec4& sorted_weights) -> std::array<uint16_t, 3>;
+
 // Running totals over every primitive log_mesh_optimize_statistics() has been
 // called for since the last reset. Per-primitive lines answer "what did this
 // mesh gain"; this answers "what did the session gain", which is the figure

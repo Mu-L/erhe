@@ -342,4 +342,28 @@ auto get_vertex_tbn_encoding(const Vertex_format* vertex_format) -> Vertex_tbn_e
     }
 }
 
+auto c_str(const Vertex_joint_weights_encoding encoding) -> const char*
+{
+    switch (encoding) {
+        case Vertex_joint_weights_encoding::passthrough:            return "passthrough";
+        case Vertex_joint_weights_encoding::unorm16x3_implicit_sum: return "unorm16x3_implicit_sum";
+        default:                                                    return "?";
+    }
+}
+
+auto get_vertex_joint_weights_encoding(const Vertex_format* vertex_format) -> Vertex_joint_weights_encoding
+{
+    if (vertex_format == nullptr) {
+        return Vertex_joint_weights_encoding::passthrough;
+    }
+    const Attribute_stream joint_weights = vertex_format->find_attribute(Vertex_attribute_usage::joint_weights, 0);
+    if (joint_weights.attribute == nullptr) {
+        return Vertex_joint_weights_encoding::passthrough;
+    }
+    switch (joint_weights.attribute->format) {
+        case Format::format_16_vec3_unorm: return Vertex_joint_weights_encoding::unorm16x3_implicit_sum;
+        default:                           return Vertex_joint_weights_encoding::passthrough;
+    }
+}
+
 } // namespace erhe::dataformat

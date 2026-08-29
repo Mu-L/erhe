@@ -761,6 +761,78 @@ auto encode_tbn_quaternion(const glm::vec3& normal_in, const glm::vec4& tangent_
     return encoded;
 }
 
+auto sort_joint_influences(const glm::vec4& indices, const glm::vec4& weights) -> Joint_influences
+{
+    struct Influence
+    {
+        uint8_t index;
+        float   weight;
+    };
+    Influence influences[4] = {
+        Influence{static_cast<uint8_t>(indices[0]), weights[0]},
+        Influence{static_cast<uint8_t>(indices[1]), weights[1]},
+        Influence{static_cast<uint8_t>(indices[2]), weights[2]},
+        Influence{static_cast<uint8_t>(indices[3]), weights[3]}
+    };
+
+    float total = 0.0f;
+    for (const Influence& influence : influences) {
+        // A negative or non-finite weight is not a weight. Treat it as absent
+        // rather than letting it poison the normalization.
+        total += (std::isfinite(influence.weight) && (influence.weight > 0.0f)) ? influence.weight : 0.0f;
+    }
+    if (!(total > 0.0f)) {
+        return Joint_influences{};
+    }
+    for (Influence& influence : influences) {
+        const float weight = (std::isfinite(influence.weight) && (influence.weight > 0.0f)) ? influence.weight : 0.0f;
+        influence.weight = weight / total;
+    }
+
+    // Descending, so the smallest - the one the implicit-sum encoding drops -
+    // ends up last. Stable, so equal weights keep their author order and the
+    // result stays deterministic across builds of the same mesh.
+    std::stable_sort(
+        std::begin(influences),
+        std::end(influences),
+        [](const Influence& lhs, const Influence& rhs) { return lhs.weight > rhs.weight; }
+    );
+
+    Joint_influences result{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        result.indices[i] = influences[i].index;
+        result.weights[static_cast<glm::length_t>(i)] = influences[i].weight;
+    }
+    return result;
+}
+
+auto encode_implicit_sum_joint_weights(const glm::vec4& sorted_weights) -> std::array<uint16_t, 3>
+{
+    constexpr int32_t one = 65535;
+
+    int32_t quantized[3] = {
+        static_cast<int32_t>(sorted_weights[0] * static_cast<float>(one) + 0.5f),
+        static_cast<int32_t>(sorted_weights[1] * static_cast<float>(one) + 0.5f),
+        static_cast<int32_t>(sorted_weights[2] * static_cast<float>(one) + 0.5f)
+    };
+    for (int32_t& value : quantized) {
+        value = std::clamp(value, int32_t{0}, one);
+    }
+    // The decoder reconstructs the fourth weight as 1 - (w0 + w1 + w2), so the
+    // three stored units must not sum past one unit - independent rounding can
+    // push them over. Take the excess off the largest, where it is the smallest
+    // relative error; the weights are sorted, so that is the first.
+    const int32_t sum = quantized[0] + quantized[1] + quantized[2];
+    if (sum > one) {
+        quantized[0] = std::max(int32_t{0}, quantized[0] - (sum - one));
+    }
+    return std::array<uint16_t, 3>{
+        static_cast<uint16_t>(quantized[0]),
+        static_cast<uint16_t>(quantized[1]),
+        static_cast<uint16_t>(quantized[2])
+    };
+}
+
 auto Mesh_optimize_totals::acmr_before() const -> float
 {
     return (triangle_count > 0) ? static_cast<float>(acmr_before_weighted / static_cast<double>(triangle_count)) : 0.0f;
