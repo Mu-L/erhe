@@ -367,6 +367,8 @@ erhe_target_sources_grouped(
     operations/mesh_operation.hpp
     operations/move_mesh_vertices_operation.cpp
     operations/move_mesh_vertices_operation.hpp
+    operations/paint_colors_operation.cpp
+    operations/paint_colors_operation.hpp
     operations/paint_weights_operation.cpp
     operations/paint_weights_operation.hpp
     operations/flip_joint_operation.cpp

@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace erhe::geometry       { class Geometry; }
@@ -119,6 +120,26 @@ private:
     // a mid-stroke primitive swap at the same (mesh, index) gets its own
     // hold and the old object still gets its release.
     std::vector<std::shared_ptr<erhe::primitive::Primitive>> m_stroke_holds;
+
+    // Durable-paint accumulation, one record per Geometry the stroke touched:
+    // paint_corner() writes the color into the geometry's corner_color_0
+    // attribute live (mirroring Weight_paint_tool) and records each corner's
+    // before/after values here; end_stroke() turns every record into one
+    // undoable Paint_colors_operation, whose primitive rebuild also brings
+    // the optimized variant back. Geometry-less primitives (triangle-soup
+    // builds) get the GPU preview only, as before.
+    class Stroke_paint
+    {
+    public:
+        std::weak_ptr<erhe::scene::Mesh>              mesh;
+        std::size_t                                   primitive_index{0};
+        std::shared_ptr<erhe::geometry::Geometry>     geometry;
+        std::vector<GEO::index_t>                     corners;
+        std::vector<glm::vec4>                        before_colors; // parallel to corners
+        std::vector<glm::vec4>                        after_colors;  // parallel to corners
+        std::unordered_map<GEO::index_t, std::size_t> corner_to_slot;
+    };
+    std::vector<Stroke_paint> m_stroke_paints;
 
     Paint_mode              m_paint_mode{Paint_mode::Point};
     size_t                  m_selected_palette_slot{0};

@@ -7,6 +7,9 @@
 #include "app_settings.hpp"
 #include "graphics/icon_set.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
+#include "operations/compound_operation.hpp"
+#include "operations/operation_stack.hpp"
+#include "operations/paint_colors_operation.hpp"
 #include "renderers/render_context.hpp"
 #include "scene/scene_view.hpp"
 #include "tools/selection_tool.hpp"
@@ -323,13 +326,75 @@ auto Paint_tool::vertex_buffer_index_from_scnene_mesh_primitive_corner(
 
 void Paint_tool::end_stroke()
 {
-    // The paint itself needs no commit step (the GPU writes already happened);
-    // this only releases the optimization holds so the primitives may be
-    // re-optimized again.
+    // Release the optimization holds first: the operations queued below swap
+    // in freshly rebuilt primitives whose optimized variant must be
+    // publishable.
     for (const std::shared_ptr<erhe::primitive::Primitive>& held : m_stroke_holds) {
         held->release_optimization_hold();
     }
     m_stroke_holds.clear();
+
+    // One undoable Paint_colors_operation per touched geometry. The stroke
+    // already wrote the final ("after") colors into the geometry and the fill
+    // mesh; queueing executes the operation, whose primitive rebuild refreshes
+    // the auxiliary streams and republishes the optimized variant (the
+    // attribute rewrite is idempotent).
+    std::vector<std::shared_ptr<Operation>> operations;
+    for (Stroke_paint& stroke_paint : m_stroke_paints) {
+        const std::shared_ptr<erhe::scene::Mesh> mesh = stroke_paint.mesh.lock();
+        if (!mesh || !stroke_paint.geometry || stroke_paint.corners.empty()) {
+            continue;
+        }
+        const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_primitives();
+        if ((stroke_paint.primitive_index >= mesh_primitives.size()) || !mesh_primitives[stroke_paint.primitive_index].primitive) {
+            continue;
+        }
+        const erhe::primitive::Primitive& primitive = *mesh_primitives[stroke_paint.primitive_index].primitive.get();
+        if (!primitive.render_shape) {
+            continue;
+        }
+        operations.push_back(
+            std::make_shared<Paint_colors_operation>(
+                Paint_colors_operation::Parameters{
+                    .mesh            = mesh,
+                    .primitive_index = stroke_paint.primitive_index,
+                    .geometry        = stroke_paint.geometry,
+                    .corners         = std::move(stroke_paint.corners),
+                    .before_colors   = std::move(stroke_paint.before_colors),
+                    .after_colors    = std::move(stroke_paint.after_colors),
+                    .build_info      = erhe::primitive::Build_info{
+                        .primitive_types = {
+                            .fill_triangles          = true,
+                            .fill_triangles_expanded = true,
+                            .edge_lines              = true,
+                            .corner_points           = true,
+                            .centroid_points         = true
+                        },
+                        // Skinned meshes must rebuild into the skinned vertex
+                        // format or the GPU streams silently lose their joints.
+                        .buffer_info = mesh->skin
+                            ? m_context.mesh_memory->make_skinned_primitive_buffer_info()
+                            : m_context.mesh_memory->make_primitive_buffer_info()
+                    },
+                    .normal_style    = primitive.render_shape->get_normal_style()
+                }
+            )
+        );
+    }
+    m_stroke_paints.clear();
+
+    if (operations.empty()) {
+        return;
+    }
+    if (operations.size() == 1) {
+        m_context.operation_stack->queue(operations.front());
+    } else {
+        m_context.operation_stack->queue(
+            std::make_shared<Compound_operation>(
+                Compound_operation::Parameters{.operations = std::move(operations)}
+            )
+        );
+    }
 }
 
 void Paint_tool::paint_corner(
@@ -343,6 +408,59 @@ void Paint_tool::paint_corner(
     if (!vertex_id_opt.has_value()) {
         return;
     }
+
+    // Durable half of the stroke: write the color into the geometry's
+    // corner_color_0 attribute - the attribute the primitive builder prefers -
+    // and record the corner's before/after values so end_stroke() can queue
+    // one undoable Paint_colors_operation per touched geometry. Geometry-less
+    // primitives (triangle-soup builds) keep the GPU-only behavior.
+    const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = scene_mesh.get_primitives();
+    const erhe::scene::Mesh_primitive&              mesh_primitive  = mesh_primitives.at(scene_mesh_primitive_index);
+    const std::shared_ptr<erhe::geometry::Geometry> geometry        =
+        (mesh_primitive.primitive && mesh_primitive.primitive->render_shape)
+            ? mesh_primitive.primitive->render_shape->get_geometry()
+            : std::shared_ptr<erhe::geometry::Geometry>{};
+    if (geometry) {
+        Stroke_paint* stroke_paint = nullptr;
+        for (Stroke_paint& candidate : m_stroke_paints) {
+            if (candidate.geometry.get() == geometry.get()) {
+                stroke_paint = &candidate;
+                break;
+            }
+        }
+        if (stroke_paint == nullptr) {
+            m_stroke_paints.push_back(
+                Stroke_paint{
+                    .mesh            = std::static_pointer_cast<erhe::scene::Mesh>(scene_mesh.shared_from_this()),
+                    .primitive_index = scene_mesh_primitive_index,
+                    .geometry        = geometry
+                }
+            );
+            stroke_paint = &m_stroke_paints.back();
+        }
+
+        erhe::geometry::Mesh_attributes& attributes = geometry->get_attributes();
+        const auto slot_it = stroke_paint->corner_to_slot.find(corner);
+        if (slot_it == stroke_paint->corner_to_slot.end()) {
+            // First touch of this corner in the stroke: capture what the
+            // builder would have rendered as the undo value (corner color,
+            // else vertex color, else the build's constant white).
+            const GEO::index_t              vertex       = geometry->get_mesh().facet_corners.vertex(corner);
+            const std::optional<GEO::vec4f> corner_color = attributes.corner_color_0.try_get(corner);
+            const std::optional<GEO::vec4f> vertex_color = attributes.vertex_color_0.try_get(vertex);
+            const GEO::vec4f                before       =
+                corner_color.has_value() ? corner_color.value() :
+                vertex_color.has_value() ? vertex_color.value() : GEO::vec4f{1.0f, 1.0f, 1.0f, 1.0f};
+            stroke_paint->corner_to_slot.emplace(corner, stroke_paint->corners.size());
+            stroke_paint->corners      .push_back(corner);
+            stroke_paint->before_colors.push_back(glm::vec4{before.x, before.y, before.z, before.w});
+            stroke_paint->after_colors .push_back(color);
+        } else {
+            stroke_paint->after_colors[slot_it->second] = color;
+        }
+        attributes.corner_color_0.set(corner, GEO::vec4f{color.x, color.y, color.z, color.w});
+    }
+
     paint_vertex(scene_mesh, scene_mesh_primitive_index, vertex_id_opt.value(), color);
 }
 
