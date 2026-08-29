@@ -1,8 +1,8 @@
-// Filesystem cache for optimize_triangle_soup(), phase 4 of
-// doc/meshoptimizer-integration-plan.md.
+// Filesystem cache for optimize_triangle_soup(); see
+// doc/meshoptimizer-integration.md, "The filesystem cache (soup path only)".
 //
-// Soup path only. The geometry path (phase 5) runs its passes uncached at
-// build/finalize time - a deliberate cost decision recorded in phase 5b - so
+// Soup path only. The geometry path runs its passes uncached at
+// build/finalize time - a deliberate cost decision recorded in that doc - so
 // there is no cache lookup there to keep in sync with this one.
 
 #include "erhe_primitive/mesh_optimizer.hpp"

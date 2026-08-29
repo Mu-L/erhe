@@ -600,8 +600,8 @@ void build_imported_buffer_meshes(
 }
 
 // Attaches the optimized mesh variant to one imported primitive, per
-// doc/meshoptimizer-integration-plan.md phase 3. Off by default
-// (Mesh_memory_config::optimize_meshes).
+// doc/meshoptimizer-integration.md, "The soup path (import time)". Off by
+// default (Mesh_memory_config::optimize_meshes).
 //
 // MUST be called before the owning mesh is registered with the draw list -
 // see the call site. Registration bakes the drawn variant's base_vertex and
