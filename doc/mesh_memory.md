@@ -208,7 +208,7 @@ existing bucket whose `accept()` returns true or starts a new bucket.
 | `index_pool_block_size_mb` | 16 | Default capacity of a freshly grown index pool block. |
 | `edge_line_vertex_pool_block_size_mb` | 8 | Currently unused -- the edge-line vertex pool is not implemented; the config key is reserved. |
 | `quantize_vertex_positions` | true | Store vertex positions as snorm16x3 normalized into the primitive AABB. Ignored where the format cannot be ray tracing acceleration structure build input. See `doc/vertex-position-quantization.md`. |
-| `optimize_meshes` | false | Build an additional meshoptimizer-optimized variant of every renderable mesh. See `doc/meshoptimizer-integration.md`. |
+| `optimize_meshes` | true | Build an additional meshoptimizer-optimized variant of every renderable mesh. See `doc/meshoptimizer-integration.md`. |
 | `mesh_optimize_cache` | false | Cache imported-mesh optimization results on disk. No effect unless `optimize_meshes` is on. |
 | `max_buffers_per_pool` | 64 | Hard cap. `Buffer_pool::create_new_block` aborts when exceeded. |
 

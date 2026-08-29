@@ -6,9 +6,9 @@ upstream, pinned via CPM): requirements, design, verification, future
 work, traps. History lives in the git log, not here.
 
 Status: implemented and verified except for the items in "Future work" --
-the real-mouse interactive session, the perf measurement, and flipping
-`optimize_meshes` on by default; both config booleans still default to
-**false**.
+the real-mouse interactive session and the perf measurement.
+`optimize_meshes` defaults to **true** in `config/editor/mesh_memory.json`;
+`mesh_optimize_cache` stays **false** (the user's call).
 
 ## Requirements
 
@@ -23,8 +23,8 @@ User-confirmed; the first is a hard requirement.
    before/after `meshopt_analyze*` statistics. LOD and meshlets are
    explicitly future work -- seams left, nothing implemented.
 3. Config: `optimize_meshes` and `mesh_optimize_cache` in the code-generated
-   `Mesh_memory_config`. Off during bring-up; `optimize_meshes` flips on
-   after full verification. The filesystem cache must work on Android/Quest.
+   `Mesh_memory_config`. `optimize_meshes` is on by default in the editor
+   config; the cache is off. The filesystem cache must work on Android/Quest.
 4. **Shared primitives are optimized once, as one** -- glTF import dedups
    `Primitive` slots and brushes share `Primitive` objects; instances reuse
    the shared variant.
@@ -314,13 +314,12 @@ invalidation. What verification remains is listed in "Future work".
    Debug. The static side is measured (the -62% fetch figures above).
    Also measure the transient RSS spike of the staging snapshot + optimizer
    temporaries on a Bistro-scale rebuild with several finalize workers.
-3. **Flip the default**: `optimize_meshes` to `true` in
-   `config/editor/mesh_memory.json` (cache default stays the user's call),
-   update `src/erhe/primitive/erhe_primitive/notes.md`, final commit.
-   Quest verification needs UNINSTALL + CLEAN REINSTALL
-   (`migrate_android_assets_to_writable()` never overwrites an existing
-   config), and every OpenXR launch needs a fresh user prompt + explicit
-   confirmation.
+3. **Quest verification of the flipped default.** The default flip itself is
+   done (`optimize_meshes` true in `config/editor/mesh_memory.json`; the
+   cache default stays the user's call). Quest verification needs
+   UNINSTALL + CLEAN REINSTALL (`migrate_android_assets_to_writable()`
+   never overwrites an existing config), and every OpenXR launch needs a
+   fresh user prompt + explicit confirmation.
 
 Recorded seams, deliberately not implemented: LOD chains
 (`meshopt_simplify`, natural fit on the deferred-allocation staging seam),

@@ -19,6 +19,10 @@ volume computation, and PBR material definitions.
 - `Material` -- PBR material (extends `erhe::Item`): base color, roughness, metallic, emissive, texture samplers
 - `Triangle_soup` -- raw vertex/index data container (e.g., from glTF import)
 - `Vertex_buffer_writer` / `Index_buffer_writer` -- write vertex attributes and indices to byte buffers; on destruction they call `vertex_writer_ready` / `index_writer_ready` on the owning sink.
+- `mesh_optimizer.hpp` -- `optimize_triangle_soup()` / `optimize_triangle_soup_cached()`:
+  meshoptimizer passes (vertex weld/remap, vertex-cache order, overdraw order,
+  vertex-fetch order) over a copy of a `Triangle_soup`, plus the disk cache for
+  import-time results. `meshoptimizer.h` stays private to this target.
 - `Index_range` -- offset and count for a specific primitive type within the index buffer
 - `Buffer_range` -- byte offset, element count, and element size within a buffer; identifies the owning pool via `{pool_id, buffer_id}`.
 - Enums: `Normal_style`, `Primitive_mode`, `Primitive_type`
@@ -47,3 +51,9 @@ volume computation, and PBR material definitions.
 - The builder generates indices for four primitive modes: triangle fill, edge lines, corner points, and polygon centroids.
 - `Buffer_mesh` is move-only (due to `Buffer_allocation`). `Primitive_render_shape`, `Primitive_shape`, and `Primitive_raytrace` are also move-only.
 - **Member declaration order matters**: In `Primitive_raytrace`, `m_rt_mesh` must be declared after the `Cpu_buffer` shared_ptrs so it is destroyed first, freeing allocations while the allocator is still alive.
+- Mesh optimization (`optimize_meshes`, on by default in the editor config) builds an
+  additional fill-only, welded `Primitive_render_shape` variant per unique `Primitive`
+  (`Primitive::optimized_render_shape`), in a separate vertex format without the
+  per-corner facet-id attribute. The original variant is always built and remains the
+  one used by ID rendering, ray tracing, export, and vertex editing; the first live
+  edit invalidates the optimized variant. See `doc/meshoptimizer-integration.md`.
