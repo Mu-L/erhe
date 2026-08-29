@@ -381,6 +381,11 @@ Mesh_memory::Mesh_memory(
         if ((attribute.usage_type == usage::position) && (attribute.usage_index == 0)) {
             return optimized_position_format;
         }
+        // Vertex colors are LDR, so unorm8 per channel: -12 bytes. vec4 in GLSL
+        // either way and hardware normalized, so no decode and no shader axis.
+        if (attribute.usage_type == usage::color) {
+            return erhe::dataformat::Format::format_8_vec4_unorm;
+        }
         return {};
     };
 

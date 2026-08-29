@@ -33,6 +33,40 @@ using erhe::geometry::vec3_from_index;
 
 namespace erhe::primitive {
 
+namespace {
+
+// Attribute storage conversions the optimized build knows how to perform when
+// gathering the staged (base format) bytes into the optimized format. Anything
+// not listed makes take_optimizable_snapshot() DECLINE - no optimized variant -
+// rather than ship bytes no encoder wrote.
+//
+// Position is not here: it has its own encode branch (the AABB affine is not a
+// pure format conversion). See doc/meshoptimizer-attribute-encodings-plan.md.
+//
+// The soup path does not consult this list - Primitive_shape::make_buffer_mesh()
+// routes every non-position attribute through erhe::dataformat::convert()
+// unconditionally, because it also serves base builds whose source soup format
+// is whatever the asset happened to carry. So every pair added here must ALSO be
+// one convert() actually implements, or the two paths would disagree silently.
+[[nodiscard]] auto is_supported_attribute_conversion(
+    const erhe::dataformat::Format source_format,
+    const erhe::dataformat::Format optimized_format
+) -> bool
+{
+    using Format = erhe::dataformat::Format;
+    if (source_format == optimized_format) {
+        return true;
+    }
+    // Vertex colors are LDR, so unorm8 per channel. vec4 in GLSL either way,
+    // hardware normalized: no decode, no shader variant axis.
+    if ((source_format == Format::format_32_vec4_float) && (optimized_format == Format::format_8_vec4_unorm)) {
+        return true;
+    }
+    return false;
+}
+
+} // anonymous namespace
+
 Build_context_root::Build_context_root(
     Buffer_mesh&      buffer_mesh,
     const GEO::Mesh&  mesh,
@@ -1113,17 +1147,34 @@ auto Build_context::take_optimizable_snapshot(
                 }
                 continue;
             }
-            if (source.attribute->format != optimized_attribute.format) {
+            if (!is_supported_attribute_conversion(source.attribute->format, optimized_attribute.format)) {
                 // The optimized format stages this attribute differently and no
                 // conversion is defined for it. Decline rather than guess.
                 return false;
             }
-            const std::size_t size = erhe::dataformat::get_format_size_bytes(optimized_attribute.format);
+            if (source.attribute->format == optimized_attribute.format) {
+                const std::size_t size = erhe::dataformat::get_format_size_bytes(optimized_attribute.format);
+                for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
+                    memcpy(
+                        stream.data.data()        + vertex * optimized_stream.stride + optimized_attribute.offset,
+                        writer.vertex_data.data() + vertex * writer.stride           + source.attribute->offset,
+                        size
+                    );
+                }
+                continue;
+            }
+            // Converted attribute. Same reference encoder the soup path uses, so
+            // the two paths cannot drift; and it runs BEFORE the meshopt passes,
+            // so the weld compares the final bytes (a quantized attribute merges
+            // strictly more corners than a float one, and the GPU data equals the
+            // staged data exactly).
             for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
-                memcpy(
-                    stream.data.data()        + vertex * optimized_stream.stride + optimized_attribute.offset,
+                erhe::dataformat::convert(
                     writer.vertex_data.data() + vertex * writer.stride           + source.attribute->offset,
-                    size
+                    source.attribute->format,
+                    stream.data.data()        + vertex * optimized_stream.stride + optimized_attribute.offset,
+                    optimized_attribute.format,
+                    1.0f
                 );
             }
         }
