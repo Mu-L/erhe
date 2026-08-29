@@ -217,6 +217,16 @@ deleting context's cache directly; every other context gets an entry on its
 - The **main context has an explicit drain point** in
   `Device_impl::wait_frame()` / `begin_frame` -- "drain on next
   make-current" never fires for the one context that draws.
+- **Bind elision is suspended while scrubs are pending** (found by the
+  scrub tests, 2026-08-29): between a delete's enqueue and this context's
+  drain, the cache may hold a deleted object's name that GL has recycled,
+  so an equal name is not proof the object is bound -- the elided rebind
+  left the orphan attached (a wrong-draw window), recorded no epoch, and
+  the drain then unbound the live object. Each `Gl_binding_state` carries
+  a pending-scrub count (enqueue increments, drain decrements, bind paths
+  read it relaxed); while nonzero the five shared-object bind paths bind
+  for real and bump the slot epoch, which is what lets the drain spare
+  the rebound name.
 
 ### Cross-context publication
 
@@ -265,8 +275,10 @@ next tick.
 - **Reverse direction** (worker consuming main-written shared data -- the
   staging buffer feeding a worker texture upload, a blit source the main
   context rendered): rules are symmetric, so the handoff must carry a fence
-  created on the **main** context, waited on by the worker. No such site
-  exists yet; whichever commit adds the first one must add the fence.
+  created on the **main** context, waited on by the worker.
+  `Buffer_impl::publish_for_handoff()` is that fence (fence-then-flush on
+  the current context, any thread); the blit encoder's per-method source
+  waits are the consuming half. Exercised by the worker-context tests.
 
 ### Pool, creation and lifetime
 
@@ -366,48 +378,54 @@ Vulkan VS build interactively.
 
 ## Future work
 
-### Remaining verification (no code, needs scaffolding or specific drives)
+### Verification status (2026-08-29: dedicated tests landed)
 
-1. **Worker GL errors are observable**: provoke a deliberate GL error on a
-   worker and see the per-context debug callback log it. Every other check
-   is worthless while worker GL errors are discarded.
-2. **Publication fences**: mutation-check (remove a `wait_publication()` or
-   a producer fence and observe breakage), or failing that on this driver,
-   check the plumbing structurally -- every worker-published object carries
-   a sync when its name escapes, consumed before the first main touch.
-3. **Guards**: after a full glTF load plus a few hundred frames, no
-   `HAS_CONTEXT` / remaining `MAIN_CONTEXT` assert fired; mutation-check by
-   placing a `MAIN_CONTEXT` verify inside the worker prepare loop. A
-   happy-path load exercises no error paths -- worker-side handle
-   destruction happens only on failure paths (`create_new_block` returning
-   false), which is also what exercises the scrub-queue routing; force one
-   or record the limit.
-4. **Clean shutdown under ASan** with the pool populated: no event-watch
-   use-after-free, no leaked contexts.
-5. **The per-object accessors** (needs dedicated scaffolding; no natural
-   call site): same object adopted on two contexts concurrently, both
-   succeed -- check the per-context map (two entries, two context indices),
-   NOT GL names, which are per-context and expectedly equal; a worker-side
-   `blit_framebuffer` between two accessor-held passes with the destination
-   fence waited before main reads it; idempotence (re-entry creates no
-   second object, no driver path); destruction drains the deferred queues
-   (ASan + GL object-count check -- a leak here is silent); mutation-check
-   `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT` by reaching
-   `Vertex_input_state_impl::create` from a worker without an accessor.
-6. **The mesh-edit call-site remainder**: CSG, geometry-graph evaluation,
+`Worker_context_test` / `Worker_context_gl_test` in
+`erhe_graphics_gpu_tests` (`src/erhe/graphics/test/test_worker_context.cpp`
+and `test_worker_context_gl.cpp`, the latter OpenGL-only) now cover, with
+repeatable tests run green on the OpenGL `build_tests` tree and under ASAN:
+
+- **Worker GL errors are observable** -- a deliberate worker-side GL error
+  reaches the environment's message list through the per-context debug
+  callback, which now routes into `Device::device_message` (errors fail
+  the owning test; in the editor they hit the fatal device-error handler).
+- **Buffers prepared on workers, consumed on main**: round trip,
+  8-threads-on-a-4-context-pool contention, nested-scope refcounting, the
+  main-thread no-op, and context-index tracking across scopes.
+- **Worker texture create + upload** (both directions): worker-produced
+  staging via `init_data`, and the reverse handoff -- main-written staging
+  fenced with `Buffer_impl::publish_for_handoff()` and consumed by a
+  worker upload; plus worker `generate_mipmaps` and `fill_buffer`.
+- **The per-object accessors**: one `Vertex_input_state` adopted on two
+  contexts, per-context idempotence, main-thread destruction queueing the
+  worker context's VAO + FBO (observed via the
+  `get_pending_container_delete_count` test hook) and the re-acquire
+  drain, and a worker `blit_framebuffer` between two accessor-held passes
+  read back on main.
+- **The scrub queue**: worker-side delete of a main-bound buffer leaves
+  the orphan bound until the `wait_frame` drain issues a REAL unbind
+  (verified with a raw GL binding query), and a name rebound after the
+  enqueue survives the drain -- the name IS recycled on this driver, so
+  the epoch guard is exercised for real. This test found and drove the
+  fix for the elided-rebind defect (see the design section).
+- **The guard**: a death test proves off-scope worker creation dies on
+  `HAS_CONTEXT` instead of faulting in the driver.
+
+Still manual / not covered by the tests:
+
+1. **The mesh-edit call-site remainder**: CSG, geometry-graph evaluation,
    and a lightmap partition run (parallel path, and serial for the main
    no-op) on the GL build -- drivable over the editor MCP server
    (127.0.0.1:3743). The Catmull-Clark half is done.
-7. **Worker-side texture create + upload** (nothing does this today; the
-   mechanism is in place and dormant): main writes staging pixels and
-   fences (the reverse-direction rule), worker waits, creates, uploads;
-   main samples and reads back expected texels. Set worker pixel-store
-   state explicitly -- it is per-context and inherits nothing.
-8. **The scrub queue**: a worker deletes a shared object the main context
-   has bound; the main drain issues a *real* unbind (verify with a GL
-   binding query, not the cache) within a frame; a name recycled between
-   delete and drain is not scrubbed (the epoch check); mutation-check the
-   per-context tracker wiring via a mis-wired pair failing a pixel check.
+2. **Guards on a full glTF load**: a few hundred frames with no assert
+   fired, plus forcing a worker-side failure path (`create_new_block`
+   returning false) -- the happy path exercises no error paths.
+3. **Editor-level clean shutdown under ASan** (the test environment's
+   device + populated-pool teardown runs clean under ASAN; the editor's
+   own shutdown ordering is a separate check).
+4. **Fence mutation-checks** (remove a producer fence / consumer wait and
+   observe breakage) -- the fences are exercised end to end by the tests
+   above, but not mutation-tested; this driver may mask a missing fence.
 
 ### Open items
 
