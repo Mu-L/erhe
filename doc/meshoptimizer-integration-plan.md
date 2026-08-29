@@ -1,5 +1,13 @@
 # Integrate meshoptimizer into erhe
 
+Status (2026-08-28): phases 0-6 are COMPLETE and committed; `optimize_meshes`
+and `mesh_optimize_cache` both still default to **false**. Of phase 7: builds
+(including the once-broken clang config), the visual A/B on all three scenes,
+the headless interaction sanity checks, and the position-quantization byte
+check (item 3b) are done and recorded below. What remains is listed in
+"Phase 7 remaining work" at the end of the phase 7 material: the real-mouse
+interactive session, the perf measurement, and flipping the default on.
+
 ## Context
 
 erhe has no mesh *reordering/welding* optimization today: imported glTF triangle soups keep their authored triangle and vertex order (indices are copied verbatim; vertices are converted per attribute at the sink, including the existing snorm16x3 AABB position quantization — itself already a memory optimization), and the procedural geometry path emits one vertex per facet-corner with an arbitrary triangle order. The goal is to integrate [zeux/meshoptimizer](https://github.com/zeux/meshoptimizer) (local reference checkout at `D:\meshoptimizer`, vanilla upstream) and use it to optimize all renderable meshes: vertex weld/remap, vertex-cache order, overdraw order, and vertex-fetch order, with before/after `meshopt_analyze*` statistics. LOD and meshlets are explicitly **future work** — leave seams, implement nothing.
@@ -422,7 +430,7 @@ that never reaches the geometry path.
 ## Phase 7 — Verification sweep + flag flip
 
 1. Builds: `scripts/build_ninja_win_vulkan.bat`, `scripts/build_ninja_win_clang.bat`, VS opengl + vulkan-headless, `scripts/build_and_run_tests.bat`, `build_android.bat quest` (Quest launch requires fresh user prompt + confirmation).
-2. Visual A/B via editor MCP server (127.0.0.1:8080): reference glTF scene (e.g. Bistro) screenshots with `optimize_meshes` off vs on, **plus a same-config control pair** to bound noise (per A/B screenshot protocol: settling, viewport-crop diffs, DDGI off). Expect optimized-vs-baseline diff ≈ control diff.
+2. Visual A/B via editor MCP server (127.0.0.1:3743): reference glTF scene (e.g. Bistro) screenshots with `optimize_meshes` off vs on, **plus a same-config control pair** to bound noise (per A/B screenshot protocol: settling, viewport-crop diffs, DDGI off). Expect optimized-vs-baseline diff ≈ control diff.
 3. Interaction sanity: facet picking, paint + weight paint, physics collision, glTF export/import round-trip (export must equal source-data export).
 3b. **Position-quantization byte check (carried over from the phase-3 quantization sub-step):** load one glTF with `quantize_vertex_positions` on and dump the position vertex range, confirming the `meshopt_quantizeSnorm` route is byte-identical to a pre-change dump. The unit test (`src/erhe/dataformat/test/test_snorm16_quantization.cpp`) pins the two *functions* on `[-1, 1]`; only this pins the *buffers*. Reviewed FP-flag risk is low (`/fp:fast` global, `/arch:AVX2` off, so no FMA contraction), but the check is the plan's stated acceptance.
 4. Perf: logged ACMR/overdraw deltas and vertex-count reductions, frame time on a heavy scene measured in **steady state** (after geometry finalize, where phase 5 is the active optimization; desktop GPU timers, Quest via Perfetto), import wall time with/without cache.
@@ -621,7 +629,90 @@ stream-2 stride of 20 against 24 - the facet id (`custom_0`,
 `format_8_vec4_unorm`) present in the original build and absent from the
 optimized one.
 
+### Phase 7 remaining work (as of 2026-08-28)
+
+1. **The real-mouse interactive session** (item 3's interactive half). Paint and
+   an out-of-AABB vertex drag with `optimize_meshes` ON, confirming the mesh
+   visibly follows the edit. This is the ONLY thing that exercises
+   `Mesh::invalidate_optimized_primitive_variant()` against a live draw list -
+   it has 4 unit tests but has never run a real frame. It is the same session
+   as the last open item of doc/vertex-position-quantization.md (the drag is
+   that item); do both together. While in that session, watch for shader
+   compile stutter from the second content vertex format (the item-3c note in
+   the addendum above).
+2. **Perf** (item 4). Not measurable headlessly: the frame pacer reports tier
+   "OFF" and a zero refresh period in that configuration, so
+   `get_frame_pacing_frames` yields nothing, and no other MCP surface reports
+   GPU frame time - the only place a vertex-cache / fetch win would show. Use
+   the Frame Pacing window (or a GPU capture) on the RELEASE build; Bistro is
+   ~119 ms/frame in Debug. The static side is already measured and recorded in
+   "Phase 7 progress" item 4.
+3. **Flip the default** (item 5). `optimize_meshes` to `true` in
+   `config/editor/mesh_memory.json` (the cache default stays the user's call),
+   update `src/erhe/primitive/erhe_primitive/notes.md`, final commit. Quest
+   verification needs UNINSTALL + CLEAN REINSTALL (not `install -r`), and every
+   OpenXR launch needs a fresh user prompt + explicit confirmation first.
+
+### How to verify: the A/B screenshot harness
+
+`scripts/mesh_ab_capture.py <off|on|cache> <out.png>`; its docstring carries
+the full rationale. Every one of these matters:
+
+- MCP port is 3743, NOT 8080.
+- `set_ddgi {enabled:false}` - the single biggest source of run-to-run
+  divergence - and `advance_time {mode:"paused"}`.
+- The harness pins the window layout itself
+  (`cache/desktop_windows.pinned.json`, snapshotted on first run). The editor
+  rewrites `config/editor/desktop_windows.json` on exit, and a different
+  layout moves the viewport - a ~96% pixel difference that is not a rendering
+  difference.
+- Crop the ImGui panels out (the viewport starts near x=350, y=75 at
+  2304x1200).
+- ALWAYS run a same-setting control pair first.
+- Kill leftover editors. The harness refuses to start when something already
+  answers on 3743 - a leftover keeps the port, the new editor fails to bind,
+  and every RPC then drives the OLD process with the OLD config.
+- A passing control pair is NECESSARY, NOT SUFFICIENT. Two failure modes make
+  a clean 0 meaningless and both LOOK like a pass: a saturated or black
+  viewport compares equal to another one (check the saturated-pixel fraction,
+  not just the diff), and the code path under test may not be reached at all -
+  MUTATION-CHECK it (halving the optimized index buffer moved 34.0% of
+  viewport pixels, which is what ruled out "the variant is never selected").
+
+Bistro, specifically:
+
+    ERHE_SHOT_SCENE=res/editor/assets/niagara_bistro/bistro.gltf
+    ERHE_SHOT_EXPOSURE=0.001
+    ERHE_SHOT_FRAME=0
+    ERHE_SHOT_EXE=build_ninja_win_vulkan_release/src/editor/editor.exe
+
+Bistro's light setup saturates the viewport to near-white: solid white at the
+default exposure, still almost entirely clipped at 0.02 (measured, with DDGI
+off and the camera's Exposure field confirming the value landed); 0.001 is
+what makes the scene readable. `ERHE_SHOT_FRAME=0` keeps the asset's authored
+camera: `frame_scene()` costs one RPC per node, which on Bistro is thousands
+of round trips and minutes per run (it looks like a hang), and the authored
+camera is just as deterministic. Both sides of one comparison must use the
+same executable (`ERHE_SHOT_EXE`).
+
+Read the optimization aggregate from the MCP `get_memory_usage` tool's
+`mesh_optimization` section, not from the log (see the phase 6 note).
+
+Baselines (all 0 differing viewport pixels of 2 198 250, in the untracked
+`logs/` directory of the machine the phase 7 runs were made on):
+post-format-change `logs/p7b_off_a.png` / `p7b_off_b.png` (control),
+`p7b_on.png`, `p7c_on.png`, `p7c_proc_off.png`, `p7c_proc_on.png`;
+pre-format-change `logs/p5b_*.png`, `logs/p7_bistro_*.png`.
+
 ## Risks / notes
+
+- **Attach the optimized variant BEFORE `mesh->update_rt_primitives()`
+  registers the mesh with the draw list.** Registration bakes `base_vertex`
+  and the index ranges of whichever variant is live at that moment.
+- **`compose_element_mappings()`: the soup path must pass `{}` for source
+  mappings, the geometry path must pass the build's own.** Same function,
+  opposite rule - the geometry build's remaps are over the vertex buffer its
+  mappings index, the soup remaps are not.
 
 - Welding is bitwise-only: vertices differing in any attribute bit stay separate — correct by construction, gains vary by asset. `meshopt_generateVertexRemap` compares all `vertex_size` bytes **including padding** — verify soup strides have no non-zeroed padding bytes (assert or memset on construction) before welding.
 - The CPU BVH disk cache is keyed by a content hash over triangle positions (`bvh_geometry.cpp:265,289-291`): enabling optimization reorders triangles ⇒ a one-time full BVH cache miss/rebuild sweep on first optimized load. Expected, note in logs.

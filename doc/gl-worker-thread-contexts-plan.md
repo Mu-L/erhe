@@ -12,12 +12,16 @@ phase-boundary sweep is green: ninja Vulkan Debug, VS null backend,
 Quest APK, build_tests + ctest 645/645.
 
 What remains is **verification only**, no code: section 12's status
-block lists the open items (7, 9, 10, and parts of 8), and section
+block lists the open items (7, 9, 10, and parts of 8); section
 11's `Mesh_memory` pool-vector race still needs its own commit or an
-explicit written deferral.
+explicit written deferral; and section 9's nested-taskflow question
+(`parse_gltf` running nested taskflows on a worker) was never
+explicitly examined - confirm it, or record it as part of the section
+12 sweep.
 
-Important: Read doc/gl-spec-section-5.md - consider it carefully, apply
-it to this plan when you review the plan.
+Important: doc/gl-spec-section-5.md is the spec grounding for the
+cross-context publication rules; consult it when working the remaining
+section 12 items.
 
 ## 1. The bug
 
@@ -1420,7 +1424,7 @@ faults in the driver -- or, post-phase-1, trips
 `ERHE_VERIFY_GL_THREAD_HAS_CONTEXT`. Section 12 item 8 exists specifically to
 exercise them.
 
-**Still open, needs an explicit check before implementing:**
+**Still open, never explicitly examined (pre- or post-implementation):**
 `gltf_fastgltf.cpp:1109`, `:1165` and `:1571` run nested taskflows inside
 `parse_gltf`, which itself already runs on a worker
 (`gltf_load_task.cpp:187`). Parse is otherwise CPU-only, but the nested flows
