@@ -351,22 +351,25 @@ Mesh_memory::Mesh_memory(
     //    takes it out of the bitwise weld compare (leaving it in merges nothing
     //    at all) and makes the variant unusable for ID rendering by construction
     //    rather than by convention.
-    //  - normal_attribute_smooth is read by no fill shader. The smooth normal the
-    //    wide-line compute pass uses comes from the separate edge line format.
+    //  - the whole normal usage: normal_attribute_smooth is read by no fill
+    //    shader (the smooth normal the wide-line compute pass uses comes from
+    //    the separate edge line format), and normal_attribute is folded into the
+    //    TBN quaternion that replaces the tangent attribute.
     //  - custom_attribute_valency_edge_count feeds a fragment debug path, which
     //    renders from the base variant.
-    // None of the three has a Shader_key presence axis, so removing them cannot
-    // collide two distinct shader variants onto one key.
+    // Only the normal drop is visible to Shader_key, which handles it by
+    // reporting normal and tangent presence from the TBN encoding; the other two
+    // have no presence axis at all, so removing them cannot collide two distinct
+    // shader variants onto one key.
     const auto is_dropped = [](const erhe::dataformat::Vertex_attribute& attribute) -> bool
     {
         using usage = erhe::dataformat::Vertex_attribute_usage;
-        const bool is_facet_id      = (attribute.usage_type  == usage::custom) &&
-                                      (attribute.usage_index == erhe::dataformat::custom_attribute_id);
-        const bool is_smooth_normal = (attribute.usage_type  == usage::normal) &&
-                                      (attribute.usage_index == erhe::dataformat::normal_attribute_smooth);
-        const bool is_valency       = (attribute.usage_type  == usage::custom) &&
-                                      (attribute.usage_index == erhe::dataformat::custom_attribute_valency_edge_count);
-        return is_facet_id || is_smooth_normal || is_valency;
+        const bool is_facet_id = (attribute.usage_type  == usage::custom) &&
+                                 (attribute.usage_index == erhe::dataformat::custom_attribute_id);
+        const bool is_normal   = (attribute.usage_type  == usage::normal);
+        const bool is_valency  = (attribute.usage_type  == usage::custom) &&
+                                 (attribute.usage_index == erhe::dataformat::custom_attribute_valency_edge_count);
+        return is_facet_id || is_normal || is_valency;
     };
 
     // Storage format substitutions. An empty result means "keep the content
@@ -393,6 +396,13 @@ Mesh_memory::Mesh_memory(
         // this UV set must NOT pick up an affine of its own.
         if ((attribute.usage_type == usage::tex_coord) && (attribute.usage_index == 2)) {
             return erhe::dataformat::Format::format_16_vec2_unorm;
+        }
+        // The tangent attribute becomes the whole tangent frame, as a
+        // quaternion: -20 bytes once the normal drop above is counted. Signed
+        // rather than snorm so the component index and handedness bit in the w
+        // lane stay exactly readable in GLSL.
+        if (attribute.usage_type == usage::tangent) {
+            return erhe::dataformat::Format::format_16_vec4_sint;
         }
         return {};
     };

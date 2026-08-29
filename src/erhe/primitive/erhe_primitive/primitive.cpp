@@ -1115,6 +1115,14 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                 (sink_attribute.usage_type  == erhe::dataformat::Vertex_attribute_usage::tex_coord)  &&
                 (sink_attribute.usage_index <  affine_texcoord_channel_count)                        &&
                 (sink_attribute.format      == erhe::dataformat::Format::format_16_vec2_unorm);
+            // The tangent slot of a quantized sink carries the whole tangent
+            // frame as a quaternion, so it reads TWO source attributes.
+            const bool encode_tbn =
+                (sink_attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::tangent) &&
+                (sink_attribute.format     == erhe::dataformat::Format::format_16_vec4_sint);
+            const erhe::dataformat::Attribute_stream source_normal = encode_tbn
+                ? triangle_soup.vertex_format.find_attribute(erhe::dataformat::Vertex_attribute_usage::normal, erhe::dataformat::normal_attribute)
+                : erhe::dataformat::Attribute_stream{};
             const glm::length_t texcoord_channel = encode_texcoord
                 ? static_cast<glm::length_t>(2 * sink_attribute.usage_index)
                 : glm::length_t{0};
@@ -1161,6 +1169,21 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                             static_cast<int16_t>(meshopt_quantizeSnorm(encoded.z, 16))
                         };
                         std::memcpy(sink, &quantized[0], sizeof(quantized));
+                    } else if (encode_tbn) {
+                        float source_tangent[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                        float source_normal_value[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                        erhe::dataformat::convert(src_data, src.attribute->format, &source_tangent[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
+                        if (source_normal.attribute != nullptr) {
+                            const uint8_t* normal_src = src_vertex_data_base +
+                                source_normal.attribute->offset +
+                                vertex_index * source_normal.stream->stride;
+                            erhe::dataformat::convert(normal_src, source_normal.attribute->format, &source_normal_value[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
+                        }
+                        const std::array<int16_t, 4> quantized = encode_tbn_quaternion(
+                            glm::vec3{source_normal_value[0], source_normal_value[1], source_normal_value[2]},
+                            glm::vec4{source_tangent[0], source_tangent[1], source_tangent[2], source_tangent[3]}
+                        );
+                        std::memcpy(sink, quantized.data(), quantized.size() * sizeof(int16_t));
                     } else if (encode_texcoord) {
                         float source_texcoord[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
                         erhe::dataformat::convert(src_data, src.attribute->format, &source_texcoord[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
@@ -1180,6 +1203,26 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                     } else {
                         erhe::dataformat::convert(src_data, src.attribute->format, sink, sink_attribute.format, 1.0f);
                     }
+                }
+            } else if (encode_tbn) {
+                // No source tangent, but a source normal may still be there - and
+                // the encoder derives an arbitrary orthogonal tangent from it,
+                // which is a usable frame. Converting a zero vec4 into the sint
+                // sink instead would store a quaternion nobody encoded.
+                for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
+                    uint8_t* sink = sink_attribute_base + vertex_index * sink_stream.stride;
+                    float source_normal_value[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                    if (source_normal.attribute != nullptr) {
+                        const uint8_t* normal_src = src_vertex_data_base +
+                            source_normal.attribute->offset +
+                            vertex_index * source_normal.stream->stride;
+                        erhe::dataformat::convert(normal_src, source_normal.attribute->format, &source_normal_value[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
+                    }
+                    const std::array<int16_t, 4> quantized = encode_tbn_quaternion(
+                        glm::vec3{source_normal_value[0], source_normal_value[1], source_normal_value[2]},
+                        glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}
+                    );
+                    std::memcpy(sink, quantized.data(), quantized.size() * sizeof(int16_t));
                 }
             } else {
                 const float src_data[4] = { 0.0f, 0.0f, 0.0f, 0.0f };

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <glm/glm.hpp>
+
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -261,6 +264,32 @@ public:
     const Buffer_info&                  buffer_info,
     std::string_view                    name
 ) -> std::shared_ptr<Primitive_render_shape>;
+
+// Encodes one object-space tangent frame into the optimized variant's 8-byte
+// TBN attribute (erhe::dataformat::Vertex_tbn_encoding::quaternion16).
+//
+// The frame is (tangent, bitangent, normal) with the tangent Gram-Schmidt'ed
+// against the normal and bitangent = cross(normal, tangent), so it is
+// orthonormal and right-handed by construction; the mirrored case is the
+// separate handedness bit, taken from tangent.w.
+//
+// Layout, structurally meshoptimizer's quaternion filter but NOT bit compatible
+// with it - and deliberately so. meshopt_encodeFilterQuat() canonicalizes on
+// the largest component and DISCARDS the quaternion's double-cover sign, which
+// is the bit an engine would normally hide handedness in; and its decode
+// recovers its scale from the w lane with `| 3`, so the spare bits there are
+// not spare either. This encoder therefore owns both ends:
+//
+//   lane 0..2 : the three non-largest components, cyclically swizzled from the
+//               largest, multiplied by sqrt(2) (each is at most 1/sqrt(2), so
+//               this uses the full snorm16 range) and quantized as snorm16.
+//               The quaternion is negated first if its largest component is
+//               negative, which costs nothing: q and -q are the same rotation.
+//   lane 3    : bits 0..1 = index of the omitted largest component,
+//               bit 2     = handedness (set = negative), rest zero.
+//
+// The decoder is res/shaders/erhe_vertex_tbn.glsl and must match exactly.
+[[nodiscard]] auto encode_tbn_quaternion(const glm::vec3& normal, const glm::vec4& tangent) -> std::array<int16_t, 4>;
 
 // Running totals over every primitive log_mesh_optimize_statistics() has been
 // called for since the last reset. Per-primitive lines answer "what did this

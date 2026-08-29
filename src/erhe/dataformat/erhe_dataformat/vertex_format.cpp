@@ -318,4 +318,28 @@ auto get_vertex_texcoord_encoding(const Vertex_format* vertex_format) -> Vertex_
     }
 }
 
+auto c_str(const Vertex_tbn_encoding encoding) -> const char*
+{
+    switch (encoding) {
+        case Vertex_tbn_encoding::passthrough:  return "passthrough";
+        case Vertex_tbn_encoding::quaternion16: return "quaternion16";
+        default:                                return "?";
+    }
+}
+
+auto get_vertex_tbn_encoding(const Vertex_format* vertex_format) -> Vertex_tbn_encoding
+{
+    if (vertex_format == nullptr) {
+        return Vertex_tbn_encoding::passthrough;
+    }
+    const Attribute_stream tangent = vertex_format->find_attribute(Vertex_attribute_usage::tangent, 0);
+    if (tangent.attribute == nullptr) {
+        return Vertex_tbn_encoding::passthrough;
+    }
+    switch (tangent.attribute->format) {
+        case Format::format_16_vec4_sint: return Vertex_tbn_encoding::quaternion16;
+        default:                          return Vertex_tbn_encoding::passthrough;
+    }
+}
+
 } // namespace erhe::dataformat

@@ -40,8 +40,8 @@ auto Shader_key::get_defines() const -> std::vector<std::pair<std::string, std::
     ERHE_SHADER_BOOL(ERHE_X)
 #undef ERHE_X
 
-    // VERTEX_POSITION_ENCODING and VERTEX_TEXCOORD_ENCODING are deliberately
-    // excluded: they are emitted by
+    // VERTEX_POSITION_ENCODING, VERTEX_TEXCOORD_ENCODING and VERTEX_TBN_ENCODING
+    // are deliberately excluded: they are emitted by
     // Shader_stages_create_info::attributes_source(), which derives them from the
     // vertex format itself. Emitting them here as well would let a hand-built key
     // that forgot an axis produce a *conflicting* redefinition of the macro.
@@ -49,7 +49,8 @@ auto Shader_key::get_defines() const -> std::vector<std::pair<std::string, std::
     // shows them - that re-enumerates ERHE_SHADER_INT independently of this).
 #define ERHE_X(PARAM) \
     if ((Shader_int::PARAM != Shader_int::VERTEX_POSITION_ENCODING) && \
-        (Shader_int::PARAM != Shader_int::VERTEX_TEXCOORD_ENCODING)) { \
+        (Shader_int::PARAM != Shader_int::VERTEX_TEXCOORD_ENCODING) && \
+        (Shader_int::PARAM != Shader_int::VERTEX_TBN_ENCODING)) { \
         defines.emplace_back(std::string{"ERHE_" #PARAM}, fmt::format("{}", get(Shader_int::PARAM))); \
     }
 
@@ -141,9 +142,18 @@ auto Shader_key::derive(
         static_cast<uint32_t>(erhe::dataformat::get_vertex_texcoord_encoding(vertex_format))
     );
 
+    const erhe::dataformat::Vertex_tbn_encoding tbn_encoding = erhe::dataformat::get_vertex_tbn_encoding(vertex_format);
+    key.set(Shader_int::VERTEX_TBN_ENCODING, static_cast<uint32_t>(tbn_encoding));
+
     using usage = erhe::dataformat::Vertex_attribute_usage;
-    const bool has_normal_0      = (vertex_format != nullptr) && vertex_format_has_attribute(*vertex_format, usage::normal,        erhe::dataformat::normal_attribute);
-    const bool has_tangent       = (vertex_format != nullptr) && vertex_format_has_attribute(*vertex_format, usage::tangent,       0);
+    // A quaternion-encoded format has NO normal attribute - the frame lives
+    // entirely in the tangent slot - so attribute lookup alone would report the
+    // optimized variant as normal-less and silently drop every tangent-space
+    // and lit shader feature from it. The encoding is what says both are
+    // present.
+    const bool has_tbn_quaternion = (tbn_encoding == erhe::dataformat::Vertex_tbn_encoding::quaternion16);
+    const bool has_normal_0      = has_tbn_quaternion || ((vertex_format != nullptr) && vertex_format_has_attribute(*vertex_format, usage::normal,  erhe::dataformat::normal_attribute));
+    const bool has_tangent       = has_tbn_quaternion || ((vertex_format != nullptr) && vertex_format_has_attribute(*vertex_format, usage::tangent, 0));
     const bool has_texcoord_0    = (vertex_format != nullptr) && vertex_format_has_attribute(*vertex_format, usage::tex_coord,     0);
     const bool has_texcoord_1    = (vertex_format != nullptr) && vertex_format_has_attribute(*vertex_format, usage::tex_coord,     1);
     const bool has_texcoord_2    = (vertex_format != nullptr) && vertex_format_has_attribute(*vertex_format, usage::tex_coord,     2);

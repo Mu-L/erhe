@@ -1192,6 +1192,45 @@ auto Build_context::take_optimizable_snapshot(
                 }
                 continue;
             }
+            // The tangent slot of an optimized format carries the whole tangent
+            // frame as a quaternion, so this reads TWO staged attributes
+            // (normal and tangent) into one - the only gather entry that does.
+            const bool encode_tbn =
+                (optimized_attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::tangent) &&
+                (optimized_attribute.format     == erhe::dataformat::Format::format_16_vec4_sint);
+            if (encode_tbn) {
+                const erhe::dataformat::Attribute_stream source_normal = root.vertex_format.find_attribute(
+                    erhe::dataformat::Vertex_attribute_usage::normal, erhe::dataformat::normal_attribute
+                );
+                if (
+                    (source.attribute->format != erhe::dataformat::Format::format_32_vec4_float) ||
+                    (source_normal.attribute == nullptr) ||
+                    (source_normal.attribute->format != erhe::dataformat::Format::format_32_vec3_float)
+                ) {
+                    return false;
+                }
+                const std::size_t normal_stream_index = static_cast<std::size_t>(source_normal.stream - root.vertex_format.streams.data());
+                const Vertex_buffer_writer& normal_writer = *vertex_writers.at(normal_stream_index).get();
+                if (normal_writer.vertex_data.size() < corner_count * normal_writer.stride) {
+                    return false;
+                }
+                for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
+                    float normal [3];
+                    float tangent[4];
+                    memcpy(normal,  normal_writer.vertex_data.data() + vertex * normal_writer.stride + source_normal.attribute->offset, sizeof(normal));
+                    memcpy(tangent, writer       .vertex_data.data() + vertex * writer       .stride + source        .attribute->offset, sizeof(tangent));
+                    const std::array<int16_t, 4> encoded = encode_tbn_quaternion(
+                        glm::vec3{normal [0], normal [1], normal [2]},
+                        glm::vec4{tangent[0], tangent[1], tangent[2], tangent[3]}
+                    );
+                    memcpy(
+                        stream.data.data() + vertex * optimized_stream.stride + optimized_attribute.offset,
+                        encoded.data(),
+                        encoded.size() * sizeof(int16_t)
+                    );
+                }
+                continue;
+            }
             // Texcoord channels 0 and 1 are normalized into the primitive's own
             // per-channel UV range, so they are an affine encode rather than a
             // pure format conversion - exactly like the position. Channel 2 is

@@ -2,6 +2,7 @@
 #include "erhe_skinning.glsl"
 #include "erhe_standard_variant.glsl"
 #include "erhe_vertex_position.glsl"
+#include "erhe_vertex_tbn.glsl"
 #include "erhe_vertex_texcoord.glsl"
 
 #define a_valency_edge_count a_custom_2
@@ -158,6 +159,15 @@ void main()
     vec4 position        = world_from_node * vec4(node_position, 1.0);
     gl_Position          = clip_from_world * position;
 
+    // Object space tangent frame. Under the optimized variant's quaternion
+    // encoding there is no a_normal attribute at all and both the normal and the
+    // tangent come out of a_tangent; see erhe_vertex_tbn.glsl. Unused components
+    // are dead code the compiler drops.
+    vec3  node_normal;
+    vec3  node_tangent;
+    float node_handedness;
+    erhe_decode_vertex_tbn(node_normal, node_tangent, node_handedness);
+
 #if defined(ERHE_VARIANT_SHADOW_CUBE)
     // Point-light shadow cube caster: the fragment shader needs the world
     // position to compute radial distance to the light. This is a position pass,
@@ -205,8 +215,8 @@ void main()
     vec3  view_position_in_world = camera.cameras[c_view_index].world_from_node[3].xyz;
     float point_distance         = distance(view_position_in_world, position.xyz);
     float clip_depth_direction   = camera.cameras[c_view_index].clip_depth_direction;
-#   ifdef ERHE_ATTRIBUTE_a_normal
-    vec3  point_normal           = normalize(vec3(world_from_node_normal * vec4(a_normal, 0.0)));
+#   ifdef ERHE_HAS_VERTEX_NORMAL
+    vec3  point_normal           = normalize(vec3(world_from_node_normal * vec4(node_normal, 0.0)));
     vec3  point_view_vector      = normalize(view_position_in_world - position.xyz);
     float point_NdotV            = dot(point_normal, point_view_vector);
     gl_Position.z               -= clip_depth_direction * 0.0005 * abs(point_NdotV);
@@ -220,15 +230,15 @@ void main()
 #if !defined(ERHE_VARIANT_POSITION_PASS)
 
 #   if defined(ERHE_USE_VERTEX_VARYING_NORMAL)
-    vec3 normal          = normalize(vec3(world_from_node_normal * vec4(a_normal, 0.0)));
+    vec3 normal          = normalize(vec3(world_from_node_normal * vec4(node_normal, 0.0)));
 #   endif
 
 #   if defined(ERHE_USE_VERTEX_VARYING_TANGENT)
-    vec3 tangent         = vec3(world_from_node * vec4(a_tangent.xyz, 0.0));
+    vec3 tangent         = vec3(world_from_node * vec4(node_tangent, 0.0));
 #   endif
 
 #   if defined(ERHE_USE_VERTEX_VARYING_BITANGENT) && defined(ERHE_USE_VERTEX_VARYING_TANGENT) && defined(ERHE_USE_VERTEX_VARYING_NORMAL)
-    vec3 bitangent       = cross(normal, tangent) * a_tangent.w;
+    vec3 bitangent       = cross(normal, tangent) * node_handedness;
 #   endif
 
 #   if (ERHE_SHADER_DEBUG != 0) && defined(ERHE_USE_SKINNING)
@@ -317,7 +327,7 @@ void main()
 
 #   if ERHE_SHADER_DEBUG != 0
 #       ifdef ERHE_ATTRIBUTE_a_tangent
-    v_tangent_scale       = a_tangent.w;
+    v_tangent_scale       = node_handedness;
 #       endif
     v_line_width          = primitive.primitives[ERHE_DRAW_ID].size;
 #       if defined(ERHE_ATTRIBUTE_a_custom_2)

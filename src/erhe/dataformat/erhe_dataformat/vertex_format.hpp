@@ -232,4 +232,26 @@ enum class Vertex_texcoord_encoding : uint32_t
 // recognized quantized format (including a format with no texcoord at all).
 [[nodiscard]] auto get_vertex_texcoord_encoding(const Vertex_format* vertex_format) -> Vertex_texcoord_encoding;
 
+// How the tangent frame is stored. Same mechanism as the two encodings above.
+//
+// quaternion16 replaces BOTH the normal and the tangent attribute with a single
+// one carrying the (tangent, bitangent, normal) frame as a quaternion, stored
+// under the TANGENT usage as format_16_vec4_sint - signed rather than snorm so
+// the component index and the handedness bit in the w lane stay exactly
+// readable in GLSL. The normal attribute is then absent from the format, which
+// is why Shader_key::derive() has to report normal and tangent presence from
+// this encoding rather than from attribute lookup alone.
+//
+// Keep in sync with the ERHE_VERTEX_TBN_ENCODING_* macros in
+// res/shaders/erhe_vertex_tbn.glsl.
+enum class Vertex_tbn_encoding : uint32_t
+{
+    passthrough  = 0, // a_normal is float3 and a_tangent is float4 (xyz + handedness w)
+    quaternion16 = 1  // a_tangent is the int16x4 encoded frame quaternion; there is no a_normal
+};
+
+[[nodiscard]] auto c_str(Vertex_tbn_encoding encoding) -> const char*;
+
+[[nodiscard]] auto get_vertex_tbn_encoding(const Vertex_format* vertex_format) -> Vertex_tbn_encoding;
+
 } // namespace erhe::dataformat

@@ -13,8 +13,11 @@
 
 #include <meshoptimizer.h>
 
+#include <glm/gtc/quaternion.hpp>
+
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <mutex>
 #include <numeric>
@@ -699,6 +702,63 @@ auto make_optimized_render_shape_from_staged_build(
     buffer_mesh.texcoord_ranges     = source_buffer_mesh.texcoord_ranges;
 
     return std::make_shared<Primitive_render_shape>(std::move(buffer_mesh), std::move(composed));
+}
+
+auto encode_tbn_quaternion(const glm::vec3& normal_in, const glm::vec4& tangent_in) -> std::array<int16_t, 4>
+{
+    constexpr float epsilon = 1e-8f;
+
+    // Normal. A degenerate one cannot produce a frame at all; pick a fixed axis
+    // rather than emit NaN - the source build is unaffected and still correct.
+    const float normal_length = glm::length(normal_in);
+    const glm::vec3 n = (normal_length > epsilon)
+        ? (normal_in / normal_length)
+        : glm::vec3{0.0f, 0.0f, 1.0f};
+
+    // Tangent, orthogonalized. erhe does not guarantee the stored tangent is
+    // perpendicular to the normal, and a quaternion can only carry an
+    // orthonormal frame, so this Gram-Schmidt is part of the encoding, not an
+    // optimization.
+    glm::vec3 t = glm::vec3{tangent_in.x, tangent_in.y, tangent_in.z};
+    t = t - n * glm::dot(n, t);
+    const float tangent_length = glm::length(t);
+    if (tangent_length > epsilon) {
+        t = t / tangent_length;
+    } else {
+        // No usable tangent (absent, zero, or parallel to the normal): any
+        // vector orthogonal to n will do. Materials that actually need a
+        // tangent frame carry a real tangent.
+        const glm::vec3 axis = (std::abs(n.x) < 0.9f) ? glm::vec3{1.0f, 0.0f, 0.0f} : glm::vec3{0.0f, 1.0f, 0.0f};
+        t = glm::normalize(glm::cross(axis, n));
+    }
+    const glm::vec3 b = glm::cross(n, t);
+
+    // Columns (t, b, n): orthonormal, and right handed because
+    // cross(t, cross(n, t)) == n for unit orthogonal t and n. The handedness of
+    // the ORIGINAL frame is not in here - it rides the separate bit below.
+    const glm::quat q = glm::normalize(glm::quat_cast(glm::mat3{t, b, n}));
+
+    const float components[4] = { q.x, q.y, q.z, q.w };
+    int largest = 0;
+    for (int i = 1; i < 4; ++i) {
+        if (std::abs(components[i]) > std::abs(components[largest])) {
+            largest = i;
+        }
+    }
+    const float sign   = (components[largest] < 0.0f) ? -1.0f : 1.0f;
+    const float scaler = 1.4142135623730951f; // sqrt(2)
+
+    std::array<int16_t, 4> encoded{};
+    for (int i = 0; i < 3; ++i) {
+        // The clamp keeps float_to_snorm16() inside the interval where it and
+        // meshopt_quantizeSnorm() agree bit for bit; only rounding of a value
+        // already at the limit can reach it.
+        const float value = std::clamp(components[(largest + 1 + i) & 3] * scaler * sign, -1.0f, 1.0f);
+        encoded[static_cast<std::size_t>(i)] = erhe::dataformat::float_to_snorm16(value);
+    }
+    const bool negative_handedness = (tangent_in.w < 0.0f);
+    encoded[3] = static_cast<int16_t>(largest | (negative_handedness ? 4 : 0));
+    return encoded;
 }
 
 auto Mesh_optimize_totals::acmr_before() const -> float
