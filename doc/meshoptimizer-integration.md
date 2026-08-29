@@ -5,13 +5,14 @@ Live document for the mesh-optimization subsystem built on
 upstream, pinned via CPM): requirements, design, verification, future
 work, traps. History lives in the git log, not here.
 
-Status: implemented, including requirements 9-11 (base variant never
-quantized, quantization only in the optimized variant, edit-start
-invalidation with an optimization hold, background re-optimization at edit
-end, durable undoable paint). The 9-11 implementation has NOT yet been
-through the verification sweep -- see Future work item 1.
-`optimize_meshes` defaults to **true** in `config/editor/mesh_memory.json`;
-`mesh_optimize_cache` stays **false** (the user's call).
+Status: implemented and verified, including requirements 9-11 (base
+variant never quantized, quantization only in the optimized variant,
+edit-start invalidation with an optimization hold, background
+re-optimization at edit end, durable undoable paint) -- headless sweep and
+real-mouse session both passed 2026-08-29. Remaining items (perf, Quest)
+are in "Future work". `optimize_meshes` defaults to **true** in
+`config/editor/mesh_memory.json`; `mesh_optimize_cache` stays **false**
+(the user's call).
 
 ## Requirements
 
@@ -420,6 +421,11 @@ pair 2 px / 2 198 250 = noise floor):**
 - Not re-run: the 52-probe pick / physics / glTF round-trip suite --
   those read source-side data (CPU BVH, geometry, collision) this change
   does not touch.
+- **Real-mouse session on the split (2026-08-29): PASSED.** Face/vertex
+  drag commits cleanly (after the 598d811ec scene-lock fix -- see Traps)
+  with no clamp and no pop, and paint / weight paint work with the
+  optimized variant returning after each edit ends. This retires the
+  edit-bracket items; what remains for a human is in "Future work".
 
 Unit tests cover the multi-stream optimizer core, the geometry-path
 encoded-and-welded optimized build (box round-trip through CPU sinks),
@@ -428,35 +434,25 @@ What verification remains is listed in "Future work".
 
 ## Future work
 
-1. **Real-mouse session on the requirements 9-11 implementation.** The
-   headless sweep is done (Verification above); what remains needs a
-   human: paint (now undoable -- check undo/redo of a stroke), an
-   out-of-AABB vertex drag (no clamp, no pop, mesh follows the mouse
-   exactly), weight paint, and the optimized variant RETURNING after each
-   edit ends (`get_memory_usage` / Properties show it re-attached by the
-   background re-optimization).
-   Memory consequence to re-measure while there: the always-resident base
-   variant is back to 12 bytes/position; the steady-state fill win
-   (welded + quantized optimized variant) is what quantization keeps, and
-   the minimal `id_renderer`-variant seam below is the recorded way to
-   reclaim the base cost later.
-2. **Perf.** Not measurable headlessly (the frame pacer reports tier "OFF"
+1. **Perf.** Not measurable headlessly (the frame pacer reports tier "OFF"
    and no MCP surface reports GPU frame time). Use the Frame Pacing window
    or a GPU capture on the RELEASE build; Bistro is ~119 ms/frame in
    Debug. The static side is measured (the -62% fetch figures above).
    Also measure the transient RSS spike of the staging snapshot + optimizer
-   temporaries on a Bistro-scale rebuild with several finalize workers.
-3. **Quest verification of the flipped default.** The default flip itself is
+   temporaries on a Bistro-scale rebuild with several finalize workers, and
+   the base variant's memory (back to 12 bytes/position; the minimal
+   `id_renderer`-variant seam below is the recorded way to reclaim it).
+2. **Quest verification of the flipped default.** The default flip itself is
    done (`optimize_meshes` true in `config/editor/mesh_memory.json`; the
    cache default stays the user's call). Quest verification needs
    UNINSTALL + CLEAN REINSTALL (`migrate_android_assets_to_writable()`
    never overwrites an existing config), and every OpenXR launch needs a
    fresh user prompt + explicit confirmation.
-4. **Shader-compile stutter watch.** Nothing was noticed in the 2026-08-29
-   session, but the exposure window is real: two content vertex formats
-   double content-shader variants while meshes of both formats exist (the
-   load window, and any mesh whose variant an edit dropped). Keep watching;
-   the format split survives the item-1 rework in mirrored form.
+3. **Shader-compile stutter watch.** Nothing was noticed in either 2026-08-29
+   session, but the exposure window is real: the base and optimized formats
+   carry different position encodings, so both sets of content-shader
+   variants exist whenever both variants render (the load window, and any
+   mesh whose variant an edit dropped). Keep watching.
 
 Recorded seams, deliberately not implemented: LOD chains
 (`meshopt_simplify`, natural fit on the deferred-allocation staging seam),
@@ -545,6 +541,12 @@ Each of these cost a review or debugging round. Do not rediscover them.
   (mesh, index) lookup: an operation executing mid-edit (undo during a
   stroke) can swap the slot to a different Primitive, and the mid-drag
   fork/extrude swap must transfer the hold.
+- **`async_for_nodes_with_mesh()` takes `item_host_mutex` ITSELF** -- never
+  call it (or `kickoff_deferred_finalize()`) while holding that mutex; a
+  non-recursive `std::mutex` relocked by its owner throws "resource
+  deadlock would occur". This crashed the first real-mouse drag commit:
+  the edit operations hold the lock for their whole apply(), so they
+  explicitly unlock before the kickoff (598d811ec).
 - **Welding is bitwise over every byte including padding** -- safe only
   because staging is `resize()`d (zero-filled) before attribute writes.
   Keep that property or the weld silently degrades.
