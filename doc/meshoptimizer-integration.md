@@ -5,14 +5,13 @@ Live document for the mesh-optimization subsystem built on
 upstream, pinned via CPM): requirements, design, verification, future
 work, traps. History lives in the git log, not here.
 
-Status: implemented and verified as described below, including the
-real-mouse interactive session -- but the 2026-08-29 requirements 9-11
-(base variant never quantized, quantization only in the optimized variant,
-edit-blocked background re-optimization) are a planned rework, NOT yet
-implemented: today position quantization applies to both variants. See
-Future work item 1. `optimize_meshes` defaults to **true** in
-`config/editor/mesh_memory.json`; `mesh_optimize_cache` stays **false**
-(the user's call).
+Status: implemented, including requirements 9-11 (base variant never
+quantized, quantization only in the optimized variant, edit-start
+invalidation with an optimization hold, background re-optimization at edit
+end, durable undoable paint). The 9-11 implementation has NOT yet been
+through the verification sweep -- see Future work item 1.
+`optimize_meshes` defaults to **true** in `config/editor/mesh_memory.json`;
+`mesh_optimize_cache` stays **false** (the user's call).
 
 ## Requirements
 
@@ -37,10 +36,10 @@ User-confirmed; the first is a hard requirement.
    cannot serve ID rendering even by mistake (it lacks the facet-id
    attribute entirely).
 6. Live mesh edits (paint, weight paint, vertex drag) keep working: the
-   optimized build is invalidated on the first edit, never written through.
+   optimized build is invalidated at edit start, never written through.
 7. Vertex-position quantization is routed through `meshopt_quantizeSnorm`,
-   bit-identical to the previous `float_to_snorm16` path (verified at the
-   buffer level, not just the function level).
+   bit-identical to the `float_to_snorm16` encoder (both encode sites
+   pre-clamp to [-1, 1], where the two agree).
 8. Prerequisite (done first): the ID-buffer edge-line method
    (`content_edge_lines.use_id_buffer`) was **removed end to end** -- after
    that, the per-corner facet-id attribute (`a_custom_0`) has exactly one
@@ -48,8 +47,7 @@ User-confirmed; the first is a hard requirement.
 
 Added 2026-08-29, after the real-mouse session exposed the out-of-AABB drag
 clamp (the snorm16 encode of the base variant's GPU buffer cannot represent
-a position outside the build-time AABB). **NOT yet implemented** -- Future
-work item 1:
+a position outside the build-time AABB):
 
 9. The unoptimized **base** variant never uses position quantization:
    full-float positions. In the editor, every primitive always maintains
@@ -112,17 +110,22 @@ Consequences designed against:
   the expanded solid-wireframe copy exist per-facet precisely to keep
   corners apart -- which is what welding undoes. The original build carries
   them all.
-- **Its own vertex format, without the facet id**
-  (`Buffer_info::optimized_vertex_format`). The id is per facet and the
-  build is welded, so no value describes a merged vertex. Dropping the
-  attribute (a) makes the variant unusable for ID rendering by construction
-  rather than by convention, (b) takes the id out of the weld compare --
-  leaving it in merges *nothing*, which is the whole win -- and (c) saves 4
-  bytes per vertex. **Both paths (soup and geometry) build in that format,
-  or it is not an invariant.** `Mesh_memory` derives the optimized formats
-  from the content ones in its constructor; `get_all_vertex_formats()` is
-  the single list that repack, lockstep block sizing and vertex-input
-  registration all read.
+- **Its own vertex format, without the facet id and with the only quantized
+  position** (`Buffer_info::optimized_vertex_format`). The id is per facet
+  and the build is welded, so no value describes a merged vertex. Dropping
+  the attribute (a) makes the variant unusable for ID rendering by
+  construction rather than by convention, (b) takes the id out of the weld
+  compare -- leaving it in merges *nothing*, which is the whole win -- and
+  (c) saves 4 bytes per vertex. The position is stored in
+  `Mesh_memory::optimized_position_format` -- snorm16x3 when
+  `quantize_vertex_positions` is on and the device supports it as vertex
+  input, float3 otherwise; the content (base) formats always store float3
+  (requirement 9), so quantization has no effect unless `optimize_meshes`
+  is on. **Both paths (soup and geometry) build in that format, or it is
+  not an invariant.** `Mesh_memory` derives the optimized formats from the
+  content ones in its constructor (facet-id drop + position substitution);
+  `get_all_vertex_formats()` is the single list that repack, lockstep block
+  sizing and vertex-input registration all read.
 - **`get_resolved_renderable_mesh()` takes the `Primitive_mode`** and
   prefers the optimized build for fill modes only. An empty index range
   reads to every caller as "nothing to draw", not "ask the other build",
@@ -175,8 +178,11 @@ construction, which is where the headline numbers come from.
   never handed a destination range **drops** its staged bytes (destructor
   guard), so a failed allocation cannot flush to a default range and
   overwrite another mesh.
-- **The meshopt passes run on the staged bytes**, post-position-encode
-  (positions already snorm16 when quantization is on -- more merges, and
+- **The meshopt passes run on the staged bytes, post-position-encode**: the
+  staged (base) position is always float3; when the optimized format stores
+  snorm16 the snapshot gather (`take_optimizable_snapshot()`) encodes during
+  the copy -- against the build's AABB affine, the same one the decoders
+  use -- so the weld runs on the final bytes (quantization merges more, and
   GPU data equals staged data exactly). The weld runs in **indexed** mode
   over the fill indices (a corner no triangle references is dropped --
   fine, the variant is fill-only), with **whole-stride compare streams**
@@ -215,23 +221,53 @@ truncation or I/O error degrades to a miss with a warning -- **never a
 failed load**. Content addressing dedups identical geometry across distinct
 glTF meshes. Unbounded growth is accepted for v1.
 
-### Invalidate-on-edit
+### The edit bracket (invalidate at start, hold, re-optimize at end)
 
 GPU vertex edits (paint colors, weight paint, live-drag positions) address
 the per-corner original buffer through the mappings. Writing through the
-welded variant is not possible -- merged corners share one slot -- so the
-first edit calls `Mesh::invalidate_optimized_primitive_variant()` **before
-its first GPU write**: frame-safe drop of the optimized shape, and
-re-registration of **every mesh sharing that `Primitive`** (draw-list
-records bake the drawn variant's base_vertex and index ranges, and
-instances share Primitives). Renderers then see the variant missing and
-fall back to `original`. This also dissolves any weld-vs-addressability
-divergence: only one variant is live during an edit.
+welded variant is not possible -- merged corners share one slot -- and with
+the base variant unquantized (requirement 9) any edited position is
+representable in place: no AABB clamp, ever.
 
-Today nothing rebuilds the optimized variant after an invalidate (it stays
-gone until the next full primitive rebuild). Requirement 11 extends this:
-invalidate at edit start, block re-optimization for the edit's duration,
-background re-optimize at edit end -- Future work item 1.
+Requirement 11's bracket: when the edit STARTS (drag begin, stroke begin --
+before the first GPU write) the tool calls
+`Mesh::begin_optimized_variant_edit()`, which takes an **optimization
+hold** on the `Primitive`, drops the live optimized shape frame-safely and
+re-registers **every mesh sharing that `Primitive`** (draw-list records
+bake the drawn variant's base_vertex and index ranges, and instances share
+Primitives). Renderers then see the variant missing and fall back to
+`original`; only one variant is live during an edit.
+
+While the hold is active, `Primitive::publish_optimized_render_shape()` --
+the single publication point every attach site goes through -- **refuses**,
+so a build finishing mid-edit (a deferred finalize landing during a stroke)
+can never put a pre-edit variant beside the in-progress edit. The holder
+keeps the returned `Primitive` shared_ptr and releases via
+`release_optimization_hold()` **on exactly that object** -- never through a
+(mesh, index) lookup, because an operation executing mid-edit (undo during
+a stroke) can swap the mesh's slot to a different Primitive. The
+component-drag fork/extrude transfers its hold to the swapped-in primitive
+mid-drag; the paint tool acquires holds lazily per touched primitive (a
+hover-driven stroke can cross meshes).
+
+At edit END the commit operations (`Move_mesh_vertices_operation`,
+`Paint_weights_operation`, `Paint_colors_operation` -- paint is durable and
+undoable now: strokes write the geometry's `corner_color_0` attribute, the
+attribute the builder prefers) rebuild the primitive **base-only
+synchronously** (immediately renderable, requirement 9) and kick off the
+background re-optimization: `kickoff_deferred_finalize()` dispatches the
+same worker-prepare / `Scene_commit_queue`-commit finalize the import path
+uses. The finalize decides re-optimization **at snapshot time under the
+scene lock** (`optimized_render_shape` and the hold count are main-thread
+state a worker must not read): a complete base mesh missing its requested
+optimized variant, and not under an active hold, is rebuilt in full with
+`prepare_geometry_buffer_mesh(..., force_rebuild = true)` -- the fresh
+optimized variant comes out of the same staged bytes and the identical
+base swaps in benignly, keeping the shape's committed normal style. The
+accepted cost is the source build running twice per commit (once
+synchronously for immediacy, once on the worker for the atomic swap).
+Without worker contexts everything builds synchronously in the commit, as
+before.
 
 ### Statistics
 
@@ -250,23 +286,36 @@ ACMR/overdraw/fetch (they never ran `meshopt_analyze*`; the log says
 isolating what the passes did; the 4 bytes/vertex the format change saves
 is a separate, known figure.
 
-### Position quantization via meshoptimizer
+### Position quantization (optimized variant only)
 
-The existing affine AABB `(p - center) * inv_scale` encoding stays
-(meshoptimizer has no affine helper; its exponent-based filters would
-change the shader decode). The quantization step routes through
-`meshopt_quantizeSnorm(v, 16)` at the two attribute-aware caller sites --
-the `encode_position` branch of the soup buffer build and
-`Build_context::write_position()` -- writing snorm16 directly instead of
-handing pre-scaled floats to the format-agnostic convert machinery. It is
-bit-identical to the old `float_to_snorm16` **only because both encode
-sites pre-clamp to [-1, 1]** (the two functions differ in clamp order,
-unreachable inside that interval). Shader decode unchanged.
+Quantization applies **only to the optimized variant** (requirements 9-10):
+the content (base) formats always store float3, so `quantize_vertex_positions`
+has no effect unless `optimize_meshes` is on, and the AS gate is gone from
+the format choice -- every BLAS source is pinned to the original variant,
+which is float3 by construction (`get_blas_position_input()` still answers
+per Buffer_mesh and returns early on passthrough). The RT instance records
+and the lightmap baker likewise derive their per-record encoding from the
+original variant's storage format, so they are passthrough automatically.
 
-This section describes the current implementation, where quantization
-applies to **both** variants. Requirements 9-10 move it: the base variant
-returns to full-float positions and the snorm16 encode survives only in
-the optimized build -- Future work item 1 carries the consequences.
+The affine AABB `(p - center) * inv_scale` encoding stays (meshoptimizer
+has no affine helper; its exponent-based filters would change the shader
+decode). The encode routes through `meshopt_quantizeSnorm(v, 16)` at the
+two attribute-aware sites -- the `encode_position` branch of the soup
+buffer build (the soup path re-runs the soup build against the optimized
+sink format) and the geometry path's `take_optimizable_snapshot()` gather.
+It is bit-identical to `float_to_snorm16` **only because both encode sites
+pre-clamp to [-1, 1]** (the two functions differ in clamp order,
+unreachable inside that interval).
+
+The shader side needs no per-draw plumbing beyond what exists: the
+position-encoding shader axis is derived from the draw's vertex format
+(`Shader_key::derive()`), so a base draw decodes passthrough and an
+optimized fill draw decodes snorm16 from the per-primitive
+`position_scale` / `position_offset`. The shadow and forward prewarms warm
+the optimized formats beside the content ones (one shadow variant per
+{skinning state, position encoding}); the shadow classification's
+derive-vs-bind keys still agree for every mode because the optimized
+variant is fill-only and the content + expanded formats are float together.
 
 ### Config plumbing
 
@@ -334,37 +383,38 @@ against a same-config control pair (always 0).
   that produced requirements 9-11: the design goal is now that the user
   never sees the clamp.
 
-Unit tests cover the multi-stream optimizer core and live-edit variant
-invalidation. What verification remains is listed in "Future work".
+The A/B figures above predate the 2026-08-29 encoding split: they were
+measured with quantization applied to BOTH variants, where off-vs-on
+compares identically-encoded builds. With the split, `optimize_meshes`
+off-vs-on at `quantize_vertex_positions=true` compares a float base
+against a snorm optimized build and is expected **non-zero** (the
+quantization epsilon); the order-only expectations (0 on ABeautifulGame,
+~0.163% on Bistro) hold at `quantize_vertex_positions=false`.
+
+Unit tests cover the multi-stream optimizer core, the geometry-path
+encoded-and-welded optimized build (box round-trip through CPU sinks),
+live-edit variant invalidation, the edit bracket and the publish gate.
+What verification remains is listed in "Future work".
 
 ## Future work
 
-1. **Move quantization into the optimized variant (requirements 9-11).**
-   Base variant builds full-float positions; the optimized variant is the
-   only quantized build; edits invalidate at edit start, block
-   re-optimization while active, and queue a background re-optimize at edit
-   end (lazy/on-request build is allowed because the base variant is always
-   renderable). Known consequences to design against:
-   - The content vertex format's position returns to
-     `format_32_vec3_float`; the optimized format takes the snorm16
-     position (it already has its own format and per-primitive
-     scale/offset in the record). Both flow through every
-     `get_all_vertex_formats()` consumer, and the shader position-encoding
-     axis becomes a property of which variant a draw uses.
-   - The snorm16 branch of the live-drag write-back
-     (`mesh_component_transform.cpp`, clamp + warn-once) goes dead --
-     remove it, and with it the third-quantizer seam recorded below.
-   - BLAS builds from the source/base shape, so its snorm16-input device
-     gate stops being exercised on that path.
-   - The disk-cache key covers vertex data + options; the encoding move
-     bumps the cache format-version constant.
-   - Memory: the always-resident base variant grows back to 12
-     bytes/position; the steady-state fill win (welded + quantized
-     optimized variant) is what quantization keeps. The minimal
-     `id_renderer`-variant seam below is the recorded way to reclaim the
-     base cost later.
-   - Doc/vertex-position-quantization.md describes the current
-     both-variants encoding; update it when this lands.
+1. **Verification sweep of the requirements 9-11 implementation.** The
+   code landed (encoding split, edit bracket + publish gate, durable paint,
+   background re-optimization) but the sweep has not run: the A/B matrix
+   (control pairs; old-vs-new tree with optimizer off at quantize=false =
+   0; optimizer off-vs-on at quantize=false = order residue only;
+   optimizer off-vs-on at quantize=true = recorded quantization epsilon +
+   mutation check), MCP byte checks (base float3, optimized snorm16 with
+   the facet-id-free stride), the interaction sanity re-run, the unit-test
+   suite, the cross-backend build sweep, and a real-mouse session: paint
+   (now undoable), an out-of-AABB drag (no clamp, no pop), weight paint,
+   with the optimized variant returning after each edit
+   (`get_memory_usage` / Properties).
+   Memory consequence to re-measure: the always-resident base variant is
+   back to 12 bytes/position; the steady-state fill win (welded +
+   quantized optimized variant) is what quantization keeps, and the
+   minimal `id_renderer`-variant seam below is the recorded way to
+   reclaim the base cost later.
 2. **Perf.** Not measurable headlessly (the frame pacer reports tier "OFF"
    and no MCP surface reports GPU frame time). Use the Frame Pacing window
    or a GPU capture on the RELEASE build; Bistro is ~119 ms/frame in
@@ -391,11 +441,12 @@ variant be dropped and reclaim the accepted 2x GPU mesh memory, a
 geometry-path disk cache (only if profiling disagrees), and an
 `ERHE_VERIFY(isfinite)` on the centroid position path (deliberately not
 added: it would turn previously-silent broken scenes into aborts). Two
-former seams are absorbed by Future work item 1: the optimized rebuild
-queued at interaction end is now required by requirement 11, and the
-live-drag quantizer branch (a third position quantizer whose `lround`
-rounding can differ by one from the other two near ties) is removed
-outright instead of converted to `meshopt_quantizeSnorm`.
+former seams were absorbed by the requirements 9-11 implementation: the
+optimized rebuild queued at interaction end exists now (the commit
+operations' background re-optimization), and the live-drag quantizer
+branch (a third position quantizer whose `lround` rounding could differ by
+one from the other two near ties) was removed outright rather than
+converted to `meshopt_quantizeSnorm`.
 
 ### How to verify: the A/B screenshot harness
 
@@ -463,8 +514,12 @@ Each of these cost a review or debugging round. Do not rediscover them.
   opposite rule.
 - **`Mesh_memory` must hold a REFERENCE to the owner's config** -- a copy
   freezes the Settings toggle at its startup value.
-- **Invalidate before the first GPU write, and re-register every mesh
-  sharing the Primitive** -- not just the edited one.
+- **Bracket the edit at its start, and re-register every mesh sharing the
+  Primitive** -- not just the edited one. Release the optimization hold on
+  the exact Primitive object begin handed back, never through a
+  (mesh, index) lookup: an operation executing mid-edit (undo during a
+  stroke) can swap the slot to a different Primitive, and the mid-drag
+  fork/extrude swap must transfer the hold.
 - **Welding is bitwise over every byte including padding** -- safe only
   because staging is `resize()`d (zero-filled) before attribute writes.
   Keep that property or the weld silently degrades.
@@ -479,7 +534,9 @@ Each of these cost a review or debugging round. Do not rediscover them.
   has them all.
 - **Bistro's off-vs-on residue (0.163%, one-LSB alpha-foliage pixels) is
   the triangle reordering, not a weld defect** -- do not chase it again;
-  the weld+fetch-only run is pixel-exact.
+  the weld+fetch-only run is pixel-exact. Measured pre-split; with
+  quantization on, off-vs-on additionally carries the expected
+  float-base-vs-snorm-optimized epsilon (see Verification).
 - **Enabling optimization reorders triangles, so the CPU BVH disk cache
   (keyed on triangle positions) takes a one-time full miss/rebuild sweep
   on first optimized load.** Expected; noted in logs.

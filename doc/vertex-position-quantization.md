@@ -6,6 +6,24 @@ end -- the phase 5 fallback decision is SUPERSEDED)
 Date: 2026-08-26
 Revision: 8 (verified over six independent review rounds; see Provenance)
 
+**2026-08-29 SCOPE CHANGE (meshoptimizer requirements 9-11): quantization
+now applies ONLY to the meshoptimizer OPTIMIZED variant's vertex formats.**
+The content (base) formats are back to float3 unconditionally - the base
+variant is the always-renderable build that in-place GPU edits write
+through, and a float position can express any value, so the out-of-AABB
+edit clamp (§7's deviation, and the "Still not done" drag below) is gone by
+construction. `Mesh_memory::position_format` became
+`optimized_position_format`; the acceleration-structure clause of the
+format choice was dropped (every BLAS source is pinned to the original
+variant, float3 by construction); the live-drag snorm16 write-back branch
+was removed. The encode sites, shader axis, per-draw scale/offset records,
+RT record plumbing and packing rules this document describes all still
+exist and work exactly as written - they are simply exercised by the
+optimized formats only. See doc/meshoptimizer-integration.md ("Position
+quantization (optimized variant only)") for the current wiring; sections
+below describing quantization of the *content* formats document the
+original design.
+
 ## Goal
 
 Shrink the position attribute of the content vertex streams from

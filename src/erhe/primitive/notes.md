@@ -54,6 +54,10 @@ volume computation, and PBR material definitions.
 - Mesh optimization (`optimize_meshes`, on by default in the editor config) builds an
   additional fill-only, welded `Primitive_render_shape` variant per unique `Primitive`
   (`Primitive::optimized_render_shape`), in a separate vertex format without the
-  per-corner facet-id attribute. The original variant is always built and remains the
-  one used by ID rendering, ray tracing, export, and vertex editing; the first live
-  edit invalidates the optimized variant. See `doc/meshoptimizer-integration.md`.
+  per-corner facet-id attribute and with the ONLY quantized position (the base variant
+  always stores float3, so in-place GPU edits never clamp). The original variant is
+  always built and remains the one used by ID rendering, ray tracing, export, and
+  vertex editing. A live edit drops the optimized variant at edit start and takes an
+  optimization hold on the `Primitive`; all attaches go through
+  `Primitive::publish_optimized_render_shape()`, which refuses under a hold, and the
+  edit's commit re-optimizes in the background. See `doc/meshoptimizer-integration.md`.
