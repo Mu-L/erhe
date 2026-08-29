@@ -386,6 +386,14 @@ Mesh_memory::Mesh_memory(
         if (attribute.usage_type == usage::color) {
             return erhe::dataformat::Format::format_8_vec4_unorm;
         }
+        // Lightmap UVs (channel 2) are in [0, 1] by construction, so unorm16
+        // needs no affine and no side data: -4 bytes. vec2 in GLSL either way,
+        // so no decode. The lightmap atlas region composition
+        // (primitive.lightmap_scale_offset) is unchanged - which is exactly why
+        // this UV set must NOT pick up an affine of its own.
+        if ((attribute.usage_type == usage::tex_coord) && (attribute.usage_index == 2)) {
+            return erhe::dataformat::Format::format_16_vec2_unorm;
+        }
         return {};
     };
 

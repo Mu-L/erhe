@@ -62,6 +62,11 @@ namespace {
     if ((source_format == Format::format_32_vec4_float) && (optimized_format == Format::format_8_vec4_unorm)) {
         return true;
     }
+    // Lightmap UVs (texcoord channel 2) are in [0, 1] by construction, so unorm16
+    // with no affine. vec2 in GLSL either way: no decode.
+    if ((source_format == Format::format_32_vec2_float) && (optimized_format == Format::format_16_vec2_unorm)) {
+        return true;
+    }
     return false;
 }
 
