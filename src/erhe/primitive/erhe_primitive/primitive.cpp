@@ -807,7 +807,8 @@ auto Primitive_render_shape::has_edge_lines_state_locked() const -> bool
 auto Primitive_render_shape::prepare_geometry_buffer_mesh(
     const Build_info&      build_info,
     const Normal_style     normal_style,
-    const std::string_view name
+    const std::string_view name,
+    const bool             force_rebuild
 ) -> bool
 {
     const std::lock_guard<std::mutex> build_lock{m_build_mutex};
@@ -816,7 +817,7 @@ auto Primitive_render_shape::prepare_geometry_buffer_mesh(
         if (m_pending_buffer_mesh) {
             return true; // prepared by another task, not yet committed
         }
-        if (has_edge_lines_state_locked()) {
+        if (!force_rebuild && has_edge_lines_state_locked()) {
             return true; // already committed; a second task must not rebuild
         }
     }
@@ -841,8 +842,11 @@ auto Primitive_render_shape::prepare_geometry_buffer_mesh(
         return false;
     }
     const std::lock_guard<std::mutex> state_lock{m_state_mutex};
-    if (m_pending_buffer_mesh || has_edge_lines_state_locked()) {
-        return true; // another path won while we built; drop ours
+    if (m_pending_buffer_mesh || (!force_rebuild && has_edge_lines_state_locked())) {
+        // Another path won while we built; drop ours. Under force_rebuild the
+        // committed edge lines are exactly what is being rebuilt, so only a
+        // pending build (a genuinely newer preparation) wins.
+        return true;
     }
     m_pending_buffer_mesh = std::move(pending);
     return true;

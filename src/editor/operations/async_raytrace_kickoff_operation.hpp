@@ -8,10 +8,23 @@
 namespace erhe {
     class Item_base;
 }
+namespace erhe::scene {
+    class Mesh;
+}
 
 namespace editor {
 
+class App_context;
 class Scene_root;
+
+// Dispatches the background deferred finalize for one mesh's node. Used by
+// the edit commit operations (Move_mesh_vertices, Paint_weights,
+// Paint_colors) after their synchronous base-only rebuild: the finalize's
+// re-optimize path builds the missing optimized variant on a worker and
+// commits it frame-safely (meshoptimizer doc, requirements 10-11). Call only
+// when the device supports worker contexts - the inline fallback would run
+// the build on the main thread the caller is trying to keep free.
+void kickoff_deferred_finalize(App_context& context, const std::shared_ptr<erhe::scene::Mesh>& mesh);
 
 class Async_raytrace_kickoff_operation : public Operation
 {

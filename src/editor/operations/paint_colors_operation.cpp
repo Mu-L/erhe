@@ -2,7 +2,10 @@
 
 #include "app_context.hpp"
 #include "app_message_bus.hpp"
+#include "operations/async_raytrace_kickoff_operation.hpp"
 #include "scene/scene_root.hpp"
+
+#include "erhe_graphics/device.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_item/item_host.hpp"
@@ -77,10 +80,22 @@ void Paint_colors_operation::apply(App_context& context, const std::vector<glm::
     // every mesh that references the Geometry, exactly as
     // Paint_weights_operation does, so shared-geometry instances change and
     // revert together. The rebuild reads the corner colors back into the fill
-    // mesh and the auxiliary streams, and republishes the optimized variant
-    // the stroke's edit-start invalidation dropped.
+    // mesh and the auxiliary streams.
+    //
+    // Requirements 10-11: with worker contexts available the optimized variant
+    // is rebuilt in the background after the swap (kickoff at the end); the
+    // synchronous build stays base-only so the main thread never pays the
+    // meshopt passes.
+    erhe::primitive::Build_info build_info = m_parameters.build_info;
+    const bool background_optimize =
+        build_info.buffer_info.optimize_meshes &&
+        (context.graphics_device != nullptr) &&
+        context.graphics_device->supports_worker_contexts();
+    if (background_optimize) {
+        build_info.buffer_info.optimize_meshes = false;
+    }
     std::shared_ptr<erhe::primitive::Primitive> new_primitive = std::make_shared<erhe::primitive::Primitive>(m_parameters.geometry);
-    const bool renderable_ok = new_primitive->make_renderable_mesh(m_parameters.build_info, m_parameters.normal_style);
+    const bool renderable_ok = new_primitive->make_renderable_mesh(build_info, m_parameters.normal_style);
     const bool raytrace_ok   = new_primitive->make_raytrace();
     ERHE_VERIFY(renderable_ok && raytrace_ok);
 
@@ -130,6 +145,13 @@ void Paint_colors_operation::apply(App_context& context, const std::vector<glm::
         context.app_message_bus->mesh_geometry_changed.send_message(
             Mesh_geometry_changed_message{.mesh = mesh}
         );
+    }
+
+    // Background re-optimization: the finalize's snapshot sees the complete
+    // base mesh missing its optimized variant, force-rebuilds it on a worker
+    // and commits frame-safely; sharers are refreshed by the commit.
+    if (background_optimize) {
+        kickoff_deferred_finalize(context, m_parameters.mesh);
     }
 }
 

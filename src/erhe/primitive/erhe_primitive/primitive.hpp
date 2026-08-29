@@ -223,7 +223,12 @@ public:
     // the Geometry is derived from an imported triangle soup and comes out
     // unnamed, so the caller passes the scene mesh's name instead. Empty falls
     // back to the Geometry name, which is what the procedural paths have.
-    auto prepare_geometry_buffer_mesh(const Build_info& build_info, Normal_style normal_style, std::string_view name = {}) -> bool;
+    // `force_rebuild` bypasses the "edge lines already committed" idempotence
+    // early-out: the background re-optimization of an edit commit rebuilds a
+    // COMPLETE mesh precisely to get a fresh optimized variant out of the same
+    // staged bytes (meshoptimizer doc, requirement 11). A pending build by
+    // another task still wins either way.
+    auto prepare_geometry_buffer_mesh(const Build_info& build_info, Normal_style normal_style, std::string_view name = {}, bool force_rebuild = false) -> bool;
     // `out_optimized_shape` receives the optimized variant prepared alongside
     // the buffer mesh, so the caller can attach it to the Primitive in the same
     // step - and, crucially, BEFORE the mesh is re-registered with the draw

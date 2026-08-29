@@ -107,11 +107,31 @@ void deferred_finalize_mesh_items(Mesh_operation_parameters&& parameters, const 
         ERHE_VERIFY(scene_mesh);
 
         // Snapshot the primitive list under the scene lock; the prepare
-        // phase below runs without it.
+        // phase below runs without it. The re-optimize decision is made here
+        // too: optimized_render_shape and the optimization hold count are
+        // main-thread state with no lock of their own, so a worker must not
+        // read them.
         std::vector<erhe::scene::Mesh_primitive> mesh_primitives;
+        std::vector<bool>                        force_optimized_rebuild;
         {
             std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{scene_root->item_host_mutex};
             mesh_primitives = scene_mesh->get_primitives();
+            force_optimized_rebuild.assign(mesh_primitives.size(), false);
+            for (std::size_t i = 0, end = mesh_primitives.size(); i < end; ++i) {
+                const erhe::primitive::Primitive* const primitive = mesh_primitives[i].primitive.get();
+                // A complete base mesh missing its (requested) optimized
+                // variant: an edit commit's synchronous base-only rebuild, or
+                // a live-edit invalidation whose edit has ended. Skip under an
+                // active hold - publish would refuse the result anyway; the
+                // hold's releaser queues the re-optimization.
+                force_optimized_rebuild[i] =
+                    parameters.build_info.buffer_info.optimize_meshes &&
+                    (primitive != nullptr) &&
+                    !primitive->optimized_render_shape &&
+                    (primitive->optimization_hold_count == 0) &&
+                    primitive->render_shape &&
+                    primitive->render_shape->has_buffer_mesh_triangles();
+            }
         }
 
         const erhe::primitive::Build_info& mesh_build_info = scene_mesh->skin ? skinned_build_info : parameters.build_info;
@@ -120,7 +140,8 @@ void deferred_finalize_mesh_items(Mesh_operation_parameters&& parameters, const 
         // and GPU buffer-mesh build are the expensive parts and touch only
         // primitive-local state (serialized per shape on the shape's own
         // mutex, so primitives shared between meshes are built exactly once).
-        for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh_primitives) {
+        for (std::size_t primitive_index = 0, primitive_end = mesh_primitives.size(); primitive_index < primitive_end; ++primitive_index) {
+            const erhe::scene::Mesh_primitive& mesh_primitive = mesh_primitives[primitive_index];
             erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
             const std::shared_ptr<erhe::primitive::Primitive_shape> raytrace_shape = primitive.get_shape_for_raytrace();
             if (raytrace_shape && !raytrace_shape->has_real_raytrace()) {
@@ -129,16 +150,32 @@ void deferred_finalize_mesh_items(Mesh_operation_parameters&& parameters, const 
                 }
             }
             const std::shared_ptr<erhe::primitive::Primitive_render_shape>& render_shape = primitive.render_shape;
-            if (render_shape && render_shape->has_buffer_mesh_triangles() && !render_shape->has_edge_lines()) {
+            const bool needs_full_build =
+                render_shape && render_shape->has_buffer_mesh_triangles() && !render_shape->has_edge_lines();
+            // A complete mesh whose optimized variant is missing (snapshot
+            // decision above) is rebuilt in full with force_rebuild: the
+            // fresh optimized variant comes out of the same staged bytes,
+            // and the identical base swaps in benignly.
+            const bool needs_reoptimize =
+                !needs_full_build && force_optimized_rebuild[primitive_index] && render_shape && render_shape->has_buffer_mesh_triangles();
+            if (needs_full_build || needs_reoptimize) {
                 // On GL a worker needs a share context for the GPU buffer
                 // allocation inside prepare_geometry_buffer_mesh. Scope is
                 // deliberately NARROW - around the GPU build only, not the
                 // BVH build above - so the fixed context pool does not cap
                 // the CPU-heavy part of the finalize (plan section 9 item
                 // 1). Unreachable without worker contexts: the import path
-                // only defers edge lines when supports_worker_contexts().
+                // only defers edge lines when supports_worker_contexts(),
+                // and the edit commits dispatch the re-optimize only when
+                // worker contexts exist.
                 erhe::graphics::Scoped_worker_context worker_context{*context.graphics_device};
-                if (!render_shape->prepare_geometry_buffer_mesh(mesh_build_info, erhe::primitive::Normal_style::corner_normals, scene_mesh->get_name())) {
+                // The import finalize always builds corner normals; a
+                // re-optimize rebuild keeps the shape's committed normal
+                // style so the swapped-in base shades identically.
+                const erhe::primitive::Normal_style normal_style = needs_reoptimize
+                    ? render_shape->get_normal_style()
+                    : erhe::primitive::Normal_style::corner_normals;
+                if (!render_shape->prepare_geometry_buffer_mesh(mesh_build_info, normal_style, scene_mesh->get_name(), needs_reoptimize)) {
                     log_operations->warn(
                         "Deferred finalize: could not build full buffer mesh for '{}' (out of GPU mesh memory?)",
                         scene_mesh->get_name()
@@ -264,6 +301,33 @@ void Async_raytrace_kickoff_operation::undo(App_context&)
     // In-flight async tasks captured scene_root and the item shared_ptrs at
     // task creation; they complete safely against the captured scene_root
     // even if items have been detached from it by sibling sub-op undos.
+}
+
+void kickoff_deferred_finalize(App_context& context, const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    if (!mesh) {
+        return;
+    }
+    erhe::scene::Node* const node = mesh->get_node();
+    if (node == nullptr) {
+        return;
+    }
+    erhe::Item_host* const item_host = node->get_item_host();
+    if (item_host == nullptr) {
+        return;
+    }
+    const std::shared_ptr<Scene_root> scene_root = static_cast<Scene_root*>(item_host)->shared_from_this();
+    const std::vector<std::shared_ptr<erhe::Item_base>> single_item{node->shared_from_this()};
+    async_for_nodes_with_mesh(
+        context,
+        single_item,
+        [scene_root](Mesh_operation_parameters&& mesh_operation_parameters)
+        {
+            deferred_finalize_mesh_items(std::move(mesh_operation_parameters), scene_root);
+        },
+        // The finalize manages its own narrow worker-context scope.
+        /*op_builds_gpu_meshes=*/false
+    );
 }
 
 }
