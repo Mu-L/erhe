@@ -4,8 +4,9 @@
 vertex is 36 bytes as planned, the unit tests pass, and the A/B image set
 in `logs/attr_encoding_ab/` has been **inspected and accepted by the user**
 -- which is the acceptance criterion for this work (see Verification).
-Still outstanding: the wider build sweep (only VS 2026 Vulkan Debug was
-built) and the headless pick / export interaction sanity pass.
+VS 2026 Vulkan Debug and VS 2026 OpenGL Debug both build clean. Still
+outstanding: the headless pick / export interaction sanity pass. Quest is
+future work, not an outstanding item.
 
 Scope of this document: **which encoding to use for each
 non-position vertex attribute** of the optimized variant, what
@@ -477,7 +478,10 @@ Skinned meshes only, and stride-neutral (stream 0 stays 16 bytes).
   `ctest` at the `build_tests` root aborts on the
   `erhe_graphics_gpu_tests` discovery include unless that target was built
   -- build it explicitly or run ctest per test directory.
-- Build sweep: ninja vulkan Debug, VS opengl Debug, Quest APK.
+- Build sweep: VS 2026 Vulkan Debug and VS 2026 OpenGL Debug, both clean.
+  The OpenGL one matters on its own: this work touches vertex formats and
+  GLSL, and the Vulkan build cannot speak for that backend. **Quest is
+  future work** (see below), so no APK build here.
 - Headless interaction sanity, optimize on and off: `pick_at` probes hit
   the same node / mesh / facet id, glTF export round-trips to the same
   element counts. These read the original variant, so they must be
@@ -499,6 +503,16 @@ bump.
 
 ## Future work
 
+- **Quest.** Not built and not tested there for this work, deliberately.
+  Two things to settle when it happens: whether every substituted format is
+  accepted as vertex input on the device (`format_16_vec4_sint` and
+  `format_16_vec3_unorm` are the new ones; the position quantization
+  already has a `Device_info` gate and a declined-request warning to model
+  a fallback on), and whether the -62% vertex fetch actually shows up in
+  frame time on tiler hardware, which is where it should matter most. Note
+  the config is APK-bundled, so a config change needs an uninstall and a
+  clean reinstall, and every OpenXR launch needs a fresh prompt and
+  explicit confirmation.
 - YCoCg vertex colors via `meshopt_encodeFilterColor` /
   `meshopt_decodeFilterColor` -- quality at the same 4 bytes.
 - `format_packed1010102_vec4_snorm` is declared but `convert()` handles it
