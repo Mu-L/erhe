@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 
 namespace erhe::scene_renderer {
 
@@ -337,35 +338,73 @@ Mesh_memory::Mesh_memory(
         .min_attribute_alignment = device_info.min_vertex_attribute_alignment,
         .min_stride_alignment    = std::max(device_info.min_vertex_stream_stride_alignment, std::size_t{4})
     };
-    // The optimized content formats are the content formats minus the per-corner
-    // facet id and with the position stored in optimized_position_format (the
-    // ONLY place position quantization applies - the base formats stay float3 so
-    // in-place GPU edits can express any position). Derived here rather than
-    // written out again so an edit to the source format cannot leave them
-    // behind. Done BEFORE the repack below, so their offsets and strides are
-    // recomputed for the changed attribute list.
-    const auto make_optimized_format = [this](const erhe::dataformat::Vertex_format& source) -> erhe::dataformat::Vertex_format
+    // The optimized content formats are the content formats with a per-attribute
+    // rule applied: some attributes are DROPPED outright, and some are stored in
+    // a more compact FORMAT. Derived here rather than written out again so an
+    // edit to the source format cannot leave them behind. Done BEFORE the repack
+    // below, so offsets and strides are recomputed for the changed attribute
+    // list. See doc/meshoptimizer-attribute-encodings-plan.md.
+    //
+    // Why each dropped attribute is dropped:
+    //  - custom_attribute_id is per FACET, and welding merges corners across
+    //    facets, so no single value describes a merged vertex. Dropping it also
+    //    takes it out of the bitwise weld compare (leaving it in merges nothing
+    //    at all) and makes the variant unusable for ID rendering by construction
+    //    rather than by convention.
+    //  - normal_attribute_smooth is read by no fill shader. The smooth normal the
+    //    wide-line compute pass uses comes from the separate edge line format.
+    //  - custom_attribute_valency_edge_count feeds a fragment debug path, which
+    //    renders from the base variant.
+    // None of the three has a Shader_key presence axis, so removing them cannot
+    // collide two distinct shader variants onto one key.
+    const auto is_dropped = [](const erhe::dataformat::Vertex_attribute& attribute) -> bool
+    {
+        using usage = erhe::dataformat::Vertex_attribute_usage;
+        const bool is_facet_id      = (attribute.usage_type  == usage::custom) &&
+                                      (attribute.usage_index == erhe::dataformat::custom_attribute_id);
+        const bool is_smooth_normal = (attribute.usage_type  == usage::normal) &&
+                                      (attribute.usage_index == erhe::dataformat::normal_attribute_smooth);
+        const bool is_valency       = (attribute.usage_type  == usage::custom) &&
+                                      (attribute.usage_index == erhe::dataformat::custom_attribute_valency_edge_count);
+        return is_facet_id || is_smooth_normal || is_valency;
+    };
+
+    // Storage format substitutions. An empty result means "keep the content
+    // format". Position quantization is the ONLY place vertex positions are
+    // quantized - the base formats stay float3 so in-place GPU edits can express
+    // any position.
+    const auto substituted_format = [this](
+        const erhe::dataformat::Vertex_attribute& attribute
+    ) -> std::optional<erhe::dataformat::Format>
+    {
+        using usage = erhe::dataformat::Vertex_attribute_usage;
+        if ((attribute.usage_type == usage::position) && (attribute.usage_index == 0)) {
+            return optimized_position_format;
+        }
+        return {};
+    };
+
+    const auto make_optimized_format = [&is_dropped, &substituted_format](
+        const erhe::dataformat::Vertex_format& source
+    ) -> erhe::dataformat::Vertex_format
     {
         erhe::dataformat::Vertex_format optimized = source;
         for (erhe::dataformat::Vertex_stream& stream : optimized.streams) {
             std::vector<erhe::dataformat::Vertex_attribute>& attributes = stream.attributes;
             attributes.erase(
-                std::remove_if(
-                    attributes.begin(),
-                    attributes.end(),
-                    [](const erhe::dataformat::Vertex_attribute& attribute) {
-                        return (attribute.usage_type  == erhe::dataformat::Vertex_attribute_usage::custom) &&
-                               (attribute.usage_index == erhe::dataformat::custom_attribute_id);
-                    }
-                ),
+                std::remove_if(attributes.begin(), attributes.end(), is_dropped),
                 attributes.end()
             );
-            // No stream of these formats consists of the id alone, and an empty
-            // stream would allocate a zero stride the pools cannot serve.
+            // take_optimizable_snapshot() requires the optimized and content
+            // formats to have equal stream counts, and an empty stream would
+            // allocate a zero stride the pools cannot serve - so no stream may
+            // consist entirely of dropped attributes. Stream 2 is down to
+            // aniso_control alone; keep it that way rather than removing it.
             ERHE_VERIFY(!attributes.empty());
             for (erhe::dataformat::Vertex_attribute& attribute : attributes) {
-                if ((attribute.usage_type == erhe::dataformat::Vertex_attribute_usage::position) && (attribute.usage_index == 0)) {
-                    attribute.format = optimized_position_format;
+                const std::optional<erhe::dataformat::Format> format = substituted_format(attribute);
+                if (format.has_value()) {
+                    attribute.format = format.value();
                 }
             }
         }
