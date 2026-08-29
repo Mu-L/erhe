@@ -99,7 +99,11 @@ void Move_mesh_vertices_operation::apply(App_context& context, const std::vector
         set_error("Move_mesh_vertices_operation: item host is null");
         return;
     }
-    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{item_host->item_host_mutex};
+    // unique_lock, not lock_guard: the background-optimize kickoff at the end
+    // dispatches through async_for_nodes_with_mesh, which takes this same
+    // mutex itself - it must run after an explicit unlock or std::mutex
+    // throws "resource deadlock would occur".
+    std::unique_lock<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{item_host->item_host_mutex};
 
     const std::vector<erhe::scene::Mesh_primitive>& current_primitives = m_parameters.mesh->get_primitives();
     if (m_parameters.primitive_index >= current_primitives.size()) {
@@ -242,7 +246,9 @@ void Move_mesh_vertices_operation::apply(App_context& context, const std::vector
 
     // Background re-optimization: the finalize's snapshot sees the complete
     // base mesh missing its optimized variant, force-rebuilds it on a worker
-    // and commits frame-safely; sharers are refreshed by the commit.
+    // and commits frame-safely; sharers are refreshed by the commit. Unlock
+    // first - the dispatcher takes the item host mutex itself.
+    scene_lock.unlock();
     if (background_optimize) {
         kickoff_deferred_finalize(context, m_parameters.mesh);
     }
