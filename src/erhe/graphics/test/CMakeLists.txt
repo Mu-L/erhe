@@ -89,6 +89,7 @@ if (_gpu_tests_supported)
         test_texture_3d.cpp
         test_texture_cube.cpp
         test_texgen_render.cpp
+        test_worker_context.cpp
     )
 
     target_link_libraries(${_gpu_target}
