@@ -45,6 +45,16 @@ void Blit_command_encoder_impl::blit_framebuffer(
     // empty slot on a context that has not adopted yet.
     const Scoped_framebuffer scoped_source_framebuffer     {m_device, source_renderpass};
     const Scoped_framebuffer scoped_destination_framebuffer{m_device, destination_renderpass};
+    // Publication consumer: either pass's color attachment may have been
+    // created (or written) on another context.
+    const Texture* const source_attachment      = source_renderpass.get_descriptor().color_attachments[0].texture;
+    const Texture* const destination_attachment = destination_renderpass.get_descriptor().color_attachments[0].texture;
+    if (source_attachment != nullptr) {
+        source_attachment->get_impl().wait_publication();
+    }
+    if (destination_attachment != nullptr) {
+        destination_attachment->get_impl().wait_publication();
+    }
     const GLuint           src_name   = scoped_source_framebuffer.gl_name();
     const GLuint           dst_name   = scoped_destination_framebuffer.gl_name();
     const gl::Color_buffer src_buffer = src_name != 0 ? gl::Color_buffer::color_attachment0 : gl::Color_buffer::back;
@@ -95,6 +105,10 @@ void Blit_command_encoder_impl::copy_from_texture(
 )
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    // Publication consumer: either texture may have been created on
+    // another context.
+    source_texture->get_impl().wait_publication();
+    destination_texture->get_impl().wait_publication();
     const gl::Texture_target gl_source_texture_target = convert_to_gl_texture_target(
         source_texture->get_texture_type(),
         source_texture->get_sample_count() != 0,
@@ -140,6 +154,11 @@ void Blit_command_encoder_impl::copy_from_texture(
         gl_height,
         gl_depth
     );
+    // Writes the shared destination texture: a worker-side call is a
+    // publication point.
+    if (gl_thread_is_worker_context()) {
+        destination_texture->get_impl().publish_from_worker();
+    }
 }
 
 // Buffer to texture copy
@@ -156,6 +175,10 @@ void Blit_command_encoder_impl::copy_from_buffer(
 )
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    // Publication consumer: staging buffer and texture may each have been
+    // created on another context.
+    source_buffer->get_impl().wait_publication();
+    destination_texture->get_impl().wait_publication();
     ERHE_VERIFY(source_size.x <= destination_texture->get_width ());
     ERHE_VERIFY(source_size.y <= destination_texture->get_height());
     ERHE_VERIFY(source_size.z <= destination_texture->get_depth ());
@@ -379,6 +402,10 @@ void Blit_command_encoder_impl::copy_from_texture(
     // Readback stays main-thread-only (gl-worker-thread-contexts.md,
     // "Context identity and guards").
     ERHE_VERIFY_GL_THREAD_MAIN_CONTEXT();
+    // Publication consumer: the texture (worker create + upload) and the
+    // readback buffer may each have been created on another context.
+    source_texture->get_impl().wait_publication();
+    destination_buffer->get_impl().wait_publication();
     const gl::Texture_target gl_source_texture_target = convert_to_gl_texture_target(
         source_texture->get_texture_type(),
         source_texture->get_sample_count() != 0,
@@ -465,6 +492,9 @@ void Blit_command_encoder_impl::copy_from_texture(
 void Blit_command_encoder_impl::generate_mipmaps(const Texture* texture)
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    // Publication consumer: level 0 may have been uploaded on another
+    // context; order the mipmap generation after that publication.
+    texture->get_impl().wait_publication();
     gl::generate_texture_mipmap(texture->get_impl().gl_name());
     // Writes the shared texture: a worker-side call is a publication point.
     if (gl_thread_is_worker_context()) {
@@ -480,6 +510,9 @@ void Blit_command_encoder_impl::fill_buffer(
 )
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    // Publication consumer: order the fill after a creating context's
+    // publication of this buffer.
+    buffer->get_impl().wait_publication();
     gl::clear_named_buffer_sub_data(
         buffer->get_impl().gl_name(),
         gl::Internal_format::r8ui,
@@ -508,6 +541,10 @@ void Blit_command_encoder_impl::copy_from_texture(
 )
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    // Publication consumer: either texture may have been created on
+    // another context.
+    source_texture->get_impl().wait_publication();
+    destination_texture->get_impl().wait_publication();
     const gl::Texture_target gl_source_texture_target = convert_to_gl_texture_target(
         source_texture->get_texture_type(),
         source_texture->get_sample_count() != 0,
@@ -549,6 +586,11 @@ void Blit_command_encoder_impl::copy_from_texture(
             gl_depth
         );
     }
+    // Writes the shared destination texture: a worker-side call is a
+    // publication point.
+    if (gl_thread_is_worker_context()) {
+        destination_texture->get_impl().publish_from_worker();
+    }
 }
 
 void Blit_command_encoder_impl::copy_from_texture(
@@ -584,6 +626,11 @@ void Blit_command_encoder_impl::copy_from_buffer(
 )
 {
     ERHE_VERIFY_GL_THREAD_HAS_CONTEXT();
+    // Publication consumer: either buffer may have been created on another
+    // context; order this copy after its publication. One consumer per
+    // object (the wait consumes the sync) - see Gl_publication_sync.
+    source_buffer->get_impl().wait_publication();
+    destination_buffer->get_impl().wait_publication();
     // Buffer to buffer copy
     gl::copy_named_buffer_sub_data(
         source_buffer->get_impl().gl_name(),

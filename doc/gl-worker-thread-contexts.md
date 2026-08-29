@@ -238,8 +238,14 @@ next tick.
   same context may replace an unconsumed sync.
 - Consumer (main thread), before first use: `wait_publication()` --
   server-side `glWaitSync`, delete, mark consumed. Once per object, not per
-  use. As landed the waits sit in `upload_to_buffer`, `set_sampled_image`,
-  `set_storage_image` and `Texture_heap` allocate.
+  use -- one consumer per object: the first wait consumes the sync, so a
+  handoff chain longer than producer-to-one-consumer needs re-publication.
+  The waits sit in `upload_to_buffer`, `set_sampled_image`,
+  `set_storage_image`, `Texture_heap` allocate, and every blit-encoder
+  method, which waits on each buffer / texture / attachment it reads or
+  writes (a null-check no-op for main-created objects) -- so blit-path
+  consumption of a worker-created object is ordered without relying on an
+  upload having happened first.
 - Publication points: buffer storage (`allocate_storage`, once per pool
   block -- rare), texture storage, each texture upload **method** (once per
   method call, not per `*_sub_image_*` inside the mip / cube-face loops),
