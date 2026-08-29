@@ -20,6 +20,8 @@
 #include "erhe_graphics/scoped_container_access.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
 #include "erhe_graphics/texture.hpp"
+#include "erhe_graphics/gl/gl_binding_state.hpp"
+#include "erhe_graphics/gl/gl_buffer.hpp"
 #include "erhe_graphics/gl/gl_context_index.hpp"
 #include "erhe_graphics/gl/gl_device.hpp"
 #include "erhe_gl/wrapper_functions.hpp"
@@ -471,6 +473,106 @@ TEST_F(Worker_context_gl_test, worker_blit_between_accessor_held_framebuffers)
     // here queues deferred deletes, drained by later acquires / teardown.
     source_pass.reset();
     destination_pass.reset();
+}
+
+// T11: worker-side deletion of a shared buffer the MAIN context has bound.
+// GL auto-unbinds a deleted object only in the deleting context; in the
+// main context the orphan stays bound until the scrub drain issues a REAL
+// unbind at the wait_frame() drain point. Verified with a raw GL binding
+// query, never the cache.
+TEST_F(Worker_context_gl_test, scrub_queue_real_unbind_on_main_drain)
+{
+    require_worker_contexts();
+
+    std::vector<std::uint8_t> bytes(256, 0x11);
+    std::shared_ptr<erhe::graphics::Buffer> buffer = make_staging_buffer(bytes, "T11 scrubbed buffer");
+    const unsigned int deleted_name = buffer->get_impl().gl_name();
+    ASSERT_NE(deleted_name, 0u);
+
+    erhe::graphics::Gl_binding_state& main_binding_state = device().get_impl().get_binding_state();
+    main_binding_state.bind_buffer(gl::Buffer_target::array_buffer, deleted_name);
+    {
+        GLint bound = 0;
+        gl::get_integer_v(gl::Get_p_name::array_buffer_binding, &bound);
+        ASSERT_EQ(static_cast<unsigned int>(bound), deleted_name);
+    }
+
+    // The worker releases the last reference: the deleting (worker) context
+    // scrubs its own cache; the main context gets a scrub-queue entry.
+    std::thread worker{
+        [&]() {
+            erhe::graphics::Scoped_worker_context worker_context{device()};
+            buffer.reset();
+        }
+    };
+    worker.join();
+    ASSERT_FALSE(buffer);
+
+    // Before the drain the orphan is still bound in the main context - this
+    // is the silent-wrong-draw state the scrub exists to end.
+    {
+        GLint bound = 0;
+        gl::get_integer_v(gl::Get_p_name::array_buffer_binding, &bound);
+        ASSERT_EQ(static_cast<unsigned int>(bound), deleted_name) << "expected the deleted buffer to remain bound in the main context until the drain";
+    }
+
+    // Drive the main context's actual drain point (wait_frame inside
+    // submit_and_wait) rather than calling the drain directly - "the drain
+    // point actually runs" is part of what this test verifies.
+    submit_and_wait([](erhe::graphics::Command_buffer&) {});
+
+    {
+        GLint bound = 0;
+        gl::get_integer_v(gl::Get_p_name::array_buffer_binding, &bound);
+        ASSERT_EQ(bound, 0) << "the main drain must issue a real glBindBuffer(target, 0), not just edit the cache";
+    }
+}
+
+// T12: name-recycling epoch. A name rebound on the main context AFTER the
+// worker-side delete was enqueued must survive the drain - when GL recycles
+// the deleted name for the new buffer, only the epoch check prevents the
+// drain from unbinding a live object. The assertion holds whether or not
+// the name was recycled; the recycled case is the one the epoch exists for.
+TEST_F(Worker_context_gl_test, scrub_queue_epoch_spares_rebound_name)
+{
+    require_worker_contexts();
+
+    std::vector<std::uint8_t> bytes(256, 0x22);
+    std::shared_ptr<erhe::graphics::Buffer> first = make_staging_buffer(bytes, "T12 first buffer");
+    const unsigned int first_name = first->get_impl().gl_name();
+
+    erhe::graphics::Gl_binding_state& main_binding_state = device().get_impl().get_binding_state();
+    main_binding_state.bind_buffer(gl::Buffer_target::array_buffer, first_name);
+
+    std::thread worker{
+        [&]() {
+            erhe::graphics::Scoped_worker_context worker_context{device()};
+            first.reset();
+        }
+    };
+    worker.join();
+
+    // Between the enqueue and the drain: create and bind a new buffer. GL
+    // may hand back the recycled name.
+    std::shared_ptr<erhe::graphics::Buffer> second = make_staging_buffer(bytes, "T12 second buffer");
+    const unsigned int second_name = second->get_impl().gl_name();
+    main_binding_state.bind_buffer(gl::Buffer_target::array_buffer, second_name);
+    const bool name_recycled = (second_name == first_name);
+
+    submit_and_wait([](erhe::graphics::Command_buffer&) {});
+
+    {
+        GLint bound = 0;
+        gl::get_integer_v(gl::Get_p_name::array_buffer_binding, &bound);
+        ASSERT_EQ(static_cast<unsigned int>(bound), second_name)
+            << "a buffer bound after the delete was enqueued must survive the drain"
+            << (name_recycled ? " (name WAS recycled - the epoch check is what protected it)" : " (name was not recycled this run)");
+    }
+
+    // Leave no dangling binding behind for later tests.
+    main_binding_state.bind_buffer(gl::Buffer_target::array_buffer, 0);
+    second.reset();
+    submit_and_wait([](erhe::graphics::Command_buffer&) {});
 }
 
 } // namespace erhe::graphics::test
