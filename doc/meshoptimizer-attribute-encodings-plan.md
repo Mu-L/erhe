@@ -1,9 +1,11 @@
 # Compact attribute encodings for the optimized mesh variant
 
-**Status: implemented.** All six steps are in, the optimized vertex is 36
-bytes as planned, and the A/B image set is in `logs/attr_encoding_ab/`
-awaiting visual inspection (see Verification). Unit tests, the wider build
-sweep and the headless interaction sanity pass have NOT been run.
+**Status: implemented and verified.** All six steps are in, the optimized
+vertex is 36 bytes as planned, the unit tests pass, and the A/B image set
+in `logs/attr_encoding_ab/` has been **inspected and accepted by the user**
+-- which is the acceptance criterion for this work (see Verification).
+Still outstanding: the wider build sweep (only VS 2026 Vulkan Debug was
+built) and the headless pick / export interaction sanity pass.
 
 Scope of this document: **which encoding to use for each
 non-position vertex attribute** of the optimized variant, what
@@ -292,7 +294,29 @@ Measured (differing pixels of the cropped viewport, VS 2026 Vulkan Debug):
 So the attribute encodings together move about 1% of viewport pixels,
 99.9% of the differing channel samples by 4 LSB or less, on top of a
 control pair that is exactly identical. Side by side the two renders are
-indistinguishable by eye.
+indistinguishable by eye. **The user inspected this image set and accepted
+it** -- that, not a pixel threshold, is what "verified" means here.
+
+### Unit tests
+
+`src/erhe/primitive/test/test_attribute_encodings.cpp`, 9 tests, run via
+the `erhe_primitive_tests` target. Each encoding is an encoder/decoder pair
+that must agree exactly and whose mismatch renders subtly wrong rather than
+failing, so the decoders in that file are **line-by-line C++ mirrors of the
+GLSL**: a change made to one side and not the other fails there instead of
+becoming a puzzling image. Covered: the TBN quaternion round trip across
+orientations reaching all four omitted-component cases (handedness compared
+exactly -- it is a bit, and mirrored UV shells depend on it), degenerate TBN
+input yielding a finite orthonormal frame rather than NaN, the joint
+influence sort (descending, stable, indices permuted along, normalizing and
+rejecting negative weights), the implicit-sum weight round trip and its
+never-sum-past-one invariant, the texcoord affine (identity without a
+range, round trip for tiling UVs), the three encoding axes derived from the
+format including the texcoord axis being keyed on channel 0, and the
+geometry path building the whole encoded variant end to end -- where a
+missing conversion surfaces as a null `optimized_render_shape`.
+Mutation-checked: moving the handedness bit in the encoder fails two of
+them.
 
 Two harness notes worth keeping:
 
