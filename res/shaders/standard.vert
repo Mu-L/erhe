@@ -2,6 +2,7 @@
 #include "erhe_skinning.glsl"
 #include "erhe_standard_variant.glsl"
 #include "erhe_vertex_position.glsl"
+#include "erhe_vertex_texcoord.glsl"
 
 #define a_valency_edge_count a_custom_2
 
@@ -280,7 +281,14 @@ void main()
     v_material_index = primitive.primitives[ERHE_DRAW_ID].material_index;
 
 #   if defined(ERHE_USE_VERTEX_VARYING_TEXCOORD0)
-    v_texcoord_0     = a_texcoord_0;
+    // xy of the primitive's texcoord affine is channel 0, zw is channel 1. The
+    // decode is a no-op unless the vertex format stores these channels as
+    // unorm16x2 (the optimized variant); see erhe_vertex_texcoord.glsl.
+    v_texcoord_0     = erhe_decode_vertex_texcoord(
+        a_texcoord_0,
+        primitive.primitives[ERHE_DRAW_ID].texcoord_scale.xy,
+        primitive.primitives[ERHE_DRAW_ID].texcoord_offset.xy
+    );
 #   endif
 
 #   if defined(ERHE_USE_VERTEX_VARYING_NODE_POSITION)
@@ -292,7 +300,11 @@ void main()
     v_lightmap_scale_offset = primitive.primitives[ERHE_DRAW_ID].lightmap_scale_offset;
 #   endif
 #   if defined(ERHE_USE_VERTEX_VARYING_TEXCOORD1)
-    v_texcoord_1     = a_texcoord_1;
+    v_texcoord_1     = erhe_decode_vertex_texcoord(
+        a_texcoord_1,
+        primitive.primitives[ERHE_DRAW_ID].texcoord_scale.zw,
+        primitive.primitives[ERHE_DRAW_ID].texcoord_offset.zw
+    );
 #   endif
 
 #   if defined(ERHE_USE_VERTEX_VARYING_COLOR)

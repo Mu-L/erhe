@@ -291,4 +291,31 @@ auto get_vertex_position_encoding(const Vertex_format* vertex_format) -> Vertex_
     }
 }
 
+auto c_str(const Vertex_texcoord_encoding encoding) -> const char*
+{
+    switch (encoding) {
+        case Vertex_texcoord_encoding::passthrough:      return "passthrough";
+        case Vertex_texcoord_encoding::unorm16x2_affine: return "unorm16x2_affine";
+        default:                                         return "?";
+    }
+}
+
+auto get_vertex_texcoord_encoding(const Vertex_format* vertex_format) -> Vertex_texcoord_encoding
+{
+    if (vertex_format == nullptr) {
+        return Vertex_texcoord_encoding::passthrough;
+    }
+    // Channel 0 decides for channels 0 and 1 together: both are substituted as a
+    // pair, and channel 1 may be absent from a format that has channel 0.
+    // Channel 2 is excluded on purpose - see the enum comment.
+    const Attribute_stream texcoord = vertex_format->find_attribute(Vertex_attribute_usage::tex_coord, 0);
+    if (texcoord.attribute == nullptr) {
+        return Vertex_texcoord_encoding::passthrough;
+    }
+    switch (texcoord.attribute->format) {
+        case Format::format_16_vec2_unorm: return Vertex_texcoord_encoding::unorm16x2_affine;
+        default:                           return Vertex_texcoord_encoding::passthrough;
+    }
+}
+
 } // namespace erhe::dataformat

@@ -63,7 +63,9 @@ Primitive_interface::Primitive_interface(erhe::graphics::Device& graphics_device
         .base_joint_index = primitive_struct.add_uint ("base_joint_index"      )->get_offset_in_parent(),
         .base_vertex      = primitive_struct.add_uint ("base_vertex"           )->get_offset_in_parent(),
         .position_scale   = primitive_struct.add_vec4 ("position_scale"        )->get_offset_in_parent(),
-        .position_offset  = primitive_struct.add_vec4 ("position_offset"       )->get_offset_in_parent()
+        .position_offset  = primitive_struct.add_vec4 ("position_offset"       )->get_offset_in_parent(),
+        .texcoord_scale   = primitive_struct.add_vec4 ("texcoord_scale"        )->get_offset_in_parent(),
+        .texcoord_offset  = primitive_struct.add_vec4 ("texcoord_offset"       )->get_offset_in_parent()
     }
     , max_primitive_count{static_cast<std::size_t>(max_primitive_count)}
 {
@@ -230,6 +232,7 @@ auto Primitive_buffer::update(
             // the 0-based per-primitive facet index that id_ranges()/get_mesh_facet_from_triangle() expect.
             const uint32_t  base_vertex      = buffer_mesh->base_vertex();
             const Position_quantization quantization = get_position_quantization(buffer_mesh->bounding_box);
+            const erhe::primitive::Texcoord_quantization texcoord_quantization = erhe::primitive::get_texcoord_quantization(*buffer_mesh);
 
             SPDLOG_LOGGER_TRACE(
                 log_primitive_buffer, 
@@ -268,6 +271,8 @@ auto Primitive_buffer::update(
                 write(primitive_gpu_data, write_offset + offsets.base_vertex,      as_span(base_vertex     ));
                 write(primitive_gpu_data, write_offset + offsets.position_scale,  as_span(quantization.scale ));
                 write(primitive_gpu_data, write_offset + offsets.position_offset, as_span(quantization.offset));
+                write(primitive_gpu_data, write_offset + offsets.texcoord_scale,  as_span(texcoord_quantization.scale ));
+                write(primitive_gpu_data, write_offset + offsets.texcoord_offset, as_span(texcoord_quantization.offset));
 
             }
             write_offset += entry_size;
@@ -357,6 +362,7 @@ void Primitive_buffer::write_primitive(
     const uint32_t  base_joint_index = skin ? skin->skin_data.joint_buffer_index : 0;
     const uint32_t  base_vertex      = buffer_mesh->base_vertex();
     const Position_quantization quantization = get_position_quantization(buffer_mesh->bounding_box);
+    const erhe::primitive::Texcoord_quantization texcoord_quantization = erhe::primitive::get_texcoord_quantization(*buffer_mesh);
 
     using erhe::graphics::as_span;
     const auto color_span =
@@ -381,6 +387,8 @@ void Primitive_buffer::write_primitive(
     write(primitive_gpu_data, write_offset + offsets.base_vertex,           as_span(base_vertex     ));
     write(primitive_gpu_data, write_offset + offsets.position_scale,        as_span(quantization.scale ));
     write(primitive_gpu_data, write_offset + offsets.position_offset,       as_span(quantization.offset));
+    write(primitive_gpu_data, write_offset + offsets.texcoord_scale,        as_span(texcoord_quantization.scale ));
+    write(primitive_gpu_data, write_offset + offsets.texcoord_offset,       as_span(texcoord_quantization.offset));
     write_offset += entry_size;
 
     if (use_id_ranges) {
@@ -557,8 +565,11 @@ auto Primitive_buffer::update(
         // never writes base_vertex either), so these draws can only ever be
         // passthrough. Write the identity affine for hygiene.
         const Position_quantization quantization{};
+        const erhe::primitive::Texcoord_quantization texcoord_quantization{};
         write(primitive_gpu_data, write_offset + offsets.position_scale,   as_span(quantization.scale ));
         write(primitive_gpu_data, write_offset + offsets.position_offset,  as_span(quantization.offset));
+        write(primitive_gpu_data, write_offset + offsets.texcoord_scale,   as_span(texcoord_quantization.scale ));
+        write(primitive_gpu_data, write_offset + offsets.texcoord_offset,  as_span(texcoord_quantization.offset));
         write_offset += entry_size;
     }
     buffer_range.bytes_written(write_offset);

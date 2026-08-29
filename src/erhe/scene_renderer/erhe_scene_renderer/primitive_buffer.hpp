@@ -51,6 +51,11 @@ public:
                                     // Vertex position dequantization affine: decoded = a_position * scale + offset.
                                     // Always the primitive's real AABB - it is the *decode* that is a no-op while
                                     // positions are stored as float3, because a passthrough shader never reads these.
+    std::size_t texcoord_scale;     // vec4  4 * 4 bytes - xy = channel 0 UV extent, zw = channel 1 UV extent
+    std::size_t texcoord_offset;    // vec4  4 * 4 bytes - xy = channel 0 UV min,    zw = channel 1 UV min
+                                    // Texcoord dequantization affine, same contract as the position one:
+                                    // decoded = a_texcoord_N * scale + offset. Channel 2 (lightmap) is never
+                                    // affine-encoded and does not appear here.
 };
 
 // Dequantization affine for one primitive, derived from its object space AABB.

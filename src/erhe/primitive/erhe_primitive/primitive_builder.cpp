@@ -18,6 +18,8 @@
 #include "erhe_verify/verify.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
@@ -1108,6 +1110,44 @@ auto Build_context::take_optimizable_snapshot(
         }
     }
 
+    // UV ranges for the affine texcoord channels, over the same corner prefix the
+    // gather below copies. Computed before any conversion, because the encode
+    // needs the affine and the per-primitive record writer has to reproduce
+    // exactly the same one from the Buffer_mesh. Welding and reordering move no
+    // value, so a range taken over the corner prefix bounds the optimized
+    // variant's vertices too (a dropped corner can only shrink it).
+    {
+        std::array<Texcoord_range, affine_texcoord_channel_count> texcoord_ranges{};
+        for (std::size_t channel = 0; channel < affine_texcoord_channel_count; ++channel) {
+            const erhe::dataformat::Attribute_stream source = root.vertex_format.find_attribute(
+                erhe::dataformat::Vertex_attribute_usage::tex_coord, static_cast<unsigned int>(channel)
+            );
+            if (
+                (source.attribute == nullptr) ||
+                (source.attribute->format != erhe::dataformat::Format::format_32_vec2_float)
+            ) {
+                continue;
+            }
+            const std::size_t stream_index = static_cast<std::size_t>(source.stream - root.vertex_format.streams.data());
+            const Vertex_buffer_writer& writer = *vertex_writers.at(stream_index).get();
+            if (writer.vertex_data.size() < corner_count * writer.stride) {
+                continue;
+            }
+            for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
+                float uv[2];
+                memcpy(uv, writer.vertex_data.data() + vertex * writer.stride + source.attribute->offset, sizeof(uv));
+                // A non-finite UV must not poison the range for every other
+                // vertex; it clamps into it during the encode instead.
+                if (!std::isfinite(uv[0]) || !std::isfinite(uv[1])) {
+                    continue;
+                }
+                texcoord_ranges[channel].add(glm::vec2{uv[0], uv[1]});
+            }
+        }
+        root.buffer_mesh.texcoord_ranges = texcoord_ranges;
+    }
+    const Texcoord_quantization texcoord_quantization = get_texcoord_quantization(root.buffer_mesh);
+
     std::vector<Mesh_optimize_stream> streams;
     streams.reserve(optimized_format.streams.size());
     for (std::size_t stream_index = 0, stream_end = optimized_format.streams.size(); stream_index < stream_end; ++stream_index) {
@@ -1147,6 +1187,40 @@ auto Build_context::take_optimizable_snapshot(
                         static_cast<int16_t>(meshopt_quantizeSnorm(std::clamp(biased.x * position_encode_inv_scale.x, -1.0f, 1.0f), 16)),
                         static_cast<int16_t>(meshopt_quantizeSnorm(std::clamp(biased.y * position_encode_inv_scale.y, -1.0f, 1.0f), 16)),
                         static_cast<int16_t>(meshopt_quantizeSnorm(std::clamp(biased.z * position_encode_inv_scale.z, -1.0f, 1.0f), 16))
+                    };
+                    memcpy(stream.data.data() + vertex * optimized_stream.stride + optimized_attribute.offset, encoded, sizeof(encoded));
+                }
+                continue;
+            }
+            // Texcoord channels 0 and 1 are normalized into the primitive's own
+            // per-channel UV range, so they are an affine encode rather than a
+            // pure format conversion - exactly like the position. Channel 2 is
+            // NOT here: it is in [0, 1] by construction and goes through the
+            // plain conversion below.
+            const bool encode_texcoord =
+                (optimized_attribute.usage_type  == erhe::dataformat::Vertex_attribute_usage::tex_coord) &&
+                (optimized_attribute.usage_index <  affine_texcoord_channel_count)                       &&
+                (source.attribute->format        == erhe::dataformat::Format::format_32_vec2_float)      &&
+                (optimized_attribute.format      == erhe::dataformat::Format::format_16_vec2_unorm);
+            if (encode_texcoord) {
+                const glm::length_t channel = static_cast<glm::length_t>(2 * optimized_attribute.usage_index);
+                const glm::vec2     scale {texcoord_quantization.scale [channel + 0], texcoord_quantization.scale [channel + 1]};
+                const glm::vec2     offset{texcoord_quantization.offset[channel + 0], texcoord_quantization.offset[channel + 1]};
+                const glm::vec2   inv_scale{1.0f / scale.x, 1.0f / scale.y};
+                for (std::size_t vertex = 0; vertex < corner_count; ++vertex) {
+                    float uv[2];
+                    memcpy(uv, writer.vertex_data.data() + vertex * writer.stride + source.attribute->offset, sizeof(uv));
+                    // The clamp is what makes meshopt_quantizeUnorm() safe here:
+                    // a non-finite or out-of-range UV lands on a range endpoint
+                    // instead of wrapping.
+                    const glm::vec2 normalized = glm::clamp(
+                        (glm::vec2{uv[0], uv[1]} - offset) * inv_scale,
+                        glm::vec2{0.0f},
+                        glm::vec2{1.0f}
+                    );
+                    const uint16_t encoded[2] = {
+                        static_cast<uint16_t>(meshopt_quantizeUnorm(normalized.x, 16)),
+                        static_cast<uint16_t>(meshopt_quantizeUnorm(normalized.y, 16))
                     };
                     memcpy(stream.data.data() + vertex * optimized_stream.stride + optimized_attribute.offset, encoded, sizeof(encoded));
                 }

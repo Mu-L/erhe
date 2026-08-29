@@ -208,4 +208,28 @@ enum class Vertex_position_encoding : uint32_t
 // recognized quantized format (including a format with no position at all).
 [[nodiscard]] auto get_vertex_position_encoding(const Vertex_format* vertex_format) -> Vertex_position_encoding;
 
+// How texcoord channels 0 and 1 are stored, and therefore how a shader must
+// decode them. Same mechanism as the position encoding above: derived from the
+// format, hashed into the shader key, and emitted as
+// ERHE_VERTEX_TEXCOORD_ENCODING by attributes_source().
+//
+// Channel 2 (lightmap UVs) is deliberately NOT covered: it is in [0, 1] by
+// construction, so it is stored as plain unorm16 with no affine and is read
+// undecoded. Only channels 0 and 1 can carry tiling UVs and therefore need the
+// per-primitive range.
+//
+// Keep in sync with the ERHE_VERTEX_TEXCOORD_ENCODING_* macros in
+// res/shaders/erhe_vertex_texcoord.glsl.
+enum class Vertex_texcoord_encoding : uint32_t
+{
+    passthrough      = 0, // a_texcoord_0 / a_texcoord_1 are float2
+    unorm16x2_affine = 1  // unorm16x2, normalized into the primitive's per-channel UV range
+};
+
+[[nodiscard]] auto c_str(Vertex_texcoord_encoding encoding) -> const char*;
+
+// passthrough for a null format, or for one whose texcoord channel 0 is not a
+// recognized quantized format (including a format with no texcoord at all).
+[[nodiscard]] auto get_vertex_texcoord_encoding(const Vertex_format* vertex_format) -> Vertex_texcoord_encoding;
+
 } // namespace erhe::dataformat

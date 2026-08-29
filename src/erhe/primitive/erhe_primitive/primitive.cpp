@@ -1035,6 +1035,34 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
     }
     erhe::math::calculate_bounding_volume(positions, buffer_mesh.bounding_box, buffer_mesh.bounding_sphere);
 
+    // UV ranges of the affine texcoord channels, for the same reason and in the
+    // same order as the bounding volume above: the sink encoding is derived from
+    // them, so they have to exist before any vertex is converted. Computed from
+    // whichever soup this call was handed - the source soup for a base build, the
+    // optimized soup for the optimized re-run - so each Buffer_mesh carries the
+    // ranges its own vertices were encoded against.
+    for (std::size_t channel = 0; channel < affine_texcoord_channel_count; ++channel) {
+        const erhe::dataformat::Attribute_stream source_texcoord = triangle_soup.vertex_format.find_attribute(
+            erhe::dataformat::Vertex_attribute_usage::tex_coord, static_cast<unsigned int>(channel)
+        );
+        if (source_texcoord.attribute == nullptr) {
+            continue;
+        }
+        Texcoord_range& range = buffer_mesh.texcoord_ranges[channel];
+        for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
+            const uint8_t* src = triangle_soup.vertex_data.data() +
+                source_texcoord.attribute->offset +
+                vertex_index * source_texcoord.stream->stride;
+            float uv[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            erhe::dataformat::convert(src, source_texcoord.attribute->format, &uv[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
+            if (!std::isfinite(uv[0]) || !std::isfinite(uv[1])) {
+                continue;
+            }
+            range.add(glm::vec2{uv[0], uv[1]});
+        }
+    }
+    const Texcoord_quantization texcoord_quantization = get_texcoord_quantization(buffer_mesh);
+
     // Sink encoding. Gated on the SINK format, not the source: this function is
     // also called with a local float3-only format by Primitive_raytrace, whose
     // Cpu_buffer feeds the CPU BVH backends and must stay unquantized.
@@ -1079,6 +1107,25 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
             // position format, which is what lets the encode branch below write
             // its snorm16 triple straight into the sink.
             ERHE_VERIFY(!encode_position || (sink_attribute.format == erhe::dataformat::Format::format_16_vec3_snorm));
+            // Texcoord channels 0 and 1 of a quantized sink are normalized into
+            // this mesh's own per-channel UV range - an affine encode, not a pure
+            // format conversion. Channel 2 (lightmap) is excluded: it is in
+            // [0, 1] by construction and convert() handles it directly.
+            const bool encode_texcoord =
+                (sink_attribute.usage_type  == erhe::dataformat::Vertex_attribute_usage::tex_coord)  &&
+                (sink_attribute.usage_index <  affine_texcoord_channel_count)                        &&
+                (sink_attribute.format      == erhe::dataformat::Format::format_16_vec2_unorm);
+            const glm::length_t texcoord_channel = encode_texcoord
+                ? static_cast<glm::length_t>(2 * sink_attribute.usage_index)
+                : glm::length_t{0};
+            const glm::vec2 texcoord_offset{
+                texcoord_quantization.offset[texcoord_channel + 0],
+                texcoord_quantization.offset[texcoord_channel + 1]
+            };
+            const glm::vec2 texcoord_inv_scale{
+                1.0f / texcoord_quantization.scale[texcoord_channel + 0],
+                1.0f / texcoord_quantization.scale[texcoord_channel + 1]
+            };
             if (src.attribute != nullptr) {
                 const uint8_t* src_attribute_base = src_vertex_data_base + src.attribute->offset;
                 for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
@@ -1112,6 +1159,22 @@ auto build_buffer_mesh_from_triangle_soup(const Triangle_soup& triangle_soup, co
                             static_cast<int16_t>(meshopt_quantizeSnorm(encoded.x, 16)),
                             static_cast<int16_t>(meshopt_quantizeSnorm(encoded.y, 16)),
                             static_cast<int16_t>(meshopt_quantizeSnorm(encoded.z, 16))
+                        };
+                        std::memcpy(sink, &quantized[0], sizeof(quantized));
+                    } else if (encode_texcoord) {
+                        float source_texcoord[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                        erhe::dataformat::convert(src_data, src.attribute->format, &source_texcoord[0], erhe::dataformat::Format::format_32_vec4_float, 1.0f);
+                        // The clamp is what makes this safe for a non-finite or
+                        // out-of-range UV: it lands on a range endpoint instead
+                        // of wrapping. convert()'s unorm16 sink would assert.
+                        const glm::vec2 normalized = glm::clamp(
+                            (glm::vec2{source_texcoord[0], source_texcoord[1]} - texcoord_offset) * texcoord_inv_scale,
+                            glm::vec2{0.0f},
+                            glm::vec2{1.0f}
+                        );
+                        const uint16_t quantized[2] = {
+                            static_cast<uint16_t>(meshopt_quantizeUnorm(normalized.x, 16)),
+                            static_cast<uint16_t>(meshopt_quantizeUnorm(normalized.y, 16))
                         };
                         std::memcpy(sink, &quantized[0], sizeof(quantized));
                     } else {

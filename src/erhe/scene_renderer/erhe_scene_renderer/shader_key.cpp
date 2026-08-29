@@ -40,14 +40,16 @@ auto Shader_key::get_defines() const -> std::vector<std::pair<std::string, std::
     ERHE_SHADER_BOOL(ERHE_X)
 #undef ERHE_X
 
-    // VERTEX_POSITION_ENCODING is deliberately excluded: it is emitted by
-    // Shader_stages_create_info::attributes_source(), which derives it from the
-    // vertex format itself. Emitting it here as well would let a hand-built key
-    // that forgot the axis produce a *conflicting* redefinition of the macro.
-    // It stays in the key for variant hashing and identity (and describe() still
-    // shows it - that re-enumerates ERHE_SHADER_INT independently of this).
+    // VERTEX_POSITION_ENCODING and VERTEX_TEXCOORD_ENCODING are deliberately
+    // excluded: they are emitted by
+    // Shader_stages_create_info::attributes_source(), which derives them from the
+    // vertex format itself. Emitting them here as well would let a hand-built key
+    // that forgot an axis produce a *conflicting* redefinition of the macro.
+    // They stay in the key for variant hashing and identity (and describe() still
+    // shows them - that re-enumerates ERHE_SHADER_INT independently of this).
 #define ERHE_X(PARAM) \
-    if (Shader_int::PARAM != Shader_int::VERTEX_POSITION_ENCODING) { \
+    if ((Shader_int::PARAM != Shader_int::VERTEX_POSITION_ENCODING) && \
+        (Shader_int::PARAM != Shader_int::VERTEX_TEXCOORD_ENCODING)) { \
         defines.emplace_back(std::string{"ERHE_" #PARAM}, fmt::format("{}", get(Shader_int::PARAM))); \
     }
 
@@ -133,6 +135,10 @@ auto Shader_key::derive(
     key.set(
         Shader_int::VERTEX_POSITION_ENCODING,
         static_cast<uint32_t>(erhe::dataformat::get_vertex_position_encoding(vertex_format))
+    );
+    key.set(
+        Shader_int::VERTEX_TEXCOORD_ENCODING,
+        static_cast<uint32_t>(erhe::dataformat::get_vertex_texcoord_encoding(vertex_format))
     );
 
     using usage = erhe::dataformat::Vertex_attribute_usage;

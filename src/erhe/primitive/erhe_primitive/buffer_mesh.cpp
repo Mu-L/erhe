@@ -23,6 +23,26 @@ void release_allocations(Buffer_mesh& buffer_mesh)
 
 }
 
+auto get_texcoord_quantization(const Buffer_mesh& buffer_mesh) -> Texcoord_quantization
+{
+    constexpr float epsilon = 1e-6f;
+
+    Texcoord_quantization result{};
+    for (std::size_t channel = 0; channel < affine_texcoord_channel_count; ++channel) {
+        const Texcoord_range& range = buffer_mesh.texcoord_ranges[channel];
+        if (!range.valid) {
+            continue; // identity
+        }
+        const glm::vec2      scale = glm::max(range.max - range.min, glm::vec2{epsilon});
+        const glm::length_t  index = static_cast<glm::length_t>(2 * channel);
+        result.scale [index + 0] = scale.x;
+        result.scale [index + 1] = scale.y;
+        result.offset[index + 0] = range.min.x;
+        result.offset[index + 1] = range.min.y;
+    }
+    return result;
+}
+
 Buffer_mesh::Buffer_mesh() = default;
 
 Buffer_mesh::~Buffer_mesh()

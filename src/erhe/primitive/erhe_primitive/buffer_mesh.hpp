@@ -7,12 +7,52 @@
 #include "erhe_math/aabb.hpp"
 #include "erhe_math/sphere.hpp"
 
+#include <glm/glm.hpp>
+
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <vector>
 
 namespace erhe::primitive {
+
+// Bounds of one texcoord channel over the vertices of a Buffer_mesh. Only
+// channels 0 and 1 are tracked: channel 2 is the lightmap UV set, which is in
+// [0, 1] by construction and is stored without an affine.
+class Texcoord_range
+{
+public:
+    glm::vec2 min  {0.0f, 0.0f};
+    glm::vec2 max  {1.0f, 1.0f};
+    bool      valid{false};
+
+    void add(const glm::vec2 uv)
+    {
+        if (!valid) {
+            min   = uv;
+            max   = uv;
+            valid = true;
+            return;
+        }
+        min = glm::min(min, uv);
+        max = glm::max(max, uv);
+    }
+};
+
+static constexpr std::size_t affine_texcoord_channel_count = 2;
+
+// Dequantization affine for the two affine texcoord channels of one primitive:
+// xy is channel 0, zw is channel 1, and decoded = a_texcoord * scale + offset.
+// Encoder and decoder must agree exactly, so both go through
+// get_texcoord_quantization() below - unlike the position affine, which is
+// derived independently at three sites.
+class Texcoord_quantization
+{
+public:
+    glm::vec4 scale {1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 offset{0.0f, 0.0f, 0.0f, 0.0f};
+};
 
 // Serializes GPU vertex/index pool traffic of buffer meshes. The vertex-pool
 // lockstep invariant (one indirect-draw vertexOffset applied to every stream
@@ -45,6 +85,12 @@ public:
 
     erhe::math::Aabb          bounding_box;
     erhe::math::Sphere        bounding_sphere;
+
+    // UV bounds of texcoord channels 0 and 1 over this mesh's vertices, from
+    // which get_texcoord_quantization() derives the affine. Populated by every
+    // build; only READ when the vertex format stores those channels as
+    // unorm16x2, so it is inert for the float base variant.
+    std::array<Texcoord_range, affine_texcoord_channel_count> texcoord_ranges{};
 
     // Per-joint rest-pose bounds, indexed by joint index (the same index space
     // as the JOINTS_n vertex attribute and erhe::scene::Skin_data::joints).
@@ -100,5 +146,13 @@ public:
     erhe::buffer::Buffer_allocation              edge_line_joint_allocation {};
     std::vector<erhe::buffer::Buffer_allocation> expanded_vertex_allocations{};
 };
+
+// The one derivation of the texcoord dequantization affine, shared by both
+// encode paths and by the per-primitive record writers:
+//   scale  = max(max - min, epsilon)  per axis
+//   offset = min
+// A channel with no recorded range - and a degenerate axis - yields the
+// identity, so an unencoded channel decodes to itself.
+[[nodiscard]] auto get_texcoord_quantization(const Buffer_mesh& buffer_mesh) -> Texcoord_quantization;
 
 } // namespace erhe::primitive

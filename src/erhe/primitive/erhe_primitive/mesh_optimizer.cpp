@@ -693,6 +693,10 @@ auto make_optimized_render_shape_from_staged_build(
     buffer_mesh.bounding_box        = source_buffer_mesh.bounding_box;
     buffer_mesh.bounding_sphere     = source_buffer_mesh.bounding_sphere;
     buffer_mesh.joint_bounding_boxes = source_buffer_mesh.joint_bounding_boxes;
+    // The UV ranges the caller encoded against. They must travel with the mesh:
+    // the per-primitive record writer derives the decode affine from THIS
+    // Buffer_mesh, and it has to be bit-identical to the one the encode used.
+    buffer_mesh.texcoord_ranges     = source_buffer_mesh.texcoord_ranges;
 
     return std::make_shared<Primitive_render_shape>(std::move(buffer_mesh), std::move(composed));
 }

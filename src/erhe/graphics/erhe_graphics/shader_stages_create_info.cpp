@@ -73,6 +73,15 @@ void write_vertex_position_encoding_define(std::stringstream& sb, const erhe::da
        << "\n";
 }
 
+// Same contract as the position define above, for texcoord channels 0 and 1.
+// See res/shaders/erhe_vertex_texcoord.glsl.
+void write_vertex_texcoord_encoding_define(std::stringstream& sb, const erhe::dataformat::Vertex_format* vertex_format)
+{
+    sb << "#define ERHE_VERTEX_TEXCOORD_ENCODING "
+       << static_cast<uint32_t>(erhe::dataformat::get_vertex_texcoord_encoding(vertex_format))
+       << "\n";
+}
+
 } // anonymous namespace
 
 auto Shader_stages_create_info::attributes_source() const -> std::string
@@ -93,6 +102,7 @@ auto Shader_stages_create_info::attributes_source() const -> std::string
             sb << "#define ERHE_ATTRIBUTE_" << attribute.name << " 1\n";
         }
         write_vertex_position_encoding_define(sb, vertex_format);
+        write_vertex_texcoord_encoding_define(sb, vertex_format);
         sb << "\n";
     }
 
@@ -114,6 +124,7 @@ auto Shader_stages_create_info::attribute_defines_source() const -> std::string
             sb << "#define ERHE_ATTRIBUTE_" << attribute.name << " 1\n";
         }
         write_vertex_position_encoding_define(sb, vertex_format);
+        write_vertex_texcoord_encoding_define(sb, vertex_format);
         sb << "\n";
     }
 

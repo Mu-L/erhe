@@ -482,6 +482,13 @@ void write_position_quantization_fields(std::byte* record, const Primitive_struc
         : Position_quantization{};
     std::memcpy(record + offsets.position_scale,  &quantization.scale,  sizeof(glm::vec4));
     std::memcpy(record + offsets.position_offset, &quantization.offset, sizeof(glm::vec4));
+
+    // Texcoord affine, same fallback rule.
+    const erhe::primitive::Texcoord_quantization texcoord_quantization = (buffer_mesh != nullptr)
+        ? erhe::primitive::get_texcoord_quantization(*buffer_mesh)
+        : erhe::primitive::Texcoord_quantization{};
+    std::memcpy(record + offsets.texcoord_scale,  &texcoord_quantization.scale,  sizeof(glm::vec4));
+    std::memcpy(record + offsets.texcoord_offset, &texcoord_quantization.offset, sizeof(glm::vec4));
 }
 
 } // anonymous namespace
