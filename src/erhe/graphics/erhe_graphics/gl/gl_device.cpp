@@ -1147,7 +1147,7 @@ void Device_impl::install_gl_debug_callback()
         return;
     }
     ERHE_PROFILE_SCOPE("Debug Callback");
-    gl::debug_message_callback(erhe_opengl_callback, nullptr);
+    gl::debug_message_callback(erhe_opengl_callback, &m_device);
     gl::debug_message_control(
         gl::Debug_source  ::dont_care,
         gl::Debug_type    ::dont_care,

@@ -34,7 +34,7 @@ void erhe_opengl_callback(
     GLenum        gl_severity,
     GLsizei       /*length*/,
     const GLchar* message,
-    const void*   /*userParam*/
+    const void*   userParam
 )
 {
     if (        
@@ -72,6 +72,26 @@ void erhe_opengl_callback(
         gl::c_str(severity),
         (message != nullptr) ? message : ""
     );
+
+    // Route into the Device message callback so GL debug output reaches the
+    // same channel as Vulkan validation: real GL errors as errors (the
+    // editor's handler treats those as fatal; the GPU test fixture fails
+    // the running test), high/medium-severity advisories as warnings.
+    // userParam carries the Device* from install_gl_debug_callback(), on
+    // the main and every worker context alike - glDebugMessageCallback is
+    // per-context state.
+    Device* const device = static_cast<Device*>(const_cast<void*>(userParam));
+    if (device != nullptr) {
+        const std::string text = (message != nullptr) ? message : "";
+        if (type == gl::Debug_type::debug_type_error) {
+            device->device_message(Message_severity::error, text);
+        } else if (
+            (severity == gl::Debug_severity::debug_severity_high) ||
+            (severity == gl::Debug_severity::debug_severity_medium)
+        ) {
+            device->device_message(Message_severity::warning, text);
+        }
+    }
 
 #if !defined(NDEBUG)
     switch (severity) {
