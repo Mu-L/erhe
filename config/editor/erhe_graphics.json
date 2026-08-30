@@ -11,6 +11,7 @@
     "frame_pacing_present_holdback": true,
     "frame_pacing_tier": "off",
     "opengl": {
+        "_version": 2,
         "force_bindless_textures_off": false,
         "force_no_persistent_buffers": false,
         "force_emulate_multi_draw_indirect": false
