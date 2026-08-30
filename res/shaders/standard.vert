@@ -71,6 +71,20 @@ layout(location = 5) out vec3      v_B;
 layout(location = 6) out vec3      v_N;
 #endif
 
+// Scale-only tangent frame for ERHE_TEXGEN_MODE_TANGENT (see
+// erhe_standard_variant.glsl). Independent of the shading frame v_T / v_B:
+// it is built from the normal alone, so it carries no authored tangent
+// direction, and the only part of world_from_node that reaches it is the
+// per-axis scale.
+#if defined(ERHE_USE_TANGENT_TEXGEN) && !defined(ERHE_VARIANT_POSITION_PASS)
+layout(location = 25) out vec3     v_T_scale_only;
+layout(location = 26) out vec3     v_B_scale_only;
+// The node-space position with only the node's scale applied - what the
+// tangent texgen mode projects onto that frame, in place of the world
+// position.
+layout(location = 27) out vec3     v_position_scale_only;
+#endif
+
 // TODO In the future we might have alpha test which would need material_index
 //      to be passed to fragment shader
 #if !defined(ERHE_VARIANT_POSITION_PASS)
@@ -121,6 +135,23 @@ layout(location = 13)      out vec3  v_bary;
 layout(location = 14) flat out uint  v_edge_mask;
 layout(location = 15) flat out vec4  v_wire_color;
 layout(location = 16) flat out float v_wire_width;
+#endif
+
+#if defined(ERHE_USE_TANGENT_TEXGEN) && !defined(ERHE_VARIANT_POSITION_PASS)
+// Unit axis along the smallest absolute component of v: the axis least
+// aligned with v, so cross(erhe_min_axis(v), v) is the best conditioned
+// perpendicular of the three axis choices and never degenerates.
+vec3 erhe_min_axis(vec3 v)
+{
+    vec3 a = abs(v);
+    if ((a.x <= a.y) && (a.x <= a.z)) {
+        return vec3(1.0, 0.0, 0.0);
+    }
+    if (a.y <= a.z) {
+        return vec3(0.0, 1.0, 0.0);
+    }
+    return vec3(0.0, 0.0, 1.0);
+}
 #endif
 
 void main()
@@ -290,6 +321,32 @@ void main()
 
 #   if defined(ERHE_USE_VERTEX_VARYING_NORMAL)
     v_N              = normal;
+#   endif
+
+#   if defined(ERHE_USE_TANGENT_TEXGEN)
+    // Scale-only tangent frame for the tangent texgen mode. S is the per-axis
+    // scale of world_from_node, recovered as the squared lengths of its basis
+    // columns; the inverse transpose of that scale-only part is diag(1/s), so
+    // transforming the node-space normal with it is a component-wise multiply
+    // by inversesqrt(S). Building T and B from that normal alone (rather than
+    // from the authored tangent) keeps the projection stable across a mesh and
+    // dependent only on the node's scale, while the scale correction makes the
+    // generated texcoords track a non-uniformly scaled node.
+    vec3 texgen_node_scale_squared = vec3(
+        dot(world_from_node[0].xyz, world_from_node[0].xyz),
+        dot(world_from_node[1].xyz, world_from_node[1].xyz),
+        dot(world_from_node[2].xyz, world_from_node[2].xyz)
+    );
+    vec3 texgen_node_scale = sqrt(max(texgen_node_scale_squared, vec3(1.0e-12)));
+    vec3 texgen_normal     = normalize(node_normal / texgen_node_scale);
+    vec3 texgen_tangent    = normalize(cross(erhe_min_axis(texgen_normal), texgen_normal));
+    v_T_scale_only         = texgen_tangent;
+    v_B_scale_only         = normalize(cross(texgen_normal, texgen_tangent));
+    // The position the tangent texgen mode projects: node space scaled by S,
+    // i.e. the node's world size without its rotation or translation. The
+    // generated texcoords therefore follow the mesh as the node is moved or
+    // rotated, and only stretch when it is scaled.
+    v_position_scale_only  = node_position * texgen_node_scale;
 #   endif
     v_position       = position;
 

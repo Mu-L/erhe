@@ -267,19 +267,17 @@ auto Shader_key::derive(
         // above is gated on !is_unlit: an unlit material with a bound
         // normal texture (e.g. exported LOD assets) must not enable the
         // tangent frame or standard.vert's BITANGENT => TANGENT && NORMAL
-        // declaration invariant breaks ('bitangent' undeclared). The
-        // tangent texgen mode is the exception: it projects positions onto
-        // the T/B plane in the fragment shader, so it needs the tangent
-        // frame even for unlit materials.
+        // declaration invariant breaks ('bitangent' undeclared). The tangent
+        // texgen mode does not appear here: it projects positions onto its
+        // own scale-only frame (v_T_scale_only / v_B_scale_only, gated by
+        // ERHE_USE_TANGENT_TEXGEN in standard.vert), which is built from the
+        // normal and the node scale and needs neither of these varyings.
         const bool needs_tangent_frame =
-            needs_texgen(erhe::primitive::Texgen_mode::tangent) ||
+            !is_unlit &&
             (
-                !is_unlit &&
-                (
-                    sampler_is_bound(samplers.normal) ||
-                    is_anisotropic_brdf ||
-                    data.use_circular_brushed_metal
-                )
+                sampler_is_bound(samplers.normal) ||
+                is_anisotropic_brdf ||
+                data.use_circular_brushed_metal
             );
         if (has_tangent && has_normal_0 && needs_tangent_frame) {
             key.set(Shader_bool::USE_VERTEX_VARYING_TANGENT,   true);

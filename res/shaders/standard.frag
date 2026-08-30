@@ -101,14 +101,37 @@ const  vec3 v_B = vec3(0.0, 0.0, 1.0);
 layout(location = 6) in vec3      v_N;
 #endif
 
+// Scale-only tangent frame consumed by the ERHE_SELECT_TEXCOORD tangent
+// branch; standard.vert emits it whenever any texgen axis selects that mode
+// (ERHE_USE_TANGENT_TEXGEN, see erhe_standard_variant.glsl). The const
+// fallbacks keep the branch compiling in every other variant, where it is
+// dead code.
+#if defined(ERHE_USE_TANGENT_TEXGEN) && !defined(ERHE_VARIANT_POSITION_PASS)
+layout(location = 25) in vec3     v_T_scale_only;
+layout(location = 26) in vec3     v_B_scale_only;
+// Node-space position with only the node's scale applied; the tangent texgen
+// mode projects this rather than the world position.
+layout(location = 27) in vec3     v_position_scale_only;
+#elif !defined(ERHE_VARIANT_POSITION_PASS)
+const  vec3 v_T_scale_only     = vec3(1.0, 0.0, 0.0);
+const  vec3 v_B_scale_only     = vec3(0.0, 0.0, 1.0);
+const  vec3 v_position_scale_only = vec3(0.0);
+#endif
+
 // Selects the texcoord source for a texture / feature from its
 // compile-time ERHE_*_TEXGEN_MODE define (an ERHE_TEXGEN_MODE_* value,
 // see erhe_standard_variant.glsl); the conditions fold at compile time.
 // uv0..uv2 read the vertex texcoord sets, world_* project the world
 // position onto an axis plane, node_* the untransformed node-space
-// position, and tangent projects the world position onto the tangent
-// frame's T/B plane. Every referenced varying has a const fallback, so
-// the dead branches always compile.
+// position, and tangent projects the scale-only node position
+// (v_position_scale_only) onto the scale-only tangent frame's T/B plane
+// (v_T_scale_only / v_B_scale_only). All three come from standard.vert under
+// ERHE_USE_TANGENT_TEXGEN: the frame is built from the normal alone rather
+// than the authored tangent, and both it and the position see only the scale
+// part of world_from_node - so the tangent mode uses neither the world
+// v_position nor the shading frame's v_T / v_B, and its texcoords do not
+// change as the node is translated or rotated. Every referenced varying has a
+// const fallback, so the dead branches always compile.
 #if !defined(ERHE_VARIANT_POSITION_PASS)
 #define ERHE_SELECT_TEXCOORD(mode) ( \
     ((mode) == ERHE_TEXGEN_MODE_UV1)      ? v_texcoord_1 : \
@@ -119,7 +142,7 @@ layout(location = 6) in vec3      v_N;
     ((mode) == ERHE_TEXGEN_MODE_NODE_XY)  ? v_node_position.xy : \
     ((mode) == ERHE_TEXGEN_MODE_NODE_XZ)  ? v_node_position.xz : \
     ((mode) == ERHE_TEXGEN_MODE_NODE_YZ)  ? v_node_position.yz : \
-    ((mode) == ERHE_TEXGEN_MODE_TANGENT)  ? vec2(dot(v_position.xyz, v_T), dot(v_position.xyz, v_B)) : \
+    ((mode) == ERHE_TEXGEN_MODE_TANGENT)  ? vec2(dot(v_position_scale_only, v_T_scale_only), dot(v_position_scale_only, v_B_scale_only)) : \
     v_texcoord_0)
 #endif
 

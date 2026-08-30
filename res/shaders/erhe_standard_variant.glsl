@@ -54,6 +54,25 @@
 #define ERHE_TEXGEN_MODE_NODE_YZ  8
 #define ERHE_TEXGEN_MODE_TANGENT  9
 
+// ERHE_USE_TANGENT_TEXGEN is a derived gate: set when any of the per-slot
+// texgen axes selects ERHE_TEXGEN_MODE_TANGENT. That mode must not follow the
+// node's rotation or translation, nor the authored tangent direction, so
+// standard.vert emits a dedicated set of varyings for it: v_T_scale_only /
+// v_B_scale_only, a frame built from the normal transformed by the scale-only
+// part of world_from_node, plus v_position_scale_only, the node-space position
+// with that same scale applied. ERHE_SELECT_TEXCOORD projects the latter onto
+// the former, in place of the world v_position and the shading frame's
+// v_T / v_B. Every ERHE_*_TEXGEN_MODE axis is always defined by
+// Shader_key::get_defines(), so the test folds at compile time.
+#if (ERHE_BASE_COLOR_TEXGEN_MODE             == ERHE_TEXGEN_MODE_TANGENT) || \
+    (ERHE_METALLIC_ROUGHNESS_TEXGEN_MODE     == ERHE_TEXGEN_MODE_TANGENT) || \
+    (ERHE_NORMAL_TEXGEN_MODE                 == ERHE_TEXGEN_MODE_TANGENT) || \
+    (ERHE_OCCLUSION_TEXGEN_MODE              == ERHE_TEXGEN_MODE_TANGENT) || \
+    (ERHE_EMISSIVE_TEXGEN_MODE               == ERHE_TEXGEN_MODE_TANGENT) || \
+    (ERHE_CIRCULAR_BRUSHED_METAL_TEXGEN_MODE == ERHE_TEXGEN_MODE_TANGENT)
+#  define ERHE_USE_TANGENT_TEXGEN 1
+#endif
+
 // Normalmap_encoding enum values. Keep in sync with
 // erhe::primitive::Normalmap_encoding (ERHE_NORMALMAP_ENCODING_* in
 // enums.hpp). RGB encodings store unit normals as RGB = XYZ; X+Y (two
