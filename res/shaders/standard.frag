@@ -7,6 +7,7 @@
 #include "erhe_bxdf.glsl"
 #include "erhe_camera_view.glsl"
 #include "erhe_light.glsl"
+#include "erhe_math.glsl"   // to_render_target_range()
 #include "erhe_srgb.glsl"
 #include "erhe_texture.glsl"
 #if defined(ERHE_USE_DDGI)
@@ -699,9 +700,36 @@ void main()
     }
 #endif
 
+    // Upper bound for the lit colour this shader emits.
+    //
+    // On the desktop path post-processing (bloom + tonemap, see compose.frag)
+    // maps HDR into displayable range afterwards, so the full representable
+    // fp16 range is kept and only the unrepresentable part is cut off.
+    //
+    // Under multiview there is no post-processing pass - Headset_view renders
+    // content and overlay straight into the fp16 OpenXR swapchain the Quest
+    // compositor scans out, which is an SDR display. Nothing downstream maps
+    // HDR down, so radiance above white buys nothing on that path, and leaving
+    // it unbounded is what made the navigation gizmo render black where it
+    // overlapped a bright specular highlight: the tool / rendertarget overlay
+    // is alpha-blended over this colour, and the result degraded to black as
+    // the destination grew, fading back to the correct colour as the highlight
+    // fell off. Merely making the value fp16-representable (clamping to
+    // m_half_max) did NOT fix it, so the exact threshold is a property of the
+    // Adreno blend path rather than of Inf; limiting to white does fix it, and
+    // costs nothing visible because the compositor clamps above 1.0 anyway.
+    // Not reproducible on desktop even with post-processing disabled.
+    // Multiview is XR-only in this codebase (see doc/multiview.md,
+    // erhe_camera_view.glsl), so it is exactly the no-post-processing path.
+#if defined(ERHE_MULTIVIEW)
+    const float c_output_max = 1.0;
+#else
+    const float c_output_max = m_half_max;
+#endif
+
 #if ERHE_MATERIAL_BLENDING_MODE == ERHE_MATERIAL_BLENDING_MODE_ALPHA_BLEND
     // Premultiplied alpha: blend state combines with src_factor=ONE.
-    out_color.rgb = color * exposure * material.opacity;
+    out_color.rgb = to_render_target_range(color * exposure * material.opacity, c_output_max);
     out_color.a   = material.opacity;
 #else
     // opaque / alpha_test / screen_door / multiply / add / subtract:
@@ -709,7 +737,7 @@ void main()
     // the multiply / add / subtract pipelines combines this with the
     // framebuffer using src.rgb only; the opaque / discard modes write
     // alpha = 1 with blending disabled.
-    out_color.rgb = color * exposure;
+    out_color.rgb = to_render_target_range(color * exposure, c_output_max);
     out_color.a   = 1.0;
 #endif
 
