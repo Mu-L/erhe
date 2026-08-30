@@ -579,6 +579,7 @@ auto Mcp_server::get_dispatch_table() -> std::span<const Mcp_server::Tool_dispat
         { "reload_prefab",                  &Mcp_server::action_reload_prefab                 },
         { "get_prefabs",                    &Mcp_server::query_prefabs                        },
         { "capture_screenshot",             &Mcp_server::action_capture_screenshot            },
+        { "request_renderdoc_capture",      &Mcp_server::action_request_renderdoc_capture     },
         { "push_shader_debug",              &Mcp_server::action_push_shader_debug             },
         { "pop_shader_debug",               &Mcp_server::action_pop_shader_debug              },
         { "wake_physics_bodies",            &Mcp_server::action_wake_physics_bodies           },

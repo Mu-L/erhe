@@ -2891,6 +2891,14 @@
     "name": "capture_screenshot"
   },
   {
+    "description": "Request an in-application RenderDoc frame capture of the next OpenXR headset frame. Requires RenderDoc to be attached to the running app (on Quest: launch it from RenderDoc Meta Fork so the capture layer is injected) and an active headset view. An OpenXR app never presents a swapchain image, so RenderDoc cannot delimit frames on its own - this brackets the multiview render explicitly. The .rdc is written on the device and collected by the RenderDoc host; see doc/quest-renderdoc-capture.md.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "request_renderdoc_capture"
+  },
+  {
     "description": "Push a shader debug view onto the viewport scene views: saves each affected view's current Shader Debug mode on a LIFO stack and sets the given mode, so pop_shader_debug can restore the user's own setting afterwards. Typical use: push texcoord debug, capture_screenshot, pop. Values follow erhe::scene_renderer::Shader_debug / the viewport's Shader Debug combo: 0 none, 1 vertex normal, 2 fragment normal, 4 tangent, 7 texcoord_0 (authored/interpolated UVs), 8 texcoord_1 (generated facet UVs), 9 base color texture, 10 vertex color RGB, 14 V.N, 24 metallic, 25 roughness, 32 texcoord_2 (lightmap UVs).",
     "inputSchema": {
       "properties": {

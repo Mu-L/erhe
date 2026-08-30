@@ -6,6 +6,7 @@
 
 #include "app_context.hpp"
 #include "app_message_bus.hpp"
+#include "app_rendering.hpp"
 #include "app_scenes.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/scene_open_operation.hpp"
@@ -14,6 +15,9 @@
 #include "parsers/gltf_physics_export.hpp"
 #include "prefabs/prefab_library.hpp"
 #include "scene/scene_root.hpp"
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+#include "xr/headset_view.hpp"
+#endif
 
 #include "erhe_dataformat/dataformat.hpp"
 #include "erhe_file/file.hpp"
@@ -449,6 +453,46 @@ auto Mcp_server::query_prefabs(const json& args) -> std::string
         });
     }
     return make_json_content({{"prefabs", prefabs}}).dump();
+}
+
+// Triggers the in-application RenderDoc frame capture that Headset_view wraps
+// around its multiview render. This exists because an OpenXR app never calls
+// vkQueuePresentKHR, so RenderDoc's usual frame delimiter is absent and a
+// capture has to be bracketed by the app itself. Driving that from MCP lets the
+// capture be taken at a chosen moment from the host, instead of the user having
+// to find and click the Developer menu item while wearing the headset.
+//
+// Requires RenderDoc to be attached, which on Quest means the app was launched
+// from RenderDoc Meta Fork with injection - see doc/quest-renderdoc-capture.md.
+auto Mcp_server::action_request_renderdoc_capture(const json& args) -> std::string
+{
+    static_cast<void>(args);
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    if (!m_context.renderdoc) {
+        json r = make_text_content(
+            "RenderDoc is not attached to this process, so there is nothing to capture with. "
+            "Launch the app from RenderDoc Meta Fork so it injects its capture layer."
+        );
+        r["isError"] = true;
+        return r.dump();
+    }
+    if ((m_context.app_rendering == nullptr) || (m_context.headset_view == nullptr) || !m_context.headset_view->is_active()) {
+        json r = make_text_content(
+            "No active OpenXR headset view: the in-application capture brackets the multiview "
+            "render, so it only applies while the headset is rendering."
+        );
+        r["isError"] = true;
+        return r.dump();
+    }
+    // Takes effect on the next headset frame; the capture is written on device
+    // and collected by the RenderDoc host.
+    m_context.app_rendering->request_renderdoc_capture();
+    return make_json_content({{"requested", true}}).dump();
+#else
+    json r = make_text_content("This build has no OpenXR support, so there is no headset frame to capture.");
+    r["isError"] = true;
+    return r.dump();
+#endif
 }
 
 auto Mcp_server::action_capture_screenshot(const json& args) -> std::string
