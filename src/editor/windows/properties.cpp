@@ -1884,8 +1884,12 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
     if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
         add_entry("Metallic",    [&](){ ImGui::SliderFloat("##", &data.metallic,     0.0f,  1.0f); });
         add_entry("Reflectance", [&](){ ImGui::SliderFloat("##", &data.reflectance,  0.35f, 1.0f); });
-        add_entry("Roughness X", [&](){ ImGui::SliderFloat("##", &data.roughness.x,  0.1f,  0.8f); });
-        add_entry("Roughness Y", [&](){ ImGui::SliderFloat("##", &data.roughness.y,  0.1f,  0.8f); });
+        if (erhe::primitive::supports_anisotropy(data.bxdf_model)) {
+            add_entry("Roughness X", [&](){ ImGui::SliderFloat("##", &data.roughness.x,  0.1f,  0.8f); });
+            add_entry("Roughness Y", [&](){ ImGui::SliderFloat("##", &data.roughness.y,  0.1f,  0.8f); });
+        } else {
+            add_entry("Roughness",   [&](){ ImGui::SliderFloat("##", &data.roughness.x,  0.1f,  0.8f); });
+        }
     }
     add_entry("Base Color",  [&](){ ImGui::ColorEdit4 ("##", &data.base_color.x, ImGuiColorEditFlags_Float); });
     add_entry("Emissive",    [&](){ ImGui::ColorEdit4 ("##", &data.emissive.x,   ImGuiColorEditFlags_Float); });
@@ -1912,17 +1916,17 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                 });
                 if (sampler->texture_reference) {
                     push_group("Transform", ImGuiTreeNodeFlags_None, m_indent);
-                    add_entry(label + " Offset",   [sampler](){ ImGui::SliderFloat2("##", &sampler->offset.x, -10.0f, 10.0f); });
-                    add_entry(label + " Scale",    [sampler](){ ImGui::SliderFloat2("##", &sampler->scale.x,  -10.0f, 10.0f); });
-                    add_entry(label + " Rotation", [sampler](){ ImGui::SliderFloat ("##", &sampler->rotation, -10.0f, 10.0f); });
-                    pop_group();
-
-                    add_entry(label + " Texgen", [sampler]() {
+                    add_entry("Texgen",   [sampler]() {
                         int current = static_cast<int>(sampler->texgen_mode);
                         if (ImGui::Combo("##", &current, erhe::primitive::c_texgen_mode_names, IM_ARRAYSIZE(erhe::primitive::c_texgen_mode_names))) {
                             sampler->texgen_mode = static_cast<erhe::primitive::Texgen_mode>(current);
                         }
                     });
+                    add_entry("Offset",   [sampler](){ ImGui::SliderFloat2("##", &sampler->offset.x, -10.0f, 10.0f); });
+                    add_entry("Scale",    [sampler](){ ImGui::SliderFloat2("##", &sampler->scale.x,  -10.0f, 10.0f); });
+                    add_entry("Rotation", [sampler](){ ImGui::SliderFloat ("##", &sampler->rotation, -10.0f, 10.0f); });
+                    pop_group();
+
                     // Sampler state rows. Every edit REPLACES the slot's
                     // sampler with a freshly created one (never mutates in
                     // place), so the material inspect snapshot sees the
@@ -1941,11 +1945,10 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                         slot->sampler = std::make_shared<erhe::graphics::Sampler>(*m_context.graphics_device, create_info);
                     };
                     push_group("Sampler", ImGuiTreeNodeFlags_None, m_indent);
-                    // Value order matches erhe::graphics::Sampler_address_mode.
-                    static const char* const c_wrap_names[] = {"Repeat", "Clamp to Edge", "Mirrored Repeat"};
-                    // Value order matches erhe::graphics::Filter.
+                    static const char* const c_wrap_names[]   = {"Repeat", "Clamp to Edge", "Mirrored Repeat"};
                     static const char* const c_filter_names[] = {"Nearest", "Linear"};
-                    add_entry(label + " Wrap U", [sampler, current_create_info, replace_sampler]() {
+                    static const char* const c_mipmap_names[] = {"Not Mipmapped", "Nearest", "Linear"};
+                    add_entry("Wrap U", [sampler, current_create_info, replace_sampler]() {
                         erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
                         int current = static_cast<int>(create_info.address_mode[0]);
                         if (ImGui::Combo("##", &current, c_wrap_names, IM_ARRAYSIZE(c_wrap_names))) {
@@ -1953,7 +1956,7 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                             replace_sampler(sampler, create_info);
                         }
                     });
-                    add_entry(label + " Wrap V", [sampler, current_create_info, replace_sampler]() {
+                    add_entry("Wrap V", [sampler, current_create_info, replace_sampler]() {
                         erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
                         int current = static_cast<int>(create_info.address_mode[1]);
                         if (ImGui::Combo("##", &current, c_wrap_names, IM_ARRAYSIZE(c_wrap_names))) {
@@ -1962,7 +1965,7 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                             replace_sampler(sampler, create_info);
                         }
                     });
-                    add_entry(label + " Min Filter", [sampler, current_create_info, replace_sampler]() {
+                    add_entry("Min Filter", [sampler, current_create_info, replace_sampler]() {
                         erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
                         int current = static_cast<int>(create_info.min_filter);
                         if (ImGui::Combo("##", &current, c_filter_names, IM_ARRAYSIZE(c_filter_names))) {
@@ -1970,7 +1973,7 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                             replace_sampler(sampler, create_info);
                         }
                     });
-                    add_entry(label + " Mag Filter", [sampler, current_create_info, replace_sampler]() {
+                    add_entry("Mag Filter", [sampler, current_create_info, replace_sampler]() {
                         erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
                         int current = static_cast<int>(create_info.mag_filter);
                         if (ImGui::Combo("##", &current, c_filter_names, IM_ARRAYSIZE(c_filter_names))) {
@@ -1978,7 +1981,15 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                             replace_sampler(sampler, create_info);
                         }
                     });
-                    add_entry(label + " Max Anisotropy", [sampler, current_create_info, replace_sampler]() {
+                    add_entry("Mipmap Mode", [sampler, current_create_info, replace_sampler]() {
+                        erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
+                        int current = static_cast<int>(create_info.mipmap_mode);
+                        if (ImGui::Combo("##", &current, c_mipmap_names, IM_ARRAYSIZE(c_mipmap_names))) {
+                            create_info.mipmap_mode = static_cast<erhe::graphics::Sampler_mipmap_mode>(current);
+                            replace_sampler(sampler, create_info);
+                        }
+                    });
+                    add_entry("Max Anisotropy", [sampler, current_create_info, replace_sampler]() {
                         erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
                         int current = static_cast<int>(create_info.max_anisotropy);
                         if (ImGui::SliderInt("##", &current, 1, 16)) {
