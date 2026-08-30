@@ -60,11 +60,15 @@
     <!-- Allow access to the vibrator -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Allow access to Internet -->
-    <!-- if you want to connect to the network or internet, uncomment this. -->
-    <!--
+    <!-- Allow access to Internet.
+         REQUIRED, do not comment out: Android gates all socket creation behind
+         this permission - loopback included - so without it the editor's
+         embedded MCP server gets EACCES from bind() on every port and logs
+         "failed to bind any port in [3743, 3763)". That is what makes
+         MCP-driven on-device verification (capture_screenshot and the rest)
+         possible over "adb forward tcp:3743 tcp:3743". See AGENTS.md,
+         "Reaching the server on Quest / Android". -->
     <uses-permission android:name="android.permission.INTERNET" />
-    -->
 
     <!-- ErheActivity is erhe's SDLActivity subclass (see
          app/src/main/java/org/libsdl/app/ErheActivity.java). It overrides
