@@ -19,6 +19,20 @@
 
 namespace erhe::primitive {
 
+auto supports_anisotropy(Bxdf_model bxdf_model) -> bool
+{
+    switch (bxdf_model) {
+        case Bxdf_model::unlit: return false;
+        case Bxdf_model::isotropic_brdf: return false;
+        case Bxdf_model::anisotropic_brdf: return true;
+        case Bxdf_model::anisotropic_slope: return true;
+        case Bxdf_model::anisotropic_engine_ready: return true;
+        default: {
+            ERHE_FATAL("Bad Bxdf_model");
+        }
+    }
+}
+
 auto c_str(const Primitive_mode primitive_mode) -> const char*
 {
     switch (primitive_mode) {

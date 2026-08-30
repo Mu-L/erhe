@@ -1865,31 +1865,37 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
     add_entry("Double Sided", [&](){
         ImGui::Checkbox("##", &data.double_sided);
     });
-    add_entry("Circular Brushed Metal", [&](){
-        ImGui::Checkbox("##", &data.use_circular_brushed_metal);
-    });
-    if (data.use_circular_brushed_metal) {
-        add_entry("Brushed Metal Texgen", [&](){
-            int current = static_cast<int>(data.circular_brushed_metal_texgen_mode);
-            if (ImGui::Combo("##", &current, erhe::primitive::c_texgen_mode_names, IM_ARRAYSIZE(erhe::primitive::c_texgen_mode_names))) {
-                data.circular_brushed_metal_texgen_mode = static_cast<erhe::primitive::Texgen_mode>(current);
-            }
+    if (erhe::primitive::supports_anisotropy(data.bxdf_model)) {
+        add_entry("Circular Brushed Metal", [&](){
+            ImGui::Checkbox("##", &data.use_circular_brushed_metal);
+        });
+        if (data.use_circular_brushed_metal) {
+            add_entry("Brushed Metal Texgen", [&](){
+                int current = static_cast<int>(data.circular_brushed_metal_texgen_mode);
+                if (ImGui::Combo("##", &current, erhe::primitive::c_texgen_mode_names, IM_ARRAYSIZE(erhe::primitive::c_texgen_mode_names))) {
+                    data.circular_brushed_metal_texgen_mode = static_cast<erhe::primitive::Texgen_mode>(current);
+                }
+            });
+        }
+        add_entry("Aniso Control", [&](){
+            ImGui::Checkbox("##", &data.use_aniso_control);
         });
     }
-    add_entry("Aniso Control", [&](){
-        ImGui::Checkbox("##", &data.use_aniso_control);
-    });
-    add_entry("Metallic",    [&](){ ImGui::SliderFloat("##", &data.metallic,     0.0f,  1.0f); });
-    add_entry("Reflectance", [&](){ ImGui::SliderFloat("##", &data.reflectance,  0.35f, 1.0f); });
-    add_entry("Roughness X", [&](){ ImGui::SliderFloat("##", &data.roughness.x,  0.1f,  0.8f); });
-    add_entry("Roughness Y", [&](){ ImGui::SliderFloat("##", &data.roughness.y,  0.1f,  0.8f); });
+    if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
+        add_entry("Metallic",    [&](){ ImGui::SliderFloat("##", &data.metallic,     0.0f,  1.0f); });
+        add_entry("Reflectance", [&](){ ImGui::SliderFloat("##", &data.reflectance,  0.35f, 1.0f); });
+        add_entry("Roughness X", [&](){ ImGui::SliderFloat("##", &data.roughness.x,  0.1f,  0.8f); });
+        add_entry("Roughness Y", [&](){ ImGui::SliderFloat("##", &data.roughness.y,  0.1f,  0.8f); });
+    }
     add_entry("Base Color",  [&](){ ImGui::ColorEdit4 ("##", &data.base_color.x, ImGuiColorEditFlags_Float); });
     add_entry("Emissive",    [&](){ ImGui::ColorEdit4 ("##", &data.emissive.x,   ImGuiColorEditFlags_Float); });
     add_entry("Opacity",     [&](){ ImGui::SliderFloat("##", &data.opacity,      0.0f,  1.0f); });
-    // Consumed by the GPU ray tracer (glass refraction / reflection);
-    // the raster path currently ignores both.
-    add_entry("IOR",          [&](){ ImGui::SliderFloat("##", &data.ior,          1.0f,  3.0f); });
-    add_entry("Transmission", [&](){ ImGui::SliderFloat("##", &data.transmission, 0.0f,  1.0f); });
+    if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
+        // Consumed by the GPU ray tracer (glass refraction / reflection);
+        // the raster path currently ignores both.
+        add_entry("IOR",          [&](){ ImGui::SliderFloat("##", &data.ior,          1.0f,  3.0f); });
+        add_entry("Transmission", [&](){ ImGui::SliderFloat("##", &data.transmission, 0.0f,  1.0f); });
+    }
 
     Scene_root* scene_root = m_context.scene_commands->get_scene_root(selected_material);
     if (scene_root != nullptr) {
@@ -1905,9 +1911,12 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                     library->texture_reference_combo(m_context, combo_id, sampler->texture_reference, true);
                 });
                 if (sampler->texture_reference) {
+                    push_group("Transform", ImGuiTreeNodeFlags_None, m_indent);
                     add_entry(label + " Offset",   [sampler](){ ImGui::SliderFloat2("##", &sampler->offset.x, -10.0f, 10.0f); });
                     add_entry(label + " Scale",    [sampler](){ ImGui::SliderFloat2("##", &sampler->scale.x,  -10.0f, 10.0f); });
                     add_entry(label + " Rotation", [sampler](){ ImGui::SliderFloat ("##", &sampler->rotation, -10.0f, 10.0f); });
+                    pop_group();
+
                     add_entry(label + " Texgen", [sampler]() {
                         int current = static_cast<int>(sampler->texgen_mode);
                         if (ImGui::Combo("##", &current, erhe::primitive::c_texgen_mode_names, IM_ARRAYSIZE(erhe::primitive::c_texgen_mode_names))) {
@@ -1931,6 +1940,7 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                     const auto replace_sampler = [this](erhe::primitive::Material_texture_sampler* slot, const erhe::graphics::Sampler_create_info& create_info) {
                         slot->sampler = std::make_shared<erhe::graphics::Sampler>(*m_context.graphics_device, create_info);
                     };
+                    push_group("Sampler", ImGuiTreeNodeFlags_None, m_indent);
                     // Value order matches erhe::graphics::Sampler_address_mode.
                     static const char* const c_wrap_names[] = {"Repeat", "Clamp to Edge", "Mirrored Repeat"};
                     // Value order matches erhe::graphics::Filter.
@@ -1968,10 +1978,21 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                             replace_sampler(sampler, create_info);
                         }
                     });
+                    add_entry(label + " Max Anisotropy", [sampler, current_create_info, replace_sampler]() {
+                        erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
+                        int current = static_cast<int>(create_info.max_anisotropy);
+                        if (ImGui::SliderInt("##", &current, 1, 16)) {
+                            create_info.max_anisotropy = static_cast<float>(current);
+                            replace_sampler(sampler, create_info);
+                        }
+                    });
+                    pop_group();
                 }
             };
             add_texture_slot_entries("Base Color",         "##base_color_texture",         &samplers.base_color);
-            add_texture_slot_entries("Metallic Roughness", "##metallic_roughness_texture", &samplers.metallic_roughness);
+            if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
+                add_texture_slot_entries("Metallic Roughness", "##metallic_roughness_texture", &samplers.metallic_roughness);
+            }
             add_texture_slot_entries("Normal",             "##normal_texture",             &samplers.normal);
             if (samplers.normal.texture_reference) {
                 add_entry("Normal Map Scale", [&](){ ImGui::SliderFloat("##", &data.normal_texture_scale, 0.0f, 1.0f); });
@@ -1985,7 +2006,9 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                     }
                 });
             }
-            add_texture_slot_entries("Occlusion",          "##occlusion_texture",          &samplers.occlusion);
+            if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
+                add_texture_slot_entries("Occlusion",          "##occlusion_texture",          &samplers.occlusion);
+            }
             add_texture_slot_entries("Emissive",           "##emissive_texture",           &samplers.emissive);
         }
     }

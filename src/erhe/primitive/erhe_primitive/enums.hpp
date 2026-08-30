@@ -177,6 +177,7 @@ static const char* const c_normalmap_encoding_names[] = {
     "Left Handed X+Y (RG)"
 };
 
+[[nodiscard]] auto supports_anisotropy(Bxdf_model bxdf_model) -> bool;
 [[nodiscard]] auto c_str(Primitive_mode primitive_mode) -> const char*;
 [[nodiscard]] auto c_str(Normal_style normal_style) -> const char*;
 [[nodiscard]] auto c_str(Bxdf_model bxdf_model) -> const char*;
