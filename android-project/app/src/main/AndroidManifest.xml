@@ -70,6 +70,29 @@
          "Reaching the server on Quest / Android". -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Android 11+ filters which packages an app can see. The platform's
+         GraphicsEnvironment resolves the Vulkan layer app named by
+         "settings put global gpu_debug_layer_app" through PackageManager from
+         inside this process, so without these entries that lookup is filtered
+         and the layer is silently never loaded - logcat shows
+         "AppsFilter: ... -> com.oculus.renderdoccmd.arm64 BLOCKED" and no layer.
+         Declaring the RenderDoc capture packages makes adb-only layer injection
+         work (no qrenderdoc GUI needed):
+
+           adb shell settings put global gpu_debug_app org.libsdl.app.quest
+           adb shell settings put global gpu_debug_layers VK_LAYER_RENDERDOC_Capture
+           adb shell settings put global gpu_debug_layer_app com.oculus.renderdoccmd.arm64
+
+         See doc/quest-renderdoc-capture.md. Both the Meta fork (com.oculus.*)
+         and upstream RenderDoc (org.renderdoc.*) package names are listed so
+         either host works; a package that is not installed is simply ignored. -->
+    <queries>
+        <package android:name="com.oculus.renderdoccmd.arm64" />
+        <package android:name="com.oculus.renderdoccmd.arm32" />
+        <package android:name="org.renderdoc.renderdoccmd.arm64" />
+        <package android:name="org.renderdoc.renderdoccmd.arm32" />
+    </queries>
+
     <!-- ErheActivity is erhe's SDLActivity subclass (see
          app/src/main/java/org/libsdl/app/ErheActivity.java). It overrides
          getLibraries() for erhe's static SDL3 linking; the upstream shim

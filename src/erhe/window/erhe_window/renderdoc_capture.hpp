@@ -14,6 +14,14 @@ class Context_window;
 // This must be called before vkCreateInstance so the env-var changes take
 // effect for the Vulkan loader.
 void initialize_frame_capture(std::string_view library_path_override = {});
+
+// Re-attempts a passive attach to an already-injected RenderDoc capture layer.
+// Call once the graphics API instance exists: on Android the layer is loaded by
+// the Vulkan loader during vkCreateInstance, which is after
+// initialize_frame_capture() runs at window creation, so that earlier attempt
+// necessarily finds nothing. No-op when the API is already resolved, and on the
+// platforms that load the capture library explicitly.
+void try_attach_frame_capture();
 [[nodiscard]] auto get_renderdoc_api() -> void*;
 
 } // namespace erhe::window

@@ -12,6 +12,7 @@
 #include "erhe_graphics/vulkan_external_creators.hpp"
 
 #include "erhe_utility/env.hpp"
+#include "erhe_window/renderdoc_capture.hpp"
 #include "erhe_window/window.hpp"
 
 #include <algorithm>
@@ -357,9 +358,31 @@ Device_impl::Device_impl(
         }
     };
 
+    // The Khronos validation layer and RenderDoc's capture layer must not both
+    // be enabled. renderdoc_capture_support covers the case where capture was
+    // configured up front, but it does not cover a RenderDoc that attached
+    // itself: on Android the capture layer is injected by the RenderDoc host
+    // (see doc/quest-renderdoc-capture.md) while renderdoc_capture_support stays
+    // off, precisely so that validation remains available on runs where
+    // RenderDoc is absent. Detecting the layer in the loader's own enumeration
+    // is what makes the two mutually exclusive however capture was arranged -
+    // and the enumeration is already in hand at exactly the point the choice is
+    // made, before vkCreateInstance.
+    const bool renderdoc_layer_present = std::any_of(
+        instance_layers.begin(),
+        instance_layers.end(),
+        [](const VkLayerProperties& layer) {
+            return strcmp(layer.layerName, "VK_LAYER_RENDERDOC_Capture") == 0;
+        }
+    );
+    if (renderdoc_layer_present) {
+        log_debug->info("RenderDoc capture layer is present - Vulkan validation layer will not be enabled");
+    }
+
     if (
         graphics_config.vulkan.vulkan_validation_layers &&
-        !graphics_config.renderdoc_capture_support
+        !graphics_config.renderdoc_capture_support &&
+        !renderdoc_layer_present
     ) {
         check_layer("VK_LAYER_KHRONOS_validation", m_instance_layers.m_VK_LAYER_KHRONOS_validation);
     }
@@ -599,6 +622,12 @@ Device_impl::Device_impl(
     }
 
     volkLoadInstance(m_vulkan_instance);
+
+    // The Vulkan loader has now loaded any injected RenderDoc capture layer, so
+    // this is the earliest point the in-application API can be resolved from it.
+    // erhe::window's own attempt ran at window creation, before the instance
+    // existed. No-op unless a capture layer was injected.
+    erhe::window::try_attach_frame_capture();
 
     // Create vulkan surface
     std::unique_ptr<Surface_impl> surface_impl{};

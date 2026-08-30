@@ -1236,6 +1236,21 @@ public:
             m_app_context.sleep_margin = 0.0f;
         }
 
+        // On Android the RenderDoc attach is passive - initialize_frame_capture()
+        // uses dlopen(..., RTLD_NOLOAD), which resolves nothing unless RenderDoc
+        // already injected its capture layer into this process. It is therefore
+        // free to attempt on every run, and attempting it unconditionally is what
+        // lets an on-device capture work without shipping an APK whose bundled
+        // config has renderdoc_capture_support pre-enabled. That matters because
+        // the flag is not merely a hint: it also suppresses the Khronos
+        // validation layer (see vulkan_device_init.cpp), so leaving it off keeps
+        // Vulkan validation available on Quest.
+#if defined(ERHE_OS_ANDROID)
+        const bool initialize_frame_capture = true;
+#else
+        const bool initialize_frame_capture = m_graphics_config.renderdoc_capture_support;
+#endif
+
         erhe::window::Window_configuration configuration{
             .use_depth         = m_app_context.OpenXR_mirror,
             .use_stencil       = m_app_context.OpenXR_mirror,
@@ -1250,7 +1265,7 @@ public:
 #else
             .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta"),
 #endif
-            .initialize_frame_capture = m_graphics_config.renderdoc_capture_support,
+            .initialize_frame_capture = initialize_frame_capture,
             .renderdoc_library_path_override = m_graphics_config.renderdoc_library_path_override_enable
                 ? m_graphics_config.renderdoc_library_path_override
                 : std::string{}
@@ -1452,6 +1467,20 @@ public:
             );
 
             // RenderDoc capture is auto-initialized by Device based on Graphics_config
+
+            // Offer the capture UI when RenderDoc is actually attached, rather
+            // than when capture support was merely configured. This has to come
+            // after the graphics device: on Android the capture layer is loaded
+            // by the Vulkan loader during vkCreateInstance, so the API pointer
+            // only resolves once Device construction has run. It is also the
+            // only thing that turns the capture path on there, since
+            // renderdoc_capture_support stays off on Android (see the comment
+            // where initialize_frame_capture is computed).
+            if (erhe::window::get_renderdoc_api() != nullptr) {
+                log_startup->info("RenderDoc is attached - enabling frame capture UI and developer mode");
+                m_app_context.renderdoc      = true;
+                m_app_context.developer_mode = true;
+            }
 
             m_graphics_device->set_shader_error_callback(
                 [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {

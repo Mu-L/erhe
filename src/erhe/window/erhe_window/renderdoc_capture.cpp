@@ -3,7 +3,6 @@
 #include "erhe_window/window_log.hpp"
 #include "erhe_window/renderdoc_app.h"
 #include "erhe_utility/env.hpp"
-#include "erhe_verify/verify.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -27,7 +26,7 @@
 #   include <windows.h>
 #endif
 
-#if defined(ERHE_OS_LINUX) || defined(ERHE_OS_MACOS)
+#if defined(ERHE_OS_LINUX) || defined(ERHE_OS_MACOS) || defined(ERHE_OS_ANDROID)
 #   include <dlfcn.h>
 #endif
 
@@ -37,6 +36,75 @@ namespace {
 
 RENDERDOC_API_1_7_0* renderdoc_api{nullptr};
 bool is_initialized{false};
+
+// Fetch the in-application API from an already-resolved RENDERDOC_GetAPI and
+// store it in renderdoc_api. Returns true on success.
+//
+// RENDERDOC_GetAPI() fails outright (returns 0) when asked for a version the
+// loaded module predates - it does not negotiate down - so the versions erhe can
+// use are tried newest first. This matters because RenderDoc Meta Fork, the
+// supported capture tool on Quest, is forked from RenderDoc 1.41 and tops out at
+// API 1.6.0; asking only for 1.7.0 fails against it.
+//
+// Every RENDERDOC_API_1_*_0 name in renderdoc_app.h is a typedef of the newest
+// struct and the struct is append-only, so an older module still fills in every
+// entry point erhe calls - all of which existed by 1.6.0. The one hazard is that
+// below 1.7.0 the struct RenderDoc returns is SHORTER than RENDERDOC_API_1_7_0:
+// its final two members, SetObjectAnnotation and SetCommandAnnotation (new in
+// 1.7.0), are absent and must never be called. erhe uses neither; anything added
+// here that does must check the negotiated version first.
+auto negotiate_renderdoc_api(const pRENDERDOC_GetAPI RENDERDOC_GetAPI) -> bool
+{
+    static constexpr RENDERDOC_Version versions[] = {
+        eRENDERDOC_API_Version_1_7_0,
+        eRENDERDOC_API_Version_1_6_0
+    };
+    for (const RENDERDOC_Version version : versions) {
+        if (RENDERDOC_GetAPI(version, reinterpret_cast<void**>(&renderdoc_api)) == 1) {
+            log_renderdoc->info("RenderDoc: in-application API version {} negotiated", static_cast<int>(version));
+            return true;
+        }
+    }
+    renderdoc_api = nullptr;
+    log_renderdoc->warn(
+        "RenderDoc: RENDERDOC_GetAPI() rejected every API version erhe can use ({} and {}); "
+        "in-application frame capture is unavailable",
+        static_cast<int>(eRENDERDOC_API_Version_1_7_0),
+        static_cast<int>(eRENDERDOC_API_Version_1_6_0)
+    );
+    return false;
+}
+
+#if defined(ERHE_OS_ANDROID)
+// Attach to a RenderDoc capture layer that something else has already loaded
+// into this process. Returns true once renderdoc_api is resolved.
+//
+// erhe never loads the layer itself: RTLD_NOLOAD attaches to the module only if
+// it is already present, which on Quest means the app was launched from the
+// RenderDoc host with injection (see doc/quest-renderdoc-capture.md). Passive
+// attach is deliberate on two counts. It is free when RenderDoc is not attached,
+// so it can be attempted on every run rather than gated on a config flag baked
+// into the APK. And it cannot produce a second copy of the layer in the process,
+// which would trip RenderDoc's own multi-instance __debugbreak() - the same
+// hazard apply_renderdoc_override_env() works to avoid on Windows.
+auto attach_injected_capture_layer() -> bool
+{
+    if (renderdoc_api != nullptr) {
+        return true;
+    }
+    void* renderdoc_so = dlopen("libVkLayer_GLES_RenderDoc.so", RTLD_NOW | RTLD_NOLOAD);
+    if (renderdoc_so == nullptr) {
+        return false;
+    }
+    pRENDERDOC_GetAPI RENDERDOC_GetAPI = reinterpret_cast<pRENDERDOC_GetAPI>(dlsym(renderdoc_so, "RENDERDOC_GetAPI"));
+    if (RENDERDOC_GetAPI == nullptr) {
+        log_renderdoc->warn("RenderDoc: RENDERDOC_GetAPI() not found in libVkLayer_GLES_RenderDoc.so");
+        return false;
+    }
+    log_renderdoc->info("RenderDoc: attaching to injected capture layer");
+    return negotiate_renderdoc_api(RENDERDOC_GetAPI);
+}
+#endif
 
 void set_env_or_warn(const char* key, const char* value)
 {
@@ -168,9 +236,8 @@ void initialize_frame_capture(std::string_view library_path_override)
             return;
         }
 
-        int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, (void **)&renderdoc_api);
-        log_renderdoc->trace("Loaded RenderDoc .dll, RENDERDOC_GetAPI() return value = {}", ret);
-        ERHE_VERIFY(ret == 1);
+        log_renderdoc->trace("Loaded RenderDoc .dll");
+        negotiate_renderdoc_api(RENDERDOC_GetAPI);
     } else {
         log_renderdoc->warn("RenderDoc: failed to load library '{}'", library_path);
     }
@@ -186,10 +253,19 @@ void initialize_frame_capture(std::string_view library_path_override)
     }
     if (renderdoc_so != nullptr) {
         pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(renderdoc_so, "RENDERDOC_GetAPI");
-        int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, (void **)&renderdoc_api);
-        log_renderdoc->trace("Loaded RenderDoc .so, RENDERDOC_GetAPI() return value = {}", ret);
-        ERHE_VERIFY(ret == 1);
+        log_renderdoc->trace("Loaded RenderDoc .so");
+        negotiate_renderdoc_api(RENDERDOC_GetAPI);
     }
+#elif defined(ERHE_OS_ANDROID)
+    // library_path_override is not honored here: the layer lives inside the
+    // RenderDoc APK, at a path that is not erhe's to choose.
+    //
+    // This first attempt usually finds nothing, and that is expected. The layer
+    // is loaded by the Vulkan loader during vkCreateInstance, whereas this runs
+    // at window creation - earlier. try_attach_frame_capture(), called once the
+    // Vulkan instance exists, is the attempt that actually succeeds.
+    static_cast<void>(have_override);
+    attach_injected_capture_layer();
 #elif defined(ERHE_OS_MACOS)
     const std::string library_path = have_override
         ? std::string{library_path_override}
@@ -197,9 +273,8 @@ void initialize_frame_capture(std::string_view library_path_override)
     void* renderdoc_so = dlopen(library_path.c_str(), RTLD_NOW);
     if (renderdoc_so != nullptr) {
         pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(renderdoc_so, "RENDERDOC_GetAPI");
-        int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, (void **)&renderdoc_api);
-        log_renderdoc->trace("Loaded RenderDoc .dylib, RENDERDOC_GetAPI() return value = {}", ret);
-        ERHE_VERIFY(ret == 1);
+        log_renderdoc->trace("Loaded RenderDoc .dylib");
+        negotiate_renderdoc_api(RENDERDOC_GetAPI);
     } else {
         log_renderdoc->warn("dlopen librenderdoc.dylib failed: {}", dlerror());
     }
@@ -216,6 +291,30 @@ void initialize_frame_capture(std::string_view library_path_override)
     }
 
     is_initialized = true;
+}
+
+void try_attach_frame_capture()
+{
+#if defined(ERHE_OS_ANDROID)
+    if (renderdoc_api != nullptr) {
+        return;
+    }
+    if (!attach_injected_capture_layer()) {
+        log_renderdoc->info(
+            "RenderDoc: libVkLayer_GLES_RenderDoc.so is not loaded in this process - in-application "
+            "frame capture is unavailable. Launch the app from the RenderDoc host so it injects the "
+            "capture layer."
+        );
+        return;
+    }
+    // Match what initialize_frame_capture() configures on the platforms that
+    // load the library themselves, so a capture taken through an injected layer
+    // behaves the same.
+    if (renderdoc_api->MaskOverlayBits != nullptr) {
+        renderdoc_api->MaskOverlayBits(eRENDERDOC_Overlay_None, eRENDERDOC_Overlay_None);
+    }
+    renderdoc_api->SetCaptureOptionU32(eRENDERDOC_Option_CaptureCallstacks, 1);
+#endif
 }
 
 auto get_renderdoc_api() -> void*
