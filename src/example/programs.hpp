@@ -1,7 +1,5 @@
 #pragma once
 
-#include "erhe_graphics/sampler.hpp"
-
 #include <filesystem>
 
 namespace erhe::graphics{
@@ -23,11 +21,7 @@ public:
         erhe::scene_renderer::Shader_variant_cache& shader_variant_cache
     );
 
-    // Samplers
     erhe::scene_renderer::Shader_variant_cache& shader_variant_cache;
-    erhe::graphics::Sampler nearest_sampler;
-    erhe::graphics::Sampler linear_sampler;
-    erhe::graphics::Sampler linear_mipmap_linear_sampler;
 };
 
 }

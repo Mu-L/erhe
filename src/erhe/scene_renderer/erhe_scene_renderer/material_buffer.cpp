@@ -80,22 +80,12 @@ Material_buffer::Material_buffer(erhe::graphics::Device& graphics_device, Materi
     }
     , m_graphics_device {graphics_device}
     , m_material_interface{material_interface}
-    , m_nearest_sampler{
+    , m_fallback_sampler{
         graphics_device,
         erhe::graphics::Sampler_create_info{
-            .min_filter  = erhe::graphics::Filter::nearest,
-            .mag_filter  = erhe::graphics::Filter::nearest,
-            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::nearest,
-            .debug_label = "Material_buffer nearest"
-        }
-    }
-    , m_linear_sampler{
-        graphics_device,
-        erhe::graphics::Sampler_create_info{
-            .min_filter  = erhe::graphics::Filter::linear,
-            .mag_filter  = erhe::graphics::Filter::linear,
-            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::nearest,
-            .debug_label = "Material_buffer linear"
+            // Do not set anything else than debug label so erhe::graphics::Sampler_create_info{}
+            // matches with the fallback sampler.
+            .debug_label  = "Material_buffer fallback sampler"
         }
     }
 {
@@ -165,7 +155,7 @@ auto Material_buffer::update(
             const erhe::graphics::Texture* texture =
                 data.texture_reference ? data.texture_reference->get_referenced_texture() : nullptr;
             if (texture != nullptr) {
-                const erhe::graphics::Sampler* sampler = data.sampler ? data.sampler.get() : &m_linear_sampler;
+                const erhe::graphics::Sampler* sampler = data.sampler ? data.sampler.get() : &m_fallback_sampler;
                 result.shader_handle = texture_heap.allocate(texture, sampler);
                 ERHE_VERIFY(result.shader_handle != erhe::graphics::invalid_texture_handle);
             } else {

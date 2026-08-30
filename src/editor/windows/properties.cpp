@@ -1926,12 +1926,7 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                         if (slot->sampler) {
                             return slot->sampler->get_create_info();
                         }
-                        return erhe::graphics::Sampler_create_info{
-                            .min_filter  = erhe::graphics::Filter::linear,
-                            .mag_filter  = erhe::graphics::Filter::linear,
-                            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::nearest,
-                            .debug_label = "material texture sampler"
-                        };
+                        return erhe::graphics::Sampler_create_info{};
                     };
                     const auto replace_sampler = [this](erhe::primitive::Material_texture_sampler* slot, const erhe::graphics::Sampler_create_info& create_info) {
                         slot->sampler = std::make_shared<erhe::graphics::Sampler>(*m_context.graphics_device, create_info);

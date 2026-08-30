@@ -14,14 +14,14 @@ class Device;
 class Sampler_create_info
 {
 public:
-    Filter              min_filter    {Filter::nearest};
+    Filter              min_filter    {Filter::linear};
     Filter              mag_filter    {Filter::nearest};
-    Sampler_mipmap_mode mipmap_mode;
+    Sampler_mipmap_mode mipmap_mode   {Sampler_mipmap_mode::linear};
 
     std::array<Sampler_address_mode, 3> address_mode{
-        Sampler_address_mode::clamp_to_edge,
-        Sampler_address_mode::clamp_to_edge,
-        Sampler_address_mode::clamp_to_edge
+        Sampler_address_mode::repeat,
+        Sampler_address_mode::repeat,
+        Sampler_address_mode::repeat
     };
     bool                       compare_enable   {false};
     Compare_operation          compare_operation{Compare_operation::always};

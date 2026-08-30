@@ -115,10 +115,11 @@ Texture_renderer::Texture_renderer(erhe::graphics::Device& device)
     m_sampler = std::make_unique<erhe::graphics::Sampler>(
         device,
         erhe::graphics::Sampler_create_info{
-            .min_filter  = erhe::graphics::Filter::linear,
-            .mag_filter  = erhe::graphics::Filter::linear,
-            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-            .debug_label = erhe::utility::Debug_label{"texture graph sampler"}
+            .min_filter   = erhe::graphics::Filter::linear,
+            .mag_filter   = erhe::graphics::Filter::linear,
+            .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
+            .address_mode = { erhe::graphics::Sampler_address_mode::repeat, erhe::graphics::Sampler_address_mode::repeat, erhe::graphics::Sampler_address_mode::repeat },
+            .debug_label  = erhe::utility::Debug_label{"texture graph sampler"}
         }
     );
 }

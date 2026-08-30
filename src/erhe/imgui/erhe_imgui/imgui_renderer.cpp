@@ -823,13 +823,14 @@ auto Imgui_renderer::get_lod_clamped_sampler(
     auto sampler = std::make_unique<erhe::graphics::Sampler>(
         m_graphics_device,
         erhe::graphics::Sampler_create_info{
-            .min_filter  = filter,
-            .mag_filter  = filter,
-            .mipmap_mode = effective_mipmap_mode,
-            .lod_bias    = 0.0f,
-            .max_lod     = lod_f,
-            .min_lod     = lod_f,
-            .debug_label = erhe::utility::Debug_label{
+            .min_filter   = filter,
+            .mag_filter   = filter,
+            .mipmap_mode  = effective_mipmap_mode,
+            .address_mode = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
+            .lod_bias     = 0.0f,
+            .max_lod      = lod_f,
+            .min_lod      = lod_f,
+            .debug_label  = erhe::utility::Debug_label{
                 std::string{"Imgui_renderer lod-clamped "} + std::to_string(lod)
             }
         }

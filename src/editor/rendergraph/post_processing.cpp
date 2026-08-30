@@ -469,19 +469,21 @@ Post_processing::Post_processing(erhe::graphics::Device& d, erhe::graphics::Comm
     , m_sampler_linear{
         d,
         erhe::graphics::Sampler_create_info{
-            .min_filter  = erhe::graphics::Filter::linear,
-            .mag_filter  = erhe::graphics::Filter::linear,
-            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-            .debug_label = "linear"
+            .min_filter   = erhe::graphics::Filter::linear,
+            .mag_filter   = erhe::graphics::Filter::linear,
+            .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
+            .address_mode = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
+            .debug_label  = "linear"
         }
     }
     , m_sampler_linear_mipmap_nearest{
         d,
         erhe::graphics::Sampler_create_info{
-            .min_filter  = erhe::graphics::Filter::linear,
-            .mag_filter  = erhe::graphics::Filter::linear,
-            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::nearest,
-            .debug_label = "linear_mipmap_nearest"
+            .min_filter   = erhe::graphics::Filter::linear,
+            .mag_filter   = erhe::graphics::Filter::linear,
+            .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::nearest,
+            .address_mode = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
+            .debug_label  = "linear_mipmap_nearest"
         }
     }
     , m_parameter_block   {d, "post_processing", 0, erhe::graphics::Shader_resource::Type::uniform_block}

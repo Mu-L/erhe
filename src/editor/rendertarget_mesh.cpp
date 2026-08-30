@@ -113,11 +113,12 @@ void Rendertarget_mesh::resize_rendertarget(
     m_sampler = std::make_shared<erhe::graphics::Sampler>(
         graphics_device,
         erhe::graphics::Sampler_create_info{
-            .min_filter  = erhe::graphics::Filter::linear,
-            .mag_filter  = erhe::graphics::Filter::nearest,
-            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::linear,
-            .lod_bias    = -0.666f,
-            .debug_label = "Rendertarget_mesh"
+            .min_filter   = erhe::graphics::Filter::linear,
+            .mag_filter   = erhe::graphics::Filter::nearest,
+            .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::linear,
+            .address_mode = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
+            .lod_bias     = -0.666f,
+            .debug_label  = "Rendertarget_mesh"
         }
     );
 
@@ -375,11 +376,12 @@ void Rendertarget_mesh::render_done(erhe::graphics::Command_buffer& command_buff
         m_sampler = std::make_shared<erhe::graphics::Sampler>(
             *context.graphics_device,
             erhe::graphics::Sampler_create_info{
-                .min_filter  = erhe::graphics::Filter::linear,
-                .mag_filter  = erhe::graphics::Filter::nearest,
-                .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::linear,
-                .lod_bias    = s_rendertarget_mesh_lod_bias,
-                .debug_label = "Rendertarget_mesh"
+                .min_filter   = erhe::graphics::Filter::linear,
+                .mag_filter   = erhe::graphics::Filter::nearest,
+                .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::linear,
+                .address_mode = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
+                .lod_bias     = s_rendertarget_mesh_lod_bias,
+                .debug_label  = "Rendertarget_mesh"
             }
         );
         m_material->data.texture_samplers.base_color.sampler = m_sampler;

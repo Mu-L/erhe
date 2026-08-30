@@ -75,6 +75,11 @@ Light_interface::Light_interface(erhe::graphics::Device& graphics_device, const 
             .min_filter        = erhe::graphics::Filter::nearest,
             .mag_filter        = erhe::graphics::Filter::nearest,
             .mipmap_mode       = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
+            .address_mode      = {
+                erhe::graphics::Sampler_address_mode::clamp_to_edge,
+                erhe::graphics::Sampler_address_mode::clamp_to_edge,
+                erhe::graphics::Sampler_address_mode::clamp_to_edge
+            },
             .compare_enable    = true,
             // Comparison op is baked here from the engine-wide reverse_depth
             // setting because the descriptor set layout pins this sampler as
@@ -96,6 +101,7 @@ Light_interface::Light_interface(erhe::graphics::Device& graphics_device, const 
             .min_filter     = erhe::graphics::Filter::nearest,
             .mag_filter     = erhe::graphics::Filter::nearest,
             .mipmap_mode    = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
+            .address_mode   = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
             .compare_enable = false,
             .lod_bias       = 0.0f,
             .max_lod        = 0.0f,

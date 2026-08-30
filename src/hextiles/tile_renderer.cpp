@@ -120,10 +120,11 @@ Tile_renderer::Tile_renderer(
     , m_nearest_sampler{
         graphics_device,
         erhe::graphics::Sampler_create_info{
-            .min_filter  = erhe::graphics::Filter::nearest,
-            .mag_filter  = erhe::graphics::Filter::nearest,
-            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::nearest,
-            .debug_label = "Tile_renderer"
+            .min_filter   = erhe::graphics::Filter::nearest,
+            .mag_filter   = erhe::graphics::Filter::nearest,
+            .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::nearest,
+            .address_mode = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
+            .debug_label  = "Tile_renderer"
         }
     }
     , m_projection_block{

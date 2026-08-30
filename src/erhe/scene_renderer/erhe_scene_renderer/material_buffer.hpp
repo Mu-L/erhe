@@ -83,8 +83,7 @@ private:
     erhe::graphics::Device& m_graphics_device;
     Material_interface&     m_material_interface;
 
-    erhe::graphics::Sampler m_nearest_sampler;
-    erhe::graphics::Sampler m_linear_sampler;
+    erhe::graphics::Sampler m_fallback_sampler;
 };
 
 } // namespace erhe::scene_renderer

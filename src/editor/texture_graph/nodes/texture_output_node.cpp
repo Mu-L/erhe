@@ -221,10 +221,11 @@ void Texture_output_node::assign_to_material()
         m_sampler = std::make_shared<erhe::graphics::Sampler>(
             *m_context.graphics_device,
             erhe::graphics::Sampler_create_info{
-                .min_filter  = erhe::graphics::Filter::linear,
-                .mag_filter  = erhe::graphics::Filter::linear,
-                .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-                .debug_label = erhe::utility::Debug_label{"Texture graph output sampler"}
+                .min_filter   = erhe::graphics::Filter::linear,
+                .mag_filter   = erhe::graphics::Filter::linear,
+                .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
+                .address_mode = { erhe::graphics::Sampler_address_mode::repeat, erhe::graphics::Sampler_address_mode::repeat, erhe::graphics::Sampler_address_mode::repeat },
+                .debug_label  = erhe::utility::Debug_label{"Texture graph output sampler"}
             }
         );
     }

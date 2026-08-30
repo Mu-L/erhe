@@ -365,19 +365,9 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
     if (edit.scale.has_value())       target.scale             = edit.scale.value();
 
     if (edit.has_sampler_edit()) {
-        // Start from the slot's current sampler state; a null sampler edits
-        // as the renderer's effective fallback (linear filtering, clamp wrap
-        // - see Material_buffer::m_linear_sampler), so only the supplied
-        // fields change the look.
-        erhe::graphics::Sampler_create_info create_info =
-            target.sampler
-                ? target.sampler->get_create_info()
-                : erhe::graphics::Sampler_create_info{
-                      .min_filter  = erhe::graphics::Filter::linear,
-                      .mag_filter  = erhe::graphics::Filter::linear,
-                      .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::nearest,
-                      .debug_label = "edit_material texture sampler"
-                  };
+        erhe::graphics::Sampler_create_info create_info = target.sampler
+            ? target.sampler->get_create_info()
+            : erhe::graphics::Sampler_create_info{};
         if (edit.wrap.has_value()) {
             create_info.address_mode[0] = edit.wrap.value()[0];
             create_info.address_mode[1] = edit.wrap.value()[1];
