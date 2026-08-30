@@ -148,13 +148,9 @@ auto Move_tool::snap(const glm::vec3 in_translation) const -> glm::vec3
     // relative snapping snaps the drag delta itself, preserving any initial
     // off-grid position.
     const bool world            = !shared.settings.use_anchor_orientation();
-    glm::mat3  world_from_basis = glm::mat3{get_basis(world)};
-    // The anchor matrix can carry scale; normalized columns make the basis
-    // orthonormal so the transpose below is its inverse.
-    world_from_basis[0] = glm::normalize(world_from_basis[0]);
-    world_from_basis[1] = glm::normalize(world_from_basis[1]);
-    world_from_basis[2] = glm::normalize(world_from_basis[2]);
-    const glm::mat3 basis_from_world = glm::transpose(world_from_basis);
+    // The basis is orthonormal, so the transpose below is its inverse.
+    const glm::mat3 world_from_basis  = get_basis(world);
+    const glm::mat3 basis_from_world  = glm::transpose(world_from_basis);
     const glm::vec3 bias = m_context.editor_settings->transform_tool.translate_snap_absolute
         ? basis_from_world * glm::vec3{shared.world_from_anchor_initial_state.get_translation()}
         : glm::vec3{0.0f};

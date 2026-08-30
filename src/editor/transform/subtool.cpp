@@ -51,38 +51,36 @@ void Subtool::set_transform_shared(Transform_tool_shared& shared, std::function<
     m_record_operation = std::move(record_operation);
 }
 
-namespace {
-
-constexpr glm::mat4 mat4_identity{1.0f};
-
-};
-
 auto Subtool::get_shared() const -> Transform_tool_shared&
 {
     ERHE_VERIFY(m_shared != nullptr);
     return *m_shared;
 }
 
-auto Subtool::get_basis() const -> const glm::mat4&
+auto Subtool::get_basis() const -> glm::mat3
 {
     const auto& shared = get_shared();
-    return shared.settings.use_anchor_orientation()
-        ? shared.world_from_anchor_initial_state.get_matrix()
-        : mat4_identity;
+    return get_basis(!shared.settings.use_anchor_orientation());
 }
 
-auto Subtool::get_basis(const bool world) const -> const glm::mat4&
+// The drag basis carries only the anchor's orientation, never its scale or
+// skew - the same rule Handle_visualizations::get_basis() uses to place the
+// handles, so the axes dragged are the axes drawn. Taking the columns of the
+// anchor's world matrix instead would hand out non-unit (and, under a
+// non-uniform parent scale, non-orthogonal) axes, and a rotation built about
+// a non-unit axis is not a rotation at all - it injects scale and shear.
+auto Subtool::get_basis(const bool world) const -> glm::mat3
 {
     const auto& shared = get_shared();
 
     return world
-        ? mat4_identity
-        : shared.world_from_anchor_initial_state.get_matrix();
+        ? glm::mat3{1.0f}
+        : glm::mat3_cast(shared.world_from_anchor_initial_state.get_rotation());
 }
 
 auto Subtool::get_axis_direction() const -> vec3
 {
-    const glm::mat4& basis = get_basis();
+    const glm::mat3 basis = get_basis();
     switch (m_axis_mask) {
         case Axis_mask::x:  return vec3{basis[0]};
         case Axis_mask::yz: return vec3{basis[0]};
@@ -99,7 +97,7 @@ auto Subtool::get_axis_direction() const -> vec3
 
 auto Subtool::get_plane_normal(const bool world) const -> vec3
 {
-    const glm::mat4& basis = get_basis(world);
+    const glm::mat3 basis = get_basis(world);
     switch (m_axis_mask) {
         case Axis_mask::x:  return vec3{basis[0]};
         case Axis_mask::yz: return vec3{basis[0]};
@@ -116,7 +114,7 @@ auto Subtool::get_plane_normal(const bool world) const -> vec3
 
 auto Subtool::get_plane_side(const bool world) const -> vec3
 {
-    const glm::mat4& basis = get_basis(world);
+    const glm::mat3 basis = get_basis(world);
     switch (m_axis_mask) {
         case Axis_mask::x:  return vec3{basis[1]};
         case Axis_mask::yz: return vec3{basis[1]};

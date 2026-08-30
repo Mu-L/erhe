@@ -299,13 +299,16 @@ void Rotate_tool::update_final()
     const float angle                  = erhe::math::angle_of_rotation<float>(q_, m_normal, m_reference_direction);
     const float snapped_angle          = snap                                (angle);
     // View-mode rotation happens about the viewing axis, which is not a
-    // basis axis (get_axis_direction() has no mapping for it).
+    // basis axis (get_axis_direction() has no mapping for it). Both sources
+    // are unit vectors - get_axis_direction() reads an orthonormal basis - so
+    // angleAxis yields a unit quaternion; building a matrix and quat_cast'ing
+    // it would silently turn any axis-length error into scale and shear.
     const vec3  rotation_axis_in_world = m_view_mode ? m_normal : get_axis_direction();
-    const mat4  rotation               = erhe::math::create_rotation<float>  (snapped_angle, rotation_axis_in_world);
+    const quat  rotation               = glm::angleAxis(snapped_angle, rotation_axis_in_world);
 
     m_current_angle = angle;
 
-    m_context.transform_tool->adjust_rotation(m_center_of_rotation, glm::quat_cast(rotation));
+    m_context.transform_tool->adjust_rotation(m_center_of_rotation, rotation);
 }
 
 void Rotate_tool::render(const Render_context& context)
