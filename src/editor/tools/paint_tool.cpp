@@ -475,7 +475,7 @@ void Paint_tool::paint_vertex(
 
     std::vector<std::uint8_t> buffer;
 
-    const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = scene_mesh.get_mutable_primitives();
+    const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = scene_mesh.get_primitives();
     const erhe::scene::Mesh_primitive& mesh_primitive = mesh_primitives.at(scene_mesh_primitive_index);
     const erhe::primitive::Primitive&  primitive      = *mesh_primitive.primitive.get();
     if (!primitive.render_shape) {
@@ -701,9 +701,9 @@ void Paint_tool::window_imgui()
                     continue;
                 }
             }
-            std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_mutable_primitives();
+            const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_primitives();
             for (size_t primitive_index = 0, end = mesh_primitives.size(); primitive_index < end; ++primitive_index) {
-                erhe::scene::Mesh_primitive& mesh_primitive = mesh_primitives.at(primitive_index);
+                const erhe::scene::Mesh_primitive& mesh_primitive = mesh_primitives.at(primitive_index);
                 erhe::primitive::Primitive&  primitive      = *mesh_primitive.primitive.get();
                 if (!primitive.render_shape) {
                     continue;

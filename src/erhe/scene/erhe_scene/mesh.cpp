@@ -190,11 +190,6 @@ void Mesh::set_primitive_lightmap_uv_scale_offset(const std::size_t primitive_in
     scene_host->on_mesh_primitive_data_changed(shared_this);
 }
 
-auto Mesh::get_mutable_primitives() -> std::vector<Mesh_primitive>&
-{
-    return m_primitives;
-}
-
 auto Mesh::get_primitives() const -> const std::vector<Mesh_primitive>&
 {
     return m_primitives;

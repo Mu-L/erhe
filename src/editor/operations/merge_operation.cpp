@@ -130,7 +130,7 @@ Merge_operation::Merge_operation(Parameters&& parameters)
             }
         }
 
-        for (erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_mutable_primitives()) {
+        for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_primitives()) {
             const erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
             const auto& shape = primitive.render_shape;
             if (!shape) {

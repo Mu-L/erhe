@@ -614,7 +614,7 @@ auto Binary_mesh_operation::make_operations(
         }
 
         std::vector<Entry>& entries = is_target ? lhs_entries : rhs_entries;
-        for (erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_mutable_primitives()) {
+        for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_primitives()) {
             const erhe::primitive::Primitive&                               primitive = *mesh_primitive.primitive.get();
             const std::shared_ptr<erhe::primitive::Primitive_render_shape>& shape     = primitive.render_shape;
             if (!shape) {

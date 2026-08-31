@@ -268,7 +268,7 @@ void Controller_visualization::load_render_model(App_context& context, erhe::xr:
         // raytrace - the controller ray originates next to the model and
         // must never hover-pick the controller itself.
         const erhe::primitive::Build_info& mesh_build_info = mesh->skin ? skinned_build_info : build_info;
-        for (erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_mutable_primitives()) {
+        for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_primitives()) {
             const bool renderable_ok = mesh_primitive.primitive->make_renderable_mesh(mesh_build_info, erhe::primitive::Normal_style::corner_normals);
             if (renderable_ok) {
                 ++renderable_primitive_count;

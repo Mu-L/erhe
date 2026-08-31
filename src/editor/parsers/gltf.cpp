@@ -581,7 +581,7 @@ void build_imported_buffer_meshes(
         // fast-path over the wrongly-built mesh and skinning would silently
         // not happen.
         const erhe::primitive::Build_info& mesh_build_info = mesh->skin ? skinned_build_info : build_info;
-        for (erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_mutable_primitives()) {
+        for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh->get_primitives()) {
             erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
             if (!primitive.make_renderable_mesh(mesh_build_info, erhe::primitive::Normal_style::corner_normals)) {
                 log_parsers->error(
@@ -718,9 +718,9 @@ void finalize_imported_meshes(
         // build_info accordingly; the rest of the build flow is
         // identical.
         const erhe::primitive::Build_info& mesh_build_info = mesh->skin ? skinned_build_info : build_info;
-        std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_mutable_primitives();
+        const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_primitives();
         std::size_t primitive_index = 0;
-        for (erhe::scene::Mesh_primitive& mesh_primitive : mesh_primitives) {
+        for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh_primitives) {
             erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
             const std::size_t this_primitive_index = primitive_index++;
             // glTF arrives with facets + vertices but no edges. Build edges
@@ -937,7 +937,7 @@ auto make_import_gltf_operation(
         std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
         if (mesh) {
             ++mesh_count;
-            std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_mutable_primitives();
+            const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_primitives();
             primitive_count += mesh_primitives.size();
         }
     }

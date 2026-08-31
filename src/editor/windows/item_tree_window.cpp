@@ -787,7 +787,7 @@ auto Item_tree::drag_and_drop_target(const std::shared_ptr<erhe::Item_base>& ite
     if (material && !brush) {
         const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
         if (mesh) {
-            std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_mutable_primitives();
+            const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_primitives();
             if (!mesh_primitives.empty()) {
                 const ImRect rect{rect_min, rect_max};
                 if (ImGui::BeginDragDropTargetCustom(rect, imgui_id_top)) {

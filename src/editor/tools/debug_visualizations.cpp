@@ -1873,7 +1873,7 @@ void Debug_visualizations::mesh_labels(const Render_context& context, erhe::scen
     hovered_scene_mesh = content_hover.scene_mesh_weak.lock().get();
 
     // TODO: Cache set of primitives that pass filters
-    for (erhe::scene::Mesh_primitive& mesh_primitive : scene_mesh->get_mutable_primitives()) {
+    for (const erhe::scene::Mesh_primitive& mesh_primitive : scene_mesh->get_primitives()) {
         const erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
         if (!primitive.render_shape) {
             continue;

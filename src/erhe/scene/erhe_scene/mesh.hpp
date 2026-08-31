@@ -108,18 +108,17 @@ public:
     [[nodiscard]] auto begin_optimized_variant_edit(std::size_t primitive_index) -> std::shared_ptr<erhe::primitive::Primitive>;
     void add_primitive       (const std::shared_ptr<erhe::primitive::Primitive>& primitive, const std::shared_ptr<erhe::primitive::Material>& material = {});
     void set_primitives      (const std::vector<Mesh_primitive>& primitives);
-    // Reassign the material of one primitive. Use this instead of writing
-    // through get_mutable_primitives() so the scene host (draw lists) sees
-    // the change (Scene_host::on_mesh_material_changed).
+    // Reassign the material of one primitive. This is the ONLY way to change
+    // it: get_primitives() is const, so the scene host (draw lists) always
+    // sees the change (Scene_host::on_mesh_material_changed).
     void set_primitive_material(std::size_t primitive_index, const std::shared_ptr<erhe::primitive::Material>& material);
-    // Set the baked-lightmap atlas region of one primitive. Use this instead
-    // of writing through get_mutable_primitives() so the scene host (draw list
-    // primitive records) sees the change (Scene_host::on_mesh_primitive_data_changed).
+    // Set the baked-lightmap atlas region of one primitive. Likewise the only
+    // way to change it, so the scene host (draw list primitive records) always
+    // sees the change (Scene_host::on_mesh_primitive_data_changed).
     void set_primitive_lightmap_uv_scale_offset(std::size_t primitive_index, const glm::vec4& lightmap_uv_scale_offset);
     void set_rt_mask         (uint32_t rt_mask);
     void attach_rt_to_scene  (erhe::raytrace::IScene* rt_scene);
     void detach_rt_from_scene();
-    [[nodiscard]] auto get_mutable_primitives()       ->       std::vector<Mesh_primitive>&;
     [[nodiscard]] auto get_primitives        () const -> const std::vector<Mesh_primitive>&;
     [[nodiscard]] auto get_rt_scene          () const -> erhe::raytrace::IScene*;
     [[nodiscard]] auto get_rt_primitives     () const -> const std::vector<std::unique_ptr<Raytrace_primitive>>&;

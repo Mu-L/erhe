@@ -254,7 +254,7 @@ void Mesh_operation::make_entries(
                 ? entry.before.node_physics->get_motion_mode()
                 : erhe::physics::Motion_mode::e_invalid;
 
-            for (erhe::scene::Mesh_primitive& mesh_primitive : scene_mesh->get_mutable_primitives()) {
+            for (const erhe::scene::Mesh_primitive& mesh_primitive : scene_mesh->get_primitives()) {
                 const erhe::primitive::Primitive&                               primitive       = *mesh_primitive.primitive.get();
                 const std::shared_ptr<erhe::primitive::Primitive_render_shape>& render_shape    = primitive.render_shape;
                 const std::shared_ptr<erhe::geometry::Geometry>&                before_geometry = render_shape->get_geometry();
