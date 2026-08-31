@@ -164,8 +164,7 @@ void Properties::on_items_removed(const Removed_items& removed)
 void Properties::on_close_scene(erhe::Item_host* const closing_host)
 {
     // The target can be scene content (host comparison) or a managed asset
-    // (not hosted since R5.6 - the manager's defining-container lookup
-    // covers both through is_hosted_or_defined_by).
+    // the manager's defining-container lookup covers both through is_hosted_or_defined_by).
     Asset_manager* const asset_manager = m_context.asset_manager;
     const std::shared_ptr<erhe::Item_base> target = m_target.lock();
     if (target && (asset_manager != nullptr) && asset_manager->is_hosted_or_defined_by(*target, closing_host)) {
@@ -380,14 +379,8 @@ void Properties::light_properties(erhe::scene::Light& light)
 {
     ERHE_PROFILE_FUNCTION();
 
-    // Edits to what decides whether / how the light is shaded (type, cast
-    // shadow, range / color / intensity / outer spot angle -> is_active) must
-    // re-resolve the scene's light set (Light::notify_changed ->
-    // Scene_host::on_light_changed). The notify call has to happen inside the
-    // entry lambda: add_entry only QUEUES the lambda, which show_entries()
-    // runs long after this function has returned - a flag local to this scope
-    // would still be false when tested here, and writing to it from the lambda
-    // would write to a destroyed stack slot.
+    // Edits must re-resolve the scene's light set (Light::notify_changed ->
+    // Scene_host::on_light_changed).
     add_entry("Light Type", [&light]() {
         // make_combo assigns the picked value unconditionally but reports
         // IsItemDeactivatedAfterEdit(), which is not the same event as "the
@@ -1771,9 +1764,6 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
 {
     ERHE_PROFILE_FUNCTION();
 
-    // Issue #252: the material to inspect comes from the effective item list
-    // (the pinned target when set, else the global selection), passed in by
-    // imgui() - not read from the selection directly anymore.
     const std::shared_ptr<erhe::primitive::Material> selected_material_shared = get<erhe::primitive::Material>(items);
     if (m_inspected_material != selected_material_shared) {
         log_operations->info("m_inspected_material != selected_material_shared");
@@ -1861,7 +1851,6 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
             ImGui::SliderFloat("##", &data.alpha_cutoff, 0.0f, 1.0f);
         });
     }
-    // glTF material.doubleSided: draws both faces instead of culling back faces.
     add_entry("Double Sided", [&](){
         ImGui::Checkbox("##", &data.double_sided);
     });
@@ -1895,8 +1884,6 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
     add_entry("Emissive",    [&](){ ImGui::ColorEdit4 ("##", &data.emissive.x,   ImGuiColorEditFlags_Float); });
     add_entry("Opacity",     [&](){ ImGui::SliderFloat("##", &data.opacity,      0.0f,  1.0f); });
     if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
-        // Consumed by the GPU ray tracer (glass refraction / reflection);
-        // the raster path currently ignores both.
         add_entry("IOR",          [&](){ ImGui::SliderFloat("##", &data.ior,          1.0f,  3.0f); });
         add_entry("Transmission", [&](){ ImGui::SliderFloat("##", &data.transmission, 0.0f,  1.0f); });
     }
@@ -1930,11 +1917,7 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                     // Sampler state rows. Every edit REPLACES the slot's
                     // sampler with a freshly created one (never mutates in
                     // place), so the material inspect snapshot sees the
-                    // pointer change and undo works. A slot without an
-                    // explicit sampler renders with the fallback (linear
-                    // filtering, clamp-to-edge wrap - see
-                    // Material_buffer::m_linear_sampler), which is what the
-                    // rows display before the first edit.
+                    // pointer change and undo works.
                     const auto current_create_info = [](erhe::primitive::Material_texture_sampler* slot) -> erhe::graphics::Sampler_create_info {
                         if (slot->sampler) {
                             return slot->sampler->get_create_info();
@@ -2036,8 +2019,6 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
 
 auto Properties::effective_items() -> const std::vector<std::shared_ptr<erhe::Item_base>>&
 {
-    // Issue #252: when pinned, show only the target; else fall back to the
-    // global selection (the original behavior).
     const std::shared_ptr<erhe::Item_base> target = m_target.lock();
     if (target) {
         m_target_items.clear();
@@ -2054,9 +2035,6 @@ void Properties::set_target(const std::shared_ptr<erhe::Item_base>& item)
 
 void Properties::target_selector_imgui()
 {
-    // Row: "Pin" label + the reference field (drag-drop / picker / clear).
-    // Clearing the field reverts the window to selection mode. A "(pinned)"
-    // note makes the pinned state obvious.
     ImGui::TextUnformatted("Pin");
     ImGui::SameLine();
     const bool was_pinned = !m_target.expired();
