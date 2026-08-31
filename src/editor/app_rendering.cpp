@@ -1643,12 +1643,9 @@ void App_rendering::render_id(const Render_context& context)
         : glm::vec2{static_cast<float>(context.viewport.width) * 0.5f, static_cast<float>(context.viewport.height) * 0.5f};
 
     const auto& layers = scene_root->layers();
-    Scene_root* tool_scene_root = m_context.tools->get_tool_scene_root().get();
-    if ((tool_scene_root == nullptr) || (context.camera == nullptr)) {
+    if (context.camera == nullptr) {
         return;
     }
-
-    const Scene_layers& tool_layers = tool_scene_root->layers();
 
     // Joint UBO/SSBO: the id pass shares standard.{vert,frag} with
     // Forward_renderer and takes the same GPU skinning branch off
@@ -1690,12 +1687,9 @@ void App_rendering::render_id(const Render_context& context)
             .command_buffer     = *context.command_buffer,
             .viewport           = context.viewport,
             .camera             = *context.camera,
-            // Bone proxies ride in the content spans (not the tool spans): they
-            // belong to this scene, not the global tool scene. They only carry
-            // Item_flags::id while bone mode is active, so outside it they are
-            // rasterized into no id at all.
+            // Bone proxies only carry Item_flags::id while bone mode is
+            // active, so outside it they are rasterized into no id at all.
             .content_mesh_spans = { layers.content()->meshes, layers.rendertarget()->meshes, layers.bone()->meshes },
-            .tool_mesh_spans    = { tool_layers.tool()->meshes },
             .x                  = static_cast<int>(position.x),
             .y                  = static_cast<int>(position.y),
             .reverse_depth      = context.scene_view.get_reverse_depth(),

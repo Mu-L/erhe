@@ -768,8 +768,7 @@ void Headset_view::update_id_render(erhe::graphics::Command_buffer& command_buff
     const int                  extent = Id_renderer::get_extent();
     const erhe::math::Viewport viewport{.x = 0, .y = 0, .width = extent, .height = extent};
 
-    const auto& layers      = scene_root->layers();
-    const auto& tool_layers = tool_scene_root->layers();
+    const auto& layers = scene_root->layers();
 
     m_context.id_renderer->render(
         Id_renderer::Render_parameters{
@@ -777,7 +776,6 @@ void Headset_view::update_id_render(erhe::graphics::Command_buffer& command_buff
             .viewport           = viewport,
             .camera             = *m_pointer_pick_camera,
             .content_mesh_spans = { layers.content()->meshes, layers.rendertarget()->meshes },
-            .tool_mesh_spans    = { tool_layers.tool()->meshes },
             .x                  = extent / 2,
             .y                  = extent / 2,
             .reverse_depth      = get_reverse_depth(),

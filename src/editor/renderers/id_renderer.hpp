@@ -106,7 +106,6 @@ public:
         const erhe::math::Viewport&        viewport;
         const erhe::scene::Camera&         camera;
         const std::initializer_list<const std::span<const std::shared_ptr<erhe::scene::Mesh>>>& content_mesh_spans;
-        const std::initializer_list<const std::span<const std::shared_ptr<erhe::scene::Mesh>>>& tool_mesh_spans;
         const int                          x;
         const int                          y;
         bool                               reverse_depth{true};
@@ -236,7 +235,6 @@ private:
     erhe::scene_renderer::Primitive_buffer       m_primitive_buffers;
 
     erhe::graphics::Base_render_pipeline         m_pipeline;
-    erhe::graphics::Base_render_pipeline         m_selective_depth_clear_pipeline;
     std::unique_ptr<erhe::graphics::Texture>     m_color_texture;
     std::unique_ptr<erhe::graphics::Texture>     m_depth_texture;
     std::unique_ptr<erhe::graphics::Render_pass> m_render_pass;

@@ -84,16 +84,6 @@ Id_renderer::Id_renderer(
             .color_blend    = &Color_blend_state::color_blend_disabled
         }
     }
-    , m_selective_depth_clear_pipeline{
-        graphics_device,
-        erhe::graphics::Base_render_pipeline_create_info{
-            .debug_label    = erhe::utility::Debug_label{"ID Renderer selective depth clear"},
-            .input_assembly = Input_assembly_state::triangle,
-            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
-            .depth_stencil  = Depth_stencil_state::depth_test_always_stencil_test_disabled,
-            .color_blend    = &Color_blend_state::color_writes_disabled
-        }
-    }
     , m_texture_read_buffer{
         graphics_device,
         erhe::graphics::Buffer_target::transfer_dst,
@@ -779,7 +769,6 @@ void Id_renderer::render(const Render_parameters& parameters)
     const auto& viewport           = parameters.viewport;
     const auto& camera             = parameters.camera;
     const auto& content_mesh_spans = parameters.content_mesh_spans;
-    const auto& tool_mesh_spans    = parameters.tool_mesh_spans;
     const auto  x                  = parameters.x;
     const auto  y                  = parameters.y;
 
@@ -941,24 +930,6 @@ void Id_renderer::render(const Render_parameters& parameters)
 
         for (auto meshes : content_mesh_spans) {
             render_meshes(parameters, encoder, m_pipeline, meshes);
-        }
-
-        // Clear depth for tool pixels
-        {
-            encoder.set_viewport_rect(viewport.x, viewport.y, viewport.width, viewport.height);
-            const float far_depth = parameters.reverse_depth ? 0.0f : 1.0f;
-            encoder.set_viewport_depth_range(far_depth, far_depth);
-            for (auto mesh_spans : tool_mesh_spans) {
-                render_meshes(parameters, encoder, m_selective_depth_clear_pipeline, mesh_spans);
-            }
-        }
-
-        // Resume normal depth usage
-        {
-            encoder.set_viewport_depth_range(0.0f, 1.0f);
-            for (auto meshes : tool_mesh_spans) {
-                render_meshes(parameters, encoder, m_pipeline, meshes);
-            }
         }
     }
 
