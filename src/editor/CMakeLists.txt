@@ -617,7 +617,6 @@ erhe_target_sources_grouped(
     transform/transform_tool.hpp
     transform/transform_tool_settings.cpp
     transform/transform_tool_settings.hpp
-    transform/trs_tool.cpp
     windows/IconsMaterialDesignIcons.h
     windows/active_scene_highlight.cpp
     windows/active_scene_highlight.hpp
