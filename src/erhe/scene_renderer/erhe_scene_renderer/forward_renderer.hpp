@@ -11,6 +11,7 @@
 #include "erhe_scene_renderer/material_buffer.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_scene_renderer/primitive_buffer.hpp"
+#include "erhe_scene_renderer/scene_pass_resources.hpp"
 #include "erhe_scene_renderer/shader_key.hpp"
 
 #include <glm/glm.hpp>
@@ -62,18 +63,12 @@ class Forward_renderer
 public:
     using Mesh_layer_collection = std::vector<const erhe::scene::Mesh_layer*>;
 
-    // Baked lightmap atlas sampled by standard.frag through s_lightmap
-    // (doc/lightmap_baking_plan.md phase 5). Null binds the black fallback;
-    // per-primitive lightmap_scale_offset gates sampling per draw.
-    void set_lightmap_texture(const std::shared_ptr<erhe::graphics::Texture>& texture) { m_lightmap_texture = texture; }
-    // Viewport lightmap filtering: bicubic B-spline reconstruction when
-    // true (the default), plain bilinear when false.
-    void set_lightmap_bicubic(const bool enabled) { m_lightmap_bicubic = enabled; }
-
-    // DDGI probe volume sampled by standard.frag (doc/ddgi-plan.md phase 6).
-    // A default-constructed Ddgi_parameters (or null textures) means no
-    // volume: the USE_DDGI variant axis stays off and the flat ambient term
-    // is used, exactly as before DDGI existed.
+    // Lightmap / DDGI environment state lives with the pass resources
+    // (Scene_pass_resources), which both binds it and exposes it to the
+    // shader-variant key derivation here. These forward for the callers that
+    // reach the renderer rather than the resources.
+    void set_lightmap_texture(const std::shared_ptr<erhe::graphics::Texture>& texture) { m_pass_resources.set_lightmap_texture(texture); }
+    void set_lightmap_bicubic(const bool enabled) { m_pass_resources.set_lightmap_bicubic(enabled); }
     void set_ddgi(
         const Ddgi_parameters&                          parameters,
         const std::shared_ptr<erhe::graphics::Texture>& irradiance_texture,
@@ -81,18 +76,11 @@ public:
         const std::shared_ptr<erhe::graphics::Texture>& probe_data_texture
     )
     {
-        m_ddgi                    = parameters;
-        m_ddgi_irradiance_texture = irradiance_texture;
-        m_ddgi_distance_texture   = distance_texture;
-        m_ddgi_probe_data_texture = probe_data_texture;
+        m_pass_resources.set_ddgi(parameters, irradiance_texture, distance_texture, probe_data_texture);
     }
-    void clear_ddgi()
-    {
-        m_ddgi = Ddgi_parameters{};
-        m_ddgi_irradiance_texture.reset();
-        m_ddgi_distance_texture  .reset();
-        m_ddgi_probe_data_texture.reset();
-    }
+    void clear_ddgi() { m_pass_resources.clear_ddgi(); }
+
+    [[nodiscard]] auto get_pass_resources() -> Scene_pass_resources& { return m_pass_resources; }
 
     // glyph_outline_set is optional: pass nullptr from executables that
     // never draw glyphs (the Glyph_buffer falls back to an empty but
@@ -107,46 +95,10 @@ public:
     );
     ~Forward_renderer() noexcept;
 
-    // Public API
-    class Base_render_parameters
-    {
-    public:
-        erhe::graphics::Render_command_encoder&                            render_encoder;
-        const erhe::graphics::Render_pass*                                 render_pass      {nullptr};
-        const erhe::math::Viewport&                                        viewport;
-        // Per-eye render inputs. Always non-empty when render actually
-        // happens: size 1 for single-view passes (desktop viewports,
-        // previews, ID render), size N (>= 2) for multiview (XR).
-        // Forward_renderer's internals (Camera_buffer::update_views,
-        // SHADER_MULTIVIEW_COUNT environment key) read directly from
-        // this span; the multiview shader pipeline kicks in when
-        // views.size() >= 2.
-        std::span<const Camera_view_input>                                 views{};
-        // Camera exposure applied to all entries written to the Camera
-        // UBO this pass. Per-camera, not per-view (both eyes share the
-        // same exposure), so it lives in Base_render_parameters rather
-        // than Camera_view_input.
-        float                                                              exposure         {1.0f};
-        const glm::vec3                                                    ambient_light    {0.0f};
-        const Light_projections*                                           light_projections{nullptr};
-        const std::span<const std::shared_ptr<erhe::scene::Skin>>&         skins            {};
-        const std::span<const std::shared_ptr<erhe::primitive::Material>>& materials        {};
-        uint32_t                                                           shader_key_boolean_mask_force_enable {0};
-        uint32_t                                                           shader_key_boolean_mask_force_disable{0};
-        uint64_t                                                           frame_number     {0};
-        bool                                                               reverse_depth    {true};
-        erhe::math::Depth_range                                            depth_range      {erhe::math::Depth_range::zero_to_one};
-        erhe::math::Coordinate_conventions                                 conventions{};
-        // Grid composition pass settings (cell sizes, line widths,
-        // per-level colors, axis label settings) written to the camera
-        // UBO; ignored by passes that do not draw the grid.
-        const Grid_parameters                                              grid_parameters  {};
-        // Sky composition pass settings (horizon / zenith / ground colors,
-        // checker pattern) written to the camera UBO; ignored by passes
-        // that do not draw the sky.
-        const Sky_parameters                                               sky_parameters   {};
-        const std::string_view                                             debug_label{};
-    };
+    // Moved to namespace scope (scene_pass_resources.hpp) so the pass
+    // prologue can be described without naming a renderer. The alias
+    // keeps every Forward_renderer::Base_render_parameters{...} call site.
+    using Base_render_parameters = erhe::scene_renderer::Base_render_parameters;
 
     class Render_parameters
     {
@@ -308,50 +260,18 @@ public:
     // wide-line compute pre-pass for skinned edge lines) can update +
     // bind through this same Joint_buffer instead of allocating a
     // duplicate ring buffer.
-    [[nodiscard]] auto get_joint_buffer() -> Joint_buffer& { return m_joint_buffer; }
+    [[nodiscard]] auto get_joint_buffer() -> Joint_buffer& { return m_pass_resources.get_joint_buffer(); }
 
     static const std::vector<std::span<const std::shared_ptr<erhe::scene::Mesh>>> empty_mesh_spans;
 
 private:
-    // Per-pass shared bindings (camera / material / joint / light ring
-    // ranges); begin_pass() updates + binds them, end_pass() releases them
-    // after the draws. Shared by render() and render_draw_lists().
-    class Pass_state
-    {
-    public:
-        std::optional<erhe::graphics::Ring_buffer_range> camera_range{};
-        erhe::graphics::Ring_buffer_range                material_range{};
-        erhe::graphics::Ring_buffer_range                joint_range{};
-        erhe::graphics::Ring_buffer_range                light_range{};
-    };
-    auto begin_pass(
-        const Base_render_parameters& base,
-        const glm::uvec4&             debug_joint_indices,
-        const std::span<glm::vec4>&   debug_joint_colors,
-        const erhe::scene::Node*      debug_target_joint
-    ) -> Pass_state;
-    void end_pass  (Pass_state& state, erhe::graphics::Render_command_encoder& render_encoder);
-
     erhe::graphics::Device&                       m_graphics_device;
     Mesh_memory&                                  m_mesh_memory;
     Program_interface&                            m_program_interface;
     Shader_variant_cache&                         m_shader_variant_cache;
-    Camera_buffer                                 m_camera_buffer;
-    Glyph_buffer                                  m_glyph_buffer;
+    Scene_pass_resources                          m_pass_resources;
     erhe::scene_renderer::Draw_indirect_buffer    m_draw_indirect_buffer;
-    Joint_buffer                                  m_joint_buffer;
-    Light_buffer                                  m_light_buffer;
-    Material_buffer                               m_material_buffer;
     Primitive_buffer                              m_primitive_buffer;
-    erhe::graphics::Sampler                       m_fallback_sampler;
-    std::shared_ptr<erhe::graphics::Texture>      m_dummy_texture;
-    std::unique_ptr<erhe::graphics::Texture_heap> m_texture_heap;
-    std::shared_ptr<erhe::graphics::Texture>      m_lightmap_texture;
-    Ddgi_parameters                               m_ddgi{};
-    std::shared_ptr<erhe::graphics::Texture>      m_ddgi_irradiance_texture;
-    std::shared_ptr<erhe::graphics::Texture>      m_ddgi_distance_texture;
-    std::shared_ptr<erhe::graphics::Texture>      m_ddgi_probe_data_texture;
-    bool                                          m_lightmap_bicubic{true};
 };
 
 } // namespace erhe::scene_renderer

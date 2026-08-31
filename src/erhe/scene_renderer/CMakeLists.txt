@@ -36,6 +36,8 @@ erhe_target_sources_grouped(
     erhe_scene_renderer/published_vector.hpp
     erhe_scene_renderer/primitive_buffer.cpp
     erhe_scene_renderer/primitive_buffer.hpp
+    erhe_scene_renderer/scene_pass_resources.cpp
+    erhe_scene_renderer/scene_pass_resources.hpp
     erhe_scene_renderer/program_interface.cpp
     erhe_scene_renderer/program_interface.hpp
     erhe_scene_renderer/scene_renderer_log.cpp
