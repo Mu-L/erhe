@@ -82,16 +82,13 @@ public:
     //erhe::graphics::Base_render_pipeline rendertarget_meshes;
     erhe::graphics::Base_render_pipeline sky;
     erhe::graphics::Base_render_pipeline grid;
-    // Solid bones use the same stencil-assisted multi-pass method as the tool
-    // handles (see Tools_pipeline_renderpasses): tag the hidden and the visible
-    // parts in the stencil, clear the depth under the bones and lay down their
-    // own depth, then draw the visible part solid and the hidden part blended.
-    // Without it a bone inside a skinned mesh simply loses the depth test and
-    // disappears the moment the mesh writes depth.
-    // Not shared with the tool pipelines: those are owned by Tools (constructed
-    // later) and write the whole stencil byte, which is safe only because the
-    // tool pass is an overlay running after everything. The bone pass runs in
-    // the content phase, so it must leave the selection bit (7) alone.
+    // Solid bones use a stencil-assisted multi-pass method: tag the hidden and
+    // the visible parts in the stencil, clear the depth under the bones and lay
+    // down their own depth, then draw the visible part solid and the hidden
+    // part blended. Without it a bone inside a skinned mesh simply loses the
+    // depth test and disappears the moment the mesh writes depth.
+    // The bone pass runs in the content phase, so its stencil write / test
+    // masks must leave the selection bit (7) alone.
     erhe::graphics::Base_render_pipeline bone1_hidden_stencil;
     erhe::graphics::Base_render_pipeline bone2_visible_stencil;
     erhe::graphics::Base_render_pipeline bone3_depth_clear;
@@ -246,12 +243,9 @@ private:
 };
 
 static constexpr unsigned int s_stencil_edge_lines               =  1u; // 0 inc
-static constexpr unsigned int s_stencil_tool_mesh_hidden         =  2u;
-static constexpr unsigned int s_stencil_tool_mesh_visible        =  3u;
-// Same roles as the two above, for the solid bone pass. Distinct values so a
-// leftover bone tag can never be mistaken for a tool tag: the bone pass runs in
-// the content phase, the tool pass as an overlay after it, and both write the
-// same stencil bits.
+// 2 and 3 were the tool-mesh hidden / visible tags of the mesh-rendered
+// transform gizmo; left unused so the values below keep their meaning.
+// Hidden / visible tags of the solid bone pass.
 static constexpr unsigned int s_stencil_bone_mesh_hidden         =  4u;
 static constexpr unsigned int s_stencil_bone_mesh_visible        =  5u;
 

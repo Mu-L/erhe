@@ -1174,10 +1174,10 @@ Pipeline_renderpasses::Pipeline_renderpasses(
         }
     }
 
-    // Solid bones, six pipelines mirroring the tool-handle method in
-    // Tools_pipeline_renderpasses. Differences from the tool pipelines, both
-    // forced by the bone pass running in the content phase rather than as a
-    // late overlay:
+    // Solid bones, six pipelines: tag hidden / visible in the stencil, clear
+    // depth under the bones and lay down their own, then draw the visible part
+    // solid and the hidden part blended. The bone pass runs in the content
+    // phase, so:
     //  - the stencil write / test masks exclude bit 7, the selection silhouette
     //    mask written by "Polygon Fill Selected" and read by the outline pass.
     //  - the tag values are the bone-specific s_stencil_bone_mesh_* ones.

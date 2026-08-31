@@ -2053,14 +2053,10 @@ public:
             ERHE_TASK_HEADER(tools_task)
             {
                 m_tools = std::make_unique<Tools>(
-                    *m_graphics_device,
                     *m_imgui_renderer.get(),
                     *m_imgui_windows.get(),
                     m_app_context,
-                    *m_app_rendering.get(),
-                    m_app_settings,
-                    *m_mesh_memory.get(),
-                    *m_programs
+                    m_app_settings
                 );
                 m_fly_camera_tool = std::make_unique<Fly_camera_tool>(
                     m_editor_settings.camera_controls,
