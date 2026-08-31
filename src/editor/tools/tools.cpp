@@ -2,76 +2,27 @@
 
 #include "app_context.hpp"
 #include "app_message_bus.hpp"
-#include "content_library/content_library.hpp"
 #include "editor_log.hpp"
 #include "renderers/render_context.hpp"
-#include "scene/scene_root.hpp"
 #include "tools/tool.hpp"
-#include "windows/item_tree_window.hpp"
 
 #include "erhe_commands/commands.hpp"
 #include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_profile/profile.hpp"
-#include "erhe_scene/scene.hpp"
 #include "erhe_utility/bit_helpers.hpp"
 #include "erhe_verify/verify.hpp"
 
 namespace editor {
 
-Tools::Tools(
-    erhe::imgui::Imgui_renderer& imgui_renderer,
-    erhe::imgui::Imgui_windows&  imgui_windows,
-    App_context&                 app_context,
-    App_settings&                /*app_settings*/
-)
+Tools::Tools(App_context& app_context, App_settings& /*app_settings*/)
     : m_context{app_context}
 {
     ERHE_PROFILE_FUNCTION();
-
-    const auto tools_content_library = std::make_shared<Content_library>();
-
-    // No Draw_list_scene: tool passes use override_with_base_render_pipeline
-    // and stay on the Forward_renderer fallback (constructed before the
-    // renderer dependencies exist anyway).
-    m_scene_root = std::make_shared<Scene_root>(
-        nullptr, // Do not process editor messages
-        tools_content_library,
-        "Tool scene",
-        false,
-        nullptr
-    );
-
-    m_scene_root->get_scene().disable_flag_bits(erhe::Item_flags::show_in_ui);
 
     for (const auto& tool : m_tools) {
         const auto priority = tool->get_priority();
         tool->handle_priority_update(priority + 1, priority);
     }
-
-    if (app_context.developer_mode) {
-        m_content_library_tree_window = std::make_shared<Item_tree_window>(
-            imgui_renderer,
-            imgui_windows,
-            app_context,
-            "Tools Library",
-            "tools_content_library"
-        );
-        m_content_library_tree_window->set_root(tools_content_library->root);
-        m_content_library_tree_window->set_item_filter(
-            erhe::Item_filter{
-                .require_all_bits_set           = 0,
-                .require_at_least_one_bit_set   = 0,
-                .require_all_bits_clear         = 0,
-                .require_at_least_one_bit_clear = 0
-            }
-        );
-        m_content_library_tree_window->set_developer();
-    }
-}
-
-auto Tools::get_tool_scene_root() -> std::shared_ptr<Scene_root>
-{
-    return m_scene_root;
 }
 
 void Tools::register_tool(Tool* tool)
@@ -84,14 +35,6 @@ void Tools::register_tool(Tool* tool)
     } else {
         m_tools.emplace_back(tool);
     }
-}
-
-void Tools::update_transforms()
-{
-    ERHE_PROFILE_FUNCTION();
-
-    erhe::scene::Scene& scene = m_scene_root->get_scene();
-    scene.update_node_transforms();
 }
 
 void Tools::render_viewport_tools(const Render_context& context)

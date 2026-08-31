@@ -73,7 +73,6 @@ public:
         App_rendering&                                        app_rendering,
         App_settings&                                         app_settings,
         Post_processing&                                      post_processing,
-        Tools&                                                tools,
         std::string_view                                      name,
         const std::shared_ptr<Scene_root>&                    scene_root,
         const std::shared_ptr<erhe::scene::Camera>&           camera,

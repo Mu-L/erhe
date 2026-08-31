@@ -6,11 +6,10 @@
 namespace editor {
 
 class App_scenes;
-class Tools;
 
-// Aggregates Scene::Transform_update_stats across all registered scenes plus
-// the tool scene, once per frame, right after the per-frame transform update
-// sites have run (Editor::tick()). Feeds three plots registered in the
+// Aggregates Scene::Transform_update_stats across all registered scenes, once
+// per frame, right after the per-frame transform update sites have run
+// (Editor::tick()). Feeds three plots registered in the
 // Performance window (dirty node count, visited node count, CPU cost) and the
 // MCP get_transform_update_stats query.
 class Transform_update_stats_tracker
@@ -21,7 +20,7 @@ public:
 
     // Called once per frame by Editor::tick() after the transform update
     // sites; drains every scene's accumulator into the frame aggregate.
-    void sample_frame(App_scenes& app_scenes, Tools& tools);
+    void sample_frame(App_scenes& app_scenes);
 
     [[nodiscard]] auto get_frame_stats() const -> const erhe::scene::Scene::Transform_update_stats&;
 

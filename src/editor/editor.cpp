@@ -770,7 +770,6 @@ public:
         erhe::log::set_breadcrumb("tick: update_layout_nodes");
         m_app_scenes->update_layout_nodes();
         erhe::log::set_breadcrumb("tick: update_transforms");
-        m_tools->update_transforms();
         m_viewport_scene_views->update_transforms();
         if (m_app_context.OpenXR) {
             m_headset_view->update_transforms();
@@ -784,7 +783,7 @@ public:
         m_hotbar->update_once_per_frame();
 
         if (m_transform_update_stats_tracker) {
-            m_transform_update_stats_tracker->sample_frame(*m_app_scenes.get(), *m_tools.get());
+            m_transform_update_stats_tracker->sample_frame(*m_app_scenes.get());
         }
 
         // Apply queued draw list changes (register / unregister / flags from
@@ -2052,12 +2051,7 @@ public:
 
             ERHE_TASK_HEADER(tools_task)
             {
-                m_tools = std::make_unique<Tools>(
-                    *m_imgui_renderer.get(),
-                    *m_imgui_windows.get(),
-                    m_app_context,
-                    m_app_settings
-                );
+                m_tools = std::make_unique<Tools>(m_app_context, m_app_settings);
                 m_fly_camera_tool = std::make_unique<Fly_camera_tool>(
                     m_editor_settings.camera_controls,
                     *m_commands.get(),

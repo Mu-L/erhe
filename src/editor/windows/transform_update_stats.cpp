@@ -2,7 +2,6 @@
 
 #include "app_scenes.hpp"
 #include "scene/scene_root.hpp"
-#include "tools/tools.hpp"
 
 #include <algorithm>
 
@@ -69,18 +68,11 @@ Transform_update_stats_tracker::~Transform_update_stats_tracker() noexcept
     m_performance_window.unregister_plot(&m_time_plot);
 }
 
-void Transform_update_stats_tracker::sample_frame(App_scenes& app_scenes, Tools& tools)
+void Transform_update_stats_tracker::sample_frame(App_scenes& app_scenes)
 {
     m_frame_stats.reset();
     for (const std::shared_ptr<Scene_root>& scene_root : app_scenes.get_scene_roots()) {
         m_frame_stats.add(scene_root->get_scene().sample_transform_update_stats());
-    }
-    const std::shared_ptr<Scene_root> tool_scene_root = tools.get_tool_scene_root();
-    if (tool_scene_root) {
-        erhe::scene::Scene* const tool_scene = tool_scene_root->get_hosted_scene();
-        if (tool_scene != nullptr) {
-            m_frame_stats.add(tool_scene->sample_transform_update_stats());
-        }
     }
     m_aggregate_stats.add(m_frame_stats);
     m_aggregate_frame_count += 1;

@@ -482,8 +482,6 @@ void Scene_view::update_hover_with_raytrace()
     const glm::vec3 ray_origin    = get_control_ray_origin_in_world   ().value();
     const glm::vec3 ray_direction = get_control_ray_direction_in_world().value();
 
-    Scene_root* tool_scene_root = m_context.tools->get_tool_scene_root().get();
-
     // Optimization: Check if there are any hits. This helps to avoid doing
     // multiple masked raycasts later in case there are no hits at all.
     // Skips skinned meshes (mask bit Raytrace_node_mask::skinned) because
@@ -500,12 +498,6 @@ void Scene_view::update_hover_with_raytrace()
             .flags     = 0
         };
         erhe::raytrace::Hit hit;
-        if (tool_scene_root != nullptr) {
-            tool_scene_root->get_raytrace_scene().intersect(ray, hit);
-            if (hit.instance != nullptr) {
-                return true;
-            }
-        }
         rt_scene.intersect(ray, hit);
         if (hit.instance != nullptr) {
             return true;
@@ -534,11 +526,11 @@ void Scene_view::update_hover_with_raytrace()
             .flags     = 0
         };
         erhe::raytrace::Hit hit;
-        if (slot == Hover_entry::tool_slot) {
-            if (tool_scene_root != nullptr) {
-                tool_scene_root->get_raytrace_scene().intersect(ray, hit);
-            }
-        } else {
+        // tool_slot has no producer: the transform gizmo is drawn with the
+        // debug renderer and picked analytically (Handle_visualizations), and
+        // nothing puts a mesh in the tool layer. The slot is kept so hover
+        // consumers keep their indices and a future producer can fill it.
+        if (slot != Hover_entry::tool_slot) {
             rt_scene.intersect(ray, hit);
         }
         entry.valid = (hit.instance != nullptr);

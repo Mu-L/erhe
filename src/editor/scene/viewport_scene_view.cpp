@@ -97,7 +97,6 @@ Viewport_scene_view::Viewport_scene_view(
     const Viewport_config_data&                 viewport_config_data,
     App_context&                                context,
     erhe::rendergraph::Rendergraph&             rendergraph,
-    Tools&                                      tools,
     const std::string_view                      name,
     const char*                                 ini_label,
     const std::shared_ptr<Scene_root>&          scene_root,
@@ -122,7 +121,6 @@ Viewport_scene_view::Viewport_scene_view(
     }
     , m_name           {name}
     , m_ini_label      {ini_label}
-    , m_tool_scene_root{tools.get_tool_scene_root()}
     , m_camera         {camera}
     , m_post_processing_enabled{enable_post_processing}
 {

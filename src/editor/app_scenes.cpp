@@ -4,10 +4,10 @@
 #include "assets/asset_manager.hpp"
 #include "editor_log.hpp"
 #include "app_settings.hpp"
-#include "tools/tools.hpp"
 #include "tools/selection_tool.hpp"
 #include "scene/scene_root.hpp"
 #include "scene/scene_settings_resolve.hpp"
+#include "time.hpp"
 #include "config/generated/physics_config.hpp"
 
 #include "erhe_profile/profile.hpp"
@@ -171,10 +171,6 @@ void App_scenes::update_node_transforms()
     for (const auto& scene_root : m_scene_roots) {
         scene_root->get_scene().update_node_transforms();
     }
-
-    // Not in m_scene_roots
-    Scene_root& scene_root = *m_context.tools->get_tool_scene_root().get();
-    scene_root.get_hosted_scene()->update_node_transforms();
 }
 
 void App_scenes::update_layout_nodes()

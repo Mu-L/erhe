@@ -733,11 +733,6 @@ void Headset_view::update_id_render(erhe::graphics::Command_buffer& command_buff
     if (!scene_root) {
         return;
     }
-    Scene_root* tool_scene_root = m_context.tools->get_tool_scene_root().get();
-    if (tool_scene_root == nullptr) {
-        return;
-    }
-
     // Place the pick camera at the controller aim pose. world_from_control
     // already looks down -Z along the control ray (see
     // get_control_ray_direction_in_world), which matches the camera's own
@@ -747,7 +742,6 @@ void Headset_view::update_id_render(erhe::graphics::Command_buffer& command_buff
     // Node world transforms (incl. the pick camera) and the joint matrices
     // the ID skinning variant samples must be current before the pass runs.
     scene_root->get_scene().update_node_transforms();
-    tool_scene_root->get_hosted_scene()->update_node_transforms();
 
     // Joint UBO/SSBO, exactly as App_rendering::render_id: bind the same
     // Joint_buffer Forward_renderer uses so the ID skinning branch reads
@@ -1020,7 +1014,6 @@ auto Headset_view::render_headset(erhe::graphics::Command_buffer& command_buffer
             std::shared_ptr<Scene_root> scene_root = get_scene_root();
             ERHE_VERIFY(scene_root);
             scene_root->get_scene().update_node_transforms();
-            m_app_context.tools->get_tool_scene_root()->get_hosted_scene()->update_node_transforms();
             m_app_context.app_message_bus->hover_scene_view.send_message(Hover_scene_view_message{.scene_view = this});
             m_app_context.app_message_bus->render_scene_view.send_message(Render_scene_view_message{.scene_view = this});
 
@@ -1387,7 +1380,6 @@ auto Headset_view::render_headset(erhe::graphics::Command_buffer& command_buffer
                 ERHE_VERIFY(scene_root);
                 scene_root->get_scene().update_node_transforms();
 #endif
-                m_context.tools->get_tool_scene_root()->get_hosted_scene()->update_node_transforms();
 
                 // TODO Consider multiple scene view being able to be (hover) active
                 //      (viewport window and headset view).

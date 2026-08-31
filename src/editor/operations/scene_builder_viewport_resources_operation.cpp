@@ -43,7 +43,6 @@ void Scene_builder_viewport_resources_operation::execute(App_context& context)
         *context.app_rendering,
         app_settings,
         *context.post_processing,
-        *context.tools,
         m_parameters.name,
         m_parameters.scene_root,
         m_parameters.camera,

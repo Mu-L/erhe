@@ -75,7 +75,6 @@ class Render_context;
 class Scene_root;
 class Selection_tool;
 class Shadow_render_node;
-class Tools;
 class Transform_tool;
 class Viewport_scene_view;
 class Scene_views;
@@ -98,7 +97,6 @@ public:
         const Viewport_config_data&                 viewport_config_data,
         App_context&                                context,
         erhe::rendergraph::Rendergraph&             rendergraph,
-        Tools&                                      tools,
         std::string_view                            name,
         const char*                                 ini_label,
         const std::shared_ptr<Scene_root>&          scene_root,
@@ -200,7 +198,6 @@ private:
 
     std::string                        m_name                 {};
     const char*                        m_ini_label            {nullptr};
-    std::weak_ptr<Scene_root>          m_tool_scene_root      {};
     std::weak_ptr<erhe::scene::Camera> m_camera               {};
 
     // Host window bounds in host space (ImGui window, ImGui viewport / Context_window)
