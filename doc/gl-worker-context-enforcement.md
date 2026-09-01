@@ -5,9 +5,10 @@ Status: **proposal**. Nothing here is implemented. Companion to
 this document covers only how to keep one of its rules from being broken by
 future code.
 
-This document was independently reviewed against the code before landing; the
-corrections are folded in, and the surviving unknowns are listed under
-"Not verified".
+This document has been through two independent code reviews; the corrections
+are folded in, and the surviving unknowns are listed under "Not verified".
+Round 2 corrected round 1: the observer firing-point list below was
+incomplete, and `scene_builder.cpp:739` was wrongly called a worker park.
 
 ## The invariant
 
@@ -28,7 +29,7 @@ The enforced form of A is the stricter, simpler statement:
 `Scoped_worker_context` (`src/erhe/graphics/erhe_graphics/scoped_worker_context.cpp`)
 acquires a slot from a pool of share contexts. The size is a **compile-time
 constant**, `gl_worker_context_pool_size = 4`
-(`src/erhe/graphics/erhe_graphics/gl/gl_context_index.hpp:22`), and is fixed
+(`src/erhe/graphics/erhe_graphics/gl/gl_context_index.hpp:21`), and is fixed
 by design: the same header records that a dynamic pool size would invalidate
 every per-object slot array. Raising it is not a configuration change and not
 a mitigation.
@@ -88,7 +89,10 @@ Every `Scoped_worker_context` in the tree (complete list, tests excluded):
 | `src/editor/renderers/lightmap_partitioner.cpp:203` | `make_renderable_mesh` |
 
 No scope has a **taskflow** spawn beneath it, so the GL pool cannot deadlock
-against itself today. That is a narrower statement than "the code under a
+against itself today. For four of the five that is a closed question; for
+`items.cpp:207` it is **inference from inspection of today's callers**, because
+`op` is an arbitrary caller-supplied mesh operation and any future one could
+spawn. That open set is the single strongest argument for D. That is a narrower statement than "the code under a
 scope is single-threaded", which is **false**: two other thread pools and a
 process-global mutex are reached from inside scopes.
 
@@ -107,13 +111,14 @@ process-global mutex are reached from inside scopes.
 - **Geogram's internal `parallel_for` pool**, plus the global
   `geogram_lock()` recursive mutex that `Geometry::process()` takes
   (`src/erhe/geometry/erhe_geometry/geometry.cpp:83,1439-1443`), reached under
-  `items.cpp:207` via `mesh_operation.cpp:339`.
+  `items.cpp:207` via `mesh_operation.cpp:338`.
 
 Neither pool needs GL slots, so neither can deadlock the GL pool. But the
 codebase is **inconsistent** about this and the inconsistency looks
-unintentional: `async_raytrace_kickoff_operation.cpp:148` and
-`lightmap_partitioner.cpp:206` deliberately keep `make_raytrace` *outside* the
-scope, while `items.cpp:207` and `geometry_graph_window.cpp:733` hold a slot
+unintentional: `async_raytrace_kickoff_operation.cpp:148`
+(`prepare_real_raytrace()`) and `lightmap_partitioner.cpp:206`
+(`make_raytrace()`) deliberately keep raytrace work *outside* the scope,
+while `items.cpp:207` and `geometry_graph_window.cpp:733` hold a slot
 across an entire mesh operation - `Geometry::process()`, the global geogram
 lock, and a parallel BVH build included. That directly violates the
 throughput caveat in `doc/gl-worker-thread-contexts.md` ("a scope hoisted over
@@ -128,11 +133,13 @@ independently of anything proposed here.
 (`silent_dependent_async`), `renderers/lightmap_partitioner.cpp:552,561`,
 `renderers/lightmap_streamer.cpp:299`, `scene/scene_builder.cpp:681,726-733,739`,
 and `src/erhe/gltf/erhe_gltf/gltf_fastgltf.cpp:1102,1109,1163,1165,1565,1571`.
+The standalone `src/geogram_soak/main.cpp:468,476` also spawns; it has no
+graphics device and is out of scope for enforcement.
 
 Two of these matter more than the rest:
 
 - **`renderers/lightmap_partitioner.cpp:276` - `subflow->emplace(...)`, joined
-  at `:288`.** This is the exact shape the whole document is about. Any
+  at `:286`.** This is the exact shape the whole document is about. Any
   enforcement that does not cover `subflow->emplace` misses the motivating
   case.
 - **`src/erhe/raytrace/erhe_raytrace/bvh/bvh_scene.cpp:363` -
@@ -176,9 +183,20 @@ void spawn(tf::Executor& executor, F&& f)
 ```
 
 The tree's spawn vocabulary is wider than `silent_async`, and the wrapper has
-to cover all of it or it misses the motivating case: `silent_async`,
-`silent_dependent_async`, `executor.run(taskflow)`, `taskflow.emplace`, and
-`subflow->emplace`.
+to cover the whole of it or it misses the motivating case. Note that
+**graph construction is not scheduling**: `taskflow.emplace` only appends to a
+graph, and the work is scheduled later by `executor.run`. Guarding `emplace`
+would false-positive on the legitimate "build the graph on a context-holding
+thread, hand it to a non-holding thread to run" pattern, and guarding `run`
+already covers the `tf::Taskflow` case. `subflow->emplace` is different: it is
+scheduled at `join()` on the calling thread, so it does need guarding.
+
+| form | guard? |
+| --- | --- |
+| `silent_async`, `silent_dependent_async` | yes - schedules immediately |
+| `executor.run(taskflow)` | yes - the schedule point for a built graph |
+| `subflow->emplace` | yes - scheduled at `join()` on this thread |
+| `taskflow.emplace` | no - graph construction, schedules nothing |
 
 `gl_thread_is_worker_context()` (index > 0) already exists in
 `gl_context_index.hpp` alongside `gl_thread_has_context()` and
@@ -201,17 +219,30 @@ are the style to match.
 
 ## B. Taskflow observer
 
-`tf::ObserverInterface` (`taskflow/observer/interface.hpp:95-108`: `set_up`,
+`tf::ObserverInterface` (`taskflow/observer/interface.hpp:94-108`: `set_up`,
 `on_entry(WorkerView, TaskView)`, `on_exit`) is attached with
 `executor.make_observer<T>()` (`executor.hpp:1561`).
-`Executor::_observer_prologue` / `_observer_epilogue` wrap task execution and
-fire for `_invoke_static_task`, for `_invoke_async_task` case 0 - the `void()`
-overload `silent_async(lambda)` produces (`executor.hpp:2101-2105`) - and for
-`_invoke_dependent_async_task` case 0 (`executor.hpp:2132-2136`), so
-`items.cpp:246` is covered too. `_corun_until` runs local-queue and stolen
-tasks through `_invoke` (`executor.hpp:2314-2352`), and `Subflow::join`
-reaches it via `_corun_graph`, so co-run on a parked thread also fires
-`on_entry`. Preemption paths fire the prologue only on first entry, and the
+`Executor::_observer_prologue` / `_observer_epilogue` wrap task execution.
+Re-derived by grepping the call sites, they fire from all six invoke paths:
+
+| `executor.hpp` | task type |
+| --- | --- |
+| 1987 | `_invoke_static_task` |
+| 2006 | `_invoke_subflow_task` |
+| 2043 | `_invoke_condition_task` |
+| 2055 | `_invoke_multi_condition_task` |
+| 2101 | `_invoke_async_task` case 0 - the `void()` overload `silent_async(lambda)` produces |
+| 2132 | `_invoke_dependent_async_task` case 0, so `items.cpp:246` is covered |
+
+`_invoke_subflow_task` matters most here: the lightmap region task
+(`lightmap_partitioner.cpp:553`) is emplaced with a `tf::Subflow&` parameter,
+so it dispatches through that path, and its prologue/epilogue sit around
+`h.work(sf)` in the first-entry block. The `subflow->join()` co-run at
+`lightmap_partitioner.cpp:286` therefore nests strictly inside an observed
+outer task - exactly what B needs for the one case this document exists for.
+`_corun_until` runs local-queue and stolen tasks through `_invoke`
+(`executor.hpp:2314-2352`), and `Subflow::join` reaches it via `_corun_graph`,
+so co-run on a parked thread also fires `on_entry`. Preemption paths fire the prologue only on first entry, and the
 exception handler runs before the epilogue, so a depth counter will not
 drift.
 
@@ -220,9 +251,11 @@ thread-local context index; and it is attached to the executor, so a call site
 that skips A's wrapper cannot bypass it.
 
 The check: a worker does not begin task B while running task A unless A
-blocked - the only intra-thread nesting paths are `_corun_until` reached from
-`Subflow::join`, `Runtime::corun`/`corun_all` and `Executor::corun`, all of
-which are blocking calls made from inside a task. So *nested* `on_entry` is an
+blocked. The intra-thread nesting paths all funnel through `_corun_until`,
+reached from `Subflow::join`, `Runtime::corun`/`corun_all`, `Executor::corun`,
+`Executor::corun_until` (`executor.hpp:2248`) and `tf::TaskGroup`
+(`task_group.hpp:728`) - every one a blocking call made from inside a task.
+The last two have no call sites in `src/` today. So *nested* `on_entry` is an
 in-band signal that the outer task parked:
 
 ```cpp
@@ -241,10 +274,11 @@ public:
         }
     }
     void on_exit(tf::WorkerView, tf::TaskView) override { --t_task_depth; }
-
-private:
-    static thread_local int t_task_depth;
 };
+
+// File scope, not a class member: a static thread_local member would need an
+// out-of-line definition.
+thread_local int t_task_depth = 0;
 ```
 
 - **Catches**: a context-holding task that blocked *and* got a task co-run
@@ -257,9 +291,16 @@ private:
 - **Structurally blind to the wedged state.** A thread stuck in
   `acquire_worker_context_slot`'s `condition_variable::wait` runs no tasks, so
   there is no `on_entry` to observe. Likewise `tf::Future` derives from
-  `std::future` (`taskflow/core/taskflow.hpp:630`), so `executor.run(tf).wait()`
-  at `scene_builder.cpp:739` and `gltf_fastgltf.cpp:1109,1165,1571` parks a
-  worker with **no co-run at all** - B sees nothing there. This is not
+  `std::future` (`taskflow/core/taskflow.hpp:630`) and adds no `wait()`
+  override, so `executor.run(tf).wait()` parks the calling thread with **no
+  co-run at all** - B sees nothing there. That applies to
+  `gltf_fastgltf.cpp:1109,1165,1571`, which run on a worker (reached from the
+  `silent_async` at `gltf_load_task.cpp:202`). It does NOT apply to
+  `scene_builder.cpp:739`: `make_brushes` is reached only from the
+  `Scene_builder` constructor (`scene_builder.cpp:114`, run straight-line on
+  the main thread at `editor.cpp:2139`) and from `ensure_brushes`
+  (`scene_builder.cpp:913`, also main-thread), so it parks the MAIN thread,
+  which holds context index 0 and never a pool slot. This is not
   "opportunistic detection"; it is a structural hole, and E is what covers it.
 - **Reports on the victim thread**: the stack shows the co-run, not who
   parked. Record a breadcrumb (acquiring site) in `Scoped_worker_context` and
@@ -270,8 +311,10 @@ private:
   tasks.
 - **Cost**: `_observer_prologue` iterates the `_observers` `unordered_set`
   **unconditionally**, per task, whether or not any observer is registered
-  (`executor.hpp:1929-1933`) - so the marginal cost of adding one is two
-  thread-local operations. Gate to debug / validation builds, unlike the
+  (`executor.hpp:1929-1933`). Registering one adds, per task entry AND exit, a
+  virtual call plus the `WorkerView` / `TaskView` temporaries, on top of the
+  thread-local operations in the guard itself. Gate to debug / validation
+  builds, unlike the
   `ERHE_VERIFY_GL_THREAD_*` guards, which are deliberately on in Release.
 
 ## A and B together
@@ -290,11 +333,11 @@ carries more of the weight than its "follow-up" billing suggests.
 
 ### D. CI check that spawns go through the wrapper
 
-A grep-level rule covering the full spawn vocabulary - `silent_async`,
-`silent_dependent_async`, `executor->run` / `executor.run`, `.emplace(` on a
-`tf::Taskflow` or `tf::Subflow` - outside the wrapper. A list that omits
-`emplace` and `subflow->emplace` misses the lightmap subflow that motivates
-this document. Without D, A decays from construction into documentation, and
+A grep-level rule covering the scheduling forms - `silent_async`,
+`silent_dependent_async`, `executor->run` / `executor.run`, and
+`subflow->emplace` - outside the wrapper. `taskflow.emplace` is deliberately
+NOT in the list (graph construction, see A); `subflow->emplace` deliberately
+is, because it is the lightmap shape that motivates this document. Without D, A decays from construction into documentation, and
 `doc/gl-worker-thread-contexts.md` warns in Traps: *"Do not trust derived
 lists in documents; re-derive from code."*
 
@@ -342,7 +385,12 @@ none of A, B, D or E would detect it.
 3. Run the lightmap parallel path, a glTF load and a geometry-graph evaluation
    with B attached and confirm it does not fire - "the invariant holds today"
    is inspection, not observation.
-4. Decide whether B ships in Release or is debug / validation only, knowing it
+4. Decide how A covers the `erhe_raytrace` seam: `bvh_scene.cpp:363` spawns
+   through the editor's injected executor from a library below the editor, so
+   a wrapper that lives in the editor cannot reach it. Its callers are
+   main-thread today, so nothing is broken - but A's coverage claim is false
+   from day one unless this is answered.
+5. Decide whether B ships in Release or is debug / validation only, knowing it
    is a proxy that can abort on a harmless park.
 
 ## Not verified
