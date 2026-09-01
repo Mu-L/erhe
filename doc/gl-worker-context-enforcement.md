@@ -5,13 +5,16 @@ Status: **proposal**. Nothing here is implemented. Companion to
 this document covers only how to keep one of its rules from being broken by
 future code.
 
-This document has been through three independent code reviews; the
-corrections are folded in, and the surviving unknowns are listed under "Not
-verified". Each round found errors in the previous round's additions: round 2
-corrected the observer firing-point list and a wrong claim that
-`scene_builder.cpp:739` parks a worker; round 3 corrected the failure
-signature (co-run spins, it does not idle) and found that observers do not
-cover all node kinds.
+This document has been through five independent code reviews; the corrections
+are folded in, and the surviving unknowns are listed under "Not verified".
+Every round found errors in the previous round's additions, so treat the
+newest material here as the least tested: round 2 corrected the observer
+firing-point list and a wrong claim that `scene_builder.cpp:739` parks a
+worker; round 3 corrected the failure signature (co-run spins, it does not
+idle); round 4 found that a claimed observer coverage hole did not exist
+(`_invoke_runtime_task_impl` fires from `runtime.hpp`, not `executor.hpp`);
+round 5 found "Before landing" restating a wrong reason the body had just
+corrected.
 
 **Checking the Taskflow citations**: they are against the pin, CPM
 `VERSION 4.1.0` -> `.cpm_cache/taskflow/bc568e1dc483c1fbe6b4018bb0a3086f760f676d`.
@@ -153,7 +156,8 @@ and `src/erhe/gltf/erhe_gltf/gltf_fastgltf.cpp:1102,1109,1163,1165,1565,1571`.
 The standalone `src/geogram_soak/main.cpp:468,476` also spawns; it has no
 graphics device and is out of scope for enforcement.
 
-Two of these matter more than the rest:
+Two spawn sites matter more than the rest (the first is not in the list
+above, which cites the region-level `552,561`):
 
 - **`renderers/lightmap_partitioner.cpp:276` - `subflow->emplace(...)`, joined
   at `:286`.** This is the exact shape the whole document is about. Any
@@ -180,11 +184,15 @@ deadlock the GL pool. Only the `gltf_load_task.cpp:202` caller runs on a
 worker; the other five (`asset_manager.cpp:1162`, `parsers/gltf.cpp:881,1621`,
 `prefabs/prefab_library.cpp:264`, `xr/controller_visualization.cpp:224`) are
 main-thread, and none wraps a `Scoped_worker_context`. The standalone
-`example/example.cpp:178` is a sixth caller, out of scope like `geogram_soak`. Note this is **inference from inspection**
+`example/example.cpp:178` is a sixth caller - out of scope not because it
+lacks a graphics device (it has one, unlike `geogram_soak`) but because it is
+a standalone app that parses on the main thread with its own executor and
+takes no scope. Note this is **inference from inspection**
 (`gltf_fastgltf.hpp:107` and `gltf_fastgltf.cpp:1505` are comments stating no
 device access), and `doc/gl-worker-thread-contexts.md` still lists that code as
-"never explicitly examined". They do block a taskflow worker with no co-run
-(below). That is hold-and-wait on the *worker* pool rather than the GL pool,
+"never explicitly examined". They do block a taskflow worker with no co-run when
+`editor_settings->load.parallel_gltf_parse` is on, which gates them
+(`gltf_fastgltf.cpp:1097,1160`; set at `gltf_load_task.cpp:197`). That is hold-and-wait on the *worker* pool rather than the GL pool,
 and it is worth being explicit that **no proposal here covers it**: a deadlock
 there involves no GL slot, so A, B and E are all blind to it. It needs its own
 treatment - `corun` instead of `wait()` is the usual answer.
@@ -302,8 +310,8 @@ coverage. Only `Node::MODULE` and `Node::ADOPTED_MODULE` are unobserved
 outer frame B needs: that path schedules the subgraph and returns `true` to
 preempt, so the worker frame unwinds rather than parking in-frame, and it can
 never co-run a nested task onto itself. A future `emplace([](tf::Runtime&){…})`
-is therefore observed, and `composed_of` - the one unobserved kind - cannot
-park. Preemption paths fire the prologue only on first entry, and the
+is therefore observed, and the two unobserved kinds - the `composed_of`
+module forms - cannot park. Preemption paths fire the prologue only on first entry, and the
 exception handler runs before the epilogue, so a depth counter will not
 drift.
 
@@ -314,15 +322,16 @@ that skips A's wrapper cannot bypass it.
 The check: a worker does not begin task B while running task A unless A
 blocked. The intra-thread nesting paths all funnel through `_corun_until`,
 reached from `Subflow::join`, `Runtime::corun`/`corun_all`, `Executor::corun`,
-`Executor::corun_until` (`executor.hpp:2248`) and `tf::TaskGroup`
+`Executor::corun_until` (`executor.hpp:2249`) and `tf::TaskGroup`
 (`task_group.hpp:728`) - every one a blocking call made from inside a task.
-The last two have no call sites in `src/` today. So *nested* `on_entry` is an
+Of the five, only `Subflow::join` has a call site in `src/` today. So *nested* `on_entry` is an
 in-band signal that the outer task parked:
 
 ```cpp
-// File scope and BEFORE the class: a static thread_local member would need an
-// out-of-line definition, and a namespace-scope declaration after the class
-// would not be found by unqualified lookup in the inline member bodies.
+// Namespace scope in a .cpp, and BEFORE the class: a declaration placed after
+// it would not be found by unqualified lookup in the inline member bodies. A
+// class member would work spelled `inline static thread_local`; the plain
+// `static thread_local` spelling needs an out-of-line definition.
 thread_local int t_task_depth = 0;
 
 class Gl_context_task_guard : public tf::ObserverInterface
@@ -454,9 +463,15 @@ none of A, B, D or E would detect it.
    is inspection, not observation.
 4. Decide how A covers the `erhe_raytrace` seam: `bvh_scene.cpp:363` spawns
    through the editor's injected executor from a library below the editor, so
-   a wrapper that lives in the editor cannot reach it. Its callers are
-   main-thread today, so nothing is broken - but A's coverage claim is false
-   from day one unless this is answered.
+   a wrapper that lives in the editor cannot reach it. Note that this seam IS
+   reached from a worker - `mesh_raytrace.cpp:39` <- `mesh.cpp:66` <-
+   `async_raytrace_kickoff_operation.cpp:251,258`, dispatched unconditionally
+   onto the executor because `async_for_nodes_with_mesh` is called there with
+   `op_builds_gpu_meshes = false` (`items.cpp:229-243` then always takes the
+   `silent_dependent_async` path). What keeps it harmless is that a
+   per-primitive `Bvh_scene` holds one geometry and `start_tlas_build` bails
+   below `k_min_tlas_children = 4` (`bvh_scene.cpp:330-333`), NOT thread
+   affinity. A's coverage claim is false from day one unless this is answered.
 5. Decide whether B ships in Release or is debug / validation only, knowing it
    is a proxy that can abort on a harmless park.
 
