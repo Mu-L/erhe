@@ -3,6 +3,7 @@
 #include "erhe_graphics/vulkan/vulkan_texture_heap.hpp"
 #include "erhe_graphics/vulkan/vulkan_bind_group_layout.hpp"
 #include "erhe_graphics/vulkan/vulkan_command_buffer.hpp"
+#include "erhe_graphics/vulkan/vulkan_compute_command_encoder.hpp"
 #include "erhe_graphics/vulkan/vulkan_device.hpp"
 #include "erhe_graphics/vulkan/vulkan_render_command_encoder.hpp"
 #include "erhe_graphics/vulkan/vulkan_render_pass.hpp"
@@ -70,7 +71,15 @@ Texture_heap_impl::Texture_heap_impl(
     m_samplers.resize(m_max_textures, nullptr);
     m_used_slot_count = 0;
 
-    // Create our own descriptor set layout matching the one in Device_impl's pipeline layout (set 1)
+    // Create our own descriptor set layout IDENTICALLY DEFINED to the one in
+    // Device_impl's pipeline layout (set 1). "Identically defined" is a
+    // requirement, not a nicety: a set allocated from a layout that declares a
+    // different descriptorCount is not compatible with the pipeline layout, and
+    // vkCmdBindDescriptorSets rejects it (VUID-...-pDescriptorSets-00358) -
+    // even though the set's own variable count may legitimately be smaller.
+    // So the LAYOUT is always max_texture_heap_size wide, and m_max_textures
+    // caps only the variable count this heap allocates and the slots it hands
+    // out.
     const VkDescriptorBindingFlags binding_flags =
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
         VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
@@ -86,7 +95,8 @@ Texture_heap_impl::Texture_heap_impl(
     const VkDescriptorSetLayoutBinding binding{
         .binding            = 0,
         .descriptorType     = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount    = static_cast<uint32_t>(m_max_textures),
+        // The layout's maximum, NOT this heap's cap - see above.
+        .descriptorCount    = static_cast<uint32_t>(max_texture_heap_size),
         // COMPUTE included because the ray_trace compute shader samples the
         // heap (VUID-VkComputePipelineCreateInfo-layout-07988). Must stay in
         // sync with the set-1 layout in Device_impl (vulkan_device_init.cpp).
@@ -413,7 +423,7 @@ void Texture_heap_impl::unbind(Command_buffer& command_buffer)
     // No-op for descriptor sets
 }
 
-auto Texture_heap_impl::bind_descriptor_set(Command_buffer& command_buffer_wrapper, VkPipelineBindPoint bind_point) -> std::size_t
+auto Texture_heap_impl::bind_descriptor_set(Command_buffer& command_buffer_wrapper, VkPipelineLayout pipeline_layout, VkPipelineBindPoint bind_point) -> std::size_t
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -435,8 +445,13 @@ auto Texture_heap_impl::bind_descriptor_set(Command_buffer& command_buffer_wrapp
         return 0;
     }
 
-    ERHE_VERIFY(m_bind_group_layout != nullptr);
-    VkPipelineLayout pipeline_layout = m_bind_group_layout->get_impl().get_pipeline_layout();
+    // The ENCODER's layout, not this heap's: descriptor set 1 is compatible
+    // only with a pipeline layout that agrees on every lower-numbered set, and
+    // one Material_set's heap now serves the raster pipelines and the DDGI /
+    // ray trace dispatches, whose set 0 layouts differ. Binding through the
+    // heap's own construction-time layout was correct only while every heap
+    // had exactly one consumer.
+    ERHE_VERIFY(pipeline_layout != VK_NULL_HANDLE);
 
     // Bind the texture descriptor set at set index 1
     vkCmdBindDescriptorSets(
@@ -462,12 +477,12 @@ auto Texture_heap_impl::bind_descriptor_set(Command_buffer& command_buffer_wrapp
 
 auto Texture_heap_impl::bind(Render_command_encoder& encoder) -> std::size_t
 {
-    return bind_descriptor_set(encoder.get_command_buffer(), VK_PIPELINE_BIND_POINT_GRAPHICS);
+    return bind_descriptor_set(encoder.get_command_buffer(), encoder.get_impl().get_pipeline_layout(), VK_PIPELINE_BIND_POINT_GRAPHICS);
 }
 
 auto Texture_heap_impl::bind(Compute_command_encoder& encoder) -> std::size_t
 {
-    return bind_descriptor_set(encoder.get_command_buffer(), VK_PIPELINE_BIND_POINT_COMPUTE);
+    return bind_descriptor_set(encoder.get_command_buffer(), encoder.get_impl().get_pipeline_layout(), VK_PIPELINE_BIND_POINT_COMPUTE);
 }
 
 } // namespace erhe::graphics

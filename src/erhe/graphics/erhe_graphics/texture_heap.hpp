@@ -31,8 +31,11 @@ public:
         const Bind_group_layout* bind_group_layout = nullptr,
         // Upper bound on how many distinct texture/sampler pairs this heap can
         // hold. Meaningful on Vulkan, where it sizes the variable descriptor
-        // count and must stay <= max_texture_heap_size in the set-1 pipeline
-        // layout; the OpenGL sampler-array path sizes itself from the device's
+        // count each of this heap's descriptor sets is allocated with, and must
+        // stay <= max_texture_heap_size in the set-1 pipeline layout. It does
+        // NOT size the descriptor set LAYOUT: that has to stay identically
+        // defined to the one in the pipeline layout or the set cannot be bound
+        // at all. The OpenGL sampler-array path sizes itself from the device's
         // per-stage sampler limit and the bindless path grows on demand, so
         // there, as on Metal and null, it is accepted and ignored. Defaulted so
         // heaps that do not care keep their current calls.
