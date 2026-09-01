@@ -6,13 +6,14 @@ needed once implementation starts - the plan is self-contained for that.
 
 ## Status and handoff (2026-08-31)
 
-**Phase 1 has landed (`b653c5fdb`); phase 2 is next.** The MCP surface and the
-V3 regression test exist and the test is **red**, reproducing the reported
-asymmetry over cached records: with mesh A assigned first the two records read
-A=14 B=0, and with the order reversed A=0 B=15. Nothing about how materials
-reach the GPU has changed - no `Material_set`, `Material_slot` or
-`Multi_copy_buffer` exists yet, and `Material::material_buffer_index` is still
-the shared mutable field.
+**Phases 1 and 2 have landed (`b653c5fdb`, `64984f81f`); phase 3 is next.** The
+V3 regression test exists and is **red**, reproducing the reported asymmetry
+over cached records: with mesh A assigned first the two records read A=14 B=0,
+and with the order reversed A=0 B=15. `Multi_copy_buffer`, `Material_slot` and
+`Material_set`'s membership half exist and are unit-tested, but nothing uses
+them: `Material::material_buffer_index` is still the shared mutable field and
+no frame behaves differently. Phase 3 gives `Material_set` its GPU half and
+gives the sets their owners.
 
 **Four things this plan depended on have already landed**, so read the tree
 before trusting an older reading of the sections below:
