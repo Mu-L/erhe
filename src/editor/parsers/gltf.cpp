@@ -1479,7 +1479,8 @@ auto finish_open_scene_gltf(
         content_library,
         erhe::file::to_string(path.stem()),
         scene_state->enable_physics,
-        &draw_list_dependencies
+        &draw_list_dependencies,
+        make_scene_root_material_set_create_info(context, "Scene forward material set")
     );
     // Remember where the scene came from (same as Scene_open_operation does
     // for foreign glTF): Save Scene writes back here, without confirmation.

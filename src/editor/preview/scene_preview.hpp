@@ -68,6 +68,16 @@ public:
     void set_clear_color        (glm::vec4 clear_color);
     void update_rendertarget    (erhe::graphics::Device& graphics_device);
 
+    // The preview roots are not in App_scenes::m_scene_roots, so they run
+    // their own step 2 of the material schedule
+    // (doc/draw_list_material_set_plan.md D6) - sync, flush, update - at each
+    // render entry point rather than in the tick. They are re-rendered
+    // several times per frame with a different material each time, and the
+    // flush is load-bearing: the per-thumbnail set_primitive_material()
+    // ENQUEUES its reference, and applying it before the update is what makes
+    // the set carry this thumbnail's material rather than the previous one's.
+    void update_material_set    (erhe::graphics::Command_buffer& command_buffer);
+
     // Init-time prewarm. Drives Forward_renderer::prewarm_standard_variants
     // against this preview's own scene_root + content_library, so the
     // first time the user opens the preview window does not pay for

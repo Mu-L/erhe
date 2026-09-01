@@ -2,6 +2,7 @@
 
 #include "erhe_scene_renderer/draw_list.hpp"
 #include "erhe_scene_renderer/draw_list_object.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 #include "erhe_scene_renderer/primitive_buffer.hpp"
 #include "erhe_scene_renderer/shader_key.hpp"
 
@@ -96,6 +97,27 @@ public:
 };
 
 
+// What one Draw_list_scene is built from.
+class Draw_list_scene_create_info
+{
+public:
+    Mesh_memory*               mesh_memory         {nullptr};
+    Shader_variant_cache*      shader_variant_cache{nullptr};
+    // Defines the layout (stride + field offsets) of the per-entry primitive
+    // records (Draw_list::primitive_records); it must be the same interface
+    // the drawing Primitive_buffers were built with.
+    const Primitive_interface* primitive_interface {nullptr};
+    // 0 for single view passes, plus the XR view count when a multiview
+    // headset session is active (R19).
+    std::span<const uint32_t>  multiview_view_counts{};
+    // This draw list's own material slot space
+    // (doc/draw_list_material_set_plan.md D0, D3). Separate from the forward
+    // set of the owning Scene_root, because these records are CACHED and
+    // consumed on later frames, so their slots must be stable in a way the
+    // bucket path's per-pass records never need.
+    Material_set_create_info   material_set_create_info{};
+};
+
 // Persistent, incrementally maintained rendering-side representation of a
 // scene: registered objects classified into draw lists once, reused every
 // frame (doc/draw_list_renderer_requirements.md, doc/draw_list_renderer_plan.md).
@@ -112,19 +134,16 @@ public:
 class Draw_list_scene
 {
 public:
-    // primitive_interface defines the layout (stride + field offsets) of the
-    // per-entry primitive records (Draw_list::primitive_records); it must be
-    // the same interface the drawing Primitive_buffers were built with.
-    Draw_list_scene(
-        Mesh_memory&               mesh_memory,
-        Shader_variant_cache&      shader_variant_cache,
-        const Primitive_interface& primitive_interface,
-        std::span<const uint32_t>  multiview_view_counts
-    );
+    explicit Draw_list_scene(const Draw_list_scene_create_info& create_info);
     ~Draw_list_scene() noexcept;
 
     Draw_list_scene(const Draw_list_scene&)            = delete;
     Draw_list_scene& operator=(const Draw_list_scene&) = delete;
+
+    // This draw list's own material slot space (D0). A cached record's
+    // material_index is an index into THIS set and no other.
+    [[nodiscard]] auto get_material_set()       -> Material_set&       { return m_material_set; }
+    [[nodiscard]] auto get_material_set() const -> const Material_set& { return m_material_set; }
 
     // --- Main-thread API -------------------------------------------------
     // Registers a mesh: classifies every renderable primitive into the draw
@@ -284,6 +303,9 @@ private:
         Draw_statistics&                         statistics
     );
 
+    // Declared BEFORE m_objects: a Draw_list_object holds Material_slot_ids
+    // into this set, so the set must outlive the objects that name its slots.
+    Material_set                                                     m_material_set;
     Mesh_memory&                                                     m_mesh_memory;
     Shader_variant_cache&                                            m_shader_variant_cache;
     const Primitive_interface&                                       m_primitive_interface;

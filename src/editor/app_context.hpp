@@ -60,6 +60,7 @@ class Create;
 class Debug_renderer;
 class App_message_bus;
 class App_rendering;
+class Material_set_factory;
 class App_scenes;
 class App_settings;
 class App_windows;
@@ -225,6 +226,11 @@ public:
     Create*                            create               {nullptr};
     App_message_bus*                   app_message_bus      {nullptr};
     App_rendering*                     app_rendering        {nullptr};
+    // The shared fallback texture / sampler pair and the empty Material_set
+    // every GPU-backed Material_set is built from. Published before the
+    // construction taskflow, unlike everything else here, because the objects
+    // that own sets are built inside it.
+    Material_set_factory*              material_set_factory {nullptr};
     App_scenes*                        app_scenes           {nullptr};
     App_settings*                      app_settings         {nullptr};
     App_windows*                       app_windows          {nullptr};

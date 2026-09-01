@@ -1,6 +1,7 @@
 #include "scene/draw_list_scene_dependencies.hpp"
 
 #include "app_context.hpp"
+#include "renderers/material_set_factory.hpp"
 
 #include "erhe_scene_renderer/program_interface.hpp"
 
@@ -18,6 +19,11 @@ auto make_draw_list_scene_dependencies(App_context& context) -> Draw_list_scene_
     dependencies.mesh_memory          = context.mesh_memory;
     dependencies.shader_variant_cache = context.shader_variant_cache;
     dependencies.primitive_interface  = (context.program_interface != nullptr) ? &context.program_interface->primitive_interface : nullptr;
+    // The draw-list set holds the materials of a root that renders content,
+    // so it gets the full texture heap limit.
+    if (context.material_set_factory != nullptr) {
+        dependencies.material_set_create_info = context.material_set_factory->make_create_info("Draw list material set");
+    }
 
     // Same view-count enumeration as prewarm.cpp: single view (key value 0)
     // always; the XR view count when the headset session renders multiview.
@@ -37,6 +43,17 @@ auto make_draw_list_scene_dependencies(App_context& context) -> Draw_list_scene_
     }
 #endif
     return dependencies;
+}
+
+auto make_scene_root_material_set_create_info(
+    App_context& context,
+    const char*  debug_label
+) -> erhe::scene_renderer::Material_set_create_info
+{
+    if (context.material_set_factory == nullptr) {
+        return erhe::scene_renderer::Material_set_create_info{};
+    }
+    return context.material_set_factory->make_create_info(debug_label);
 }
 
 } // namespace editor

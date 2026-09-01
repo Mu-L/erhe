@@ -46,7 +46,8 @@ void Scene_open_operation::execute(App_context& context)
             m_content_library,
             erhe::file::to_string(m_path.filename()),
             enable_physics,
-            &draw_list_dependencies
+            &draw_list_dependencies,
+            make_scene_root_material_set_create_info(context, "Scene forward material set")
         );
         // Remember which glTF file the scene came from (canonical, matching
         // Prefab_library keys): Save Scene writes back here and propagates

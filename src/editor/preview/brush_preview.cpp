@@ -275,6 +275,10 @@ void Brush_preview::render_preview(
     m_mesh->add_primitive(primitive, render_material);
     m_node->attach(m_mesh);
 
+    // After the persistent mesh's primitives have been re-added, which is
+    // where this thumbnail's material reference is enqueued (D6).
+    update_material_set(command_buffer);
+
     // Get brush primitive aabb in world space
     //const erhe::math::Aabb primitive_local_aabb = brush_scaled.primitive.get_bounding_box();
     //ERHE_VERIFY(primitive_local_aabb.is_valid());

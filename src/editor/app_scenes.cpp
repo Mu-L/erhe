@@ -10,10 +10,14 @@
 #include "time.hpp"
 #include "config/generated/physics_config.hpp"
 
+#include "content_library/content_library.hpp"
+
+#include "erhe_primitive/material.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_scene/layout.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
+#include "erhe_scene_renderer/draw_list_scene.hpp"
 
 #include <imgui/imgui.h>
 
@@ -159,6 +163,49 @@ void App_scenes::flush_draw_lists()
     }
     for (const std::shared_ptr<Scene_root>& scene_root : scene_roots) {
         scene_root->flush_draw_lists();
+    }
+}
+
+void App_scenes::update_material_sets(erhe::graphics::Command_buffer& command_buffer)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // Copy under m_mutex for the same documented reason flush_draw_lists()
+    // does: the work below takes scene-root locks, and m_mutex must never be
+    // held while waiting on those.
+    std::vector<std::shared_ptr<Scene_root>> scene_roots;
+    {
+        const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_mutex};
+        scene_roots = m_scene_roots;
+    }
+    for (const std::shared_ptr<Scene_root>& scene_root : scene_roots) {
+        const std::shared_ptr<Content_library>& content_library = scene_root->get_content_library();
+        if (!content_library) {
+            continue;
+        }
+        const std::vector<std::shared_ptr<erhe::primitive::Material>>& materials =
+            content_library->materials->get_all<erhe::primitive::Material>();
+        const std::span<const std::shared_ptr<erhe::primitive::Material>> material_span{materials};
+
+        // A root with a draw list carries TWO sets, and the two reconcile the
+        // same library independently: a material normally holds a different
+        // slot in each, and each render path resolves through the set it
+        // binds.
+        erhe::scene_renderer::Material_set& forward_set = scene_root->get_material_set();
+        forward_set.sync_library(material_span);
+        forward_set.flush_pending();
+        if (forward_set.has_gpu()) {
+            forward_set.update(command_buffer);
+        }
+
+        erhe::scene_renderer::Draw_list_scene* draw_list_scene = scene_root->get_draw_list_scene();
+        if (draw_list_scene != nullptr) {
+            erhe::scene_renderer::Material_set& draw_list_set = draw_list_scene->get_material_set();
+            draw_list_set.sync_library(material_span);
+            if (draw_list_set.has_gpu()) {
+                draw_list_set.update(command_buffer);
+            }
+        }
     }
 }
 

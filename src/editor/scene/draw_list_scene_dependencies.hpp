@@ -1,5 +1,7 @@
 #pragma once
 
+#include "erhe_scene_renderer/material_set.hpp"
+
 #include <cstdint>
 #include <vector>
 
@@ -28,6 +30,11 @@ public:
     // Multiview view counts to resolve up front (R19): 0 = single view,
     // plus the XR view count when a multiview headset session is active.
     std::vector<uint32_t>                       multiview_view_counts{};
+    // What the draw list's own Material_set is built from
+    // (doc/draw_list_material_set_plan.md D3). Independent of the forward set
+    // the owning Scene_root carries: the two reconcile the same content
+    // library separately and issue their own slots.
+    erhe::scene_renderer::Material_set_create_info material_set_create_info{};
 
     [[nodiscard]] auto is_valid() const -> bool
     {
@@ -39,5 +46,14 @@ public:
 // Editor::fill_app_context() (mesh_memory / shader_variant_cache pointers
 // set); returns an invalid (all-null) instance before that.
 [[nodiscard]] auto make_draw_list_scene_dependencies(App_context& context) -> Draw_list_scene_dependencies;
+
+// What a Scene_root's FORWARD Material_set is built from. Separate from the
+// bundle above because every scene root has a forward set, including the ones
+// that get no draw list at all (the previews). Returns a membership-only
+// create info (no device) before Material_set_factory exists.
+[[nodiscard]] auto make_scene_root_material_set_create_info(
+    App_context& context,
+    const char*  debug_label
+) -> erhe::scene_renderer::Material_set_create_info;
 
 } // namespace editor

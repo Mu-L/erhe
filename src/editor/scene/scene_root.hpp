@@ -7,6 +7,7 @@
 #include "erhe_profile/profile.hpp"
 #include "erhe_scene/scene_host.hpp"
 #include "erhe_scene_renderer/light_set.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 #include "scene/draw_list_scene_dependencies.hpp"
 
 #include <deque>
@@ -130,12 +131,21 @@ public:
     // Draw_list_scene and its content renders through persistent draw lists
     // (doc/draw_list_renderer_requirements.md); null -> no Draw_list_scene,
     // Forward_renderer / Shadow_renderer fallback for every pass (R1b).
+    //
+    // material_set_create_info: what this root's FORWARD Material_set is built
+    // from (doc/draw_list_material_set_plan.md D3, D4). Every root has one,
+    // including roots with no draw list - it is the slot space the
+    // Forward_renderer bucket path and the shadow bucket path resolve
+    // materials through, and its object references come from this root's own
+    // mesh hooks. A default-constructed one (no device) leaves the set
+    // membership-only, which is what the deviceless configurations get.
     Scene_root(
-        App_message_bus*                        app_message_bus,
-        const std::shared_ptr<Content_library>& content_library,
-        std::string_view                        name,
-        bool                                    enable_physics,
-        const Draw_list_scene_dependencies*     draw_list_dependencies
+        App_message_bus*                                     app_message_bus,
+        const std::shared_ptr<Content_library>&              content_library,
+        std::string_view                                     name,
+        bool                                                 enable_physics,
+        const Draw_list_scene_dependencies*                  draw_list_dependencies,
+        const erhe::scene_renderer::Material_set_create_info& material_set_create_info
     );
     ~Scene_root() noexcept override;
 
@@ -184,6 +194,20 @@ public:
     // get_light_set().resolve(layers().light()->lights, limits) before use,
     // which recomputes only when invalidated or the limits changed.
     [[nodiscard]] auto get_light_set() -> erhe::scene_renderer::Light_set&;
+
+    // This root's FORWARD material slot space (D0): the one the bucket path
+    // binds. A root that also has a Draw_list_scene has a SECOND, independent
+    // set inside that object - ask it, not this - and the same Material
+    // normally holds a different slot in each. Each call site picks by the
+    // path it is on, and that choice stays visible where it is made.
+    [[nodiscard]] auto get_material_set()       -> erhe::scene_renderer::Material_set&;
+    [[nodiscard]] auto get_material_set() const -> const erhe::scene_renderer::Material_set&;
+
+    // Enqueue this mesh's current material list (or its release) into the
+    // forward set. Called from the mesh hooks, which the Scene_host contract
+    // allows to run on a worker thread, so both enqueue rather than apply.
+    void enqueue_mesh_materials        (const std::shared_ptr<erhe::scene::Mesh>& mesh);
+    void enqueue_release_mesh_materials(const std::shared_ptr<erhe::scene::Mesh>& mesh);
 
     // Draw lists (doc/draw_list_renderer_plan.md). get_draw_list_scene()
     // is null for scene roots constructed without dependencies.
@@ -331,6 +355,10 @@ private:
     // meshes alive, and ~Mesh may detach from m_raytrace_scene, so it must be
     // destroyed first (also reset explicitly at the top of ~Scene_root).
     std::unique_ptr<erhe::scene_renderer::Draw_list_scene> m_draw_list_scene;
+    // The FORWARD set (D0). Destroyed before the draw list scene, so the
+    // strong material references it holds are dropped while the meshes that
+    // named them are still alive.
+    erhe::scene_renderer::Material_set                     m_material_set;
     erhe::scene_renderer::Light_set                        m_light_set;
 
     static constexpr std::size_t s_max_trigger_event_log_entries = 100;

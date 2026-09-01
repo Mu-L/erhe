@@ -3,6 +3,7 @@
 #include "app_context.hpp"
 #include "app_scenes.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
+#include "renderers/material_set_factory.hpp"
 #include "renderers/programs.hpp"
 #include "renderers/viewport_config.hpp"
 #include "scene/scene_root.hpp"
@@ -56,12 +57,20 @@ Scene_preview::Scene_preview(
 
     // No Draw_list_scene: previews are tiny scenes constructed before the
     // renderer dependencies exist; they render through the fallback path.
+    // A preview root has no draw list, so its forward set is its whole
+    // material state (D0): the per-thumbnail material reassignment reaches it
+    // through Scene_root::on_mesh_material_changed, which the content library
+    // alone would not cover. Sized small - one thumbnail's material and its
+    // textures at a time.
     m_scene_root_shared = std::make_shared<Scene_root>(
         nullptr, // Don't process editor messages
         m_content_library,
         "Material preview scene",
         false,
-        nullptr
+        nullptr,
+        (context.material_set_factory != nullptr)
+            ? context.material_set_factory->make_create_info("Preview forward material set", 256, 8)
+            : erhe::scene_renderer::Material_set_create_info{}
     );
 
     // I know, this is a bit dirty:
@@ -261,6 +270,18 @@ auto Scene_preview::get_light_count_limits() const -> erhe::scene_renderer::Ligh
 auto Scene_preview::get_shadow_texture() const -> erhe::graphics::Texture*
 {
     return m_shadow_texture.get();
+}
+
+void Scene_preview::update_material_set(erhe::graphics::Command_buffer& command_buffer)
+{
+    erhe::scene_renderer::Material_set& material_set = m_scene_root_shared->get_material_set();
+    const std::vector<std::shared_ptr<erhe::primitive::Material>>& materials =
+        m_content_library->materials->get_all<erhe::primitive::Material>();
+    material_set.sync_library(std::span<const std::shared_ptr<erhe::primitive::Material>>{materials});
+    material_set.flush_pending();
+    if (material_set.has_gpu()) {
+        material_set.update(command_buffer);
+    }
 }
 
 auto Scene_preview::get_content_library() -> std::shared_ptr<Content_library>

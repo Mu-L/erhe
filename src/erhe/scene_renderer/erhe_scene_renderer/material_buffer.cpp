@@ -9,10 +9,14 @@
 #include "erhe_graphics/span.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_graphics/texture_heap.hpp"
+#include "erhe_hash/hash.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene_renderer/scene_renderer_log.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
+
+#include <cmath>
+#include <cstring>
 
 namespace erhe::scene_renderer {
 
@@ -71,6 +75,63 @@ Material_interface::Material_interface(erhe::graphics::Device& graphics_device, 
     material_block.add_struct("materials", &material_struct, erhe::graphics::Shader_resource::unsized_array);
 }
 
+auto gather_material_record_inputs(
+    const erhe::primitive::Material& material,
+    const erhe::graphics::Sampler&   fallback_sampler
+) -> Material_record_inputs
+{
+    const erhe::primitive::Material_data& data = material.data;
+
+    Material_record_inputs inputs{};
+    inputs.roughness                  = data.roughness;
+    inputs.metallic                   = data.metallic;
+    inputs.reflectance                = data.reflectance;
+    inputs.base_color                 = data.base_color;
+    inputs.opacity                    = data.opacity;
+    inputs.emissive                   = data.emissive;
+    inputs.normal_texture_scale       = data.normal_texture_scale;
+    inputs.alpha_cutoff               = data.alpha_cutoff;
+    inputs.occlusion_texture_strength = data.occlusion_texture_strength;
+    inputs.ior                        = data.ior;
+    inputs.transmission               = data.transmission;
+    inputs.bxdf_model                 = static_cast<uint32_t>(data.bxdf_model);
+
+    const auto gather_texture = [&fallback_sampler](
+        const erhe::primitive::Material_texture_sampler& texture_sampler
+    ) -> Material_texture_record_inputs
+    {
+        const float     c = std::cos(texture_sampler.rotation);
+        const float     s = std::sin(texture_sampler.rotation);
+        const glm::mat2 rotation{c, s, -s, c};
+        const glm::mat2 scale{texture_sampler.scale.x, 0.0f, 0.0f, texture_sampler.scale.y};
+        const glm::mat2 m = rotation * scale;
+        // The slot's texture reference resolves to a live texture every time
+        // it is read: a plain Texture returns itself, an editor Graph_texture
+        // returns its most recently baked output.
+        const erhe::graphics::Texture* texture = texture_sampler.texture_reference
+            ? texture_sampler.texture_reference->get_referenced_texture()
+            : nullptr;
+        return Material_texture_record_inputs{
+            .texture        = texture,
+            // Only meaningful together with a texture, and left null without
+            // one so two textureless slots hash alike.
+            .sampler        = (texture != nullptr)
+                ? (texture_sampler.sampler ? texture_sampler.sampler.get() : &fallback_sampler)
+                : nullptr,
+            .rotation_scale = { m[0][0], m[0][1], m[1][0], m[1][1] }, // Packing order: c0r0, c0r1, c1r0, c1r1
+            .offset         = { texture_sampler.offset.x, texture_sampler.offset.y }
+        };
+    };
+
+    const erhe::primitive::Material_texture_samplers& texture_samplers = data.texture_samplers;
+    inputs.base_color_texture         = gather_texture(texture_samplers.base_color);
+    inputs.metallic_roughness_texture = gather_texture(texture_samplers.metallic_roughness);
+    inputs.normal_texture             = gather_texture(texture_samplers.normal);
+    inputs.occlusion_texture          = gather_texture(texture_samplers.occlusion);
+    inputs.emissive_texture           = gather_texture(texture_samplers.emissive);
+    return inputs;
+}
+
 Material_buffer::Material_buffer(erhe::graphics::Device& graphics_device, Material_interface& material_interface)
     : Ring_buffer_client{
         graphics_device,
@@ -91,6 +152,111 @@ Material_buffer::Material_buffer(erhe::graphics::Device& graphics_device, Materi
 {
 }
 
+auto Material_buffer::get_record_byte_count() const -> std::size_t
+{
+    return m_material_interface.material_struct.get_size_bytes();
+}
+
+auto Material_buffer::get_content_hash(const erhe::primitive::Material* material) const -> uint64_t
+{
+    if (material == nullptr) {
+        return 0;
+    }
+    const Material_record_inputs inputs = gather_material_record_inputs(*material, m_fallback_sampler);
+    return erhe::hash::hash(&inputs, sizeof(inputs));
+}
+
+void Material_buffer::write_record(
+    const std::span<std::byte>    gpu_data,
+    const std::size_t             write_offset,
+    const Material_record_inputs& inputs,
+    erhe::graphics::Texture_heap& texture_heap
+)
+{
+    using erhe::graphics::as_span;
+    using erhe::graphics::write;
+
+    const Material_struct& offsets = m_material_interface.offsets;
+
+    const auto shader_handle = [&texture_heap](const Material_texture_record_inputs& texture_inputs) -> uint64_t
+    {
+        if (texture_inputs.texture == nullptr) {
+            return erhe::graphics::invalid_texture_handle;
+        }
+        const uint64_t handle = texture_heap.allocate(texture_inputs.texture, texture_inputs.sampler);
+        ERHE_VERIFY(handle != erhe::graphics::invalid_texture_handle);
+        return handle;
+    };
+
+    const uint64_t base_color_handle         = shader_handle(inputs.base_color_texture);
+    const uint64_t metallic_roughness_handle = shader_handle(inputs.metallic_roughness_texture);
+    const uint64_t normal_handle             = shader_handle(inputs.normal_texture);
+    const uint64_t occlusion_handle          = shader_handle(inputs.occlusion_texture);
+    const uint64_t emissive_handle           = shader_handle(inputs.emissive_texture);
+
+    write(gpu_data, write_offset + offsets.roughness  ,                as_span(inputs.roughness  ));
+    write(gpu_data, write_offset + offsets.metallic   ,                as_span(inputs.metallic   ));
+    write(gpu_data, write_offset + offsets.reflectance,                as_span(inputs.reflectance));
+
+    write(gpu_data, write_offset + offsets.base_color ,                as_span(inputs.base_color ));
+    write(gpu_data, write_offset + offsets.emissive   ,                as_span(inputs.emissive   ));
+
+    write(gpu_data, write_offset + offsets.base_color_texture,         as_span(base_color_handle));
+    write(gpu_data, write_offset + offsets.metallic_roughness_texture, as_span(metallic_roughness_handle));
+
+    write(gpu_data, write_offset + offsets.normal_texture,             as_span(normal_handle));
+    write(gpu_data, write_offset + offsets.occlusion_texture,          as_span(occlusion_handle));
+
+    write(gpu_data, write_offset + offsets.emissive_texture,           as_span(emissive_handle));
+    write(gpu_data, write_offset + offsets.opacity,                    as_span(inputs.opacity));
+    write(gpu_data, write_offset + offsets.normal_texture_scale,       as_span(inputs.normal_texture_scale));
+    write(gpu_data, write_offset + offsets.alpha_cutoff,               as_span(inputs.alpha_cutoff));
+
+    write(gpu_data, write_offset + offsets.base_color_rotation_scale,         as_span(inputs.base_color_texture        .rotation_scale)); // uvec4
+    write(gpu_data, write_offset + offsets.metallic_roughness_rotation_scale, as_span(inputs.metallic_roughness_texture.rotation_scale)); // uvec4
+    write(gpu_data, write_offset + offsets.normal_rotation_scale,             as_span(inputs.normal_texture            .rotation_scale)); // uvec4
+    write(gpu_data, write_offset + offsets.occlusion_rotation_scale,          as_span(inputs.occlusion_texture         .rotation_scale)); // uvec4
+    write(gpu_data, write_offset + offsets.emissive_rotation_scale,           as_span(inputs.emissive_texture          .rotation_scale)); // uvec4
+
+    write(gpu_data, write_offset + offsets.base_color_offset,                 as_span(inputs.base_color_texture        .offset));         // uvec2
+    write(gpu_data, write_offset + offsets.metallic_roughness_offset,         as_span(inputs.metallic_roughness_texture.offset));         // uvec2
+
+    write(gpu_data, write_offset + offsets.normal_offset,                     as_span(inputs.normal_texture            .offset));         // uvec2
+    write(gpu_data, write_offset + offsets.occlusion_offset,                  as_span(inputs.occlusion_texture         .offset));         // uvec2
+
+    write(gpu_data, write_offset + offsets.emissive_offset,                   as_span(inputs.emissive_texture          .offset));         // uvec2
+    write(gpu_data, write_offset + offsets.occlusion_texture_strength,        as_span(inputs.occlusion_texture_strength));
+    write(gpu_data, write_offset + offsets.ior,                               as_span(inputs.ior));
+    write(gpu_data, write_offset + offsets.transmission,                      as_span(inputs.transmission));
+    write(gpu_data, write_offset + offsets.bxdf_model,                        as_span(inputs.bxdf_model));
+}
+
+void Material_buffer::write_records(
+    const std::span<std::byte>                              gpu_data,
+    erhe::graphics::Texture_heap&                           texture_heap,
+    const std::span<const erhe::primitive::Material* const> slot_materials
+)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    const std::size_t entry_size = get_record_byte_count();
+    ERHE_VERIFY(gpu_data.size() >= slot_materials.size() * entry_size);
+
+    // Zero the whole span - holes and the alignment tail included - so a slot
+    // that is not live reads as an all-zero record rather than as whatever the
+    // previous payload written into this copy left behind.
+    std::memset(gpu_data.data(), 0, gpu_data.size());
+
+    std::size_t write_offset = 0;
+    for (const erhe::primitive::Material* material : slot_materials) {
+        if (material != nullptr) {
+            const Material_record_inputs inputs = gather_material_record_inputs(*material, m_fallback_sampler);
+            write_record(gpu_data, write_offset, inputs, texture_heap);
+        }
+        write_offset += entry_size;
+    }
+}
+
 auto Material_buffer::update(
     erhe::graphics::Texture_heap&                                      texture_heap,
     const std::span<const std::shared_ptr<erhe::primitive::Material>>& materials
@@ -102,15 +268,7 @@ auto Material_buffer::update(
         return {};
     }
 
-    // SPDLOG_LOGGER_TRACE(
-    //     log_material_buffer,
-    //     "materials.size() = {}, write_offset = {}",
-    //     materials.size(),
-    //     m_writer.write_offset
-    // );
-
-    const auto        entry_size     = m_material_interface.material_struct.get_size_bytes();
-    const auto&       offsets        = m_material_interface.offsets;
+    const std::size_t entry_size     = get_record_byte_count();
     const std::size_t max_byte_count = materials.size() * entry_size;
 
     // See note in joint_buffer.cpp: clamp acquire to the block's reported
@@ -122,102 +280,18 @@ auto Material_buffer::update(
     std::span<std::byte>              gpu_data     = buffer_range.get_span();
     std::size_t                       write_offset = 0;
 
-    class Texture_sampler_data
-    {
-    public:
-        uint64_t shader_handle;
-        float    rotation_scale[4];
-        float    offset[2];
-    };
-
     uint32_t material_index = 0;
-    for (const auto& material : materials) {
+    for (const std::shared_ptr<erhe::primitive::Material>& material : materials) {
         ERHE_VERIFY(material);
-        memset(reinterpret_cast<uint8_t*>(gpu_data.data()) + write_offset, 0, entry_size);
-        using erhe::graphics::as_span;
-        using erhe::graphics::write;
-
-        auto get_texture_sampler_shader_handle = [this, &texture_heap](const erhe::primitive::Material_texture_sampler& data) -> Texture_sampler_data
-        {
-            const float     c = std::cos(data.rotation);
-            const float     s = std::sin(data.rotation);
-            const glm::mat2 rotation{c, s, -s, c};
-            const glm::mat2 scale{data.scale.x, 0.0f, 0.0f, data.scale.y};
-            const glm::mat2 m = rotation * scale;
-            Texture_sampler_data result{
-                .shader_handle  = 0, // This will silence clang warning, value is set set below
-                .rotation_scale = { m[0][0], m[0][1], m[1][0], m[1][1] }, // Packing order: c0r0, c0r1, c1r0, c1r1
-                .offset         = { data.offset.x, data.offset.y }
-            };
-            // The slot's texture reference resolves to a live texture every
-            // frame: a plain Texture returns itself, an editor Graph_texture
-            // returns its most recently baked output.
-            const erhe::graphics::Texture* texture =
-                data.texture_reference ? data.texture_reference->get_referenced_texture() : nullptr;
-            if (texture != nullptr) {
-                const erhe::graphics::Sampler* sampler = data.sampler ? data.sampler.get() : &m_fallback_sampler;
-                result.shader_handle = texture_heap.allocate(texture, sampler);
-                ERHE_VERIFY(result.shader_handle != erhe::graphics::invalid_texture_handle);
-            } else {
-                result.shader_handle = erhe::graphics::invalid_texture_handle;
-            }
-            return result;
-        };
-
-        const erhe::primitive::Material_data&             material_data             = material->data;
-        const erhe::primitive::Material_texture_samplers& material_texture_samplers = material_data.texture_samplers;
-        const Texture_sampler_data base_color         = get_texture_sampler_shader_handle(material_texture_samplers.base_color);
-        const Texture_sampler_data metallic_roughness = get_texture_sampler_shader_handle(material_texture_samplers.metallic_roughness);
-        const Texture_sampler_data normal             = get_texture_sampler_shader_handle(material_texture_samplers.normal);
-        const Texture_sampler_data occlusion          = get_texture_sampler_shader_handle(material_texture_samplers.occlusion);
-        const Texture_sampler_data emissive           = get_texture_sampler_shader_handle(material_texture_samplers.emissive);
-
+        std::memset(gpu_data.data() + write_offset, 0, entry_size);
+        const Material_record_inputs inputs = gather_material_record_inputs(*material, m_fallback_sampler);
         material->material_buffer_index = material_index;
-
-        write(gpu_data, write_offset + offsets.roughness  ,                as_span(material_data.roughness  ));
-        write(gpu_data, write_offset + offsets.metallic   ,                as_span(material_data.metallic   ));
-        write(gpu_data, write_offset + offsets.reflectance,                as_span(material_data.reflectance));
-
-        write(gpu_data, write_offset + offsets.base_color ,                as_span(material_data.base_color ));
-        write(gpu_data, write_offset + offsets.emissive   ,                as_span(material_data.emissive   ));
-
-        write(gpu_data, write_offset + offsets.base_color_texture,         as_span(base_color.shader_handle));
-        write(gpu_data, write_offset + offsets.metallic_roughness_texture, as_span(metallic_roughness.shader_handle));
-
-        write(gpu_data, write_offset + offsets.normal_texture,             as_span(normal.shader_handle));
-        write(gpu_data, write_offset + offsets.occlusion_texture,          as_span(occlusion.shader_handle));
-
-        write(gpu_data, write_offset + offsets.emissive_texture,           as_span(emissive.shader_handle));
-        write(gpu_data, write_offset + offsets.opacity,                    as_span(material_data.opacity    ));
-        write(gpu_data, write_offset + offsets.normal_texture_scale,       as_span(material_data.normal_texture_scale));
-        write(gpu_data, write_offset + offsets.alpha_cutoff,               as_span(material_data.alpha_cutoff));
-
-        write(gpu_data, write_offset + offsets.base_color_rotation_scale,         as_span(base_color        .rotation_scale)); // uvec4
-        write(gpu_data, write_offset + offsets.metallic_roughness_rotation_scale, as_span(metallic_roughness.rotation_scale)); // uvec4
-        write(gpu_data, write_offset + offsets.normal_rotation_scale,             as_span(normal            .rotation_scale)); // uvec4
-        write(gpu_data, write_offset + offsets.occlusion_rotation_scale,          as_span(occlusion         .rotation_scale)); // uvec4
-        write(gpu_data, write_offset + offsets.emissive_rotation_scale,           as_span(emissive          .rotation_scale)); // uvec4
-
-        write(gpu_data, write_offset + offsets.base_color_offset,                 as_span(base_color        .offset));         // uvec2
-        write(gpu_data, write_offset + offsets.metallic_roughness_offset,         as_span(metallic_roughness.offset));         // uvec2
-
-        write(gpu_data, write_offset + offsets.normal_offset,                     as_span(normal            .offset));         // uvec2
-        write(gpu_data, write_offset + offsets.occlusion_offset,                  as_span(occlusion         .offset));         // uvec2
-
-        write(gpu_data, write_offset + offsets.emissive_offset,                   as_span(emissive          .offset));         // uvec2
-        write(gpu_data, write_offset + offsets.occlusion_texture_strength,        as_span(material_data.occlusion_texture_strength));
-        write(gpu_data, write_offset + offsets.ior,                               as_span(material_data.ior));
-        write(gpu_data, write_offset + offsets.transmission,                      as_span(material_data.transmission));
-        const uint32_t bxdf_model = static_cast<uint32_t>(material_data.bxdf_model);
-        write(gpu_data, write_offset + offsets.bxdf_model,                        as_span(bxdf_model));
-
+        write_record(gpu_data, write_offset, inputs, texture_heap);
         write_offset += entry_size;
         ++material_index;
     }
     buffer_range.bytes_written(write_offset);
     buffer_range.close();
-
-    // SPDLOG_LOGGER_TRACE(log_material_buffer, "wrote {} entries to material buffer", material_index);
 
     return buffer_range;
 }

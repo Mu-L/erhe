@@ -3,6 +3,7 @@
 #include "content_library/brdf_slice.hpp"
 
 #include "app_context.hpp"
+#include "renderers/material_set_factory.hpp"
 #include "app_message_bus.hpp"
 #include "assets/asset_manager.hpp"
 #include "editor_log.hpp"
@@ -31,7 +32,8 @@ Brdf_slice_rendergraph_node::Brdf_slice_rendergraph_node(
     erhe::rendergraph::Rendergraph&         rendergraph,
     erhe::scene_renderer::Forward_renderer& forward_renderer,
     Brdf_slice&                             brdf_slice,
-    Programs&                               /*programs*/
+    Programs&                               /*programs*/,
+    App_context&                            app_context
 )
     : erhe::rendergraph::Texture_rendergraph_node{
         erhe::rendergraph::Texture_rendergraph_node_create_info{
@@ -44,6 +46,11 @@ Brdf_slice_rendergraph_node::Brdf_slice_rendergraph_node(
     }
     , m_forward_renderer  {forward_renderer}
     , m_brdf_slice        {brdf_slice}
+    , m_material_set{
+        (app_context.material_set_factory != nullptr)
+            ? app_context.material_set_factory->make_create_info("BRDF slice material set", 256, 1)
+            : erhe::scene_renderer::Material_set_create_info{}
+    }
     , m_empty_vertex_input{rendergraph.get_graphics_device(), erhe::graphics::Vertex_input_state_data{}}
     , m_render_pipeline_state{
         rendergraph.get_graphics_device(),
@@ -101,6 +108,15 @@ void Brdf_slice_rendergraph_node::execute_rendergraph_node(erhe::graphics::Comma
         .height = m_area_size
     };
 
+    // This node runs inside m_rendergraph->execute, after the tick's material
+    // schedule, so it does its own step here. On every frame but the first
+    // both calls are no-ops: the membership never changes and the content
+    // hash matches.
+    m_material_set.sync_library(std::span<const std::shared_ptr<erhe::primitive::Material>>{&m_material, 1});
+    if (m_material_set.has_gpu()) {
+        m_material_set.update(command_buffer);
+    }
+
     erhe::graphics::Render_command_encoder render_encoder = m_rendergraph.get_graphics_device().make_render_command_encoder(command_buffer);
 
             //.shader_stages  = programs.brdf_slice.shader_stages(),
@@ -141,7 +157,7 @@ Brdf_slice::Brdf_slice(
     : m_rendergraph{rendergraph}
     , m_context    {app_context}
     , m_node{
-        std::make_shared<Brdf_slice_rendergraph_node>(rendergraph, forward_renderer, *this, programs)
+        std::make_shared<Brdf_slice_rendergraph_node>(rendergraph, forward_renderer, *this, programs, app_context)
     }
 {
     m_close_scene_subscription = app_message_bus.close_scene.subscribe(

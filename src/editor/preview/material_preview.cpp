@@ -232,6 +232,10 @@ void Material_preview::render_preview(const std::shared_ptr<erhe::primitive::Mat
 
     m_mesh->set_primitive_material(0, material);
 
+    // After the library is repopulated and after the sphere's material is
+    // assigned, both of which are membership changes this render must see.
+    update_material_set(command_buffer);
+
     const erhe::math::Viewport viewport{0, 0, m_width, m_height};
 
     const auto& layers = m_scene_root_shared->layers();

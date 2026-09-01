@@ -9,6 +9,9 @@
 namespace erhe {
     class Item_host;
 }
+namespace erhe::graphics {
+    class Command_buffer;
+}
 
 namespace editor {
 
@@ -39,6 +42,14 @@ public:
     // draw list changes of every registered scene root
     // (doc/draw_list_renderer_plan.md, threading contract).
     void flush_draw_lists                    ();
+    // Step 2 of the per-frame material schedule
+    // (doc/draw_list_material_set_plan.md D6), for every registered root:
+    // reconcile each set against the root's content library, apply the
+    // forward set's enqueued object references, then update both sets. Runs
+    // AFTER flush_draw_lists(), which is where draw-list records are written
+    // and where draw-list object materials are referenced - so the copy this
+    // writes covers every slot a record can name this frame.
+    void update_material_sets                (erhe::graphics::Command_buffer& command_buffer);
 
     [[nodiscard]] auto get_scene_roots() -> const std::vector<std::shared_ptr<Scene_root>>&;
 

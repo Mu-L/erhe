@@ -79,6 +79,7 @@
 #include "renderers/id_renderer.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/prewarm.hpp"
+#include "renderers/material_set_factory.hpp"
 #include "renderers/programs.hpp"
 #include "renderers/lightmap_baker.hpp"
 #include "renderers/lightmap_report.hpp"
@@ -794,6 +795,20 @@ public:
         // which have no Draw_list_scene. Main thread only.
         erhe::log::set_breadcrumb("tick: flush_draw_lists");
         m_app_scenes->flush_draw_lists();
+
+        // Material slot spaces, after the flush that settles membership and
+        // before the first pass that binds one - the DDGI tick below, and the
+        // rendergraph (which is also where XR renders) further down
+        // (doc/draw_list_material_set_plan.md D6). The preview roots and the
+        // BRDF slice window are not in m_scene_roots and run their own
+        // sync + flush + update at their render entry points.
+        if (m_app_context.current_command_buffer != nullptr) {
+            erhe::log::set_breadcrumb("tick: update_material_sets");
+            m_app_scenes->update_material_sets(*m_app_context.current_command_buffer);
+            if (m_material_set_factory) {
+                m_material_set_factory->update_empty_material_set(*m_app_context.current_command_buffer);
+            }
+        }
 
         // Dynamic diffuse global illumination (doc/ddgi-plan.md): refit the
         // probe volume and record this frame's probe update into the frame
@@ -1605,6 +1620,17 @@ public:
                 *m_mesh_memory.get(),
                 program_interface_config
             );
+            // Before the taskflow, and published into App_context on the
+            // spot: the scene roots and the previews that taskflow builds
+            // each construct a Material_set from their constructor, so this
+            // has to be visible to all of them regardless of scheduling.
+            m_material_set_factory = std::make_unique<Material_set_factory>(
+                *m_graphics_device.get(),
+                *m_app_context.current_command_buffer,
+                *m_program_interface.get()
+            );
+            m_app_context.material_set_factory = m_material_set_factory.get();
+
             // Cache constructed before Programs so each Programs member
             // can hold a reference to it. The cache stays empty until
             // something calls Shader_variant_cache::get(...).
@@ -3020,7 +3046,8 @@ public:
             content_library,
             name,
             enable_physics,
-            &draw_list_dependencies
+            &draw_list_dependencies,
+            make_scene_root_material_set_create_info(m_app_context, "Scene forward material set")
         );
         // A from-scratch scene has no source path, so its tile-set
         // directory is the shared untitled.lightmap/ - whatever a previous
@@ -3923,6 +3950,7 @@ public:
     std::unique_ptr<erhe::renderer::Jolt_debug_renderer    > m_jolt_debug_renderer;
 #endif
     std::unique_ptr<erhe::scene_renderer::Shader_variant_cache>       m_shader_variant_cache;
+    std::unique_ptr<Material_set_factory                  >           m_material_set_factory;
     std::unique_ptr<Programs                              >           m_programs;
     std::unique_ptr<erhe::scene_renderer::Forward_renderer>           m_forward_renderer;
     std::unique_ptr<erhe::scene_renderer::Shadow_renderer >           m_shadow_renderer;

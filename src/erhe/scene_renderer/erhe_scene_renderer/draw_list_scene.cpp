@@ -244,19 +244,18 @@ auto Color_environment::make_environment_key() const -> Shader_key
     return key;
 }
 
-Draw_list_scene::Draw_list_scene(
-    Mesh_memory&                    mesh_memory,
-    Shader_variant_cache&           shader_variant_cache,
-    const Primitive_interface&      primitive_interface,
-    const std::span<const uint32_t> multiview_view_counts
-)
-    : m_mesh_memory            {mesh_memory}
-    , m_shader_variant_cache   {shader_variant_cache}
-    , m_primitive_interface    {primitive_interface}
-    , m_primitive_record_stride{primitive_interface.primitive_struct.get_size_bytes()}
-    , m_multiview_view_counts  {multiview_view_counts.begin(), multiview_view_counts.end()}
+Draw_list_scene::Draw_list_scene(const Draw_list_scene_create_info& create_info)
+    : m_material_set           {create_info.material_set_create_info}
+    , m_mesh_memory            {*create_info.mesh_memory}
+    , m_shader_variant_cache   {*create_info.shader_variant_cache}
+    , m_primitive_interface    {*create_info.primitive_interface}
+    , m_primitive_record_stride{create_info.primitive_interface->primitive_struct.get_size_bytes()}
+    , m_multiview_view_counts  {create_info.multiview_view_counts.begin(), create_info.multiview_view_counts.end()}
     , m_owner_thread_id        {std::this_thread::get_id()}
 {
+    ERHE_VERIFY(create_info.mesh_memory          != nullptr);
+    ERHE_VERIFY(create_info.shader_variant_cache != nullptr);
+    ERHE_VERIFY(create_info.primitive_interface  != nullptr);
     ERHE_VERIFY(m_primitive_record_stride > 0);
 }
 

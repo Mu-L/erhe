@@ -523,7 +523,8 @@ auto Scene_commands::create_new_scene() -> std::shared_ptr<Scene_root>
         content_library,
         scene_name,
         enable_physics,
-        &draw_list_dependencies
+        &draw_list_dependencies,
+        make_scene_root_material_set_create_info(m_context, "Scene forward material set")
     );
 
     // The only scene content: a default camera matching the default scene's

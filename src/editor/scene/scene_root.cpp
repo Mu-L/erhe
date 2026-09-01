@@ -145,23 +145,28 @@ auto Scene_layers::mesh_layers() const -> std::array<erhe::scene::Mesh_layer*, 6
 };
 
 Scene_root::Scene_root(
-    App_message_bus*                        app_message_bus,
-    const std::shared_ptr<Content_library>& content_library,
-    const std::string_view                  name,
-    bool                                    enable_physics,
-    const Draw_list_scene_dependencies*     draw_list_dependencies
+    App_message_bus*                                     app_message_bus,
+    const std::shared_ptr<Content_library>&              content_library,
+    const std::string_view                               name,
+    bool                                                 enable_physics,
+    const Draw_list_scene_dependencies*                  draw_list_dependencies,
+    const erhe::scene_renderer::Material_set_create_info& material_set_create_info
 )
     : m_app_message_bus{app_message_bus}
     , m_content_library{content_library}
+    , m_material_set{material_set_create_info}
 {
     ERHE_PROFILE_FUNCTION();
 
     if ((draw_list_dependencies != nullptr) && draw_list_dependencies->is_valid()) {
         m_draw_list_scene = std::make_unique<erhe::scene_renderer::Draw_list_scene>(
-            *draw_list_dependencies->mesh_memory,
-            *draw_list_dependencies->shader_variant_cache,
-            *draw_list_dependencies->primitive_interface,
-            std::span<const uint32_t>{draw_list_dependencies->multiview_view_counts}
+            erhe::scene_renderer::Draw_list_scene_create_info{
+                .mesh_memory              = draw_list_dependencies->mesh_memory,
+                .shader_variant_cache     = draw_list_dependencies->shader_variant_cache,
+                .primitive_interface      = draw_list_dependencies->primitive_interface,
+                .multiview_view_counts    = std::span<const uint32_t>{draw_list_dependencies->multiview_view_counts},
+                .material_set_create_info = draw_list_dependencies->material_set_create_info
+            }
         );
     }
 
@@ -1221,6 +1226,8 @@ void Scene_root::register_mesh(const std::shared_ptr<erhe::scene::Mesh>& mesh)
         m_scene->register_mesh(mesh);
     }
 
+    enqueue_mesh_materials(mesh);
+
     // May run on a worker thread (item attach during async load): enqueue
     // only; flush_draw_lists() applies on the main thread.
     if (m_draw_list_scene) {
@@ -1314,6 +1321,8 @@ void Scene_root::unregister_mesh(const std::shared_ptr<erhe::scene::Mesh>& mesh)
     if (m_draw_list_scene) {
         m_draw_list_scene->enqueue_unregister(mesh);
     }
+
+    enqueue_release_mesh_materials(mesh);
 
     mesh->detach_rt_from_scene();
 
@@ -1429,9 +1438,53 @@ auto Scene_root::get_light_set() -> erhe::scene_renderer::Light_set&
     return m_light_set;
 }
 
+// The forward Material_set's object references (D1c). These four hooks -
+// register / unregister / material changed / primitives changed - are already
+// where every mutation of a mesh's materials arrives, so the set needs no
+// notification of its own: Mesh::set_primitive_material calls
+// on_mesh_material_changed, and add_primitive / set_primitives reach
+// on_mesh_primitives_changed / on_mesh_primitive_data_changed through
+// notify_primitives_changed().
+//
+// It is a DIFF against the list the mesh last contributed, which is what keeps
+// membership bounded for the previews: the material a thumbnail used is
+// released as soon as its mesh stops naming it, rather than holding a slot for
+// the session.
+//
+// Enqueued rather than applied: register_mesh may run on a worker thread
+// during an async glTF load (R13). App_scenes' per-frame flush applies them on
+// the main thread, before this frame's Material_set::update().
+void Scene_root::enqueue_mesh_materials(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    if (!mesh) {
+        return;
+    }
+    std::vector<std::shared_ptr<erhe::primitive::Material>> materials;
+    const std::vector<erhe::scene::Mesh_primitive>& primitives = mesh->get_primitives();
+    materials.reserve(primitives.size());
+    for (const erhe::scene::Mesh_primitive& primitive : primitives) {
+        if (primitive.material) {
+            materials.push_back(primitive.material);
+        }
+    }
+    m_material_set.enqueue_object_materials(
+        static_cast<uint64_t>(mesh->get_id()),
+        std::span<const std::shared_ptr<erhe::primitive::Material>>{materials}
+    );
+}
+
+void Scene_root::enqueue_release_mesh_materials(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    if (!mesh) {
+        return;
+    }
+    m_material_set.enqueue_release_object(static_cast<uint64_t>(mesh->get_id()));
+}
+
 // Draw list hooks: any thread, enqueue only (Scene_host contract).
 void Scene_root::on_mesh_primitives_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh)
 {
+    enqueue_mesh_materials(mesh);
     if (m_draw_list_scene) {
         m_draw_list_scene->enqueue_reregister(mesh);
     }
@@ -1439,6 +1492,7 @@ void Scene_root::on_mesh_primitives_changed(const std::shared_ptr<erhe::scene::M
 
 void Scene_root::on_mesh_material_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh)
 {
+    enqueue_mesh_materials(mesh);
     if (m_draw_list_scene) {
         m_draw_list_scene->enqueue_reregister(mesh);
     }
@@ -1460,9 +1514,20 @@ void Scene_root::on_mesh_transform_changed(const std::shared_ptr<erhe::scene::Me
 
 void Scene_root::on_mesh_primitive_data_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh)
 {
+    enqueue_mesh_materials(mesh);
     if (m_draw_list_scene) {
         m_draw_list_scene->enqueue_refresh(mesh);
     }
+}
+
+auto Scene_root::get_material_set() -> erhe::scene_renderer::Material_set&
+{
+    return m_material_set;
+}
+
+auto Scene_root::get_material_set() const -> const erhe::scene_renderer::Material_set&
+{
+    return m_material_set;
 }
 
 auto Scene_root::get_draw_list_scene() -> erhe::scene_renderer::Draw_list_scene*

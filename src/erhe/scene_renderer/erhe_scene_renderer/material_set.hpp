@@ -1,5 +1,7 @@
 #pragma once
 
+#include "erhe_utility/debug_label.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -9,11 +11,22 @@
 #include <unordered_map>
 #include <vector>
 
+namespace erhe::graphics {
+    class Bind_group_layout;
+    class Command_buffer;
+    class Compute_command_encoder;
+    class Device;
+    class Render_command_encoder;
+    class Sampler;
+    class Texture;
+}
 namespace erhe::primitive {
     class Material;
 }
 
 namespace erhe::scene_renderer {
+
+class Material_interface;
 
 // Handle to a material registered in one Material_set. The index is stable
 // (free-listed) and IS the GPU slot the shader indexes with; the generation
@@ -47,8 +60,38 @@ public:
     bool     in_library {false};
     uint32_t use_count  {0};
 
+    // Hash of everything the GPU record is written from
+    // (doc/draw_list_material_set_plan.md D10). A change dirties the buffer.
+    // This is the material layer's own concern; shader-variant identity is the
+    // draw list's, and lives there.
+    uint64_t content_hash{0};
+
     uint32_t generation {0};
     bool     alive      {false};
+};
+
+// What a GPU-backed Material_set needs to build its buffer and its texture
+// heap. A Material_set constructed without one is membership-only: the slot
+// table works, and update() / bind() are not available.
+class Material_set_create_info
+{
+public:
+    erhe::graphics::Device*                  graphics_device  {nullptr};
+    Material_interface*                      material_interface{nullptr};
+    // Set-1 layout the texture heap allocates descriptors against; from
+    // Program_interface.
+    const erhe::graphics::Bind_group_layout* bind_group_layout{nullptr};
+    // Shared fallback pair, owned once by the application rather than per
+    // renderer (D3).
+    const erhe::graphics::Texture*           fallback_texture {nullptr};
+    const erhe::graphics::Sampler*           fallback_sampler {nullptr};
+    // Hard upper bound on distinct texture/sampler pairs (D2a); meaningful on
+    // Vulkan, accepted and ignored elsewhere.
+    std::size_t                              max_textures     {4096};
+    // What the buffer is sized for up front. It grows past this on demand, so
+    // this only decides how much is reserved (D9).
+    std::size_t                              initial_material_count{256};
+    erhe::utility::Debug_label               debug_label      {};
 };
 
 // Which materials are members of one slot space, and at which slots.
@@ -64,13 +107,18 @@ public:
 // be handed a `const Material_set*` and then cannot do anything but look slots
 // up: slots are assigned ahead of every record write, never by one.
 //
-// Phase 3 of doc/draw_list_material_set_plan.md adds the GPU half to this class
-// - the material buffer, the texture heap and update / bind / unbind - written
-// from the slot table below. Nothing outside the tests uses this type yet.
+// The GPU half - the material buffer, the texture heap and
+// update / bind / unbind - is written from that same slot table and is owned
+// here too: a heap handle baked into a record is only meaningful in the heap
+// it was allocated from, so heap and buffer are reset and rewritten together,
+// always, in the one place either is rewritten.
 class Material_set final
 {
 public:
+    // Membership-only. No device, no buffer, no heap: the slot table is pure
+    // bookkeeping and is tested that way (R16).
     Material_set();
+    explicit Material_set(const Material_set_create_info& create_info);
     ~Material_set() noexcept;
     Material_set   (const Material_set&) = delete;
     void operator= (const Material_set&) = delete;
@@ -105,6 +153,32 @@ public:
     void sync_object_materials   (uint64_t object_key, std::span<const std::shared_ptr<erhe::primitive::Material>> materials);
     void release_object_materials(uint64_t object_key);
 
+    // Rehashes the live members and, if anything changed, writes a fresh copy
+    // of the whole record payload and repopulates the texture heap from it.
+    // Otherwise it returns after the hashing and the copy bound on every later
+    // frame is the one already there.
+    //
+    // Call once per frame, after sync_library() and flush_pending() have
+    // settled membership: the slots a record can name this frame must all be
+    // covered by the copy this writes.
+    void update(erhe::graphics::Command_buffer& command_buffer);
+
+    // Binds the current copy and the texture heap. False when nothing has been
+    // committed yet (a set with no members), which is not an error - the heap
+    // is bound either way.
+    auto bind  (erhe::graphics::Render_command_encoder&  encoder) -> bool;
+    auto bind  (erhe::graphics::Compute_command_encoder& encoder) -> bool;
+    void unbind(erhe::graphics::Command_buffer& command_buffer);
+
+    // Forces the next update() to rewrite, for changes no content hash can
+    // see (device loss, an externally rebuilt heap).
+    void invalidate();
+
+    [[nodiscard]] auto has_gpu() const -> bool;
+    // How many copies update() has written. Observability for "a clean frame
+    // writes nothing".
+    [[nodiscard]] auto get_write_count() const -> std::size_t;
+
     // Lookups. Const, and none of them assigns a slot.
     [[nodiscard]] auto find          (const erhe::primitive::Material* material) const -> Material_slot_id;
     [[nodiscard]] auto get_slot      (const erhe::primitive::Material* material) const -> std::optional<uint32_t>;
@@ -126,6 +200,8 @@ public:
     void               clear_membership_dirty();
 
 private:
+    class Gpu;
+
     class Pending_op
     {
     public:
@@ -149,6 +225,9 @@ private:
     std::vector<Pending_op>                                        m_pending;
 
     bool                                                           m_membership_dirty{true};
+
+    // Null for a membership-only set.
+    std::unique_ptr<Gpu>                                           m_gpu;
 };
 
 } // namespace erhe::scene_renderer

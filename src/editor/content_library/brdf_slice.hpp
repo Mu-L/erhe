@@ -5,6 +5,7 @@
 #include "erhe_rendergraph/texture_rendergraph_node.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/state/vertex_input_state.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 
 #include <memory>
 
@@ -28,7 +29,8 @@ public:
         erhe::rendergraph::Rendergraph&         rendergraph,
         erhe::scene_renderer::Forward_renderer& forward_renderer,
         Brdf_slice&                             brdf_slice,
-        Programs&                               programs
+        Programs&                               programs,
+        App_context&                            app_context
     );
 
     // Implements erhe::rendergraph::Rendergraph_node
@@ -44,6 +46,12 @@ private:
     erhe::scene_renderer::Forward_renderer&    m_forward_renderer;
     Brdf_slice&                                m_brdf_slice;
     std::shared_ptr<erhe::primitive::Material> m_material;
+
+    // A consumer outside any scene: no scene root, no draw list, no
+    // registered objects, so sync_library({material}) is its whole membership
+    // mechanism (doc/draw_list_material_set_plan.md D0, D3). One material
+    // wide, so it is sized down accordingly.
+    erhe::scene_renderer::Material_set         m_material_set;
 
     erhe::graphics::Vertex_input_state                 m_empty_vertex_input;
     erhe::graphics::Base_render_pipeline               m_render_pipeline_state;

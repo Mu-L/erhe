@@ -1883,7 +1883,8 @@ void Item_tree::imgui_tree(float ui_scale)
             content_library,
             "new scene",
             enable_physics,
-            nullptr
+            nullptr,
+            erhe::scene_renderer::Material_set_create_info{}
         );
 
         using Item_flags = erhe::Item_flags;

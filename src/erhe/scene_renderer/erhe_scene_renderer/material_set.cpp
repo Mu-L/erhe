@@ -1,15 +1,167 @@
 #include "erhe_scene_renderer/material_set.hpp"
 
+#include "erhe_scene_renderer/material_buffer.hpp"
+
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/compute_command_encoder.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/multi_copy_buffer.hpp"
+#include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/texture_heap.hpp"
 #include "erhe_primitive/material.hpp"
+#include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
 
 #include <algorithm>
 
 namespace erhe::scene_renderer {
 
+// The GPU half, held apart only so that a membership-only set costs nothing
+// and needs no device (R16). Buffer and heap are always reset and rewritten
+// together: a heap handle baked into a record is meaningless in any other
+// heap, and, with the record persisting, meaningless once this heap drops the
+// allocation.
+class Material_set::Gpu
+{
+public:
+    Gpu(const Material_set_create_info& create_info)
+        : material_buffer{*create_info.graphics_device, *create_info.material_interface}
+        , texture_heap{
+            *create_info.graphics_device,
+            *create_info.fallback_texture,
+            *create_info.fallback_sampler,
+            create_info.bind_group_layout,
+            create_info.max_textures
+        }
+        , buffer{
+            *create_info.graphics_device,
+            erhe::graphics::Multi_copy_buffer_create_info{
+                .initial_copy_byte_count = create_info.initial_material_count *
+                    create_info.material_interface->material_struct.get_size_bytes(),
+                .copy_count              = 0,
+                .buffer_target           = create_info.material_interface->material_block.get_binding_target(),
+                .binding_point           = create_info.material_interface->material_block.get_binding_point(),
+                .debug_label             = create_info.debug_label
+            }
+        }
+    {
+    }
+
+    Material_buffer                                   material_buffer;
+    erhe::graphics::Texture_heap                      texture_heap;
+    erhe::graphics::Multi_copy_buffer                 buffer;
+    // Slot-ordered view of the table, holes null. A member so the per-write
+    // allocation is amortized.
+    std::vector<const erhe::primitive::Material*>     slot_materials;
+    bool                                              force_dirty {true};
+    std::size_t                                       write_count {0};
+};
+
 Material_set::Material_set() = default;
 
+Material_set::Material_set(const Material_set_create_info& create_info)
+{
+    ERHE_VERIFY(create_info.graphics_device    != nullptr);
+    ERHE_VERIFY(create_info.material_interface != nullptr);
+    ERHE_VERIFY(create_info.fallback_texture   != nullptr);
+    ERHE_VERIFY(create_info.fallback_sampler   != nullptr);
+    m_gpu = std::make_unique<Gpu>(create_info);
+}
+
 Material_set::~Material_set() noexcept = default;
+
+auto Material_set::has_gpu() const -> bool
+{
+    return m_gpu != nullptr;
+}
+
+auto Material_set::get_write_count() const -> std::size_t
+{
+    return m_gpu ? m_gpu->write_count : 0;
+}
+
+void Material_set::invalidate()
+{
+    if (m_gpu) {
+        m_gpu->force_dirty = true;
+    }
+}
+
+void Material_set::update(erhe::graphics::Command_buffer& command_buffer)
+{
+    ERHE_PROFILE_FUNCTION();
+    ERHE_VERIFY(m_gpu);
+
+    // Hash every live member, always. This is what catches a Material_data
+    // field written straight through the object - the colour picker drag, the
+    // MCP edit_material tool - with no notification of any kind, which is the
+    // failure a version counter cannot see.
+    bool dirty = m_gpu->force_dirty || m_membership_dirty;
+    for (Material_slot& slot : m_materials) {
+        if (!slot.alive) {
+            continue;
+        }
+        const uint64_t content_hash = m_gpu->material_buffer.get_content_hash(slot.material.get());
+        if (content_hash != slot.content_hash) {
+            slot.content_hash = content_hash;
+            dirty = true;
+        }
+    }
+    if (!dirty) {
+        return;
+    }
+
+    m_membership_dirty = false;
+    m_gpu->force_dirty = false;
+
+    const std::size_t slot_count = get_slot_count();
+    m_gpu->slot_materials.clear();
+    m_gpu->slot_materials.resize(slot_count, nullptr);
+    for (std::size_t i = 0; i < slot_count; ++i) {
+        const Material_slot& slot = m_materials[i];
+        if (slot.alive) {
+            m_gpu->slot_materials[i] = slot.material.get();
+        }
+    }
+
+    // The heap is repopulated by the record write that follows, and by nothing
+    // else, so it is reset here and only here.
+    m_gpu->texture_heap.reset_heap(command_buffer);
+    if (slot_count == 0) {
+        ++m_gpu->write_count;
+        return;
+    }
+
+    const std::size_t entry_byte_count = m_gpu->material_buffer.get_record_byte_count();
+    const std::size_t byte_count       = slot_count * entry_byte_count;
+
+    const std::span<std::byte> gpu_data = m_gpu->buffer.begin_write(byte_count);
+    m_gpu->material_buffer.write_records(gpu_data, m_gpu->texture_heap, m_gpu->slot_materials);
+    m_gpu->buffer.commit(byte_count);
+    ++m_gpu->write_count;
+}
+
+auto Material_set::bind(erhe::graphics::Render_command_encoder& encoder) -> bool
+{
+    ERHE_VERIFY(m_gpu);
+    const bool buffer_bound = m_gpu->buffer.bind(encoder);
+    m_gpu->texture_heap.bind(encoder);
+    return buffer_bound;
+}
+
+auto Material_set::bind(erhe::graphics::Compute_command_encoder& encoder) -> bool
+{
+    ERHE_VERIFY(m_gpu);
+    const bool buffer_bound = m_gpu->buffer.bind(encoder);
+    m_gpu->texture_heap.bind(encoder);
+    return buffer_bound;
+}
+
+void Material_set::unbind(erhe::graphics::Command_buffer& command_buffer)
+{
+    ERHE_VERIFY(m_gpu);
+    m_gpu->texture_heap.unbind(command_buffer);
+}
 
 auto Material_set::allocate_slot(const std::shared_ptr<erhe::primitive::Material>& material) -> uint32_t
 {
@@ -34,7 +186,10 @@ auto Material_set::allocate_slot(const std::shared_ptr<erhe::primitive::Material
     slot.material   = material;
     slot.in_library = false;
     slot.use_count  = 0;
-    slot.alive      = true;
+    slot.alive        = true;
+    // A reused slot must not carry the previous occupant's hash into the
+    // first update after the reuse.
+    slot.content_hash = 0;
     m_index_by_material.emplace(material.get(), index);
     m_membership_dirty = true;
     return index;

@@ -29,3 +29,28 @@ erhe_target_settings(${_target} "erhe/tests")
 
 include(GoogleTest)
 gtest_discover_tests(${_target})
+
+# Device-backed half (V2). erhe::gpu_test_support is defined by
+# src/erhe/graphics/test only where a Device can actually be brought up for the
+# configured (api, window) pair, so its existence IS the support condition -
+# erhe/graphics is configured before this directory.
+if (TARGET erhe::gpu_test_support)
+    set(_gpu_target "erhe_scene_renderer_gpu_tests")
+    add_executable(${_gpu_target}
+        main.cpp
+        test_material_set_gpu.cpp
+    )
+
+    target_link_libraries(${_gpu_target}
+        PRIVATE
+            erhe::gpu_test_support
+            erhe::scene_renderer
+            erhe::primitive
+            erhe::verify
+            GTest::gtest
+    )
+
+    erhe_target_settings(${_gpu_target} "erhe/tests")
+
+    gtest_discover_tests(${_gpu_target})
+endif ()

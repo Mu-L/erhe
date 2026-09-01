@@ -436,6 +436,8 @@ erhe_target_sources_grouped(
     renderers/id_renderer.hpp
     renderers/light_mesh.cpp
     renderers/light_mesh.hpp
+    renderers/material_set_factory.cpp
+    renderers/material_set_factory.hpp
     renderers/prewarm.cpp
     renderers/prewarm.hpp
     renderers/programs.cpp

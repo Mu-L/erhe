@@ -28,6 +28,7 @@
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/swapchain.hpp"
+#include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_item/item_log.hpp"
 #include "erhe_log/log.hpp"
@@ -42,6 +43,7 @@
 #include "erhe_scene/scene_log.hpp"
 #include "erhe_scene_renderer/forward_renderer.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 #include "erhe_scene_renderer/program_interface.hpp"
 #include "erhe_scene_renderer/scene_renderer_log.hpp"
 #include "erhe_scene_renderer/shader_variant_cache.hpp"
@@ -136,6 +138,28 @@ public:
         , m_shader_variant_cache{m_graphics_device, m_program_interface}
         , m_programs            {m_graphics_device, m_shader_variant_cache}
         , m_forward_renderer    {m_graphics_device, m_init_command_buffer, m_mesh_memory, m_program_interface, m_shader_variant_cache, nullptr}
+        , m_material_fallback_texture{m_graphics_device.create_dummy_texture(m_init_command_buffer, erhe::dataformat::Format::format_8_vec4_srgb)}
+        , m_material_fallback_sampler{
+            m_graphics_device,
+            erhe::graphics::Sampler_create_info{
+                .min_filter  = erhe::graphics::Filter::nearest,
+                .mag_filter  = erhe::graphics::Filter::nearest,
+                .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
+                .debug_label = "example material fallback sampler"
+            }
+        }
+        , m_material_set{
+            erhe::scene_renderer::Material_set_create_info{
+                .graphics_device        = &m_graphics_device,
+                .material_interface     = &m_program_interface.material_interface,
+                .bind_group_layout      = m_program_interface.bind_group_layout.get(),
+                .fallback_texture       = m_material_fallback_texture.get(),
+                .fallback_sampler       = &m_material_fallback_sampler,
+                .max_textures           = 4096,
+                .initial_material_count = 256,
+                .debug_label            = erhe::utility::Debug_label{"example material set"}
+            }
+        }
         , m_scene               {"example scene", nullptr}
     {
         m_window.set_title(
@@ -178,6 +202,15 @@ public:
         }
 
         m_mesh_memory.flush(m_init_command_buffer);
+
+        // The whole membership of this set, established once: the glTF
+        // material list is by construction every material the loaded meshes
+        // use. Nothing here ever changes it, so this one update is the only
+        // material buffer write the example performs.
+        m_material_set.sync_library(
+            std::span<const std::shared_ptr<erhe::primitive::Material>>{m_gltf_data.materials}
+        );
+        m_material_set.update(m_init_command_buffer);
 
         make_render_pipelines();
 
@@ -593,6 +626,15 @@ private:
     erhe::scene_renderer::Shader_variant_cache     m_shader_variant_cache;
     Programs                                       m_programs;
     erhe::scene_renderer::Forward_renderer         m_forward_renderer;
+    // A consumer outside any scene (doc/draw_list_material_set_plan.md D0,
+    // D3): no scene root, no draw list, no registered objects. Its membership
+    // comes entirely from sync_library(m_gltf_data.materials), which is by
+    // construction every material its meshes use, and it is the clearest
+    // demonstration of the persistence this work exists for - a static glTF
+    // viewer writes its material buffer once and never again.
+    std::shared_ptr<erhe::graphics::Texture>       m_material_fallback_texture;
+    erhe::graphics::Sampler                        m_material_fallback_sampler;
+    erhe::scene_renderer::Material_set             m_material_set;
     std::unique_ptr<erhe::graphics::Render_pass>   m_render_pass;
 
     std::vector<erhe::graphics::Base_render_pipeline*>    m_render_pipelines;
