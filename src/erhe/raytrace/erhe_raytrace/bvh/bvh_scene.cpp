@@ -562,7 +562,14 @@ auto Bvh_scene::intersect_tlas(Ray& ray, Hit& hit, Bvh_instance* in_instance) ->
     ERHE_PROFILE_FUNCTION();
 
     static constexpr std::size_t stack_size           = 64;
-    static constexpr bool        use_robust_traversal = false;
+
+    // The fast (non-robust) ray-box test folds the ray origin into
+    // inv_org = -inv_dir * org; a zero direction component makes that
+    // inf * finite and the slab test NaNs, so axis-aligned rays (orthographic
+    // views, the grid rays in test_bvh_scene) silently miss TLAS nodes.
+    // The robust test is the library's answer for exactly this, and the TLAS
+    // is small enough that its cost does not matter.
+    static constexpr bool        use_robust_traversal = true;
 
     bvh::v2::Ray<float, 3> bvh_ray{
         to_bvh(ray.origin),
