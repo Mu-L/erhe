@@ -14,6 +14,8 @@
 #include "erhe_graphics/shader_stages.hpp"
 #include "erhe_graphics/texture.hpp"
 
+#include "erhe_math/math_util.hpp"
+
 #include "erhe_texgen/compose_node.hpp"
 #include "erhe_texgen/composer.hpp"
 #include "erhe_texgen/node_descriptor.hpp"
@@ -69,14 +71,15 @@
 // to that helper: function_name "main", output_variable_name "out_color",
 // uv_source_expression "v_uv".
 //
-// UV orientation (determined empirically from Texgen_render_uv_gradient and
-// documented here): the vertex shader sets v_uv = position*0.5 + 0.5 over the
-// fullscreen triangle. Under Vulkan (framebuffer origin top-left, NDC +y down),
-// read_texture_rgba8 row 0 is the top of the image and corresponds to
-// v_uv.y ~= 0; the last row is the bottom and v_uv.y ~= 1. v_uv.x ~= 0 at
-// column 0 (left) and ~= 1 at the last column (right). So for the gradient
-// vec3(uv.x, uv.y, 0): red increases left->right across columns, green
-// increases top->bottom across rows.
+// UV orientation: the vertex shader sets v_uv = position*0.5 + 0.5 over the
+// fullscreen triangle. NDC +y is up on every backend (OpenGL and Metal
+// natively; Vulkan through the negative-viewport-height flip the render
+// command encoder always applies), so v_uv.y ~= 0 is the image bottom and
+// v_uv.y ~= 1 the image top everywhere. Which read-back row is the top
+// follows the device's texture origin (top_left: row 0; bottom_left: the
+// last row), queried from coordinate_conventions like all application code
+// - the same rule test_topology uses. v_uv.x ~= 0 at column 0 (left) and
+// ~= 1 at the last column (right) on every backend.
 // -----------------------------------------------------------------------------
 
 namespace erhe::graphics::test {
@@ -466,8 +469,10 @@ TEST_F(Texgen_render_test, convert_rgb_to_rgba)
     expect_uniform_color(pixels, 8, 8, 64, 128, 191, 255, 2);
 }
 
-// UV gradient -> corner pixels ordered per the documented Vulkan orientation:
-// red increases left->right (columns), green increases top->bottom (rows).
+// UV gradient -> corner pixels ordered per the device's coordinate
+// conventions (see the UV orientation note at the top of this file):
+// red increases left->right (columns), green increases bottom->top of the
+// image, with the read-back row of the image bottom given by texture_origin.
 TEST_F(Texgen_render_test, uv_gradient)
 {
     const erhe::texgen::Node_descriptor descriptor = make_uv_gradient_descriptor();
@@ -478,10 +483,15 @@ TEST_F(Texgen_render_test, uv_gradient)
     const std::vector<uint8_t> pixels = render_fragment(fragment, size, size);
     ASSERT_EQ(pixels.size(), static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * 4u);
 
-    const std::array<int, 4> top_left     = pixel_at(pixels, size, 0,        0);
-    const std::array<int, 4> top_right    = pixel_at(pixels, size, size - 1, 0);
-    const std::array<int, 4> bottom_left  = pixel_at(pixels, size, 0,        size - 1);
-    const std::array<int, 4> bottom_right = pixel_at(pixels, size, size - 1, size - 1);
+    const bool row0_is_top =
+        device().get_info().coordinate_conventions.texture_origin == erhe::math::Texture_origin::top_left;
+    const int bottom_row = row0_is_top ? size - 1 : 0;  // v_uv.y ~= 0
+    const int top_row    = row0_is_top ? 0 : size - 1;  // v_uv.y ~= 1
+
+    const std::array<int, 4> bottom_left  = pixel_at(pixels, size, 0,        bottom_row);
+    const std::array<int, 4> bottom_right = pixel_at(pixels, size, size - 1, bottom_row);
+    const std::array<int, 4> top_left     = pixel_at(pixels, size, 0,        top_row);
+    const std::array<int, 4> top_right    = pixel_at(pixels, size, size - 1, top_row);
 
     // Red = uv.x: low on the left, high on the right, ~constant down a column.
     EXPECT_LT(top_left[0],     40);
@@ -489,11 +499,12 @@ TEST_F(Texgen_render_test, uv_gradient)
     EXPECT_LT(bottom_left[0],  40);
     EXPECT_GT(bottom_right[0], 200);
 
-    // Green = uv.y: low at the top, high at the bottom, ~constant across a row.
-    EXPECT_LT(top_left[1],     40);
-    EXPECT_LT(top_right[1],    40);
-    EXPECT_GT(bottom_left[1], 200);
-    EXPECT_GT(bottom_right[1],200);
+    // Green = uv.y: low at the image bottom, high at the image top,
+    // ~constant across a row.
+    EXPECT_LT(bottom_left[1],  40);
+    EXPECT_LT(bottom_right[1], 40);
+    EXPECT_GT(top_left[1],    200);
+    EXPECT_GT(top_right[1],   200);
 
     // Blue is always 0.
     EXPECT_LT(top_left[2],  4);
