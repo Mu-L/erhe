@@ -126,7 +126,21 @@ commits).
   support reading its images back" in this configuration, so the pixel
   comparison needs a build where readback works.
 - The OpenGL sampler-array (non-bindless) heap path specifically.
-- Quest.
+- A real-mouse check of the material paint tool and the item-tree material
+  drop, and that Ctrl+Z takes each of them back. Added 2026-09-01, when
+  material assignment became undoable (`Mesh_material_assign_operation`,
+  commits 21b065ada / 7dd3d9189 / 738d2e606 / b8c150ccd). Same gestures as the
+  V4 checks above, so one sweep covers both.
+
+**Quest: DONE 2026-09-01, and the rest of phase 7 on Quest is SKIPPED** by the
+user's call - passing on desktop gives high confidence for Quest. What ran:
+a fresh uninstall + clean reinstall, user-verified visually in the headset,
+plus the draw-list assertions driven against the Quest editor over MCP
+(`adb forward tcp:3743`; `material_index == material_set_slot` held through
+assign / undo / redo). Memory `project_quest_mcp_access` has the recipe and
+the two false-negative traps.
+
+So what is left of phase 7 is the DESKTOP interactive sweep above.
 
 **Verification recipe.** Build `editor` and the test targets in `build_tests`
 (configured **OpenGL**, so the Vulkan path needs `scripts/build_ninja_win_vulkan.bat`

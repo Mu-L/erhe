@@ -505,6 +505,24 @@ none of A, B, D or E would detect it.
   acquire is deliberate, so it is a separate design decision rather than an
   enforcement mechanism.
 
+## Relationship to the parse_gltf item in the companion doc
+
+`doc/gl-worker-thread-contexts.md` lists "nested taskflows inside
+`parse_gltf`" as future work. This document answers half of it: **no GL scope
+crosses those flows** (parse is CPU-only, and `erhe_gltf` contains no
+`Scoped_worker_context`), so they cannot deadlock the GL pool. That concern is
+latent, not live.
+
+What is genuinely open there is a different resource.
+`gltf_fastgltf.cpp:1109,1165,1571` call `executor.run(taskflow).wait()` from a
+task already running on that executor, and `tf::Future` derives from
+`std::future`, so the worker parks with **no co-run**. That is hold-and-wait on
+the WORKER pool rather than the GL pool, and none of A, B or E covers it -
+`corun()` instead of `wait()` is the usual answer. The flows are gated on
+`Gltf_parse_arguments::parallel`, which **defaults to true**
+(`gltf_fastgltf.hpp:329`), so the main-thread parse callers that never set it
+run them too and park the main thread.
+
 ## Before landing
 
 1. Decide whether the scopes at `items.cpp:207` and

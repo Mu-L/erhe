@@ -392,15 +392,19 @@ the optimized variant is selected and rendered.
    the base variant's memory (12 bytes/position, always resident; the
    minimal `id_renderer`-variant seam below is the recorded way to reclaim
    it).
-2. **Quest verification of the on-by-default configuration.** Needs
-   UNINSTALL + CLEAN REINSTALL (`migrate_android_assets_to_writable()`
-   never overwrites an existing config), and every OpenXR launch needs a
-   fresh user prompt + explicit confirmation.
+2. **Quest verification of the on-by-default configuration - DONE
+   2026-09-01.** A clean reinstall (uninstall first;
+   `migrate_android_assets_to_writable()` never overwrites an existing
+   config) followed by a confirmed OpenXR launch, user-verified visually in
+   the headset. Nothing further is required of this item.
 3. **Shader-compile stutter watch.** The base and optimized formats carry
    different position encodings, so both sets of content-shader variants
    exist whenever both variants render (the load window, and any mesh
    whose variant an edit dropped). Not yet observed in practice; keep
-   watching.
+   watching. Datapoint 2026-09-01: on Quest, startup shader prewarm took
+   **13.7 s of a ~23 s startup** ("prewarm: ... scene phase 13672.4 ms").
+   That is prewarm, not stutter, but it is the same variant explosion and
+   it is the first measurement of its cost on the device.
 
 Recorded seams, deliberately not implemented: LOD chains
 (`meshopt_simplify`, natural fit on the deferred-allocation staging seam),
