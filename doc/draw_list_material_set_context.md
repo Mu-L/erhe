@@ -7,92 +7,59 @@ it up.
 
 ## Status: the plan is implemented; what verification is left
 
-**The reported bug is fixed**, and its regression test says so: V3 is green,
-in both assignment orders. A material's slot is now a property of the
-`Material_set` that issued it, so a cached draw-list record and the buffer
-bound when it is drawn agree by construction.
+**The reported bug is fixed**, and its regression test says so: V3
+(`mcp_server_tests.cpp` `material_drag_to_second_mesh_uses_same_record_slot`)
+is green in both assignment orders. Its MCP surface is `assign_mesh_material`
+and `get_draw_lists`'s per-mesh `entries` array, where `material_index` is what
+a cached record resolved to and `material_set_slot` is where the material
+actually sits in that scene's draw-list set.
 
-`Material::material_buffer_index` is **gone**, along with `preview_slot`, the
-legacy ring-based `Material_buffer::update()` and its `Ring_buffer_client`
-base. A material has no slot of its own any more, so the bug is no longer
-expressible.
+**Every phase of the plan has landed**, plus the prerequisite
+`Draw_list_renderer` split and the D11 cheap path. The shape now in the tree:
 
-**What exists and is unit-tested, but has no callers:**
+- a material's slot is a property of the `Material_set` that issued it.
+  `Material::material_buffer_index` and `preview_slot` are **gone**, and with
+  them the legacy ring-based `Material_buffer::update()` and its
+  `Ring_buffer_client` base. The bug is no longer expressible;
+- `Scene_root` owns the forward set and references its meshes' materials into
+  it from its four mesh hooks; `Draw_list_scene` owns the draw-list set; the
+  BRDF slice window, the standalone example and the shared empty set each own
+  a library-only one;
+- `Material_set_factory` (`src/editor/renderers/`) owns the one fallback
+  texture / sampler pair and the shared empty set, and is published into
+  `App_context` before the construction taskflow - **not** `App_rendering` as
+  D3 says, because `App_rendering` is itself built inside that taskflow
+  alongside the objects that need a set from their own constructors;
+- `App_scenes::update_material_sets()` runs the D6 schedule after
+  `flush_draw_lists()`; the previews and the BRDF slice run their own at their
+  render entry points;
+- `Base_render_parameters` carries a `Material_set* material_source`. No
+  renderer owns a material buffer, texture heap or fallback pair, and none
+  resets a heap per pass. `Primitive_buffer` and `Scene_tlas` look slots up in
+  the set their own pass binds; `Draw_list_object` holds `Material_slot_id`s
+  and `write_slot_fields` resolves through them with a verify;
+- the content hash and the record writer are generated from one list
+  (`Material_record_inputs` in `material_buffer.hpp`, built by
+  `gather_material_record_inputs()`), so a field the writer reads is a field
+  the hash covers by construction.
 
-(This list is phase 2's; phase 3 gave every entry an owner except
-`Multi_copy_buffer`, which is now reached through `Material_set` alone.)
+**Three erhe_graphics bugs were found and fixed along the way**, none of them
+reachable before this work gave one heap more than one consumer or sized one
+down:
 
-- `erhe_graphics/multi_copy_buffer.{hpp,cpp}` - the persistent storage of D9;
-- `Device::is_frame_completed()` / `get_number_of_frames_in_flight()` on all
-  four backends (the Metal implementation compiles nowhere on Windows and is
-  unverified until the sweep);
-- `Texture_heap`'s defaulted `max_textures` (D2a);
-- `erhe_scene_renderer/material_set.{hpp,cpp}` - `Material_slot_id`,
-  `Material_slot`, and the **membership half** of `Material_set` (D1);
-- `erhe_gpu_test_support`, the device bring-up and frame / readback helpers as
-  a library, for the GPU tests V2 adds.
-
-**The regression test, V3**, is
-`mcp_server_tests.cpp` `material_drag_to_second_mesh_uses_same_record_slot`,
-and it is **red**: mesh A assigned first reads records A=14 B=0, and with the
-order reversed A=0 B=15 - the reported asymmetry, in the cached records. It
-turns green in phase 4. Its MCP surface is `assign_mesh_material` and
-`get_draw_lists`'s per-mesh `entries` array.
-
-**Phase 3 has landed.** `Material_set` now has its GPU half - the material
-buffer, the texture heap and `update` / `bind` / `unbind` / `invalidate`, with
-D10's content-hash invalidation - and both kinds of owner exist and are fed:
-`Scene_root` carries the forward set and references its meshes' materials into
-it from the four mesh hooks, `Draw_list_scene` carries the draw-list set, and
-the library-only owners (BRDF slice, the standalone example, the shared empty
-set) each construct their own. `App_scenes::update_material_sets()` runs the D6
-schedule after `flush_draw_lists()`; the previews and the BRDF slice run their
-own at their render entry points. The Vulkan descriptor-set use-stamping fix
-(D2b) is in. `Material_buffer` keeps its ring-based `update()` until phase 6;
-the span-writing record writer sits alongside it and both go through one
-`Material_record_inputs` gather, so the content hash covers exactly the bytes
-the writer reads by construction.
-
-**No frame behaves differently yet.** Nothing reads either set's slots - that
-is phase 4 - so the reported bug still reproduces and V3 is still red by
-design.
-
-**Phase 4 has landed**, and with it the prerequisite `Draw_list_renderer`
-split. `Base_render_parameters` carries a `Material_set* material_source`
-instead of a material list; `Scene_pass_resources`, `Forward_renderer` and
-`Shadow_renderer` own no material buffer, texture heap or fallback pair and
-reset nothing per pass; `Primitive_buffer` looks slots up in the set its own
-pass binds; `Draw_list_object` holds `Material_slot_id`s and
-`write_slot_fields` resolves through them with a verify; `Material_watch` and
-the material half of `sync_gpu_slots()` are gone;
-`set_exclude_unlit_from_shadows` enqueues its rebuild (D1d); R8a is amended.
-
-**Phases 5 and 6 have landed too.** `Ddgi_renderer`, `Ray_trace_renderer` and
-`Scene_tlas` resolve through the root's forward set and own no material buffer,
-texture heap or fallback pair; the field is deleted.
-
-**Two erhe_graphics bugs surfaced while doing it**, both fixed and both
-pre-existing in the sense that no earlier caller could reach them:
-
+- descriptor-set recycling keyed on the frame a set was *acquired*, so a
+  persistent heap could have the set frames were still reading recycled under
+  it (D2b). It is stamped on every bind now;
 - `Texture_heap` built its own set-1 descriptor set layout sized
   `max_textures`, while the pipeline layout's set 1 is always
   `max_texture_heap_size` wide. Any heap sized down produced descriptor sets
   `vkCmdBindDescriptorSets` rejects outright, which aborts the editor on the
   first bind. **D2a is wrong as written**: `max_textures` may size the variable
-  descriptor count, never the layout.
+  descriptor count, never the layout;
 - `Texture_heap` bound its set with the pipeline layout of the
   `Bind_group_layout` it was *constructed* with. Set 1 is compatible only with
   a pipeline layout that agrees on every lower-numbered set, so that held only
-  while a heap had one consumer. It now binds with the layout the encoder was
-  set to.
-
-**The R4 cheap path (D11) has landed too**, as its own commit after the switch.
-`Scene_root::on_mesh_material_changed` enqueues a material update;
-`Draw_list_scene::try_material_slot_update()` re-classifies and takes the cheap
-path when every entry still belongs in the list it occupies. It compares the
-whole draw list key plus the entry's baked variant rather than the three fields
-D11 names - a mis-predicted "unchanged" key is a wrong pipeline, and
-re-classifying costs what comparing those three fields would.
+  while a heap had one consumer. It binds with the encoder's layout now.
 
 **Confidence, by part.** The membership analysis (section 1 below, and D1, D1a,
 D1d in the plan) has seven independent review rounds behind it, and the seventh
@@ -105,27 +72,24 @@ eighteen internal inconsistencies in the plan and left the design unchanged.
 Citations neither pass touched are still unverified - if one looks wrong, check
 it.
 
-**Open questions, roughly in order of risk:**
+**Open questions that outlived the implementation:**
 
-1. **The two-set split (D0) is unreviewed.** It replaced a single per-root set
-   after the review rounds above. The specific things to check are that every
-   invalidation reaches both sets (V4.5a) and the footprint doubling on main
-   roots (phase 3 sizing, V5).
-2. ~~**D10's content hash is the top *correctness* risk.**~~ **Settled in
-   phase 3, by construction rather than by cross-check.** The hash and the
-   record writer both read `Material_record_inputs` and nothing else
-   (`material_buffer.hpp`), built by one `gather_material_record_inputs()`, so
-   a field the writer reads is a field the hash covers. Both sets get it: the
-   hash pass is in `Material_set::update()`, which every set runs.
-3. **Phase 4 is one large commit.** Check whether the R8a amendment and the
-   `Primitive_buffer` signature change can be split out ahead of it.
-4. **Amending R8a** in `doc/draw_list_renderer_requirements.md` is a phase 4
-   item (D5). Confirm the wording covers only materials + heap and leaves the
-   camera / light / joint clauses standing.
-5. **Two follow-ups the `Scene_pass_resources` extraction unblocked**, neither
-   of which the plan depends on: stop `Shadow_renderer` duplicating the same
+1. **The two-set split (D0) was never independently reviewed.** It replaced a
+   single per-root set after the review rounds above. Both specific worries
+   have since been checked in practice: every invalidation reaches both sets
+   (measured - one direct `Material_data` edit dirties both, exactly once
+   each), and the footprint doubling is two copy buffers and two heaps per main
+   root, with the heaps now always full-width (see the D2a correction above).
+2. **Two follow-ups the `Scene_pass_resources` extraction unblocked**, neither
+   of which this plan depended on: stop `Shadow_renderer` duplicating the same
    six buffers, and stop `Id_renderer` borrowing a joint buffer through
    `Forward_renderer::get_joint_buffer()`.
+
+Settled, and recorded here so they are not re-opened: D10's content hash (now
+generated from one list with the writer, above); the R8a amendment (done, in
+`doc/draw_list_renderer_requirements.md`); whether phase 4 could be split (it
+was - the prerequisite split, the switch, and the D11 cheap path are three
+commits).
 
 **Phase 7, what has been run** (2026-09-01, Windows):
 
@@ -169,7 +133,7 @@ it.
 as well). For V3: launch `build_tests/src/editor/Debug/editor.exe`, wait on
 `127.0.0.1:3743/health`, then run `mcp_server_tests.exe` with
 `ERHE_MCP_TEST_TIMEOUT_S=1` (`scripts/run_mcp_tests.ps1` does not forward
-`--gtest_filter`). Baseline: 41 pass, 5 pre-existing skips, V3 red.
+`--gtest_filter`). Baseline: 42 pass, 5 pre-existing skips, V3 green.
 `erhe_scene_renderer_tests` 20 pass (V1, deviceless),
 `erhe_scene_renderer_gpu_tests` 10 pass (V2, device-backed; built only where
 `erhe::gpu_test_support` exists), `erhe_graphics_gpu_tests` 75 pass + 1
@@ -210,6 +174,12 @@ again:**
   directly (`e["k"] = v;`) when writing a number into an MCP payload.
 
 ## 1. Motivation
+
+**This section describes the code as it stood BEFORE the plan was implemented**,
+and is kept in that tense deliberately: it is the root-cause analysis the design
+answers, and every mechanism it names has since been removed. Read it for why
+the design is shaped as it is, not for what the tree does now - the status
+section above owns that. Line citations are against the pre-fix tree.
 
 ### 1.1 The reported bug
 

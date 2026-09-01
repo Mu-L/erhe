@@ -1,9 +1,13 @@
 # Draw list material set (material buffer + texture heap owned by Material_set)
 
 Planning context - the reported bug and its root cause, the second motivation,
-what has already landed, and the review and citation state - lives in
-`doc/draw_list_material_set_context.md`. **Read it before resuming planning; the
-work itself is not started.** Section 1 here states the requirements and is the
+and the review and citation state - lives in
+`doc/draw_list_material_set_context.md`, **which also owns the status of this
+work**: what has landed, what has been verified and what has not. This document
+states the requirements, the design and the phase steps, and keeps them in the
+imperative even where they are done; it is not the place to look for progress.
+
+**All of it is implemented.** Section 1 here states the requirements and is the
 entry point; section 2 designs against them, and every later section refers back
 by label rather than restating. References to "section 1" that name the context
 doc mean that document's motivation section.
@@ -1188,7 +1192,7 @@ slot.
 One commit per phase: edit, build the primary tree, self-review the diff,
 commit. Test suites and the multi-backend sweep run once, at the end (phase 7).
 
-**Prerequisite commit - `Draw_list_renderer`.** The draw-list draw entry point
+**Prerequisite commit - `Draw_list_renderer`** (landed, `c497f339e`). The draw-list draw entry point
 becomes its own renderer before phase 1: `Draw_list_render_parameters` and the
 body of today's `Forward_renderer` draw-list entry point move to a new
 `Draw_list_renderer` in `erhe_scene_renderer`, its one caller
