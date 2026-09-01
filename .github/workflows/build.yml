@@ -129,6 +129,21 @@ jobs:
       - name: Build editor
         run: cmake --build "${{ matrix.build_dir }}" --target editor --config "${{ matrix.config }}" --parallel
 
+  # Grep-level rule (proposal D of doc/gl-worker-context-enforcement.md):
+  # task scheduling in src/editor and src/erhe must go through the erhe::task
+  # spawn wrappers, which assert that the calling thread holds no worker GL
+  # context. Without this the spawn-site guard decays from construction into
+  # documentation.
+  task-spawn-guard:
+    name: Task spawn guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check task scheduling goes through erhe::task
+        run: python3 scripts/check_task_spawns.py
+
   # Android / Meta Quest build. Kept separate from the matrix above because it
   # is Gradle-driven (gradlew -> Android Gradle Plugin -> erhe's top-level
   # CMake via externalNativeBuild on the NDK), which does not fit the
