@@ -258,6 +258,14 @@ public:
     // to a padded snorm16x4) - see doc/vertex-position-quantization.md.
     bool use_16_vec3_snorm_vertex_buffer{true};
 
+    // The device can source a vertex attribute from a 3-component 16-bit unorm
+    // buffer (format_16_vec3_unorm). Same Vulkan gap as the snorm sibling above:
+    // VK_FORMAT_R16G16B16_UNORM is not in the mandatory vertex-buffer format
+    // table. The optimized variant stores skinning weights in it (unorm16x3,
+    // implicit sum); a device without it keeps the content format's unorm8x4
+    // weights, which the shader reads through the passthrough encoding.
+    bool use_16_vec3_unorm_vertex_buffer{true};
+
     // Same format, but as acceleration structure build input. Vulkan's mandatory
     // AS vertex format set includes VK_FORMAT_R16G16_SNORM and
     // VK_FORMAT_R16G16B16A16_SNORM but not the 3-component one, so the Vulkan

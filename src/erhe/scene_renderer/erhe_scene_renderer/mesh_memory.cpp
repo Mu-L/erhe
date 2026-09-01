@@ -319,6 +319,14 @@ Mesh_memory::Mesh_memory(
     // pool, and every byte_offset / stride computation depends on it, so a stride
     // changed after an allocation would silently mismatch the pool.
     const erhe::graphics::Device_info& device_info = graphics_device.get_info();
+    // Same shape as the position-quantization note above: a declined weight
+    // encoding would otherwise be invisible.
+    if (!device_info.use_16_vec3_unorm_vertex_buffer) {
+        log_startup->warn(
+            "The device does not report unorm16x3 as a vertex buffer format: optimized-variant "
+            "skinning weights stay at the content format's unorm8x4 (passthrough encoding)."
+        );
+    }
     // Mesh_memory requires a stride that is a multiple of 4 on top of whatever the
     // backend asks for, for two reasons of its own:
     //
@@ -376,7 +384,7 @@ Mesh_memory::Mesh_memory(
     // format". Position quantization is the ONLY place vertex positions are
     // quantized - the base formats stay float3 so in-place GPU edits can express
     // any position.
-    const auto substituted_format = [this](
+    const auto substituted_format = [this, &device_info](
         const erhe::dataformat::Vertex_attribute& attribute
     ) -> std::optional<erhe::dataformat::Format>
     {
@@ -412,7 +420,16 @@ Mesh_memory::Mesh_memory(
         // 16 bits per weight instead of 8, and exact normalization - rather than
         // memory. The joint indices are permuted so the dropped influence is
         // always the last.
+        //
+        // Only on a device that can source a vertex attribute from unorm16x3;
+        // Vulkan does not guarantee VK_FORMAT_R16G16B16_UNORM as a vertex buffer
+        // format. Keeping the content format instead leaves the encoding at
+        // passthrough, which is what both the shader and the index permutation
+        // key off, so the fallback needs nothing else.
         if (attribute.usage_type == usage::joint_weights) {
+            if (!device_info.use_16_vec3_unorm_vertex_buffer) {
+                return {};
+            }
             return erhe::dataformat::Format::format_16_vec3_unorm;
         }
         return {};

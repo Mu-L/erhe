@@ -1473,6 +1473,11 @@ auto to_vk_vertex_format(const erhe::dataformat::Format format) -> VkFormat
         case F::format_16_vec4_float:   return VK_FORMAT_R16G16B16A16_SFLOAT;
         case F::format_16_scalar_unorm: return VK_FORMAT_R16_UNORM;
         case F::format_16_vec2_unorm:   return VK_FORMAT_R16G16_UNORM;
+        // Also not in Vulkan's mandatory vertex-buffer format table, and for the
+        // same reason as the 3-component snorm above; see
+        // Device_info::use_16_vec3_unorm_vertex_buffer. The optimized variant
+        // stores skinning weights in it (unorm16x3, implicit sum).
+        case F::format_16_vec3_unorm:   return VK_FORMAT_R16G16B16_UNORM;
         case F::format_16_vec4_unorm:   return VK_FORMAT_R16G16B16A16_UNORM;
         case F::format_16_scalar_snorm: return VK_FORMAT_R16_SNORM;
         case F::format_16_vec2_snorm:   return VK_FORMAT_R16G16_SNORM;

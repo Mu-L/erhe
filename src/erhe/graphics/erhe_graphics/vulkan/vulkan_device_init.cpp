@@ -2058,6 +2058,20 @@ Device_impl::Device_impl(
             m_info.use_16_vec4_snorm_acceleration_structure_vertex_buffer ? "supported" : "NOT supported"
         );
     }
+
+    // VK_FORMAT_R16G16B16_UNORM has the same gap, and the optimized variant
+    // stores skinning weights in it (unorm16x3 with an implicit fourth). A
+    // device without it keeps the content format's unorm8x4 weights.
+    {
+        VkFormatProperties format_properties{};
+        vkGetPhysicalDeviceFormatProperties(m_vulkan_physical_device, VK_FORMAT_R16G16B16_UNORM, &format_properties);
+        m_info.use_16_vec3_unorm_vertex_buffer =
+            (format_properties.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) == VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT;
+        log_startup->info(
+            "VK_FORMAT_R16G16B16_UNORM as a vertex buffer format: {}",
+            m_info.use_16_vec3_unorm_vertex_buffer ? "supported" : "NOT supported"
+        );
+    }
     m_info.use_clear_texture           = true;
     m_info.use_texture_view            = true;
     m_info.use_persistent_buffers      = true;
