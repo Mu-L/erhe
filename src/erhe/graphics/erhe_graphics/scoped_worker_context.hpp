@@ -1,8 +1,28 @@
 #pragma once
 
+#include <source_location>
+
 namespace erhe::graphics {
 
 class Device;
+
+// Backend-neutral queries for the calling thread's worker-context state,
+// callable from code that also builds for Vulkan / Metal / null (where they
+// are constant). They exist for the blocking-invariant enforcement in
+// doc/gl-worker-context-enforcement.md: the spawn guard and the taskflow
+// observer both run in cross-backend code and may not include the
+// OpenGL-only gl_context_index.hpp.
+//
+// True when the calling thread holds a worker GL share context slot.
+// Always false on the main thread and on non-OpenGL backends.
+[[nodiscard]] auto thread_holds_worker_context() -> bool;
+// The pool slot the calling thread holds: 1..pool size, or -1 when none.
+[[nodiscard]] auto thread_worker_context_slot() -> int;
+// Where the calling thread's outermost live Scoped_worker_context was
+// constructed; nullptr when the thread holds no slot. For diagnostics: the
+// enforcement observer fires on the victim thread, and this names the scope
+// that parked while holding.
+[[nodiscard]] auto thread_worker_context_acquire_site() -> const std::source_location*;
 
 // Grants the calling worker thread a GL share context: create and operate on
 // SHARED objects (buffers, textures, samplers) via DSA. Does NOT by itself
@@ -23,7 +43,7 @@ class Device;
 class Scoped_worker_context final
 {
 public:
-    explicit Scoped_worker_context(Device& device);
+    explicit Scoped_worker_context(Device& device, std::source_location location = std::source_location::current());
     ~Scoped_worker_context() noexcept;
     Scoped_worker_context(const Scoped_worker_context&) = delete;
     void operator=       (const Scoped_worker_context&) = delete;
