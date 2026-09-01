@@ -175,9 +175,13 @@ public:
     void invalidate();
 
     [[nodiscard]] auto has_gpu() const -> bool;
-    // How many copies update() has written. Observability for "a clean frame
-    // writes nothing".
-    [[nodiscard]] auto get_write_count() const -> std::size_t;
+    // How many copies update() has written, and how many record bytes those
+    // writes came to. Observability for the property persistence exists for:
+    // on a steady-state frame both stop increasing, where the previous design
+    // rewrote the whole buffer and reset the texture heap once per pass
+    // (R10, R11).
+    [[nodiscard]] auto get_write_count     () const -> std::size_t;
+    [[nodiscard]] auto get_written_byte_count() const -> std::size_t;
 
     // Lookups. Const, and none of them assigns a slot.
     [[nodiscard]] auto find          (const erhe::primitive::Material* material) const -> Material_slot_id;

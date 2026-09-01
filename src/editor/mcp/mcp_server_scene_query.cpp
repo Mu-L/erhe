@@ -296,7 +296,16 @@ auto Mcp_server::query_draw_lists(const json& args) -> std::string
         // refresh hook and the draw-time GPU-slot sync.
         {"transform_update_count",         draw_list_scene->get_transform_update_count()},
         {"refresh_count",                  draw_list_scene->get_refresh_count()},
-        {"slot_sync_count",                draw_list_scene->get_slot_sync_count()}
+        {"slot_sync_count",                draw_list_scene->get_slot_sync_count()},
+        // Material persistence (doc/draw_list_material_set_plan.md R10, R11):
+        // how many copies each of this root's two material sets has written,
+        // and how many record bytes. Sampling these N frames apart on a
+        // steady-state viewport is the measurement the persistence design
+        // exists for - both should be unchanged.
+        {"forward_material_write_count",    sr->get_material_set().get_write_count()},
+        {"forward_material_written_bytes",  sr->get_material_set().get_written_byte_count()},
+        {"draw_list_material_write_count",  draw_list_scene->get_material_set().get_write_count()},
+        {"draw_list_material_written_bytes",draw_list_scene->get_material_set().get_written_byte_count()}
     };
     if (verbose) {
         result["draw_lists"] = lists;

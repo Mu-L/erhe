@@ -55,6 +55,7 @@ public:
     std::vector<const erhe::primitive::Material*>     slot_materials;
     bool                                              force_dirty {true};
     std::size_t                                       write_count {0};
+    std::size_t                                       written_byte_count{0};
 };
 
 Material_set::Material_set() = default;
@@ -78,6 +79,11 @@ auto Material_set::has_gpu() const -> bool
 auto Material_set::get_write_count() const -> std::size_t
 {
     return m_gpu ? m_gpu->write_count : 0;
+}
+
+auto Material_set::get_written_byte_count() const -> std::size_t
+{
+    return m_gpu ? m_gpu->written_byte_count : 0;
 }
 
 void Material_set::invalidate()
@@ -139,6 +145,7 @@ void Material_set::update(erhe::graphics::Command_buffer& command_buffer)
     m_gpu->material_buffer.write_records(gpu_data, m_gpu->texture_heap, m_gpu->slot_materials);
     m_gpu->buffer.commit(byte_count);
     ++m_gpu->write_count;
+    m_gpu->written_byte_count += byte_count;
 }
 
 auto Material_set::bind(erhe::graphics::Render_command_encoder& encoder) -> bool
