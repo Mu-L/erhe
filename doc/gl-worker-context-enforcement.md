@@ -156,9 +156,17 @@ Two of these matter more than the rest:
 - **`src/erhe/raytrace/erhe_raytrace/bvh/bvh_scene.cpp:363` -
   `executor->silent_async(...)`**, using the editor's executor injected via
   `erhe::raytrace::set_executor` (`src/editor/editor.cpp:1393`). A spawn site
-  in a library *below* the editor. Its callers are main-thread today
-  (`scene_view.cpp:478`, `mcp_server_scene_query.cpp:961,1085`), so it violates
-  nothing - but it means `parse_gltf` is not the only sub-editor seam that
+  in a library *below* the editor. `Bvh_scene::commit()` has more callers than
+  the main-thread ones (`scene_view.cpp:478`,
+  `mcp_server_scene_query.cpp:961,1085`): `mesh_raytrace.cpp:39` calls it from
+  the `Raytrace_primitive` constructor, reached from
+  `Mesh::update_rt_primitives` (`mesh.cpp:66`) and so from
+  `async_raytrace_kickoff_operation.cpp:251,258` - on a worker. Those never
+  reach the `silent_async`, but **not** because of thread affinity:
+  `start_tlas_build` bails below `k_min_tlas_children = 4`
+  (`bvh_scene.hpp:88`) and a per-primitive scene attaches exactly one geometry.
+  Do not restate this as "its callers are main-thread"; that is the wrong
+  reason, and it means `parse_gltf` is not the only sub-editor seam that
   enforcement has to reach (see C).
 
 The three nested flows in `parse_gltf` hold no GL context, so they cannot
@@ -175,8 +183,10 @@ access), and `doc/gl-worker-thread-contexts.md` still lists that code as
 
 `gl_context_index.{cpp,hpp}` are compiled only inside the
 `if (ERHE_GRAPHICS_API_OPENGL)` block (`src/erhe/graphics/CMakeLists.txt:171-172`),
-and the only includer from outside `gl/` is `scoped_worker_context.cpp:6`,
-itself `#if`-guarded. Both A's
+and the only non-test includer from outside `gl/` is
+`scoped_worker_context.cpp:6`, itself `#if`-guarded
+(`src/erhe/graphics/test/test_worker_context_gl.cpp:25` also includes it, and
+is OpenGL-only). Both A's
 `gl_thread_is_worker_context()` and B's `get_gl_context_index()` are called
 from code that also builds for Vulkan / Metal / null. A backend-neutral
 accessor (on `Device`, or a shim that is constant-false off OpenGL) is a
@@ -271,24 +281,25 @@ outer task - exactly what B needs for the one case this document exists for.
 (`executor.hpp:2314-2352`), and `Subflow::join` reaches it via `_corun_graph`,
 so co-run on a parked thread also fires `on_entry`.
 
-**Coverage hole.** `_invoke`'s switch (`executor.hpp:1754-1821`) dispatches ten
-node kinds; four fire no observer at all - `Node::RUNTIME`,
-`Node::NONPREEMPTIVE_RUNTIME`, `Node::MODULE` and `Node::ADOPTED_MODULE` - and
-within the two async paths only variant case 0 is observed, cases 1 and 2
-(`void(Runtime&)`, `void(Runtime&, bool)`) routing to
-`_invoke_runtime_task_impl` with no prologue. So B misses such a task co-run
-onto a parked thread, and if one is the OUTER frame a nested observed task
-sees `t_task_depth == 0` and the guard silently misses. None of these forms
-exists in `src/` today, but it means B's un-bypassability is bounded by node
-kind: a future `emplace([](tf::Runtime&){...})` or `composed_of` would be an
-invisible hole. Preemption paths fire the prologue only on first entry, and the
+**Node-kind coverage is effectively complete.** `_invoke`'s switch
+(`executor.hpp:1752-1829`) dispatches ten node kinds. Eight fire the observer:
+the six above, plus `Node::RUNTIME` / `Node::NONPREEMPTIVE_RUNTIME` and the
+`void(Runtime&)` / `void(Runtime&, bool)` async variants, whose prologue and
+epilogue live in `taskflow/core/runtime.hpp:809/813, 849/853, 938/943` - NOT in
+`executor.hpp`, which is why grepping that one header understates the
+coverage. Only `Node::MODULE` and `Node::ADOPTED_MODULE` are unobserved
+(`_invoke_module_task_impl`, `executor.hpp:2065-2089`), and neither can be the
+outer frame B needs: that path schedules the subgraph and returns `true` to
+preempt, so the worker frame unwinds rather than parking in-frame, and it can
+never co-run a nested task onto itself. A future `emplace([](tf::Runtime&){…})`
+is therefore observed, and `composed_of` - the one unobserved kind - cannot
+park. Preemption paths fire the prologue only on first entry, and the
 exception handler runs before the epilogue, so a depth counter will not
 drift.
 
 The observer runs **on the executing worker**, so it can read the
 thread-local context index; and it is attached to the executor, so a call site
-that skips A's wrapper cannot bypass it - subject to the node-kind hole
-below.
+that skips A's wrapper cannot bypass it.
 
 The check: a worker does not begin task B while running task A unless A
 blocked. The intra-thread nesting paths all funnel through `_corun_until`,
@@ -299,6 +310,11 @@ The last two have no call sites in `src/` today. So *nested* `on_entry` is an
 in-band signal that the outer task parked:
 
 ```cpp
+// File scope and BEFORE the class: a static thread_local member would need an
+// out-of-line definition, and a namespace-scope declaration after the class
+// would not be found by unqualified lookup in the inline member bodies.
+thread_local int t_task_depth = 0;
+
 class Gl_context_task_guard : public tf::ObserverInterface
 {
 public:
@@ -315,10 +331,6 @@ public:
     }
     void on_exit(tf::WorkerView, tf::TaskView) override { --t_task_depth; }
 };
-
-// File scope, not a class member: a static thread_local member would need an
-// out-of-line definition.
-thread_local int t_task_depth = 0;
 ```
 
 - **Catches**: a context-holding task that blocked *and* got a task co-run
@@ -392,8 +404,9 @@ while every slot is held, log (or abort) with the holders: slot index, thread,
 and the breadcrumb of where each scope was acquired. This observes the
 **actual** condition rather than a proxy, including everything A and B miss -
 the `run().wait()` sites, condition-variable waits, and any future
-non-taskflow blocking - and converts the documented worst failure mode (a hang
-that looks idle) into a report that names the four holders.
+non-taskflow blocking - and converts the wedge into a report that names the four holders - which
+matters more given the signature above: the co-running threads look busy, so
+without E there is nothing pointing at the context pool at all.
 
 ### Lock ordering
 
