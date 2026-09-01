@@ -148,8 +148,12 @@ public:
     [[nodiscard]] auto first_texture_name() const -> const std::optional<std::string>& { return m_texture_name; }
     [[nodiscard]] auto first_texture_id  () const -> const std::optional<std::size_t>&  { return m_texture_id;   }
 
+    [[nodiscard]] auto initialize_attempted() const -> bool { return m_initialize_attempted; }
+
     void initialize()
     {
+        m_initialize_attempted = true;
+
         const std::string host       = env_or    ("ERHE_MCP_TEST_HOST",      "127.0.0.1");
         const int         port       = env_or_int("ERHE_MCP_TEST_PORT",      3743);
         const int         timeout_s  = env_or_int("ERHE_MCP_TEST_TIMEOUT_S", 30);
@@ -212,6 +216,7 @@ public:
 
 private:
     std::unique_ptr<Mcp_client> m_client;
+    bool                        m_initialize_attempted{false};
     bool                        m_ready{false};
     std::string                 m_scene_name;
     std::string                 m_material_name;
@@ -224,8 +229,11 @@ class Mcp_test : public ::testing::Test
 protected:
     void SetUp() override
     {
+        // One initialization attempt for the whole run: when the editor is not
+        // there, the first test pays the /health wait and every later test
+        // skips immediately instead of repeating the wait in its own SetUp.
         Mcp_env& env = Mcp_env::get();
-        if (!env.ready()) {
+        if (!env.ready() && !env.initialize_attempted()) {
             env.initialize();
         }
         if (!env.ready()) {
