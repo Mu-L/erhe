@@ -130,10 +130,41 @@ android {
     // single directory under build/ with their parent prefix preserved so
     // assets/res/... and assets/config/... line up with the C++ paths.
     def stagedAssets = layout.buildDirectory.dir('staged-assets')
+    // Only files TRACKED BY GIT are staged out of res/. res/editor/assets is a
+    // working directory: multi-GB glTF test scenes get dropped into it and are
+    // deliberately never committed. Staging it wholesale put all of them in the
+    // APK (~4 GB), and every one of them is under the migrate manifest below,
+    // so the first launch would then copy the lot into writable internal
+    // storage. Tracked content - the shaders, the default scenes, the small
+    // test assets - is everything the app needs to start; anything else belongs
+    // on the device via adb push, not in the package.
+    //
+    // config/ is NOT filtered: it is fully tracked, and a config file that is
+    // merely not committed yet must still ship or the editor starts degraded.
+    def erheRepoRoot = file('../..')
+    def trackedResPaths = providers.exec {
+        workingDir = erheRepoRoot
+        commandLine 'git', 'ls-files', '-z', '--', 'res'
+    }.standardOutput.asText.map { text ->
+        text.split('\0').findAll { !it.isEmpty() }
+            .collect { it.startsWith('res/') ? it.substring('res/'.length()) : it }
+            .toSet()
+    }
     def stageErheAssetsTask = tasks.register('stageErheAssets', Copy) {
         into stagedAssets
-        from(file('../../res'))    { into 'res' }
+        from(file('../../res')) {
+            into 'res'
+            def tracked = trackedResPaths.get()
+            eachFile { fileCopyDetails ->
+                if (!tracked.contains(fileCopyDetails.relativeSourcePath.pathString)) {
+                    fileCopyDetails.exclude()
+                }
+            }
+        }
         from(file('../../config')) { into 'config' }
+        // Directories emptied by the filter above would otherwise be staged as
+        // empty directories and packaged.
+        includeEmptyDirs = false
         // After staging, write a manifest of every file under the directories
         // that must live in writable internal storage. The Android first-launch
         // migrator reads this manifest from the APK assets (via SDL_IOFromFile)
