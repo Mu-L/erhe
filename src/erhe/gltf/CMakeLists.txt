@@ -42,6 +42,7 @@ target_link_libraries(${_target}
         fmt::fmt
         simdjson::simdjson
         Taskflow
+        erhe::task
         erhe::file
         erhe::profile
         erhe::geometry

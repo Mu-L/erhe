@@ -180,6 +180,7 @@
 #endif
 #include "erhe_primitive/primitive_log.hpp"
 #include "erhe_raytrace/raytrace_executor.hpp"
+#include "erhe_task/task.hpp"
 #include "erhe_raytrace/raytrace_log.hpp"
 #include "erhe_renderer/debug_renderer.hpp"
 #include "erhe_scene_renderer/content_wide_line_interface.hpp"
@@ -1389,8 +1390,14 @@ public:
         m_executor = std::make_unique<tf::Executor>(thread_count);
 
         // Scene level raytrace BVH builds run on the executor, so that they
-        // never land on the frame.
-        erhe::raytrace::set_executor(m_executor.get());
+        // never land on the frame. Injected as a spawn function routing
+        // through the guarded wrapper, so the library's spawn stays covered
+        // by the GL worker-context spawn guard (proposal A).
+        erhe::raytrace::set_task_spawner(
+            [executor = m_executor.get()](std::function<void()> work) {
+                erhe::task::spawn(*executor, std::move(work));
+            }
+        );
 
         // Declared outside the try so the loading screen survives past
         // the init catch block; the post-init phase (run_startup_script,
@@ -2839,7 +2846,7 @@ public:
         // Commits the drained workers left behind own scene roots / shapes;
         // drop them now, while mesh memory and scenes are still alive.
         m_scene_commit_queue.clear();
-        erhe::raytrace::set_executor(nullptr);
+        erhe::raytrace::set_task_spawner({});
         m_executor.reset();
 
         if (m_mcp_server) {

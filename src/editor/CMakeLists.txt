@@ -1025,6 +1025,7 @@ target_link_libraries(
         erhe::rendergraph
         erhe::scene
         erhe::scene_renderer
+        erhe::task
         erhe::texgen
         erhe::time
         erhe::ui

@@ -17,6 +17,7 @@
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
+#include "erhe_task/task.hpp"
 
 #include <fmt/format.h>
 #include <taskflow/taskflow.hpp>
@@ -296,7 +297,7 @@ void Lightmap_streamer::start_load(const int tile, const int slot)
         pending->ready.store(true, std::memory_order_release);
     };
     if (m_context.executor != nullptr) {
-        m_context.executor->silent_async(load);
+        erhe::task::spawn(*m_context.executor, load);
     } else {
         load();
     }

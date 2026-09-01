@@ -37,6 +37,7 @@
 #include "erhe_graphics/texture.hpp"
 #include "erhe_imgui/imgui_node_editor.h"
 #include "erhe_imgui/imgui_windows.hpp"
+#include "erhe_task/task.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
@@ -746,7 +747,7 @@ void Geometry_graph_window::launch_evaluation(const std::shared_ptr<Graph_mesh>&
         run->condition.notify_all();
     };
     if (context.graphics_device->supports_worker_contexts()) {
-        context.executor->silent_async(evaluate);
+        erhe::task::spawn(*context.executor, evaluate);
     } else {
         // No worker contexts (GL, headless / null window): evaluate on the
         // main thread, synchronously - the pre-async behavior for a

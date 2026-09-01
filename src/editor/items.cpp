@@ -13,6 +13,7 @@
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_verify/verify.hpp"
+#include "erhe_task/task.hpp"
 
 #include <taskflow/taskflow.hpp>
 
@@ -243,7 +244,7 @@ void async_for_nodes_with_mesh(
         return;
     }
 
-    tf::AsyncTask task = context.executor->silent_dependent_async(std::move(run_operation), item_tasks.begin(), item_tasks.end());
+    tf::AsyncTask task = erhe::task::spawn_dependent(*context.executor, std::move(run_operation), item_tasks.begin(), item_tasks.end());
 
     for (const std::shared_ptr<erhe::Item_base>& item : items) {
         s_item_tasks.insert_or_assign(item->get_id(), task);

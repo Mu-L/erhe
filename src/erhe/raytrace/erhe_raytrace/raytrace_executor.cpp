@@ -4,18 +4,18 @@ namespace erhe::raytrace {
 
 namespace {
 
-tf::Executor* g_executor{nullptr};
+Task_spawner g_task_spawner{};
 
 }
 
-void set_executor(tf::Executor* executor)
+void set_task_spawner(Task_spawner spawner)
 {
-    g_executor = executor;
+    g_task_spawner = std::move(spawner);
 }
 
-auto get_executor() -> tf::Executor*
+auto get_task_spawner() -> const Task_spawner&
 {
-    return g_executor;
+    return g_task_spawner;
 }
 
 } // namespace erhe::raytrace

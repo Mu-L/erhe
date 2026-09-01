@@ -31,6 +31,7 @@
 #include "app_context.hpp"
 #include "erhe_graphics/command_buffer.hpp"
 #include "erhe_verify/verify.hpp"
+#include "erhe_task/task.hpp"
 #include "erhe_geometry/shapes/capsule.hpp"
 #include "erhe_geometry/shapes/cone.hpp"
 #include "erhe_geometry/shapes/sphere.hpp"
@@ -736,7 +737,7 @@ void Scene_builder::make_brushes(
             make_json_brushes(app_settings, brush_build_info, &tf, library);
         }
 
-        tf::Future<void> future = executor.run(tf);
+        tf::Future<void> future = erhe::task::run(executor, tf);
         future.wait();
     } else {
         if (make_platonic_solid_brushes_) {

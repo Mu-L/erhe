@@ -85,7 +85,6 @@ target_link_libraries(${_target}
         erhe::time
         fmt::fmt
         glm::glm
-        Taskflow
 )
 
 if (DEFINED ERHE_RAYTRACE_TARGET)

@@ -16,7 +16,6 @@
 #include "erhe_profile/profile.hpp"
 #include "erhe_verify/verify.hpp"
 
-#include <taskflow/taskflow.hpp>
 
 #include <bvh/v2/default_builder.h>
 #include <bvh/v2/ray.h>
@@ -358,11 +357,11 @@ void Bvh_scene::start_tlas_build()
     m_build_aborted   = false;
     m_last_build_tick = m_tick;
 
-    tf::Executor* executor = get_executor();
-    if (executor != nullptr) {
-        executor->silent_async([task]() { build_tlas(*task); });
+    const Task_spawner& spawner = get_task_spawner();
+    if (spawner) {
+        spawner([task]() { build_tlas(*task); });
     } else {
-        // No executor injected: build synchronously, so that tests and
+        // No spawner injected: build synchronously, so that tests and
         // headless tools stay deterministic.
         build_tlas(*task);
         collect_tlas_build();

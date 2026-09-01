@@ -17,6 +17,7 @@
 #include "erhe_graphics/scoped_worker_context.hpp"
 #include "erhe_primitive/build_info.hpp"
 #include "erhe_scene/mesh.hpp"
+#include "erhe_task/task.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
 #include "erhe_verify/verify.hpp"
@@ -89,7 +90,8 @@ void Gltf_load_task::start_scan(Asset_load_tick_context& tick_context)
     auto scan_result = std::make_shared<Scan_result>();
     const std::filesystem::path path = m_handle->get_path();
     m_scan_result = scan_result;
-    tick_context.executor.silent_async(
+    erhe::task::spawn(
+        tick_context.executor,
         [scan_result, path]() {
             try {
                 const Gltf_scan_summary summary = editor::scan_gltf(path);
@@ -141,7 +143,8 @@ void Gltf_load_task::start_build(Asset_load_tick_context& tick_context)
     auto parse_result = m_parse_result;
     m_build_result    = build_result;
     erhe::graphics::Device* const graphics_device = &tick_context.graphics_device;
-    tick_context.executor.silent_async(
+    erhe::task::spawn(
+        tick_context.executor,
         [build_result, parse_result, build_info, skinned_build_info, graphics_device]() {
             try {
                 // On GL the GPU buffer allocations inside the build need a
@@ -199,7 +202,8 @@ void Gltf_load_task::start_parse(Asset_load_tick_context& tick_context)
     };
 
     m_parse_result = parse_result;
-    tick_context.executor.silent_async(
+    erhe::task::spawn(
+        tick_context.executor,
         [parse_result, parse_arguments, path]() mutable {
             const std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
             try {

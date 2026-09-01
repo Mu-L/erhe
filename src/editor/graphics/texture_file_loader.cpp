@@ -11,6 +11,7 @@
 #include "erhe_graphics/image_loader.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_imgui/imgui_renderer.hpp"
+#include "erhe_task/task.hpp"
 #include "erhe_profile/profile.hpp"
 
 #include <taskflow/taskflow.hpp>
@@ -150,7 +151,7 @@ auto Texture_file_loader::start_request(const std::filesystem::path& path) -> st
     };
 
     if (m_context.executor != nullptr) {
-        m_context.executor->silent_async(decode);
+        erhe::task::spawn(*m_context.executor, decode);
     } else {
         decode();
     }

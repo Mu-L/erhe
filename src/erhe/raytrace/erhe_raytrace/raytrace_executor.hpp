@@ -1,17 +1,23 @@
 #pragma once
 
-namespace tf {
-    class Executor;
-}
+#include <functional>
 
 namespace erhe::raytrace {
 
-// Executor used for background raytrace work, most notably scene level BVH
+// Spawner used for background raytrace work, most notably scene level BVH
 // builds. The application injects one at startup. When none is set, that work
 // is done synchronously by the calling thread, which keeps tests and headless
 // tools deterministic.
-void set_executor(tf::Executor* executor);
+//
+// A spawn FUNCTION rather than a tf::Executor: the application's spawner
+// routes through its guarded spawn wrapper (proposal A of
+// doc/gl-worker-context-enforcement.md), so this library's spawn is covered
+// by the GL worker-context guard without a graphics dependency here, and no
+// raw executor exists below the application to bypass it.
+using Task_spawner = std::function<void(std::function<void()>)>;
 
-[[nodiscard]] auto get_executor() -> tf::Executor*;
+void set_task_spawner(Task_spawner spawner);
+
+[[nodiscard]] auto get_task_spawner() -> const Task_spawner&;
 
 } // namespace erhe::raytrace

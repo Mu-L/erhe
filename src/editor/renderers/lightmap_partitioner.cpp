@@ -17,6 +17,7 @@
 #include "erhe_primitive/material.hpp"
 #include "erhe_primitive/primitive.hpp"
 #include "erhe_profile/profile.hpp"
+#include "erhe_task/task.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
@@ -273,7 +274,8 @@ public:
         task.results.resize(pieces.size());
         if (subflow != nullptr) {
             for (std::size_t i = 0; i < pieces.size(); ++i) {
-                subflow->emplace(
+                erhe::task::emplace(
+                    *subflow,
                     [graphics_device, &params, &build_info, &tile_texels_per_meter, report, &task, &cancel_requested, &pieces, i]() {
                         if (!cancel_requested.load(std::memory_order_relaxed)) {
                             process_piece(graphics_device, params, build_info, tile_texels_per_meter, report, task, pieces[i], task.results[i]);
@@ -558,7 +560,7 @@ auto Lightmap_partitioner::request_prepare(
             }
         );
     }
-    raw_job->future = m_context.executor->run(raw_job->taskflow);
+    raw_job->future = erhe::task::run(*m_context.executor, raw_job->taskflow);
     log_render->info("Lightmap_partitioner: prepare launched ({} regions)", raw_job->tasks.size());
     return true;
 }

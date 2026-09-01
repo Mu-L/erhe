@@ -13,6 +13,7 @@
 #include "erhe_graphics/device.hpp"
 #include "erhe_graphics/image_loader.hpp"
 #include "erhe_graphics/sampler.hpp"
+#include "erhe_task/task.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_log/log_glm.hpp"
 #include "erhe_math/math_util.hpp"
@@ -1106,7 +1107,7 @@ public:
                     }
                 );
             }
-            auto future = m_arguments.executor.run(taskflow);
+            tf::Future<void> future = erhe::task::run(m_arguments.executor, taskflow);
             future.wait();
         } else {
             for (std::size_t i = 0; i < mesh_count; ++i) {
@@ -1162,7 +1163,7 @@ public:
             for (std::size_t i = 0, end = m_asset->animations.size(); i < end; ++i) {
                 taskflow.emplace([this, i]() { parse_animation(i); });
             }
-            m_arguments.executor.run(taskflow).wait();
+            erhe::task::run(m_arguments.executor, taskflow).wait();
         } else {
             for (std::size_t i = 0, end = m_asset->animations.size(); i < end; ++i) {
                 parse_animation(i);
@@ -1568,7 +1569,7 @@ private:
                     }
                 );
             }
-            m_arguments.executor.run(taskflow).wait();
+            erhe::task::run(m_arguments.executor, taskflow).wait();
         } else {
             for (std::size_t i = 0; i < image_count; ++i) {
                 if (image_used[i] == 0) {

@@ -30,6 +30,7 @@
 #include "erhe_primitive/build_info.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_profile/profile.hpp"
+#include "erhe_task/task.hpp"
 
 #include <fmt/format.h>
 #include <imgui/imgui.h>
@@ -347,7 +348,8 @@ void ensure_scanned(App_context& context, Asset_file_gltf& gltf)
     auto request = std::make_shared<Gltf_scan_request>();
     gltf.scan_request = request;
     const std::filesystem::path path = *source_path;
-    context.executor->silent_async(
+    erhe::task::spawn(
+        *context.executor,
         [request, path]() {
             Gltf_scan_summary summary = scan_gltf(path);
             request->contents        = std::move(summary.contents);
