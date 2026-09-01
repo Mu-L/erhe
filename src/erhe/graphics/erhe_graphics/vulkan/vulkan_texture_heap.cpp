@@ -261,7 +261,18 @@ void Texture_heap_impl::acquire_descriptor_set()
     // current frame cannot be completed while it is still being recorded,
     // which is exactly the invariant that keeps every recorded pass bound
     // to an immutable descriptor snapshot.
+    //
+    // Set_entry::frame is stamped on every bind, not only on acquisition
+    // (doc/draw_list_material_set_plan.md D2b), because a persistent heap
+    // keeps binding one set for as long as its contents stand - which may be
+    // hundreds of frames after it was acquired. The current set is skipped
+    // outright: it is the one this heap is still handing to passes, and its
+    // acquisition frame says nothing about when it was last read.
     for (Set_entry& entry : m_set_entries) {
+        const std::size_t entry_index = static_cast<std::size_t>(&entry - m_set_entries.data());
+        if (entry_index == m_current_set_index) {
+            continue;
+        }
         if (m_device_impl.is_frame_completed(entry.frame)) {
             // Restore previously written slots to the fallback so the
             // recycled set never carries stale (potentially destroyed)
@@ -269,7 +280,7 @@ void Texture_heap_impl::acquire_descriptor_set()
             write_fallback_slots(entry.set, entry.written_count);
             entry.written_count = 0;
             entry.frame         = current_frame;
-            m_current_set_index = static_cast<std::size_t>(&entry - m_set_entries.data());
+            m_current_set_index = entry_index;
             return;
         }
     }
@@ -414,7 +425,10 @@ auto Texture_heap_impl::bind_descriptor_set(Command_buffer& command_buffer_wrapp
     if (m_current_set_index == s_invalid_set_index) {
         return 0;
     }
-    const Set_entry& current_entry = m_set_entries[m_current_set_index];
+    Set_entry& current_entry = m_set_entries[m_current_set_index];
+    // Stamped on USE (D2b): this frame is about to read the set, whatever
+    // frame it was acquired on.
+    current_entry.frame = m_device_impl.get_frame_index();
 
     const VkCommandBuffer command_buffer = command_buffer_wrapper.get_impl().get_vulkan_command_buffer();
     if (command_buffer == VK_NULL_HANDLE) {
