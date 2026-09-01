@@ -220,10 +220,9 @@ public:
     float                                                 brdf_phi         {0.0f};
     float                                                 brdf_incident_phi{0.0f};
     // Pre-resolved slot of the BRDF slice material in the set that pass binds.
-    // A slot, not a Material: once the raster path stops calling the legacy
-    // Material_buffer::update() nothing writes Material::material_buffer_index
-    // any more, and resolving here would read an index from another path's
-    // slot space (D5).
+    // A slot, not a Material: a material has no slot of its own - only a slot
+    // per Material_set it belongs to - so it has to be resolved against the
+    // set the pass will bind, which only the caller knows (D5).
     uint32_t                                              brdf_material_slot{0};
 };
 

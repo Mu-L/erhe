@@ -133,13 +133,7 @@ auto gather_material_record_inputs(
 }
 
 Material_buffer::Material_buffer(erhe::graphics::Device& graphics_device, Material_interface& material_interface)
-    : Ring_buffer_client{
-        graphics_device,
-        material_interface.material_block.get_binding_target(),
-        "Material_buffer",
-        material_interface.material_block.get_binding_point()
-    }
-    , m_graphics_device {graphics_device}
+    : m_graphics_device {graphics_device}
     , m_material_interface{material_interface}
     , m_fallback_sampler{
         graphics_device,
@@ -255,45 +249,6 @@ void Material_buffer::write_records(
         }
         write_offset += entry_size;
     }
-}
-
-auto Material_buffer::update(
-    erhe::graphics::Texture_heap&                                      texture_heap,
-    const std::span<const std::shared_ptr<erhe::primitive::Material>>& materials
-) -> erhe::graphics::Ring_buffer_range
-{
-    ERHE_PROFILE_FUNCTION();
-
-    if (materials.empty()) {
-        return {};
-    }
-
-    const std::size_t entry_size     = get_record_byte_count();
-    const std::size_t max_byte_count = materials.size() * entry_size;
-
-    // See note in joint_buffer.cpp: clamp acquire to the block's reported
-    // size so MoltenVK's Metal argument validation passes when the ring's
-    // tail fragment is smaller than the MSL struct footprint.
-    const std::size_t acquire_byte_count = std::max(max_byte_count, m_material_interface.material_block.get_size_bytes());
-
-    erhe::graphics::Ring_buffer_range buffer_range = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, acquire_byte_count);
-    std::span<std::byte>              gpu_data     = buffer_range.get_span();
-    std::size_t                       write_offset = 0;
-
-    uint32_t material_index = 0;
-    for (const std::shared_ptr<erhe::primitive::Material>& material : materials) {
-        ERHE_VERIFY(material);
-        std::memset(gpu_data.data() + write_offset, 0, entry_size);
-        const Material_record_inputs inputs = gather_material_record_inputs(*material, m_fallback_sampler);
-        material->material_buffer_index = material_index;
-        write_record(gpu_data, write_offset, inputs, texture_heap);
-        write_offset += entry_size;
-        ++material_index;
-    }
-    buffer_range.bytes_written(write_offset);
-    buffer_range.close();
-
-    return buffer_range;
 }
 
 } // namespace erhe::scene_renderer

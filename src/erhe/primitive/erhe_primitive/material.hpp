@@ -116,8 +116,11 @@ public:
     static constexpr std::string_view static_type_name{"Material"};
     [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return erhe::Item_type::material; }
 
-    uint32_t                material_buffer_index{0}; // updated by Material_buffer::update()
-    std::optional<uint32_t> preview_slot;
+    // No GPU slot here. A material's slot is a property of the Material_set
+    // that issued it (doc/draw_list_material_set_plan.md D0), not of the
+    // material: the same Material is normally at a different slot in every set
+    // it belongs to, and a single mutable field here is what made "slot 7"
+    // mean different materials in different passes.
     Material_data           data;
 };
 

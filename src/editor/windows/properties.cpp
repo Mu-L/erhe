@@ -767,7 +767,22 @@ void Properties::mesh_properties(erhe::scene::Mesh& mesh)
         });
         if (m_context.developer_mode) {
             if (mesh_primitive.material) {
-                add_entry("Material Buffer Index", [&](){ ImGui::Text("%u", mesh_primitive.material->material_buffer_index); });
+                // The slot in this mesh's scene root's FORWARD set - the one
+                // the bucket path binds. A mesh in a root that also has a draw
+                // list holds a different slot in that root's draw-list set;
+                // get_draw_lists over MCP reports that one.
+                const std::optional<uint32_t> slot =
+                    scene_root->get_material_set().get_slot(mesh_primitive.material.get());
+                add_entry(
+                    "Material Slot (forward set)",
+                    [slot](){
+                        if (slot.has_value()) {
+                            ImGui::Text("%u", slot.value());
+                        } else {
+                            ImGui::TextUnformatted("-");
+                        }
+                    }
+                );
             }
         }
 

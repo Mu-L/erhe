@@ -134,20 +134,21 @@ public:
     std::size_t                     max_material_count;
 };
 
-class Material_buffer : public erhe::graphics::Ring_buffer_client
+// Writes material records. Owned by a Material_set, which owns the storage it
+// writes into and the texture heap the handles come from; it is not a
+// Ring_buffer_client, because the records persist across frames and are
+// rewritten only when their inputs change.
+class Material_buffer
 {
 public:
     Material_buffer(erhe::graphics::Device& graphics_device, Material_interface& material_interface);
 
-    auto update(erhe::graphics::Texture_heap& texture_heap, const std::span<const std::shared_ptr<erhe::primitive::Material>>& materials) -> erhe::graphics::Ring_buffer_range;
-
-    // Slot-table-driven record writer (doc/draw_list_material_set_plan.md D2),
-    // alongside the ring-based update() above until phase 6 removes that one.
+    // Slot-table-driven record writer (doc/draw_list_material_set_plan.md D2).
     // Writes one record per entry of slot_materials, in slot order, into
-    // storage the caller owns; a null entry is a hole and is zero-filled.
-    // Unlike update() it assigns no slot and writes nothing on the Material -
-    // the slot IS the index into slot_materials, issued by the Material_set
-    // that owns this buffer.
+    // storage the caller owns; a null entry is a hole and is zero-filled. It
+    // assigns no slot and writes nothing on the Material - the slot IS the
+    // index into slot_materials, issued by the Material_set that owns this
+    // buffer.
     void write_records(
         std::span<std::byte>                              gpu_data,
         erhe::graphics::Texture_heap&                     texture_heap,

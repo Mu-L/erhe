@@ -143,15 +143,6 @@ public:
 
     using Mesh_layer_collection = std::vector<const erhe::scene::Mesh_layer*>;
 
-    auto update(
-        const std::span<const std::shared_ptr<erhe::scene::Mesh>>& meshes,
-        const erhe::Item_filter&                                   filter,
-        erhe::primitive::Primitive_mode                            primitive_mode,
-        const Primitive_interface_settings&                        settings,
-        std::size_t&                                               out_primitive_count,
-        bool                                                       use_id_ranges = false
-    ) -> erhe::graphics::Ring_buffer_range;
-
     // material_source is the set this pass binds - the owning Scene_root's
     // FORWARD set for the bucket path (doc/draw_list_material_set_plan.md D5),
     // so a record's material_index and the buffer bound when it is drawn agree.

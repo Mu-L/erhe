@@ -852,12 +852,14 @@ auto Mcp_server::action_create_material(const json& args) -> std::string
 //   primitive's material (R4), so every notification the editor raises for a
 //   drag-drop is raised here too;
 // - it renders the material preview once, exactly as an open Properties
-//   window would. That is what reproduces the reported bug deterministically:
-//   the preview's Material_buffer::update() rewrites the shared
-//   Material::material_buffer_index to its own one-material list, and the
-//   draw-list flush later in the same frame writes cached records from it.
-//   Without this the regression test would depend on which windows happen to
-//   be open.
+//   window would. That is what reproduced the reported bug deterministically
+//   while the bug existed: the preview's own material buffer update rewrote
+//   the single mutable slot on the shared Material, and the draw-list flush
+//   later in the same frame wrote cached records from it. Slots are per
+//   Material_set now, so the preview cannot reach another root's records at
+//   all - the step stays because the regression test must keep exercising the
+//   path it was written against, rather than depending on which windows
+//   happen to be open.
 //
 // Not undoable, deliberately: material assignment pushes no Operation today
 // (doc/draw_list_material_set_plan.md, section 1, out of scope), and adding

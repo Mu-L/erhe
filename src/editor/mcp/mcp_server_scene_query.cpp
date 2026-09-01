@@ -270,10 +270,6 @@ auto Mcp_server::query_draw_lists(const json& args) -> std::string
                     } else {
                         e["material_set_slot"] = nullptr;
                     }
-                    // The shared mutable field the raster path used to write
-                    // (phase 4 stopped writing it from this path; phase 6
-                    // removes it).
-                    e["material_buffer_index"] = material->material_buffer_index;
                 }
             }
             entries.push_back(std::move(e));

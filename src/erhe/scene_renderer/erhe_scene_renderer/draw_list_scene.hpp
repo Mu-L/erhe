@@ -232,10 +232,10 @@ public:
     // The material GPU slot one entry's CACHED record was written with
     // (doc/draw_list_material_set_plan.md, phase 1). This is what a draw
     // resolves the material through, and it is not derivable from the mesh:
-    // a record written from a clobbered Material::material_buffer_index
-    // keeps naming the wrong slot while the Mesh_primitive still names the
-    // right material. The regression test for that bug has to compare
-    // records, so it needs to read them.
+    // a stale record keeps naming a slot while the Mesh_primitive already
+    // names a different material. The regression test for that class of bug
+    // has to compare the record against this scene's Material_set, so it
+    // needs to read it.
     [[nodiscard]] auto get_entry_material_index(const Draw_list_entry_location& location) const -> uint32_t;
 
     // Diagnostics: how many times the color environment changed (each change

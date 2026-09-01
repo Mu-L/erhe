@@ -1523,7 +1523,6 @@ class Record_slot
 public:
     bool          found                {false};
     std::uint32_t material_index       {0};  // the cached record's slot
-    std::uint32_t material_buffer_index{0};  // the legacy shared field (unwritten by the raster path since phase 4)
     // The material's slot in the scene's DRAW-LIST material set - the slot
     // space these cached records name. 0xffffffff when it has none.
     std::uint32_t material_set_slot     {0xffffffffu};
@@ -1551,7 +1550,6 @@ public:
     const json& entry = r.payload["entries"][0];
     out.found                 = true;
     out.material_index        = entry.value("material_index",        std::uint32_t{0});
-    out.material_buffer_index = entry.value("material_buffer_index", std::uint32_t{0});
     out.material_set_slot     = entry.contains("material_set_slot") && !entry["material_set_slot"].is_null()
         ? entry["material_set_slot"].get<std::uint32_t>()
         : std::uint32_t{0xffffffffu};

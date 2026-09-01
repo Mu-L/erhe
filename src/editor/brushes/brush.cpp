@@ -344,10 +344,9 @@ auto Brush::make_instance(const Instance_create_info& instance_create_info) -> s
     const std::string_view name = this->get_name();
 
     log_scene->trace(
-        "creating {} with material {} (material buffer index {})",
+        "creating {} with material {}",
         name,
-        instance_create_info.material->get_name(),
-        instance_create_info.material->material_buffer_index
+        instance_create_info.material->get_name()
     );
 
     auto node = std::make_shared<erhe::scene::Node>(name);
