@@ -555,6 +555,8 @@ erhe_target_sources_grouped(
     texture_graph/nodes/texture_node_descriptors.hpp
     texture_graph/nodes/texture_output_node.cpp
     texture_graph/nodes/texture_output_node.hpp
+    task_guard.cpp
+    task_guard.hpp
     time.cpp
     time.hpp
     tools/bone_visualization.cpp

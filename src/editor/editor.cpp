@@ -39,6 +39,7 @@
 #include "content_library/material_library.hpp"
 #include "init_status_display.hpp"
 #include "input_state.hpp"
+#include "task_guard.hpp"
 #include "time.hpp"
 
 #include "animation/animation_player.hpp"
@@ -1388,6 +1389,11 @@ public:
             : std::max<std::size_t>(std::thread::hardware_concurrency(), 1);
 
         m_executor = std::make_unique<tf::Executor>(thread_count);
+
+        // Debug-only abort when a context-holding task parks and gets a
+        // task co-run onto it - proposal B, catches what the spawn guard
+        // cannot see (see task_guard.hpp).
+        attach_gl_context_task_guard(*m_executor.get());
 
         // Scene level raytrace BVH builds run on the executor, so that they
         // never land on the frame. Injected as a spawn function routing
