@@ -157,6 +157,12 @@ public:
     // Unregister + register from the stored create info (R12). Returns the
     // new id (the object gets a new generation, possibly a new index).
     auto reregister_object(Draw_list_object_id id) -> Draw_list_object_id;
+    // Material reassignment (R4, doc/draw_list_material_set_plan.md D11).
+    // Enqueued by Scene_root::on_mesh_material_changed. At flush time it takes
+    // the cheap path when the object's entries still classify into exactly the
+    // lists they are already in - rewriting only their slot fields - and falls
+    // back to a full re-register when they do not.
+    void enqueue_material_update(const std::shared_ptr<erhe::scene::Mesh>& mesh);
     // Mirror the mesh Item_flags word into every entry of the object (R12a).
     void set_object_flags (Draw_list_object_id id, uint64_t item_flag_bits);
     void set_object_flags (const erhe::scene::Mesh* mesh, uint64_t item_flag_bits);
@@ -247,7 +253,7 @@ private:
     class Pending_op
     {
     public:
-        enum class Kind : uint8_t { rebuild_all, register_, unregister, reregister, set_flags, transform, refresh };
+        enum class Kind : uint8_t { rebuild_all, register_, unregister, reregister, material_update, set_flags, transform, refresh };
         Kind                               kind      {Kind::register_};
         std::shared_ptr<erhe::scene::Mesh> mesh      {};
         Draw_mobility                      mobility  {Draw_mobility::dynamic};
@@ -298,6 +304,17 @@ private:
     // and never loses its slot in between.
     void sync_object_materials   (uint32_t object_index);
     void release_object_materials(uint32_t object_index);
+    // True when every entry of the object still classifies into the draw list
+    // it already occupies, in which case the object's materials are re-synced
+    // and only the slot fields of its existing records are rewritten. False
+    // leaves the object untouched for the caller to re-register.
+    //
+    // It compares the WHOLE key, not the three fields a material can move
+    // (blending, double_sided, primitive_key): a mis-predicted "unchanged" key
+    // leaves an entry in the wrong draw list, which is a wrong pipeline rather
+    // than a wrong slot, and recomputing the classification is what it would
+    // cost to compare those three fields anyway.
+    [[nodiscard]] auto try_material_slot_update(uint32_t object_index) -> bool;
     void check_material_changes  ();
     void resolve_color_list  (Draw_list& draw_list);                    // all enumerated view configs
     auto resolve_color_stages(Draw_list& draw_list, uint16_t multiview_count) -> const erhe::graphics::Reloadable_shader_stages*;
@@ -341,6 +358,8 @@ private:
     std::size_t                                                      m_transform_update_count{0};
     std::size_t                                                      m_refresh_count{0};
     std::size_t                                                      m_slot_sync_count{0};
+    // Material reassignments that took the cheap path (D11).
+    std::size_t                                                      m_material_slot_update_count{0};
 
     // Shader-variant identity of each material any registered object uses.
     // NOT the material set's concern: a change here re-registers objects

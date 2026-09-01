@@ -1494,7 +1494,13 @@ void Scene_root::on_mesh_material_changed(const std::shared_ptr<erhe::scene::Mes
 {
     enqueue_mesh_materials(mesh);
     if (m_draw_list_scene) {
-        m_draw_list_scene->enqueue_reregister(mesh);
+        // A material swap that leaves the mesh's draw list membership alone -
+        // the common case, and the one the material preview takes several
+        // times per frame - only needs the slot fields of the existing records
+        // rewritten. enqueue_material_update() decides that at flush time by
+        // re-classifying, and falls back to a full re-register when the
+        // entries would move.
+        m_draw_list_scene->enqueue_material_update(mesh);
     }
 }
 

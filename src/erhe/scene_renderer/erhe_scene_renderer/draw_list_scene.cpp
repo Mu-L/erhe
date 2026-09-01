@@ -877,6 +877,70 @@ auto Draw_list_scene::reregister_object(const Draw_list_object_id id) -> Draw_li
     return register_object(create_info);
 }
 
+auto Draw_list_scene::try_material_slot_update(const uint32_t object_index) -> bool
+{
+    ERHE_PROFILE_FUNCTION();
+
+    Draw_list_object&        object = m_objects[object_index];
+    const erhe::scene::Mesh* mesh   = object.info.mesh.get();
+    if ((mesh == nullptr) || (mesh->get_node() == nullptr)) {
+        return false;
+    }
+
+    // Same enumeration order as add_entries(), so the n-th acceptance
+    // corresponds to the n-th entry location.
+    constexpr erhe::primitive::Primitive_mode primitive_mode = erhe::primitive::Primitive_mode::polygon_fill;
+    constexpr Draw_purpose purposes[] = { Draw_purpose::color, Draw_purpose::shadow };
+
+    const std::vector<erhe::scene::Mesh_primitive>& primitives = mesh->get_primitives();
+    std::size_t location_index = 0;
+    for (std::size_t i = 0, count = primitives.size(); i < count; ++i) {
+        for (const Draw_purpose purpose : purposes) {
+            const Primitive_classification classification = classify_primitive(
+                m_mesh_memory, *mesh, primitives[i], primitive_mode, purpose, m_exclude_unlit_from_shadows
+            );
+            if (!classification.accepted) {
+                continue;
+            }
+            if (location_index >= object.locations.size()) {
+                return false; // more entries than the object has: re-register
+            }
+            const Draw_list_entry_location& location  = object.locations[location_index];
+            const Draw_list&                draw_list = m_draw_lists[location.draw_list_index];
+            const Draw_list_entry&          entry     = draw_list.entries[location.entry_index];
+
+            Draw_list_key key{};
+            key.purpose              = purpose;
+            key.mobility             = object.mobility;
+            key.blending             = classification.blending;
+            key.negative_determinant = object.negative_determinant;
+            key.double_sided         = classification.double_sided;
+            key.primitive_mode       = primitive_mode;
+            key.layer_id             = object.layer_id;
+            key.buffer_set           = classification.buffer_set;
+            key.primitive_key        = classification.key;
+            key.primitive_key_hash   = classification.key.get_hash();
+            if (!(key == draw_list.key)) {
+                return false;
+            }
+            // The variant decides base_vertex and the index range baked into
+            // the entry, so a change there is a re-register even under an
+            // equal key.
+            if ((entry.variant != classification.variant) || (entry.mesh_primitive_index != static_cast<uint16_t>(i))) {
+                return false;
+            }
+            ++location_index;
+        }
+    }
+    if (location_index != object.locations.size()) {
+        return false; // fewer entries than the object has: re-register
+    }
+
+    sync_object_materials(object_index);
+    write_object_gpu_slots(object_index);
+    return true;
+}
+
 void Draw_list_scene::set_object_flags(const Draw_list_object_id id, const uint64_t item_flag_bits)
 {
     assert_main_thread();
@@ -1073,6 +1137,12 @@ auto Draw_list_scene::get_pending_count() const -> std::size_t
     return m_pending.size();
 }
 
+void Draw_list_scene::enqueue_material_update(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    const std::lock_guard<std::mutex> lock{m_pending_mutex};
+    m_pending.push_back(Pending_op{.kind = Pending_op::Kind::material_update, .mesh = mesh});
+}
+
 void Draw_list_scene::enqueue_rebuild_all()
 {
     const std::lock_guard<std::mutex> lock{m_pending_mutex};
@@ -1119,6 +1189,21 @@ void Draw_list_scene::flush_pending()
             case Pending_op::Kind::reregister: {
                 const Draw_list_object_id id = find_object(op.mesh.get());
                 if (id.is_valid()) {
+                    reregister_object(id);
+                }
+                break;
+            }
+            case Pending_op::Kind::material_update: {
+                const Draw_list_object_id id = find_object(op.mesh.get());
+                if (!id.is_valid()) {
+                    break;
+                }
+                // The full re-register is always correct; the cheap path is
+                // taken only when the object's entries provably belong where
+                // they already are.
+                if (try_material_slot_update(id.index)) {
+                    ++m_material_slot_update_count;
+                } else {
                     reregister_object(id);
                 }
                 break;
