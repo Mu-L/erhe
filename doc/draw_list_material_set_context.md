@@ -72,12 +72,13 @@ buffers and library-order indices, which is self-consistent - each writes its
 TLAS instance records and reads them back within one pass - and they are the
 only remaining writers of `Material::material_buffer_index`.
 
-**Also outstanding: the R4 cheap path (D11)**, which the plan puts in phase 4
-as its own commit after the switch. The full re-register is already correct, so
-this is an optimization: when a material swap leaves `Draw_list_key::blending`,
-`::double_sided` and `::primitive_key` unchanged, `sync_object_materials` +
-`write_object_gpu_slots` is the cheaper update than a full unregister +
-re-register.
+**The R4 cheap path (D11) has landed too**, as its own commit after the switch.
+`Scene_root::on_mesh_material_changed` enqueues a material update;
+`Draw_list_scene::try_material_slot_update()` re-classifies and takes the cheap
+path when every entry still belongs in the list it occupies. It compares the
+whole draw list key plus the entry's baked variant rather than the three fields
+D11 names - a mis-predicted "unchanged" key is a wrong pipeline, and
+re-classifying costs what comparing those three fields would.
 
 **Confidence, by part.** The membership analysis (section 1 below, and D1, D1a,
 D1d in the plan) has seven independent review rounds behind it, and the seventh

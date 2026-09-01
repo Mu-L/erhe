@@ -1373,7 +1373,10 @@ empty set; `Material_buffer::write_records()` is the span writer the sets use.
   then).
 - The R4 cheap path (D11), **as its own commit after the phase 4 commit**:
   the full re-register is already correct, so the optimization lands on its own
-  and leaves the atomic switch standing by itself. **Still outstanding.**
+  and leaves the atomic switch standing by itself. **Landed**, comparing the
+  whole key plus the entry's baked variant rather than the three named fields:
+  the classification has to be recomputed either way, so the exact test costs
+  no more than the predicate and cannot mis-predict.
 
 V3 turns green here.
 
