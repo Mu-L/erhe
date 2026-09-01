@@ -5,6 +5,7 @@
 #include "assets/asset_manager.hpp"
 #include "content_library/content_library.hpp"
 #include "graphics/icon_set.hpp"
+#include "operations/mesh_material_assign_operation.hpp"
 #include "scene/scene_root.hpp"
 #include "scene/viewport_scene_view.hpp"
 #include "scene/viewport_scene_views.hpp"
@@ -181,7 +182,7 @@ void Material_paint_tool::from_drag_and_drop(const std::shared_ptr<erhe::primiti
     if (!mesh) {
         return;
     }
-    mesh->set_primitive_material(hover_entry->scene_mesh_primitive_index, material);
+    queue_mesh_material_assign(m_context, mesh, hover_entry->scene_mesh_primitive_index, material);
 }
 
 void Material_paint_tool::set_material(const std::shared_ptr<erhe::primitive::Material>& material)
@@ -228,7 +229,7 @@ auto Material_paint_tool::on_paint() -> bool
     if (!mesh) {
         return false;
     }
-    mesh->set_primitive_material(hover_entry->scene_mesh_primitive_index, material);
+    queue_mesh_material_assign(m_context, mesh, hover_entry->scene_mesh_primitive_index, material);
 
     return true;
 }

@@ -355,6 +355,8 @@ erhe_target_sources_grouped(
     operations/item_reposition_in_parent_operation.hpp
     operations/material_change_operation.cpp
     operations/material_change_operation.hpp
+    operations/mesh_material_assign_operation.cpp
+    operations/mesh_material_assign_operation.hpp
     operations/scene_builder_floor_resources_operation.cpp
     operations/scene_builder_floor_resources_operation.hpp
     operations/scene_builder_viewport_resources_operation.cpp

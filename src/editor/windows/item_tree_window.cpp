@@ -20,6 +20,7 @@
 #include "operations/item_insert_remove_operation.hpp"
 #include "operations/item_parent_change_operation.hpp"
 #include "operations/item_reposition_in_parent_operation.hpp"
+#include "operations/mesh_material_assign_operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "prefabs/prefab_instance.hpp"
 #include "prefabs/prefab_library.hpp"
@@ -803,9 +804,7 @@ auto Item_tree::drag_and_drop_target(const std::shared_ptr<erhe::Item_base>& ite
                     if (payload != nullptr) {
                         // TODO payload->Preview
                         if (payload->Delivery) {
-                            for (std::size_t i = 0, end = mesh_primitives.size(); i < end; ++i) {
-                                mesh->set_primitive_material(i, material);
-                            }
+                            queue_mesh_material_assign_to_all_primitives(m_context, mesh, material);
                         }
                     }
                     ImGui::EndDragDropTarget();
