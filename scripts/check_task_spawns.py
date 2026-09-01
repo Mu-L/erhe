@@ -14,8 +14,9 @@ tf::Taskflow::emplace is deliberately NOT flagged: graph construction
 schedules nothing; run() is the schedule point and is flagged.
 
 Scanned: src/editor and src/erhe (the trees that share a graphics device).
-Exempt: src/erhe/task (the wrapper itself). geogram_soak and the standalone
-apps are outside the scanned trees; they have no shared device.
+Exempt: src/erhe/task (the wrapper itself) and test directories (tests run
+their own executors with no shared graphics device). geogram_soak and the
+standalone apps are outside the scanned trees; they have no shared device.
 """
 import re
 import sys
@@ -41,6 +42,8 @@ def main() -> int:
                 continue
             relative = path.relative_to(repo_root).as_posix()
             if any(relative.startswith(exempt) for exempt in EXEMPT):
+                continue
+            if "/test/" in relative:
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
             in_block_comment = False

@@ -518,18 +518,24 @@ TEST(Bvh_scene, DisabledMemberStaysInTlasButIsNotHit)
     }
 }
 
-// Sets the raytrace executor for the duration of a test, so that a failing
-// assertion cannot leave a dangling executor behind for the tests after it.
+// Sets the raytrace task spawner for the duration of a test, so that a
+// failing assertion cannot leave a dangling spawner behind for the tests
+// after it. Plain silent_async: the tests hold no GL worker context, and the
+// guarded wrapper lives above this library.
 class Scoped_executor
 {
 public:
     explicit Scoped_executor(tf::Executor& executor)
     {
-        erhe::raytrace::set_executor(&executor);
+        erhe::raytrace::set_task_spawner(
+            [&executor](std::function<void()> work) {
+                executor.silent_async(std::move(work));
+            }
+        );
     }
     ~Scoped_executor()
     {
-        erhe::raytrace::set_executor(nullptr);
+        erhe::raytrace::set_task_spawner({});
     }
 };
 
