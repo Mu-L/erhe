@@ -22,6 +22,8 @@ namespace erhe::renderer {
 }
 namespace erhe::rendergraph { class Rendergraph; }
 namespace erhe::scene_renderer {
+    class Draw_list_renderer;
+    class Scene_pass_resources;
     class Content_wide_line_renderer;
     class Forward_renderer;
     class Mesh_memory;
@@ -210,6 +212,10 @@ public:
     erhe::renderer::Text_renderer*                    text_renderer             {nullptr};
     erhe::scene_renderer::Content_wide_line_renderer* content_wide_line_renderer{nullptr};
     erhe::scene_renderer::Forward_renderer*           forward_renderer          {nullptr};
+    // The draw-list colour entry point. Shares forward_renderer's
+    // Scene_pass_resources; Composition_pass picks between the two by the
+    // path it has already decided on.
+    erhe::scene_renderer::Draw_list_renderer*         draw_list_renderer        {nullptr};
     erhe::scene_renderer::Shadow_renderer*            shadow_renderer           {nullptr};
     erhe::scene_renderer::Texel_renderer*             texel_renderer            {nullptr};
     erhe::scene_renderer::Shader_variant_cache*       shader_variant_cache      {nullptr};

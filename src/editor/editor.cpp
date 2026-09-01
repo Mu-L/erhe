@@ -77,6 +77,7 @@
 #include "preview/brush_preview.hpp"
 #include "preview/material_preview.hpp"
 #include "renderers/id_renderer.hpp"
+#include "erhe_scene_renderer/draw_list_renderer.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
 #include "renderers/prewarm.hpp"
 #include "renderers/material_set_factory.hpp"
@@ -1747,13 +1748,26 @@ public:
                     std::filesystem::path{"res"} / std::filesystem::path{"fonts"} / std::filesystem::path{"SourceCodePro-Semibold.otf"},
                     glyph_codepoints
                 );
-                m_forward_renderer = std::make_unique<erhe::scene_renderer::Forward_renderer>(
+                // One Scene_pass_resources, referenced by both entry points:
+                // the bucket path and the draw-list path run the same pass
+                // prologue, and it holds no per-frame state of its own.
+                m_scene_pass_resources = std::make_unique<erhe::scene_renderer::Scene_pass_resources>(
                     *m_graphics_device.get(),
                     *m_app_context.current_command_buffer,
+                    *m_program_interface.get(),
+                    &glyph_outline_set
+                );
+                m_forward_renderer = std::make_unique<erhe::scene_renderer::Forward_renderer>(
+                    *m_graphics_device.get(),
                     *m_mesh_memory.get(),
                     *m_program_interface.get(),
                     *m_shader_variant_cache.get(),
-                    &glyph_outline_set
+                    *m_scene_pass_resources.get()
+                );
+                m_draw_list_renderer = std::make_unique<erhe::scene_renderer::Draw_list_renderer>(
+                    *m_graphics_device.get(),
+                    *m_program_interface.get(),
+                    *m_scene_pass_resources.get()
                 );
             }
             ERHE_TASK_FOOTER( .name("Forward_renderer") );
@@ -2873,6 +2887,7 @@ public:
         m_app_context.create                   = m_create                .get();
         m_app_context.app_message_bus          = m_app_message_bus       .get();
         m_app_context.app_rendering            = m_app_rendering         .get();
+        m_app_context.draw_list_renderer       = m_draw_list_renderer     .get();
         m_app_context.app_scenes               = m_app_scenes            .get();
         m_app_context.asset_manager            = m_asset_manager         .get();
         m_app_context.app_settings             = &m_app_settings;
@@ -3952,7 +3967,10 @@ public:
     std::unique_ptr<erhe::scene_renderer::Shader_variant_cache>       m_shader_variant_cache;
     std::unique_ptr<Material_set_factory                  >           m_material_set_factory;
     std::unique_ptr<Programs                              >           m_programs;
+    // Declared before the two renderers that hold a reference to it.
+    std::unique_ptr<erhe::scene_renderer::Scene_pass_resources>       m_scene_pass_resources;
     std::unique_ptr<erhe::scene_renderer::Forward_renderer>           m_forward_renderer;
+    std::unique_ptr<erhe::scene_renderer::Draw_list_renderer>         m_draw_list_renderer;
     std::unique_ptr<erhe::scene_renderer::Shadow_renderer >           m_shadow_renderer;
     std::unique_ptr<erhe::scene_renderer::Texel_renderer >            m_texel_renderer;
     std::unique_ptr<erhe::scene_renderer::Mesh_memory     >           m_mesh_memory;

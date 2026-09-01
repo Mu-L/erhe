@@ -26,6 +26,7 @@
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
 #include "erhe_scene_renderer/draw_list_scene.hpp"
+#include "erhe_scene_renderer/draw_list_renderer.hpp"
 #include "erhe_scene_renderer/forward_renderer.hpp"
 
 #include <imgui/imgui.h>
@@ -310,9 +311,9 @@ void Composition_pass::render(const Render_context& context)
                     (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::opaque_primitives_only     ) ? erhe::scene_renderer::Draw_blending_selection::opaque_only :
                     (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::translucent_primitives_only) ? erhe::scene_renderer::Draw_blending_selection::translucent_only :
                                                                                                                              erhe::scene_renderer::Draw_blending_selection::both;
-                const erhe::scene_renderer::Draw_statistics statistics = context.app_context.forward_renderer->render_draw_lists(
-                    erhe::scene_renderer::Forward_renderer::Draw_list_render_parameters{
-                        .base = erhe::scene_renderer::Forward_renderer::Base_render_parameters{
+                const erhe::scene_renderer::Draw_statistics statistics = context.app_context.draw_list_renderer->render(
+                    erhe::scene_renderer::Draw_list_renderer::Render_parameters{
+                        .base = erhe::scene_renderer::Base_render_parameters{
                             .render_encoder    = *context.encoder,
                             .render_pass       = context.render_pass,
                             .viewport          = context.viewport,

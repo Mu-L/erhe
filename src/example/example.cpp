@@ -137,7 +137,8 @@ public:
         , m_program_interface   {m_graphics_device, m_mesh_memory, m_program_interface_config}
         , m_shader_variant_cache{m_graphics_device, m_program_interface}
         , m_programs            {m_graphics_device, m_shader_variant_cache}
-        , m_forward_renderer    {m_graphics_device, m_init_command_buffer, m_mesh_memory, m_program_interface, m_shader_variant_cache, nullptr}
+        , m_scene_pass_resources{m_graphics_device, m_init_command_buffer, m_program_interface, nullptr}
+        , m_forward_renderer    {m_graphics_device, m_mesh_memory, m_program_interface, m_shader_variant_cache, m_scene_pass_resources}
         , m_material_fallback_texture{m_graphics_device.create_dummy_texture(m_init_command_buffer, erhe::dataformat::Format::format_8_vec4_srgb)}
         , m_material_fallback_sampler{
             m_graphics_device,
@@ -625,6 +626,9 @@ private:
     erhe::scene_renderer::Program_interface        m_program_interface;
     erhe::scene_renderer::Shader_variant_cache     m_shader_variant_cache;
     Programs                                       m_programs;
+    // Declared before the renderer that holds a reference to it. The example
+    // has no draw-list path, so it is the only consumer of the prologue here.
+    erhe::scene_renderer::Scene_pass_resources     m_scene_pass_resources;
     erhe::scene_renderer::Forward_renderer         m_forward_renderer;
     // A consumer outside any scene (doc/draw_list_material_set_plan.md D0,
     // D3): no scene root, no draw list, no registered objects. Its membership

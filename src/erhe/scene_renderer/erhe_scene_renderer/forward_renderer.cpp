@@ -1,5 +1,4 @@
 ﻿#include "erhe_scene_renderer/forward_renderer.hpp"
-#include "erhe_scene_renderer/draw_list_scene.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_scene_renderer/shader_variant_cache.hpp"
 
@@ -34,18 +33,17 @@ namespace erhe::scene_renderer {
 const std::vector<std::span<const std::shared_ptr<erhe::scene::Mesh>>> Forward_renderer::empty_mesh_spans{};
 
 Forward_renderer::Forward_renderer(
-    erhe::graphics::Device&            graphics_device,
-    erhe::graphics::Command_buffer&    init_command_buffer,
-    Mesh_memory&                       mesh_memory,
-    Program_interface&                 program_interface,
-    Shader_variant_cache&              shader_variant_cache,
-    const erhe::ui::Glyph_outline_set* glyph_outline_set
+    erhe::graphics::Device& graphics_device,
+    Mesh_memory&            mesh_memory,
+    Program_interface&      program_interface,
+    Shader_variant_cache&   shader_variant_cache,
+    Scene_pass_resources&   pass_resources
 )
     : m_graphics_device     {graphics_device}
     , m_mesh_memory         {mesh_memory}
     , m_program_interface   {program_interface}
     , m_shader_variant_cache{shader_variant_cache}
-    , m_pass_resources      {graphics_device, init_command_buffer, program_interface, glyph_outline_set}
+    , m_pass_resources      {pass_resources}
     , m_draw_indirect_buffer{graphics_device, program_interface.config.max_draw_count}
     , m_primitive_buffer    {graphics_device, program_interface.primitive_interface}
 {
@@ -76,64 +74,6 @@ const char* safe_str(const char* str)
     return Light_layer_partition{};
 }
 
-}
-
-auto Forward_renderer::render_draw_lists(const Draw_list_render_parameters& parameters) -> Draw_statistics
-{
-    ERHE_PROFILE_FUNCTION();
-
-    const Base_render_parameters& base = parameters.base;
-
-    // Early out before any upload / bind, mirroring render()'s empty
-    // mesh-span check: nothing passes the filter for these layers.
-    if (!parameters.draw_list_scene.has_drawable_entries(Draw_purpose::color, parameters.layers, parameters.blending, parameters.filter)) {
-        return Draw_statistics{};
-    }
-
-    erhe::graphics::Render_command_encoder& render_encoder = base.render_encoder;
-    Scene_pass_resources::Pass_state pass_state = m_pass_resources.begin_pass(base, parameters.debug_joint_indices, parameters.debug_joint_colors, parameters.debug_target_joint);
-
-    // Environment (R18): recomputed per pass, compared inside draw_color.
-    Color_environment environment{};
-    environment.light_partition   = get_light_layer_partition(base);
-    environment.shadow_filter     = parameters.shadow_filter;
-    environment.shadow_bias       = parameters.shadow_bias;
-    environment.shadow_technique  = parameters.shadow_technique;
-    environment.shadow_depth_bits = parameters.shadow_depth_bits;
-    environment.ddgi_enabled      = m_pass_resources.get_ddgi().is_valid();
-    // Same convention as render(): 0 for single view, N for multiview.
-    const uint16_t multiview_count = (base.views.size() >= 2) ? static_cast<uint16_t>(base.views.size()) : uint16_t{0};
-
-    Draw_statistics statistics{};
-    for (erhe::graphics::Base_render_pipeline* base_render_pipeline : parameters.base_render_pipelines) {
-        erhe::graphics::Scoped_debug_group pipeline_scope{
-            render_encoder.get_command_buffer(),
-            base_render_pipeline->data.debug_label
-        };
-        const Draw_statistics pass_statistics = parameters.draw_list_scene.draw_color(
-            Draw_color_parameters{
-                .render_encoder       = render_encoder,
-                .render_pass          = base.render_pass,
-                .base_render_pipeline = *base_render_pipeline,
-                .primitive_buffer     = m_primitive_buffer,
-                .draw_indirect_buffer = m_draw_indirect_buffer,
-                .primitive_settings   = parameters.primitive_settings,
-                .filter               = parameters.filter,
-                .layers               = parameters.layers,
-                .blending             = parameters.blending,
-                .multiview_count      = multiview_count,
-                .environment          = environment,
-                .color_blend_override = parameters.color_blend_override,
-                .debug_label          = base.debug_label
-            }
-        );
-        statistics.draw_list_count += pass_statistics.draw_list_count;
-        statistics.entry_count     += pass_statistics.entry_count;
-        statistics.draw_call_count += pass_statistics.draw_call_count;
-    }
-
-    m_pass_resources.end_pass(pass_state, render_encoder);
-    return statistics;
 }
 
 void Forward_renderer::render(const Render_parameters& parameters)

@@ -59,6 +59,8 @@ erhe_target_sources_grouped(
     erhe_scene_renderer/draw_list_key.hpp
     erhe_scene_renderer/draw_list_object.cpp
     erhe_scene_renderer/draw_list_object.hpp
+    erhe_scene_renderer/draw_list_renderer.cpp
+    erhe_scene_renderer/draw_list_renderer.hpp
     erhe_scene_renderer/draw_list_scene.cpp
     erhe_scene_renderer/draw_list_scene.hpp
     erhe_scene_renderer/draw_list.cpp

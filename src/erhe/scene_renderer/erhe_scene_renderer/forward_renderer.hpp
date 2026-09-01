@@ -3,7 +3,6 @@
 #include "erhe_dataformat/dataformat.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_scene_renderer/draw_indirect_buffer.hpp"
-#include "erhe_scene_renderer/draw_list.hpp"
 #include "erhe_scene_renderer/camera_buffer.hpp"
 #include "erhe_scene_renderer/glyph_buffer.hpp"
 #include "erhe_scene_renderer/joint_buffer.hpp"
@@ -53,7 +52,6 @@ namespace erhe::ui {
 
 namespace erhe::scene_renderer {
 
-class Draw_list_scene;
 class Mesh_memory;
 class Program_interface;
 class Shader_variant_cache;
@@ -82,16 +80,15 @@ public:
 
     [[nodiscard]] auto get_pass_resources() -> Scene_pass_resources& { return m_pass_resources; }
 
-    // glyph_outline_set is optional: pass nullptr from executables that
-    // never draw glyphs (the Glyph_buffer falls back to an empty but
-    // bindable buffer, same as when the outline set is invalid).
+    // pass_resources is shared with Draw_list_renderer and owned by neither:
+    // it holds no per-frame state of its own (begin_pass returns a
+    // Pass_state), and both entry points run the same prologue through it.
     Forward_renderer(
-        erhe::graphics::Device&            graphics_device,
-        erhe::graphics::Command_buffer&    init_command_buffer,
-        Mesh_memory&                       mesh_memory,
-        Program_interface&                 program_interface,
-        Shader_variant_cache&              shader_variant_cache,
-        const erhe::ui::Glyph_outline_set* glyph_outline_set
+        erhe::graphics::Device& graphics_device,
+        Mesh_memory&            mesh_memory,
+        Program_interface&      program_interface,
+        Shader_variant_cache&   shader_variant_cache,
+        Scene_pass_resources&   pass_resources
     );
     ~Forward_renderer() noexcept;
 
@@ -170,37 +167,9 @@ public:
     void render(const Render_parameters& parameters);
     void draw_primitives(const Primitive_render_parameters& parameters, const erhe::scene::Light* light);
 
-    // Draw-list path (doc/draw_list_renderer_requirements.md R8/R8a): same
-    // per-pass prologue / epilogue as render() (camera, materials, joints,
-    // lights, texture heap), but the draws come from the scene's persistent
-    // Draw_list_scene instead of re-bucketing mesh spans. Color purpose only;
-    // shadow maps go through Shadow_renderer.
-    class Draw_list_render_parameters
-    {
-    public:
-        Base_render_parameters                                 base;
-        Draw_list_scene&                                       draw_list_scene;
-        const std::span<erhe::graphics::Base_render_pipeline*> base_render_pipelines;
-        std::span<const erhe::scene::Layer_id>                 layers{};
-        Draw_blending_selection                                blending;
-        Primitive_interface_settings                           primitive_settings{};
-        const erhe::Item_filter                                filter{};
-        uint32_t                                               shadow_filter{0};
-        uint32_t                                               shadow_bias{1};
-        uint32_t                                               shadow_technique{0};
-        uint32_t                                               shadow_depth_bits{0};
-        // .x: 0xffffffffu = no active joint for the joint_weight_ramp debug
-        // mode ("missing data" magenta), anything else = one is active and
-        // marked per-slot in the joint buffer (see debug_target_joint).
-        // .y: 1 = show zero-weight vertices as black.
-        const glm::uvec4&                                      debug_joint_indices{0xffffffffu, 0, 0, 0};
-        const std::span<glm::vec4>&                            debug_joint_colors{};
-        // Active joint for the joint_weight_ramp debug mode, matched per
-        // joint slot by Joint_buffer::update(). nullptr = none.
-        const erhe::scene::Node*                               debug_target_joint{nullptr};
-        const erhe::graphics::Color_blend_state*               color_blend_override{nullptr};
-    };
-    auto render_draw_lists(const Draw_list_render_parameters& parameters) -> Draw_statistics;
+    // The draw-list colour entry point lives in Draw_list_renderer, which
+    // shares this renderer's Scene_pass_resources. Nothing here names a
+    // draw-list type.
 
     class Warmup_target
     {
@@ -269,7 +238,7 @@ private:
     Mesh_memory&                                  m_mesh_memory;
     Program_interface&                            m_program_interface;
     Shader_variant_cache&                         m_shader_variant_cache;
-    Scene_pass_resources                          m_pass_resources;
+    Scene_pass_resources&                         m_pass_resources;
     erhe::scene_renderer::Draw_indirect_buffer    m_draw_indirect_buffer;
     Primitive_buffer                              m_primitive_buffer;
 };

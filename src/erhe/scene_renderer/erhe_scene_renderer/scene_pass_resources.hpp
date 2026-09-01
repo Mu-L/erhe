@@ -84,7 +84,7 @@ public:
 //
 // Nothing here knows how the draws are produced. That is the point: the
 // bucket path (Forward_renderer::render), the draw-list path
-// (Forward_renderer::render_draw_lists -> Draw_list_scene::draw_color) and the
+// (Draw_list_renderer::render -> Draw_list_scene::draw_color) and the
 // fullscreen path (Forward_renderer::draw_primitives) share this prologue and
 // differ only afterwards, so it must not name any of them. Extracted from
 // Forward_renderer, which owned it and therefore forced every consumer of the
