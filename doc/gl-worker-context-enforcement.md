@@ -27,9 +27,12 @@ line numbers there are wildly different.
 > itself need a worker GL context.**
 
 That is the real constraint, and it is not mechanically checkable. Two
-checkable approximations are proposed below (A and B). **Both are proxies** -
-each fires on a superset of the real condition - and the gap for each is
-recorded so a later reader does not mistake a guard for the rule.
+checkable approximations are proposed below (A and B). **Both are proxies**,
+and in different directions: each has false positives (it fires where no
+deadlock is possible), and B additionally has false negatives - it is
+structurally blind to the acquire-wedge and to `run().wait()` parks. Neither
+is a superset of the real condition. The gap for each is recorded so a later
+reader does not mistake a guard for the rule.
 
 The enforced form of A is the stricter, simpler statement:
 
@@ -145,7 +148,10 @@ throughput caveat in `doc/gl-worker-thread-contexts.md` ("a scope hoisted over
 expensive CPU work caps that work at 4 concurrent tasks"), and is worth fixing
 independently of anything proposed here.
 
-### Task-spawn sites
+### Task-spawn and graph-construction sites
+
+(Listed together because they are what a grep finds; section A classifies
+which of them actually schedule and therefore need guarding.)
 
 `assets/gltf_load_task.cpp:92,144,202`, `asset_browser/asset_browser.cpp:350`,
 `geometry_graph/geometry_graph_window.cpp:749`,
@@ -166,18 +172,36 @@ above, which cites the region-level `552,561`):
 - **`src/erhe/raytrace/erhe_raytrace/bvh/bvh_scene.cpp:363` -
   `executor->silent_async(...)`**, using the editor's executor injected via
   `erhe::raytrace::set_executor` (`src/editor/editor.cpp:1393`). A spawn site
-  in a library *below* the editor. `Bvh_scene::commit()` has more callers than
-  the main-thread ones (`scene_view.cpp:478`,
-  `mcp_server_scene_query.cpp:961,1085`): `mesh_raytrace.cpp:39` calls it from
-  the `Raytrace_primitive` constructor, reached from
-  `Mesh::update_rt_primitives` (`mesh.cpp:66`) and so from
-  `async_raytrace_kickoff_operation.cpp:251,258` - on a worker. Those never
-  reach the `silent_async`, but **not** because of thread affinity:
-  `start_tlas_build` bails below `k_min_tlas_children = 4`
-  (`bvh_scene.hpp:88`) and a per-primitive scene attaches exactly one geometry.
-  Do not restate this as "its callers are main-thread"; that is the wrong
-  reason, and it means `parse_gltf` is not the only sub-editor seam that
-  enforcement has to reach (see C).
+  in a library *below* the editor, so it is a seam enforcement has to reach
+  (see C) - but a **latent** gap, not a live one. Two independent reasons, and
+  it takes both to settle it (see the warning below):
+  - every demonstrated caller of `Bvh_scene::commit()` runs on the main
+    thread. `scene_view.cpp:478` and `mcp_server_scene_query.cpp:961,1085` are
+    plainly main-thread; the route through `mesh_raytrace.cpp:39` <-
+    `Mesh::update_rt_primitives` (`mesh.cpp:66`) reaches
+    `async_raytrace_kickoff_operation.cpp:251,258`, and those lines sit inside
+    the `context.scene_commit_queue->enqueue(...)` lambda opened at `:208`,
+    which `Scene_commit_queue::flush()` runs from the main tick
+    (`editor.cpp:557`). The other `update_rt_primitives` callers
+    (`operations_window.cpp:2231`, also a commit-queue lambda;
+    `parsers/gltf.cpp:784`; `prefab_library.cpp:54`) are main-thread too. The
+    one worker-side route, `parse_mesh` -> `Mesh::set_primitives`
+    (`gltf_fastgltf.cpp:2579,2594`), has no raytrace geometry yet, so
+    `mesh.cpp:64`'s `if (rt_geometry)` never builds a `Raytrace_primitive`;
+  - and even if a worker caller appeared, a per-primitive `Bvh_scene` attaches
+    exactly one geometry (`mesh_raytrace.cpp:33`) while `start_tlas_build`
+    bails below `k_min_tlas_children = 4` (`bvh_scene.hpp:88`,
+    `bvh_scene.cpp:330-333`), so it would not reach the `silent_async` anyway.
+
+  **Warning to the next editor**: the thread-affinity half of this flipped
+  three times across reviews - "main-thread" -> "no, a worker" -> "main-thread
+  after all". The trap is that `deferred_finalize_mesh_items` IS dispatched
+  onto a worker (`async_for_nodes_with_mesh` with `op_builds_gpu_meshes =
+  false` makes `items.cpp:229-243` always take the `silent_dependent_async`
+  path), which makes the whole function look worker-side; the
+  `update_rt_primitives` calls are in its phase-B commit lambda, which is not.
+  Check whether a line is inside a `scene_commit_queue->enqueue` before
+  concluding anything about its thread.
 
 The three nested flows in `parse_gltf` hold no GL context, so they cannot
 deadlock the GL pool. Only the `gltf_load_task.cpp:202` caller runs on a
@@ -192,7 +216,7 @@ takes no scope. Note this is **inference from inspection**
 device access), and `doc/gl-worker-thread-contexts.md` still lists that code as
 "never explicitly examined". They do block a taskflow worker with no co-run when
 `editor_settings->load.parallel_gltf_parse` is on, which gates them
-(`gltf_fastgltf.cpp:1097,1160`; set at `gltf_load_task.cpp:197`). That is hold-and-wait on the *worker* pool rather than the GL pool,
+(`gltf_fastgltf.cpp:1097,1160,1558`; set at `gltf_load_task.cpp:197`). That is hold-and-wait on the *worker* pool rather than the GL pool,
 and it is worth being explicit that **no proposal here covers it**: a deadlock
 there involves no GL slot, so A, B and E are all blind to it. It needs its own
 treatment - `corun` instead of `wait()` is the usual answer.
@@ -235,7 +259,7 @@ already covers the `tf::Taskflow` case.
 
 `subflow->emplace` is the same graph construction (`tf::Subflow` derives from
 `FlowBuilder`, `flow_builder.hpp:1735`); its real schedule point is
-`Subflow::join` (`executor.hpp:2535`) or the implicit join. It is guarded at
+`Subflow::join` (`executor.hpp:2529`) or the implicit join. It is guarded at
 `emplace` as a **proxy** for that join, which is sound only because emplace
 and join always occur in one task body - worth knowing if C ever puts the
 check on a member of its own.
@@ -300,20 +324,24 @@ outer task - exactly what B needs for the one case this document exists for.
 so co-run on a parked thread also fires `on_entry`.
 
 **Node-kind coverage is effectively complete.** `_invoke`'s switch
-(`executor.hpp:1752-1829`) dispatches ten node kinds. Eight fire the observer:
+(`executor.hpp:1752-1834`) dispatches ten node kinds. Eight fire the observer:
 the six above, plus `Node::RUNTIME` / `Node::NONPREEMPTIVE_RUNTIME` and the
 `void(Runtime&)` / `void(Runtime&, bool)` async variants, whose prologue and
 epilogue live in `taskflow/core/runtime.hpp:809/813, 849/853, 938/943` - NOT in
 `executor.hpp`, which is why grepping that one header understates the
 coverage. Only `Node::MODULE` and `Node::ADOPTED_MODULE` are unobserved
-(`_invoke_module_task_impl`, `executor.hpp:2065-2089`), and neither can be the
+(`_invoke_module_task_impl`, `executor.hpp:2071-2091`), and neither can be the
 outer frame B needs: that path schedules the subgraph and returns `true` to
 preempt, so the worker frame unwinds rather than parking in-frame, and it can
 never co-run a nested task onto itself. A future `emplace([](tf::Runtime&){…})`
-is therefore observed, and the two unobserved kinds - the `composed_of`
-module forms - cannot park. Preemption paths fire the prologue only on first entry, and the
-exception handler runs before the epilogue, so a depth counter will not
-drift.
+is therefore observed, and the two unobserved kinds - `Node::MODULE` from
+`composed_of` (`flow_builder.hpp:1621`) and `Node::ADOPTED_MODULE` from
+`adopt(Graph&&)` (`flow_builder.hpp:1628`) - cannot park. Preemption paths fire the prologue only on first entry, and
+`TF_EXECUTOR_EXCEPTION_HANDLER` (`core/error.hpp:94-99`) catches inside the
+prologue/epilogue window, so a depth counter will not drift - except in a
+build with `TF_DISABLE_EXCEPTION_HANDLING` (`error.hpp:91-92`), where the
+macro degrades to a bare `code_block;` and an escaping exception would skip
+the epilogue. Not the pin's default.
 
 The observer runs **on the executing worker**, so it can read the
 thread-local context index; and it is attached to the executor, so a call site
@@ -463,15 +491,11 @@ none of A, B, D or E would detect it.
    is inspection, not observation.
 4. Decide how A covers the `erhe_raytrace` seam: `bvh_scene.cpp:363` spawns
    through the editor's injected executor from a library below the editor, so
-   a wrapper that lives in the editor cannot reach it. Note that this seam IS
-   reached from a worker - `mesh_raytrace.cpp:39` <- `mesh.cpp:66` <-
-   `async_raytrace_kickoff_operation.cpp:251,258`, dispatched unconditionally
-   onto the executor because `async_for_nodes_with_mesh` is called there with
-   `op_builds_gpu_meshes = false` (`items.cpp:229-243` then always takes the
-   `silent_dependent_async` path). What keeps it harmless is that a
-   per-primitive `Bvh_scene` holds one geometry and `start_tlas_build` bails
-   below `k_min_tlas_children = 4` (`bvh_scene.cpp:330-333`), NOT thread
-   affinity. A's coverage claim is false from day one unless this is answered.
+   a wrapper that lives in the editor cannot reach it. Nothing is broken today
+   - every demonstrated caller is main-thread, and the `k_min_tlas_children`
+   guard holds independently of that (body, "Task-spawn and graph-construction
+   sites"). So this is a latent gap in A's coverage rather than a live one,
+   and it should be answered before A is claimed to cover the tree.
 5. Decide whether B ships in Release or is debug / validation only, knowing it
    is a proxy that can abort on a harmless park.
 
