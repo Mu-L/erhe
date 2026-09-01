@@ -505,6 +505,8 @@ auto Mcp_server::get_dispatch_table() -> std::span<const Mcp_server::Tool_dispat
         { "get_selection",                  &Mcp_server::query_selection                      },
         { "get_undo_redo_stack",            &Mcp_server::query_undo_redo_stack                },
         { "clear_undo_history",             &Mcp_server::action_clear_undo_history            },
+        { "undo",                           &Mcp_server::action_undo                          },
+        { "redo",                           &Mcp_server::action_redo                          },
         { "get_async_status",               &Mcp_server::query_async_status                   },
         { "get_transform_update_stats",     &Mcp_server::query_transform_update_stats         },
         { "merge_static_subtree",           &Mcp_server::action_merge_static_subtree          },

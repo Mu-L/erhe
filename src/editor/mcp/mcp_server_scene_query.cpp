@@ -1599,6 +1599,50 @@ auto Mcp_server::query_undo_redo_stack(const json& args) -> std::string
     }).dump();
 }
 
+// Edit > Undo / Edit > Redo. Both run on the main thread (MCP handlers are
+// dispatched from process_queued_requests), which is where Operation_stack
+// requires them. Operations that are still QUEUED have not been recorded
+// yet and are not undone by this - settle first (get_async_status).
+auto Mcp_server::action_undo(const json& args) -> std::string
+{
+    return undo_or_redo(args, true);
+}
+
+auto Mcp_server::action_redo(const json& args) -> std::string
+{
+    return undo_or_redo(args, false);
+}
+
+auto Mcp_server::undo_or_redo(const json& args, const bool undo) -> std::string
+{
+    if (!m_context.operation_stack) {
+        json r = make_text_content("Operation stack not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+    const std::size_t count = args.value("count", std::size_t{1});
+    json performed = json::array();
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::vector<std::shared_ptr<Operation>>& source =
+            undo ? m_context.operation_stack->get_undo_stack() : m_context.operation_stack->get_redo_stack();
+        if (source.empty()) {
+            break;
+        }
+        performed.push_back(source.back()->describe());
+        if (undo) {
+            m_context.operation_stack->undo();
+        } else {
+            m_context.operation_stack->redo();
+        }
+    }
+    return make_json_content({
+        {"requested", count},
+        {"performed", performed},
+        {"can_undo",  m_context.operation_stack->can_undo()},
+        {"can_redo",  m_context.operation_stack->can_redo()}
+    }).dump();
+}
+
 auto Mcp_server::action_clear_undo_history(const json& args) -> std::string
 {
     static_cast<void>(args);

@@ -356,6 +356,32 @@
     "name": "clear_undo_history"
   },
   {
+    "description": "Undo the most recently recorded operation(s) - Edit > Undo. 'performed' lists the descriptions of what was undone, newest first; it is shorter than 'requested' when the undo stack ran out. Operations that are only QUEUED have not been recorded yet and are not undone: settle first (get_async_status).",
+    "inputSchema": {
+      "properties": {
+        "count": {
+          "description": "How many operations to undo (default 1)",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "undo"
+  },
+  {
+    "description": "Redo the most recently undone operation(s) - Edit > Redo. 'performed' lists the descriptions of what was redone, newest first; it is shorter than 'requested' when the redo stack ran out.",
+    "inputSchema": {
+      "properties": {
+        "count": {
+          "description": "How many operations to redo (default 1)",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "redo"
+  },
+  {
     "description": "Get in-flight operation counts: pending/running async workers plus queued_operations (queued on the operation stack, not yet executed on the main thread), pending_scene_commits (worker-prepared scene changes waiting for the main thread's per-tick flush) and asset_loads (asset load tasks in flight, which change the scene when they publish). The scene is settled only when all five are 0. Also carries a lightmap_prepare sub-object: in_flight/regions_done/regions_total/cancel_requested plus last_result{committed, mesh_count, piece_count, tile_count, abort_reason} of the most recent lightmap_prepare_tiles.",
     "inputSchema": {
       "properties": {},
