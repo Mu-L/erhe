@@ -13,6 +13,11 @@ corrected the observer firing-point list and a wrong claim that
 signature (co-run spins, it does not idle) and found that observers do not
 cover all node kinds.
 
+**Checking the Taskflow citations**: they are against the pin, CPM
+`VERSION 4.1.0` -> `.cpm_cache/taskflow/bc568e1dc483c1fbe6b4018bb0a3086f760f676d`.
+Stale `build/_deps/taskflow-src` copies in some build trees are 4.0.0 and the
+line numbers there are wildly different.
+
 ## The invariant
 
 > **A thread holding a worker GL context must never block on work that may
@@ -110,7 +115,8 @@ process-global mutex are reached from inside scopes.
 - **The BVH pool.** `Bvh_geometry::commit()` dispatches to a process-wide
   singleton `bvh::v2::ThreadPool` + `ParallelExecutor`
   (`src/erhe/raytrace/erhe_raytrace/bvh/bvh_geometry.cpp:205-222`) and blocks
-  on it twice (`:321`, `:344`). It is reached inside two scopes:
+  on it at `:321` (build; skipped when the BVH loads from the disk cache) and
+  `:344`. It is reached inside two scopes:
   `items.cpp:207` -> `op` -> `make_raytrace()`
   (`src/editor/operations/mesh_operation.cpp:342`, and the same pattern in
   `geometry_operations.cpp:690`, `merge_operation.cpp:189`,
@@ -173,11 +179,15 @@ The three nested flows in `parse_gltf` hold no GL context, so they cannot
 deadlock the GL pool. Only the `gltf_load_task.cpp:202` caller runs on a
 worker; the other five (`asset_manager.cpp:1162`, `parsers/gltf.cpp:881,1621`,
 `prefabs/prefab_library.cpp:264`, `xr/controller_visualization.cpp:224`) are
-main-thread, and none wraps a `Scoped_worker_context`. Note this is **inference from inspection**
-(`gltf_fastgltf.hpp:107` and `gltf_fastgltf.cpp:1505` assert no device
-access), and `doc/gl-worker-thread-contexts.md` still lists that code as
+main-thread, and none wraps a `Scoped_worker_context`. The standalone
+`example/example.cpp:178` is a sixth caller, out of scope like `geogram_soak`. Note this is **inference from inspection**
+(`gltf_fastgltf.hpp:107` and `gltf_fastgltf.cpp:1505` are comments stating no
+device access), and `doc/gl-worker-thread-contexts.md` still lists that code as
 "never explicitly examined". They do block a taskflow worker with no co-run
-(below), which is a separate concern from the GL pool.
+(below). That is hold-and-wait on the *worker* pool rather than the GL pool,
+and it is worth being explicit that **no proposal here covers it**: a deadlock
+there involves no GL slot, so A, B and E are all blind to it. It needs its own
+treatment - `corun` instead of `wait()` is the usual answer.
 
 ## Portability blocker for both proposals
 
@@ -459,8 +469,7 @@ none of A, B, D or E would detect it.
   path; no call sites found in `src/`, but templates make this hard to settle
   by grep.
 - That B does not fire in practice (item 3 above).
-- That the MCP command dispatch reaching `ensure_brushes` and
-  `Bvh_scene::commit()` runs on the main thread. The call sites are `Command`
-  apply paths and the rest of the codebase is consistent with it, but the
-  dispatch thread was not traced. This is load-bearing for both the
-  `scene_builder.cpp:739` and the `bvh_scene.cpp:363` arguments.
+- (Settled, kept for the record: MCP dispatch does run on the main thread -
+  `Mcp_server` queues requests from its HTTP threads (`mcp_server.cpp:360-375`)
+  and `process_queued_requests` is driven from the tick at `editor.cpp:652`,
+  as `mcp_server.cpp:444` states.)
