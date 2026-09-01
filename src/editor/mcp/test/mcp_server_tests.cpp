@@ -1642,3 +1642,75 @@ TEST_F(Mcp_test, material_drag_to_second_mesh_uses_same_record_slot)
     client.call_tool("delete_nodes", json{{"scene_name", scene}, {"names", {"slot_test_a", "slot_test_b"}}});
     advance_frames(client, 3);
 }
+
+// Material assignment is undoable (Mesh_material_assign_operation): undo
+// restores the previous material AND the cached draw-list record follows it,
+// because undo goes through Mesh::set_primitive_material like the assignment
+// did. An assignment that changes nothing must record no undo entry at all.
+TEST_F(Mcp_test, assign_mesh_material_is_undoable)
+{
+    Mcp_client&       client = Mcp_env::get().client();
+    const std::string scene  = Mcp_env::get().scene_name();
+
+    const std::size_t mesh = create_mesh_node(client, scene, "undo_assign_mesh", -4.0);
+    ASSERT_NE(mesh, 0u);
+    advance_frames(client, 3);
+
+    const std::size_t material_a = ensure_material(client, scene, "undo_assign_a");
+    const std::size_t material_b = ensure_material(client, scene, "undo_assign_b");
+    ASSERT_NE(material_a, 0u);
+    ASSERT_NE(material_b, 0u);
+
+    const auto undo_depth = [&client]() -> std::size_t {
+        Mcp_client::Tool_result r = client.call_tool("get_undo_redo_stack", json::object());
+        EXPECT_FALSE(r.is_error) << "get_undo_redo_stack failed: " << r.text;
+        return r.payload.contains("undo") ? r.payload["undo"].size() : std::size_t{0};
+    };
+
+    assign_and_render(client, scene, mesh, material_a);
+    const Record_slot after_a = read_record_slot(client, scene, mesh);
+    if (!after_a.found) {
+        client.call_tool("delete_nodes", json{{"scene_name", scene}, {"names", {"undo_assign_mesh"}}});
+        GTEST_SKIP() << "scene has no draw lists (use_draw_lists off?)";
+    }
+    ASSERT_EQ(after_a.material_id, material_a);
+
+    const std::size_t depth_before = undo_depth();
+    assign_and_render(client, scene, mesh, material_b);
+    EXPECT_EQ(undo_depth(), depth_before + 1) << "assignment recorded no undo entry";
+
+    const Record_slot after_b = read_record_slot(client, scene, mesh);
+    ASSERT_TRUE(after_b.found);
+    ASSERT_EQ(after_b.material_id, material_b);
+
+    Mcp_client::Tool_result undone = client.call_tool("undo", json::object());
+    ASSERT_FALSE(undone.is_error) << "undo failed: " << undone.text;
+    ASSERT_TRUE(undone.payload.contains("performed"));
+    ASSERT_EQ(undone.payload["performed"].size(), 1u);
+    advance_frames(client, 3);
+
+    const Record_slot after_undo = read_record_slot(client, scene, mesh);
+    ASSERT_TRUE(after_undo.found);
+    EXPECT_EQ(after_undo.material_id, material_a) << "undo did not restore the previous material";
+    EXPECT_EQ(after_undo.material_index, after_undo.material_set_slot)
+        << "undo left a stale cached record: index=" << after_undo.material_index
+        << " slot=" << after_undo.material_set_slot;
+
+    Mcp_client::Tool_result redone = client.call_tool("redo", json::object());
+    ASSERT_FALSE(redone.is_error) << "redo failed: " << redone.text;
+    advance_frames(client, 3);
+
+    const Record_slot after_redo = read_record_slot(client, scene, mesh);
+    ASSERT_TRUE(after_redo.found);
+    EXPECT_EQ(after_redo.material_id, material_b) << "redo did not re-apply the material";
+    EXPECT_EQ(after_redo.material_index, after_redo.material_set_slot) << "redo left a stale cached record";
+
+    // Re-assigning the material the primitive already has changes nothing and
+    // must not push an undo entry a user would then have to press Ctrl+Z past.
+    const std::size_t depth_after_redo = undo_depth();
+    assign_and_render(client, scene, mesh, material_b);
+    EXPECT_EQ(undo_depth(), depth_after_redo) << "no-op assignment recorded an undo entry";
+
+    client.call_tool("delete_nodes", json{{"scene_name", scene}, {"names", {"undo_assign_mesh"}}});
+    advance_frames(client, 3);
+}
