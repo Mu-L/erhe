@@ -5,10 +5,13 @@ Status: **proposal**. Nothing here is implemented. Companion to
 this document covers only how to keep one of its rules from being broken by
 future code.
 
-This document has been through two independent code reviews; the corrections
-are folded in, and the surviving unknowns are listed under "Not verified".
-Round 2 corrected round 1: the observer firing-point list below was
-incomplete, and `scene_builder.cpp:739` was wrongly called a worker park.
+This document has been through three independent code reviews; the
+corrections are folded in, and the surviving unknowns are listed under "Not
+verified". Each round found errors in the previous round's additions: round 2
+corrected the observer firing-point list and a wrong claim that
+`scene_builder.cpp:739` parks a worker; round 3 corrected the failure
+signature (co-run spins, it does not idle) and found that observers do not
+cover all node kinds.
 
 ## The invariant
 
@@ -63,7 +66,15 @@ of them holding contexts. Scope in the leaf that allocates."*
 `Lightmap_partitioner` is the worked example: the scope sits in
 `process_piece`, not `process_region`, so region tasks park holding nothing.
 
-The failure mode is a hang that looks **idle**, not busy.
+The failure mode splits the threads into two populations, and confusing them
+will misdirect triage. Threads parked in `Subflow::join` are inside
+`_corun_until` (`executor.hpp:2314-2352`), which **spins**: it re-explores and
+calls `std::this_thread::yield()` past `MAX_STEALS`, never sleeps. Those burn
+close to a full core each. Only the threads blocked in
+`acquire_worker_context_slot`'s condition variable are genuinely idle. So the
+process looks BUSY while making no progress - "hung but idle" is the wrong
+signature to look for, and `doc/gl-worker-thread-contexts.md`'s warning about
+a deadlock that "looks idle instead of busy" describes the acquire side only.
 
 ### What the re-entrancy refcount does and does not buy
 
@@ -105,7 +116,7 @@ process-global mutex are reached from inside scopes.
   `geometry_operations.cpp:690`, `merge_operation.cpp:189`,
   `merge_static_subtree_operation.cpp:228`, `paint_colors_operation.cpp:103`,
   `paint_weights_operation.cpp:111`, `move_mesh_vertices_operation.cpp:147`,
-  `transform/mesh_component_transform.cpp:635,1094,1182`); and
+  and `src/editor/transform/mesh_component_transform.cpp:635,1094,1182`); and
   `geometry_graph_window.cpp:733` -> `evaluate_if_dirty` ->
   `src/editor/geometry_graph/nodes/geometry_output_node.cpp:196`.
 - **Geogram's internal `parallel_for` pool**, plus the global
@@ -151,7 +162,10 @@ Two of these matter more than the rest:
   enforcement has to reach (see C).
 
 The three nested flows in `parse_gltf` hold no GL context, so they cannot
-deadlock the GL pool. Note this is **inference from inspection**
+deadlock the GL pool. Only the `gltf_load_task.cpp:202` caller runs on a
+worker; the other five (`asset_manager.cpp:1162`, `parsers/gltf.cpp:881,1621`,
+`prefabs/prefab_library.cpp:264`, `xr/controller_visualization.cpp:224`) are
+main-thread, and none wraps a `Scoped_worker_context`. Note this is **inference from inspection**
 (`gltf_fastgltf.hpp:107` and `gltf_fastgltf.cpp:1505` assert no device
 access), and `doc/gl-worker-thread-contexts.md` still lists that code as
 "never explicitly examined". They do block a taskflow worker with no co-run
@@ -161,7 +175,8 @@ access), and `doc/gl-worker-thread-contexts.md` still lists that code as
 
 `gl_context_index.{cpp,hpp}` are compiled only inside the
 `if (ERHE_GRAPHICS_API_OPENGL)` block (`src/erhe/graphics/CMakeLists.txt:171-172`),
-and the only non-test includer is itself `#if`-guarded. Both A's
+and the only includer from outside `gl/` is `scoped_worker_context.cpp:6`,
+itself `#if`-guarded. Both A's
 `gl_thread_is_worker_context()` and B's `get_gl_context_index()` are called
 from code that also builds for Vulkan / Metal / null. A backend-neutral
 accessor (on `Device`, or a shim that is constant-false off OpenGL) is a
@@ -188,15 +203,22 @@ to cover the whole of it or it misses the motivating case. Note that
 graph, and the work is scheduled later by `executor.run`. Guarding `emplace`
 would false-positive on the legitimate "build the graph on a context-holding
 thread, hand it to a non-holding thread to run" pattern, and guarding `run`
-already covers the `tf::Taskflow` case. `subflow->emplace` is different: it is
-scheduled at `join()` on the calling thread, so it does need guarding.
+already covers the `tf::Taskflow` case.
 
-| form | guard? |
-| --- | --- |
-| `silent_async`, `silent_dependent_async` | yes - schedules immediately |
-| `executor.run(taskflow)` | yes - the schedule point for a built graph |
-| `subflow->emplace` | yes - scheduled at `join()` on this thread |
-| `taskflow.emplace` | no - graph construction, schedules nothing |
+`subflow->emplace` is the same graph construction (`tf::Subflow` derives from
+`FlowBuilder`, `flow_builder.hpp:1735`); its real schedule point is
+`Subflow::join` (`executor.hpp:2535`) or the implicit join. It is guarded at
+`emplace` as a **proxy** for that join, which is sound only because emplace
+and join always occur in one task body - worth knowing if C ever puts the
+check on a member of its own.
+
+| form | guard? | why |
+| --- | --- | --- |
+| `silent_async` | yes | schedules immediately |
+| `silent_dependent_async` | yes | schedules once its predecessors finish (`async.hpp:245-253` sets the join counter), not immediately |
+| `executor.run(taskflow)` | yes | the schedule point for a built graph |
+| `subflow->emplace` | yes | proxy for the `join()` that schedules it |
+| `taskflow.emplace` | no | graph construction, schedules nothing |
 
 `gl_thread_is_worker_context()` (index > 0) already exists in
 `gl_context_index.hpp` alongside `gl_thread_has_context()` and
@@ -213,6 +235,10 @@ are the style to match.
   holding a context cannot deadlock, because the parent never waits. It is
   forbidden anyway, because "did you also wait on it" is not something the
   guard can see.
+- **Unstated dependency**: A guards the spawn, never the wait, so it only
+  works while spawn and wait live in the same scope. True at every site today;
+  it stops being true the moment someone spawns in one function and waits in
+  another.
 - **Cost**: the `emplace` sites push the conversion above a dozen call sites.
   Runtime cost is one thread-local read per spawn, active in Release
   (`ERHE_VERIFY` is on in Release by design) - negligible, but not zero.
@@ -223,7 +249,8 @@ are the style to match.
 `on_entry(WorkerView, TaskView)`, `on_exit`) is attached with
 `executor.make_observer<T>()` (`executor.hpp:1561`).
 `Executor::_observer_prologue` / `_observer_epilogue` wrap task execution.
-Re-derived by grepping the call sites, they fire from all six invoke paths:
+Re-derived by grepping the call sites, they fire from six of the invoke
+paths - **not all of them**, see the coverage hole below:
 
 | `executor.hpp` | task type |
 | --- | --- |
@@ -242,13 +269,26 @@ so it dispatches through that path, and its prologue/epilogue sit around
 outer task - exactly what B needs for the one case this document exists for.
 `_corun_until` runs local-queue and stolen tasks through `_invoke`
 (`executor.hpp:2314-2352`), and `Subflow::join` reaches it via `_corun_graph`,
-so co-run on a parked thread also fires `on_entry`. Preemption paths fire the prologue only on first entry, and the
+so co-run on a parked thread also fires `on_entry`.
+
+**Coverage hole.** `_invoke`'s switch (`executor.hpp:1754-1821`) dispatches ten
+node kinds; four fire no observer at all - `Node::RUNTIME`,
+`Node::NONPREEMPTIVE_RUNTIME`, `Node::MODULE` and `Node::ADOPTED_MODULE` - and
+within the two async paths only variant case 0 is observed, cases 1 and 2
+(`void(Runtime&)`, `void(Runtime&, bool)`) routing to
+`_invoke_runtime_task_impl` with no prologue. So B misses such a task co-run
+onto a parked thread, and if one is the OUTER frame a nested observed task
+sees `t_task_depth == 0` and the guard silently misses. None of these forms
+exists in `src/` today, but it means B's un-bypassability is bounded by node
+kind: a future `emplace([](tf::Runtime&){...})` or `composed_of` would be an
+invisible hole. Preemption paths fire the prologue only on first entry, and the
 exception handler runs before the epilogue, so a depth counter will not
 drift.
 
 The observer runs **on the executing worker**, so it can read the
 thread-local context index; and it is attached to the executor, so a call site
-that skips A's wrapper cannot bypass it.
+that skips A's wrapper cannot bypass it - subject to the node-kind hole
+below.
 
 The check: a worker does not begin task B while running task A unless A
 blocked. The intra-thread nesting paths all funnel through `_corun_until`,
@@ -298,10 +338,14 @@ thread_local int t_task_depth = 0;
   `silent_async` at `gltf_load_task.cpp:202`). It does NOT apply to
   `scene_builder.cpp:739`: `make_brushes` is reached only from the
   `Scene_builder` constructor (`scene_builder.cpp:114`, run straight-line on
-  the main thread at `editor.cpp:2139`) and from `ensure_brushes`
+  the main thread at `editor.cpp:2139` - the `ERHE_TASK_HEADER` macros around
+  the init sequence create no task; `ERHE_GET_GL_CONTEXT` is empty and
+  `ERHE_TASK_HEADER` only pumps a status line) and from `ensure_brushes`
   (`scene_builder.cpp:913`, also main-thread), so it parks the MAIN thread,
-  which holds context index 0 and never a pool slot. This is not
-  "opportunistic detection"; it is a structural hole, and E is what covers it.
+  which holds context index 0 and never a pool slot. `Executor::wait_for_all`
+  (`executor.hpp:2404-2410`, used at `editor.cpp:2836`) is a second no-co-run
+  park, also main-thread. This is not "opportunistic detection"; it is a
+  structural hole, and E is what covers it.
 - **Reports on the victim thread**: the stack shows the co-run, not who
   parked. Record a breadcrumb (acquiring site) in `Scoped_worker_context` and
   print it. `TaskView::name()` returns an empty string for unnamed async
@@ -402,3 +446,8 @@ none of A, B, D or E would detect it.
   path; no call sites found in `src/`, but templates make this hard to settle
   by grep.
 - That B does not fire in practice (item 3 above).
+- That the MCP command dispatch reaching `ensure_brushes` and
+  `Bvh_scene::commit()` runs on the main thread. The call sites are `Command`
+  apply paths and the rest of the codebase is consistent with it, but the
+  dispatch thread was not traced. This is load-bearing for both the
+  `scene_builder.cpp:739` and the `bvh_scene.cpp:363` arguments.
