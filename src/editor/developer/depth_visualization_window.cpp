@@ -146,7 +146,8 @@ void Depth_to_color_rendergraph_node::execute_rendergraph_node(erhe::graphics::C
                 .render_pass       = m_render_target.get_render_pass(),
                 .viewport          = viewport,
                 .light_projections = &light_projections,
-                .materials         = {},
+                // No materials: the shared empty set (D8).
+                .material_source   = nullptr,
                 .debug_label       = "Depth_to_color_rendergraph_node::execute_rendergraph_node()"
             },
             .vertex_count          = 3, // Full-screen triangle

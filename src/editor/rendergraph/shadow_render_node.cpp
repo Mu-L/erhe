@@ -464,10 +464,6 @@ void Shadow_render_node::execute_rendergraph_node(erhe::graphics::Command_buffer
         }
     }
 
-    // TODO: Keep this vector in content library and update when needed.
-    //       Make content library item host for content library nodes.
-    const auto& material_library = scene_root->get_content_library()->materials;
-    const std::vector<std::shared_ptr<erhe::primitive::Material>>& materials = material_library->get_all<erhe::primitive::Material>();
 
     // Refresh the shadow frustum fit settings from the live editor settings
     // (edited in the Settings window). m_fit_settings must outlive the render
@@ -598,7 +594,13 @@ void Shadow_render_node::execute_rendergraph_node(erhe::graphics::Command_buffer
             .mesh_spans            = { layers.content()->meshes },
             .light_set             = light_set,
             .skins                 = scene_root->get_scene().get_skins(),
-            .materials             = materials,
+            // The set that matches the path this light takes: the draw list's
+            // own when the shadow pass draws from cached entries, the root's
+            // forward set when it re-buckets (D5). draw_list_scene is resolved
+            // just above and decides both.
+            .material_source       = (draw_list_scene != nullptr)
+                ? &draw_list_scene->get_material_set()
+                : &scene_root->get_material_set(),
             .light_projections     = m_light_projections,
             .reverse_depth         = m_scene_view.get_reverse_depth(),
             .depth_range           = m_scene_view.get_depth_range(),

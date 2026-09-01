@@ -154,11 +154,10 @@ void Composition_pass::render(const Render_context& context)
         ? &data.get_render_style(context)
         : nullptr;
 
-    const auto& material_library = scene_root->get_content_library()->materials;
-
-    // TODO: Keep this vector in content library and update when needed.
-    //       Make content library item host for content library nodes.
-    const std::vector<std::shared_ptr<erhe::primitive::Material>>& materials = material_library->get_all<erhe::primitive::Material>();
+    // Slot spaces, not lists: each branch below binds the set its own path
+    // resolves records through, and the two are independent
+    // (doc/draw_list_material_set_plan.md D0). Both are already updated for
+    // this frame by App_scenes::update_material_sets().
 
     using namespace erhe::primitive;
 
@@ -199,7 +198,9 @@ void Composition_pass::render(const Render_context& context)
                     .exposure          = exposure,
                     .light_projections = nullptr,
                     .skins             = {},
-                    .materials         = {},
+                    // No materials of its own: null selects the shared empty
+                    // set (doc/draw_list_material_set_plan.md D8).
+                    .material_source   = nullptr,
                     .shader_key_boolean_mask_force_enable  = data.shader_key_force_enable_mask,
                     .shader_key_boolean_mask_force_disable = data.shader_key_force_disable_mask,
                     .reverse_depth     = context.scene_view.get_reverse_depth(),
@@ -322,7 +323,7 @@ void Composition_pass::render(const Render_context& context)
                             .ambient_light     = glm::vec3{scene->ambient_light},
                             .light_projections = context.scene_view.get_light_projections(),
                             .skins             = scene->get_skins(),
-                            .materials         = materials,
+                            .material_source   = &draw_list_scene->get_material_set(),
                             .shader_key_boolean_mask_force_enable  = 0u,
                             .shader_key_boolean_mask_force_disable = 0u,
                             .reverse_depth     = context.scene_view.get_reverse_depth(),
@@ -363,7 +364,7 @@ void Composition_pass::render(const Render_context& context)
                         .ambient_light     = glm::vec3{scene->ambient_light},
                         .light_projections = context.scene_view.get_light_projections(),
                         .skins             = scene->get_skins(),
-                        .materials         = materials,
+                        .material_source   = &scene_root->get_material_set(),
                         .shader_key_boolean_mask_force_enable  = force_enable_mask,
                         .shader_key_boolean_mask_force_disable = data.shader_key_force_disable_mask,
                         .reverse_depth     = context.scene_view.get_reverse_depth(),

@@ -4,7 +4,7 @@
 #include "erhe_scene_renderer/glyph_buffer.hpp"
 #include "erhe_scene_renderer/joint_buffer.hpp"
 #include "erhe_scene_renderer/light_buffer.hpp"
-#include "erhe_scene_renderer/material_buffer.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_math/viewport.hpp"
@@ -60,7 +60,17 @@ public:
     const glm::vec3                                                    ambient_light    {0.0f};
     const Light_projections*                                           light_projections{nullptr};
     const std::span<const std::shared_ptr<erhe::scene::Skin>>&         skins            {};
-    const std::span<const std::shared_ptr<erhe::primitive::Material>>& materials        {};
+    // The material slot space this pass resolves through, already updated for
+    // this frame (doc/draw_list_material_set_plan.md D5). The pass binds it
+    // and looks slots up in it; it never creates, updates or resets one.
+    // Null selects the shared empty set, which is what the passes that carry
+    // no materials of their own - the grid / sky branch, the depth
+    // visualization window - want.
+    //
+    // A Material_set rather than a draw-list type on purpose: this struct is
+    // shared by the bucket, fullscreen and draw-list entry points alike, and
+    // binding materials must not require naming a draw list.
+    Material_set*                                                      material_source  {nullptr};
     uint32_t                                                           shader_key_boolean_mask_force_enable {0};
     uint32_t                                                           shader_key_boolean_mask_force_disable{0};
     uint64_t                                                           frame_number     {0};
@@ -101,27 +111,36 @@ public:
     // glyph_outline_set is optional: pass nullptr from executables that never
     // draw glyphs (the Glyph_buffer falls back to an empty but bindable
     // buffer, same as when the outline set is invalid).
+    //
+    // empty_material_set is the shared set a pass with no materials of its own
+    // binds (D8). It exists for the texture heap rather than the buffer:
+    // giving each such pass its own would add descriptor-set pools for
+    // permanently empty content. Owned by the application, not here.
     Scene_pass_resources(
         erhe::graphics::Device&            graphics_device,
         erhe::graphics::Command_buffer&    init_command_buffer,
         Program_interface&                 program_interface,
-        const erhe::ui::Glyph_outline_set* glyph_outline_set
+        const erhe::ui::Glyph_outline_set* glyph_outline_set,
+        Material_set&                      empty_material_set
     );
     ~Scene_pass_resources() noexcept;
 
     Scene_pass_resources (const Scene_pass_resources&) = delete;
     Scene_pass_resources& operator=(const Scene_pass_resources&) = delete;
 
-    // Per-pass shared bindings (camera / material / joint / light ring
-    // ranges); begin_pass() updates + binds them, end_pass() releases them
-    // after the draws.
+    // Per-pass shared bindings (camera / joint / light ring ranges);
+    // begin_pass() updates + binds them, end_pass() releases them after the
+    // draws. Materials are not here: their storage is persistent and owned by
+    // the Material_set, so a pass binds and unbinds it and holds nothing.
     class Pass_state
     {
     public:
         std::optional<erhe::graphics::Ring_buffer_range> camera_range{};
-        erhe::graphics::Ring_buffer_range                material_range{};
         erhe::graphics::Ring_buffer_range                joint_range{};
         erhe::graphics::Ring_buffer_range                light_range{};
+        // The set begin_pass() bound, for end_pass() to unbind. Never null
+        // after begin_pass().
+        Material_set*                                    material_source{nullptr};
     };
 
     auto begin_pass(
@@ -177,8 +196,9 @@ public:
     [[nodiscard]] auto get_glyph_buffer   () -> Glyph_buffer&                  { return m_glyph_buffer; }
     [[nodiscard]] auto get_joint_buffer   () -> Joint_buffer&                  { return m_joint_buffer; }
     [[nodiscard]] auto get_light_buffer   () -> Light_buffer&                  { return m_light_buffer; }
-    [[nodiscard]] auto get_material_buffer() -> Material_buffer&               { return m_material_buffer; }
-    [[nodiscard]] auto get_texture_heap   () -> erhe::graphics::Texture_heap&  { return *m_texture_heap.get(); }
+    // The set a pass would bind for the given source: the source itself, or
+    // the shared empty set when it is null.
+    [[nodiscard]] auto resolve_material_source(Material_set* material_source) -> Material_set&;
     [[nodiscard]] auto get_lightmap_texture         () const -> erhe::graphics::Texture* { return m_lightmap_texture.get(); }
     [[nodiscard]] auto get_ddgi_irradiance_texture  () const -> erhe::graphics::Texture* { return m_ddgi_irradiance_texture.get(); }
     [[nodiscard]] auto get_ddgi_distance_texture    () const -> erhe::graphics::Texture* { return m_ddgi_distance_texture.get(); }
@@ -191,10 +211,12 @@ private:
     Glyph_buffer                                  m_glyph_buffer;
     Joint_buffer                                  m_joint_buffer;
     Light_buffer                                  m_light_buffer;
-    Material_buffer                               m_material_buffer;
-    erhe::graphics::Sampler                       m_fallback_sampler;
-    std::shared_ptr<erhe::graphics::Texture>      m_dummy_texture;
-    std::unique_ptr<erhe::graphics::Texture_heap> m_texture_heap;
+    // The material buffer, the texture heap and the fallback texture / sampler
+    // pair all moved to Material_set: a heap handle baked into a material
+    // record is only meaningful in the heap it was allocated from, and with
+    // persistence only for as long as that heap keeps the allocation, so the
+    // two are reset and rewritten together in the one place either is written.
+    Material_set&                                 m_empty_material_set;
     std::shared_ptr<erhe::graphics::Texture>      m_lightmap_texture;
     Ddgi_parameters                               m_ddgi{};
     std::shared_ptr<erhe::graphics::Texture>      m_ddgi_irradiance_texture;

@@ -1523,7 +1523,10 @@ class Record_slot
 public:
     bool          found                {false};
     std::uint32_t material_index       {0};  // the cached record's slot
-    std::uint32_t material_buffer_index{0};  // the shared mutable field it was written from
+    std::uint32_t material_buffer_index{0};  // the legacy shared field (unwritten by the raster path since phase 4)
+    // The material's slot in the scene's DRAW-LIST material set - the slot
+    // space these cached records name. 0xffffffff when it has none.
+    std::uint32_t material_set_slot     {0xffffffffu};
     std::size_t   material_id          {0};
 };
 
@@ -1549,6 +1552,9 @@ public:
     out.found                 = true;
     out.material_index        = entry.value("material_index",        std::uint32_t{0});
     out.material_buffer_index = entry.value("material_buffer_index", std::uint32_t{0});
+    out.material_set_slot     = entry.contains("material_set_slot") && !entry["material_set_slot"].is_null()
+        ? entry["material_set_slot"].get<std::uint32_t>()
+        : std::uint32_t{0xffffffffu};
     out.material_id           = entry.value("material_id",           std::size_t{0});
     return out;
 }
@@ -1605,28 +1611,17 @@ TEST_F(Mcp_test, material_drag_to_second_mesh_uses_same_record_slot)
         }
         ASSERT_EQ(a.material_id, material_forward) << "assignment did not reach mesh A";
         ASSERT_EQ(b.material_id, material_forward) << "assignment did not reach mesh B";
-        // The mechanism is the material preview rewriting the shared
-        // Material::material_buffer_index to 0 (its library holds one
-        // material). A material that already lives at slot 0 in the scene's
-        // own library cannot show it, so the comparison below would pass for
-        // the wrong reason.
-        if (a.material_buffer_index == 0) {
-            client.call_tool("delete_nodes", json{{"scene_name", scene}, {"names", {"slot_test_a", "slot_test_b"}}});
-            GTEST_SKIP() << "test material sits at material buffer slot 0; the clobber is unobservable";
-        }
+        ASSERT_NE(a.material_set_slot, 0xffffffffu) << "material has no slot in the draw-list set";
         EXPECT_EQ(a.material_index, b.material_index)
             << "two meshes carrying one material resolve through different GPU slots: "
             << "A=" << a.material_index << " B=" << b.material_index;
         // Equality alone can hold for the wrong reason - both records stale at
         // the same wrong slot. So each record must also name the slot the
-        // material actually occupies. Today that is the shared
-        // Material::material_buffer_index; from phase 4 of
-        // doc/draw_list_material_set_plan.md it becomes the material's slot in
-        // the root's DRAW-LIST material set (not the forward set - the same
-        // material holds a different slot in each), and phase 6 deletes the
-        // field this reads.
-        EXPECT_EQ(a.material_index, a.material_buffer_index) << "mesh A's cached record is stale";
-        EXPECT_EQ(b.material_index, b.material_buffer_index) << "mesh B's cached record is stale";
+        // material actually occupies, which is its slot in this scene's
+        // DRAW-LIST material set (not the forward set: the same material
+        // normally holds a different slot in each).
+        EXPECT_EQ(a.material_index, a.material_set_slot) << "mesh A's cached record is stale";
+        EXPECT_EQ(b.material_index, b.material_set_slot) << "mesh B's cached record is stale";
     }
 
     {
@@ -1642,8 +1637,8 @@ TEST_F(Mcp_test, material_drag_to_second_mesh_uses_same_record_slot)
         ASSERT_EQ(b.material_id, material_reverse);
         EXPECT_EQ(a.material_index, b.material_index)
             << "reversed assignment order: A=" << a.material_index << " B=" << b.material_index;
-        EXPECT_EQ(a.material_index, a.material_buffer_index) << "mesh A's cached record is stale";
-        EXPECT_EQ(b.material_index, b.material_buffer_index) << "mesh B's cached record is stale";
+        EXPECT_EQ(a.material_index, a.material_set_slot) << "mesh A's cached record is stale";
+        EXPECT_EQ(b.material_index, b.material_set_slot) << "mesh B's cached record is stale";
     }
 
     client.call_tool("delete_nodes", json{{"scene_name", scene}, {"names", {"slot_test_a", "slot_test_b"}}});

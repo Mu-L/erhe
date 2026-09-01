@@ -3,6 +3,7 @@
 #include "erhe_scene_renderer/primitive_buffer.hpp"
 #include "erhe_scene_renderer/draw_list.hpp"
 #include "erhe_scene_renderer/draw_list_scene.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 #include "erhe_scene_renderer/buffer_binding_points.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_graphics/span.hpp"
@@ -303,6 +304,7 @@ auto Primitive_buffer::update(
 
 void Primitive_buffer::write_primitive(
     erhe::scene::Mesh&                    mesh_ref,
+    const Material_set*                   material_source,
     const uint16_t                        mesh_primitive_index,
     const erhe::primitive::Buffer_mesh&   buffer_mesh_ref,
     const erhe::primitive::Primitive_mode primitive_mode,
@@ -356,7 +358,19 @@ void Primitive_buffer::write_primitive(
     const glm::vec4 wireframe_color  = glm::vec4{1.0f, 1.0f, 1.0f, 1.0f};
     const glm::vec3 id_offset_vec3   = erhe::math::vec3_from_uint(m_id_offset);
     const glm::vec4 id_offset_vec4   = glm::vec4{id_offset_vec3, 0.0f};
-    const uint32_t  material_index   = (material != nullptr) ? material->material_buffer_index : 0u;
+    // Slot 0 on a miss, as this path effectively did before slots left the
+    // Material object. It is the one writer that can legitimately be handed a
+    // material its set has yet to see: the forward set's object references are
+    // ENQUEUED from Scene_root::register_mesh (R13) while Scene::register_mesh
+    // files the mesh into its layer immediately, so a mesh created after this
+    // frame's flush is visible to a composition pass one frame before its
+    // materials are referenced. That window is narrow and pre-existing - such
+    // a mesh used to render with a stale material_buffer_index, i.e. an
+    // arbitrary material - and slot 0 is no worse. The draw-list record
+    // writer, whose objects are registered by construction, verifies instead.
+    const uint32_t  material_index   = (material_source != nullptr)
+        ? material_source->get_slot(material).value_or(0u)
+        : 0u;
     const auto&     skin             = mesh->skin;
     const float     skinning_factor  = skin ? 1.0f : 0.0f;
     const uint32_t  base_joint_index = skin ? skin->skin_data.joint_buffer_index : 0;
@@ -406,6 +420,7 @@ void Primitive_buffer::write_primitive(
 
 auto Primitive_buffer::update(
     const Render_bucket&                bucket,
+    const Material_set*                 material_source,
     erhe::primitive::Primitive_mode     primitive_mode,
     const Primitive_interface_settings& settings,
     bool                                use_id_ranges 
@@ -428,7 +443,7 @@ auto Primitive_buffer::update(
     for (const Mesh_primitive_entry& entry : bucket.entries) {
         ERHE_VERIFY(entry.mesh != nullptr);
         ERHE_VERIFY(entry.buffer_mesh != nullptr);
-        write_primitive(*entry.mesh, entry.mesh_primitive_index, *entry.buffer_mesh, primitive_mode, settings, use_id_ranges, primitive_gpu_data, write_offset);
+        write_primitive(*entry.mesh, material_source, entry.mesh_primitive_index, *entry.buffer_mesh, primitive_mode, settings, use_id_ranges, primitive_gpu_data, write_offset);
     }
 
     buffer_range.bytes_written(write_offset);
@@ -513,7 +528,9 @@ auto Primitive_buffer::update(
             // registration, not a fresh choice.
             const erhe::primitive::Buffer_mesh* buffer_mesh = primitive->get_renderable_mesh(entry.variant);
             ERHE_VERIFY(buffer_mesh != nullptr);
-            write_primitive(*mesh, entry.mesh_primitive_index, *buffer_mesh, primitive_mode, settings, false, primitive_gpu_data, write_offset);
+            // The DRAW-LIST set, sourced from the scene this pass draws:
+            // these records are consumed by the same pass that binds it (D5).
+            write_primitive(*mesh, &draw_list_scene.get_material_set(), entry.mesh_primitive_index, *buffer_mesh, primitive_mode, settings, false, primitive_gpu_data, write_offset);
             ++primitive_count;
         }
     }

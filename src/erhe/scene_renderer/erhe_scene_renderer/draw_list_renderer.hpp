@@ -29,10 +29,10 @@ class Program_interface;
 
 // The draw-list colour entry point (doc/draw_list_renderer_requirements.md
 // R8/R8a): the same per-pass prologue / epilogue as the bucket path - camera,
-// materials, joints, lights, texture heap, all of it Scene_pass_resources' -
-// but the draws come from the scene's persistent Draw_list_scene instead of
-// from re-bucketed mesh spans. Colour purpose only; shadow maps go through
-// Shadow_renderer.
+// joints, lights, and the bind of a material set the pass is handed, all of it
+// Scene_pass_resources' - but the draws come from the scene's persistent
+// Draw_list_scene instead of from re-bucketed mesh spans. Colour purpose only;
+// shadow maps go through Shadow_renderer.
 //
 // A renderer of its own rather than a member of Forward_renderer, so the
 // bucket path never names a draw-list type. The two share the prologue by

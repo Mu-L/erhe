@@ -564,7 +564,7 @@ auto Light_buffer::update(
     write_offset += m_light_interface.max_light_count * light_struct_size;
 
     const glm::vec2 brdf_phi_incident_phi = (light_projections != nullptr) ? glm::vec2{light_projections->brdf_phi, light_projections->brdf_incident_phi} : glm::vec2{0.0f, 0.0f};
-    const uint32_t  brdf_material         = (light_projections != nullptr) ? (light_projections->brdf_material ? light_projections->brdf_material->material_buffer_index : 0) : 0;
+    const uint32_t  brdf_material         = (light_projections != nullptr) ? light_projections->brdf_material_slot : 0u;
 
     // Late write to begin of buffer to full in light counts
     write(light_gpu_data, common_offset + offsets.shadow_texture_compare,    as_span(shadow_map_texture_handle_compare));

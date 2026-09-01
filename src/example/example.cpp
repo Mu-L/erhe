@@ -137,8 +137,6 @@ public:
         , m_program_interface   {m_graphics_device, m_mesh_memory, m_program_interface_config}
         , m_shader_variant_cache{m_graphics_device, m_program_interface}
         , m_programs            {m_graphics_device, m_shader_variant_cache}
-        , m_scene_pass_resources{m_graphics_device, m_init_command_buffer, m_program_interface, nullptr}
-        , m_forward_renderer    {m_graphics_device, m_mesh_memory, m_program_interface, m_shader_variant_cache, m_scene_pass_resources}
         , m_material_fallback_texture{m_graphics_device.create_dummy_texture(m_init_command_buffer, erhe::dataformat::Format::format_8_vec4_srgb)}
         , m_material_fallback_sampler{
             m_graphics_device,
@@ -161,6 +159,10 @@ public:
                 .debug_label            = erhe::utility::Debug_label{"example material set"}
             }
         }
+        // The example has no pass without materials of its own, so its own
+        // set doubles as the "empty set" the prologue falls back to.
+        , m_scene_pass_resources{m_graphics_device, m_init_command_buffer, m_program_interface, nullptr, m_material_set}
+        , m_forward_renderer    {m_graphics_device, m_mesh_memory, m_program_interface, m_shader_variant_cache, m_scene_pass_resources}
         , m_scene               {"example scene", nullptr}
     {
         m_window.set_title(
@@ -470,7 +472,7 @@ public:
                     .ambient_light     = glm::vec3{0.1f, 0.1f, 0.1f},
                     .light_projections = &m_light_projections,
                     .skins             = m_gltf_data.skins,
-                    .materials         = m_gltf_data.materials,
+                    .material_source   = &m_material_set,
                     .debug_label       = "example main render"
                 },
                 .mesh_spans            = { meshes },
@@ -626,19 +628,20 @@ private:
     erhe::scene_renderer::Program_interface        m_program_interface;
     erhe::scene_renderer::Shader_variant_cache     m_shader_variant_cache;
     Programs                                       m_programs;
-    // Declared before the renderer that holds a reference to it. The example
-    // has no draw-list path, so it is the only consumer of the prologue here.
-    erhe::scene_renderer::Scene_pass_resources     m_scene_pass_resources;
-    erhe::scene_renderer::Forward_renderer         m_forward_renderer;
     // A consumer outside any scene (doc/draw_list_material_set_plan.md D0,
     // D3): no scene root, no draw list, no registered objects. Its membership
     // comes entirely from sync_library(m_gltf_data.materials), which is by
     // construction every material its meshes use, and it is the clearest
     // demonstration of the persistence this work exists for - a static glTF
     // viewer writes its material buffer once and never again.
+    //
+    // Declared before the pass resources and the renderer, both of which hold
+    // a reference to it.
     std::shared_ptr<erhe::graphics::Texture>       m_material_fallback_texture;
     erhe::graphics::Sampler                        m_material_fallback_sampler;
     erhe::scene_renderer::Material_set             m_material_set;
+    erhe::scene_renderer::Scene_pass_resources     m_scene_pass_resources;
+    erhe::scene_renderer::Forward_renderer         m_forward_renderer;
     std::unique_ptr<erhe::graphics::Render_pass>   m_render_pass;
 
     std::vector<erhe::graphics::Base_render_pipeline*>    m_render_pipelines;

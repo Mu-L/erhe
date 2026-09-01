@@ -1755,7 +1755,8 @@ public:
                     *m_graphics_device.get(),
                     *m_app_context.current_command_buffer,
                     *m_program_interface.get(),
-                    &glyph_outline_set
+                    &glyph_outline_set,
+                    m_material_set_factory->get_empty_material_set()
                 );
                 m_forward_renderer = std::make_unique<erhe::scene_renderer::Forward_renderer>(
                     *m_graphics_device.get(),

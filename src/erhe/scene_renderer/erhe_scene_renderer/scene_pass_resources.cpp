@@ -15,40 +15,25 @@ Scene_pass_resources::Scene_pass_resources(
     erhe::graphics::Device&            graphics_device,
     erhe::graphics::Command_buffer&    init_command_buffer,
     Program_interface&                 program_interface,
-    const erhe::ui::Glyph_outline_set* glyph_outline_set
+    const erhe::ui::Glyph_outline_set* glyph_outline_set,
+    Material_set&                      empty_material_set
 )
-    : m_graphics_device  {graphics_device}
-    , m_program_interface{program_interface}
-    , m_camera_buffer    {graphics_device, program_interface.camera_interface}
-    , m_glyph_buffer     {graphics_device, program_interface.glyph_interface, glyph_outline_set}
-    , m_joint_buffer     {graphics_device, program_interface.joint_interface}
-    , m_light_buffer     {graphics_device, init_command_buffer, program_interface.light_interface}
-    , m_material_buffer  {graphics_device, program_interface.material_interface}
-    , m_fallback_sampler{
-        graphics_device,
-        erhe::graphics::Sampler_create_info{
-            .min_filter        = erhe::graphics::Filter::nearest,
-            .mag_filter        = erhe::graphics::Filter::nearest,
-            .mipmap_mode       = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-            .address_mode      = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
-            .compare_enable    = false,
-            .compare_operation = erhe::graphics::Compare_operation::always,
-            .debug_label       = "Scene_pass_resources::m_fallback_sampler"
-        }
-    }
-    , m_dummy_texture{graphics_device.create_dummy_texture(init_command_buffer, erhe::dataformat::Format::format_8_vec4_srgb)}
-    , m_texture_heap{
-        std::make_unique<erhe::graphics::Texture_heap>(
-            m_graphics_device,
-            *m_dummy_texture.get(),
-            m_fallback_sampler,
-            m_program_interface.bind_group_layout.get()
-        )
-    }
+    : m_graphics_device   {graphics_device}
+    , m_program_interface {program_interface}
+    , m_camera_buffer     {graphics_device, program_interface.camera_interface}
+    , m_glyph_buffer      {graphics_device, program_interface.glyph_interface, glyph_outline_set}
+    , m_joint_buffer      {graphics_device, program_interface.joint_interface}
+    , m_light_buffer      {graphics_device, init_command_buffer, program_interface.light_interface}
+    , m_empty_material_set{empty_material_set}
 {
 }
 
 Scene_pass_resources::~Scene_pass_resources() noexcept = default;
+
+auto Scene_pass_resources::resolve_material_source(Material_set* material_source) -> Material_set&
+{
+    return (material_source != nullptr) ? *material_source : m_empty_material_set;
+}
 
 auto Scene_pass_resources::begin_pass(
     const Base_render_parameters& base,
@@ -61,10 +46,9 @@ auto Scene_pass_resources::begin_pass(
     erhe::graphics::Render_command_encoder& render_encoder = base.render_encoder;
     render_encoder.set_bind_group_layout(m_program_interface.bind_group_layout.get());
 
-    // Reset the texture heap before the camera update; the material / light
-    // buffers below allocate into the same already-reset heap. Texelfetch sampling makes
-    // the sampler irrelevant, so the nearest m_fallback_sampler is fine.
-    m_texture_heap->reset_heap(render_encoder.get_command_buffer());
+    // The material set is already updated for this frame (D6) and its heap is
+    // already populated; the pass binds it and resets nothing.
+    state.material_source = &resolve_material_source(base.material_source);
 
     ERHE_VERIFY(!base.views.empty());
     // Single-view passes (size 1) call update() so the trailing
@@ -107,9 +91,6 @@ auto Scene_pass_resources::begin_pass(
     // so the shared bind group is always complete.
     m_glyph_buffer.bind(render_encoder);
 
-    state.material_range = m_material_buffer.update(*m_texture_heap.get(), base.materials);
-    m_material_buffer.bind(render_encoder, state.material_range);
-
     state.joint_range = m_joint_buffer.update(debug_joint_indices, debug_joint_colors, base.skins, debug_target_joint);
     m_joint_buffer.bind(render_encoder, state.joint_range);
 
@@ -126,7 +107,9 @@ auto Scene_pass_resources::begin_pass(
         m_ddgi_probe_data_texture.get()
     );
 
-    m_texture_heap->bind(render_encoder);
+    // After the light buffer's set_sampled_image() calls, as the heap bind
+    // has always been.
+    state.material_source->bind(render_encoder);
 
     render_encoder.set_viewport_rect(base.viewport.x, base.viewport.y, base.viewport.width, base.viewport.height);
     render_encoder.set_scissor_rect (base.viewport.x, base.viewport.y, base.viewport.width, base.viewport.height);
@@ -140,11 +123,12 @@ void Scene_pass_resources::end_pass(Pass_state& state, erhe::graphics::Render_co
     if (state.camera_range.has_value()) {
         state.camera_range.value().release();
     }
-    state.material_range.release();
     state.joint_range.release();
     state.light_range.release();
 
-    m_texture_heap->unbind(render_encoder.get_command_buffer());
+    // R9: bind / unbind stay per pass even though the storage is persistent.
+    ERHE_VERIFY(state.material_source != nullptr);
+    state.material_source->unbind(render_encoder.get_command_buffer());
 }
 
 } // namespace erhe::scene_renderer

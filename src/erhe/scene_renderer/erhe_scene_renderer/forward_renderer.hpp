@@ -7,7 +7,7 @@
 #include "erhe_scene_renderer/glyph_buffer.hpp"
 #include "erhe_scene_renderer/joint_buffer.hpp"
 #include "erhe_scene_renderer/light_buffer.hpp"
-#include "erhe_scene_renderer/material_buffer.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_scene_renderer/primitive_buffer.hpp"
 #include "erhe_scene_renderer/scene_pass_resources.hpp"

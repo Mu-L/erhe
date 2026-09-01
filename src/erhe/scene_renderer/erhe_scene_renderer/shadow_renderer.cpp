@@ -77,35 +77,12 @@ Shadow_renderer::Shadow_renderer(
     , m_empty_fragment_outputs{}
     , m_bind_group_layout{program_interface.bind_group_layout.get()}
     , m_y_flip{graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
-    , m_dummy_texture{graphics_device.create_dummy_texture(init_command_buffer, erhe::dataformat::Format::format_8_vec4_srgb)}
-    , m_fallback_sampler{
-        graphics_device,
-        erhe::graphics::Sampler_create_info{
-            .min_filter        = erhe::graphics::Filter::nearest,
-            .mag_filter        = erhe::graphics::Filter::nearest,
-            .mipmap_mode       = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-            .address_mode      = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
-            .compare_enable    = false,
-            .compare_operation = erhe::graphics::Compare_operation::always,
-            .debug_label       = "Shadow_renderer::m_fallback_sampler"
-        }
-    }
     , m_vertex_input        {graphics_device}
     , m_draw_indirect_buffer{graphics_device, program_interface.config.max_draw_count}
     , m_joint_buffer        {graphics_device, program_interface.joint_interface}
     , m_light_buffer        {graphics_device, init_command_buffer, program_interface.light_interface}
     , m_camera_buffer       {graphics_device, program_interface.camera_interface}
     , m_primitive_buffer    {graphics_device, program_interface.primitive_interface}
-    , m_material_buffer     {graphics_device, program_interface.material_interface}
-    // NOTE m_dummy_texture is NOT used for shadow map texture
-    , m_texture_heap{
-        std::make_unique<erhe::graphics::Texture_heap>(
-            m_graphics_device,
-            *m_dummy_texture.get(),
-            m_fallback_sampler,
-            program_interface.bind_group_layout.get()
-        )
-    }
 {
     // Build one shadow caster pipeline per Shadow_cull_mode, plus a depth-clamp
     // sibling for each. Cull front (only back faces write depth) reduces
@@ -150,7 +127,8 @@ void Shadow_renderer::draw_shadow_casters(
     const std::initializer_list<const std::span<const std::shared_ptr<erhe::scene::Mesh>>>& mesh_spans,
     const erhe::Item_filter&                                                                 shadow_filter,
     const uint32_t                                                                           boolean_mask_force_enable,
-    const bool                                                                               exclude_unlit_primitives
+    const bool                                                                               exclude_unlit_primitives,
+    const Material_set*                                                                      material_source
 )
 {
     using Ring_buffer_range          = erhe::graphics::Ring_buffer_range;
@@ -242,6 +220,7 @@ void Shadow_renderer::draw_shadow_casters(
 
         Ring_buffer_range primitive_range = m_primitive_buffer.update(
             bucket,
+            material_source,
             primitive_mode,
             Primitive_interface_settings{}
         );
@@ -390,8 +369,10 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
     using Ring_buffer_range          = erhe::graphics::Ring_buffer_range;
     using Draw_indirect_buffer_range = erhe::scene_renderer::Draw_indirect_buffer_range;
 
-    m_texture_heap->reset_heap(parameters.command_buffer);
-    Ring_buffer_range material_range = m_material_buffer.update(*m_texture_heap.get(), parameters.materials);
+    // Already updated for this frame (D6); this pass binds it and resets
+    // nothing.
+    ERHE_VERIFY(parameters.material_source != nullptr);
+    Material_set& material_set = *parameters.material_source;
     Ring_buffer_range joint_range    = m_joint_buffer.update(glm::uvec4{0xffffffffu, 0u, 0u, 0u}, {}, parameters.skins);
     Ring_buffer_range light_range    = m_light_buffer.update(&parameters.light_projections, glm::vec3{0.0f}, 0);
 
@@ -453,7 +434,6 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
         // 0/0 means no bias. The sign that reduces acne depends on the depth
         // convention -- negative values are valid for experimentation.
         encoder.set_depth_bias(parameters.depth_bias_constant, parameters.depth_bias_slope, 0.0f);
-        m_material_buffer.bind(encoder, material_range);
         m_joint_buffer.bind(encoder, joint_range);
         m_light_buffer.bind_light_buffer(encoder, light_range);
 
@@ -490,7 +470,7 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
         Ring_buffer_range control_range = m_light_buffer.update_control(light_index, parameters.distance_bias_coeff);
         m_light_buffer.bind_control_buffer(encoder, control_range);
 
-        m_texture_heap->bind(encoder);
+        material_set.bind(encoder);
 
         // Directional / spot caster variant: depth-only, plus the distance
         // fragment shader (and its R32F color attachment) when the distance
@@ -534,7 +514,8 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
                 mesh_spans,
                 shadow_filter,
                 boolean_mask_force_enable,
-                parameters.exclude_unlit_casters
+                parameters.exclude_unlit_casters,
+                parameters.material_source
             );
         }
 
@@ -642,7 +623,6 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
                     parameters.point_shadow_viewport.height
                 );
                 encoder.set_depth_bias(parameters.depth_bias_constant, parameters.depth_bias_slope, 0.0f);
-                m_material_buffer.bind(encoder, material_range);
                 m_joint_buffer.bind(encoder, joint_range);
                 m_light_buffer.bind_light_buffer(encoder, light_range);
 
@@ -675,7 +655,7 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
                 );
                 m_light_buffer.bind_control_buffer(encoder, control_range);
 
-                m_texture_heap->bind(encoder);
+                material_set.bind(encoder);
 
                 if (parameters.draw_list_scene != nullptr) {
                     static_cast<void>(
@@ -704,7 +684,8 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
                         mesh_spans,
                         shadow_filter,
                         cube_force_enable,
-                        parameters.exclude_unlit_casters
+                        parameters.exclude_unlit_casters,
+                        parameters.material_source
                     );
                 }
 
@@ -714,9 +695,9 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
         }
     }
 
-    m_texture_heap->unbind(parameters.command_buffer);
+    // R9: bind / unbind stay per pass.
+    material_set.unbind(parameters.command_buffer);
 
-    material_range.release();
     joint_range.release();
     light_range.release();
 

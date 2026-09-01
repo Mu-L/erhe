@@ -405,6 +405,14 @@ auto Material_set::is_valid(const Material_slot_id& id) const -> bool
     return slot.alive && (slot.generation == id.generation);
 }
 
+auto Material_set::get_material(const Material_slot_id& id) const -> const erhe::primitive::Material*
+{
+    if (!is_valid(id)) {
+        return nullptr;
+    }
+    return m_materials[id.index].material.get();
+}
+
 auto Material_set::get_slot_count() const -> std::size_t
 {
     for (std::size_t i = m_materials.size(); i > 0; --i) {

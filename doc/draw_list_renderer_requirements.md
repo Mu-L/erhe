@@ -386,20 +386,30 @@ Drawing:
   `multi_draw_indexed_primitives_indirect`. This mirrors the per-bucket body
   of `Forward_renderer::render()` minus the per-call key derivation and cache
   lookups.
-- R8a (GPU buffer ownership and bind contract): `Draw_list_scene` owns NO GPU
-  buffers or texture heap. The per-pass Camera / Light / Material / Joint /
-  texture-heap update + bind sequence remains the responsibility of the
-  owning renderer (`Forward_renderer` for color, `Shadow_renderer` for
-  shadow), and `draw()` is invoked *inside* that sequence with the renderer's
-  `Primitive_buffer` and `Draw_indirect_buffer` supplied for filling the
-  per-primitive and indirect ranges. `Primitive_buffer::update` and
-  `Draw_indirect_buffer::update` gain entry-based overloads alongside the
-  existing `Render_bucket` ones. Consequence for R15: material and joint GPU
-  slots (`material_buffer_index`, `joint_buffer_index`) are assigned per
-  `Material_buffer::update` / `Joint_buffer::update` call and therefore
-  cannot be baked into entries — an entry stores a stable reference to the
-  material / skin (index into the object's primitive array or an equivalent
-  handle) and the slot is read at upload time, as today.
+- R8a (GPU buffer ownership and bind contract): `Draw_list_scene` owns its own
+  **material** GPU state — a `Material_set`, and through it the material buffer
+  and the texture heap
+  (`doc/draw_list_material_set_plan.md`) — and no other GPU buffers. The
+  per-pass Camera / Light / Joint update + bind sequence remains the
+  responsibility of the owning renderer (`Draw_list_renderer` for color,
+  `Shadow_renderer` for shadow), and `draw()` is invoked *inside* that sequence
+  with the renderer's `Primitive_buffer` and `Draw_indirect_buffer` supplied
+  for filling the per-primitive and indirect ranges. `Primitive_buffer::update`
+  and `Draw_indirect_buffer::update` gain entry-based overloads alongside the
+  existing `Render_bucket` ones. The pass binds and unbinds the material set it
+  is handed, but never creates, updates or resets one: that happens once per
+  frame, before any pass.
+  Consequence for R15, **joint slots only**: `joint_buffer_index` is assigned
+  per `Joint_buffer::update` call and therefore cannot be baked into entries —
+  an entry stores a stable reference to the skin and the slot is read at upload
+  time. **Material slots are the opposite**, and deliberately so: a material's
+  slot is a property of the `Material_set` that issued it, stable for as long
+  as anything references the material in that set, so it *is* baked into the
+  cached record and read from there. The earlier rule — that material slots are
+  assigned per `Material_buffer::update` call — was the mechanism behind a
+  reported bug: "slot 7" meant different materials depending on which pass wrote
+  last, and a cached record written from one pass's numbering was read under
+  another's.
 - R9: Frame-varying per-entry GPU data (primitive transforms, joint matrices)
   is still uploaded per frame for dynamic/skinned lists. Static lists must be
   structured so a future change can skip or cache this upload (G4); doing the
@@ -498,7 +508,9 @@ Drawing:
   `Mesh_primitive::lightmap_uv_scale_offset` (lightmap streamer / baker),
   node world transform, per-item color source flags — are read live from the
   `Mesh` / `Mesh_primitive` / `Node` at upload time (R8a), never baked into
-  `Draw_list_entry`. Only identity-affecting inputs (R13) are baked.
+  `Draw_list_entry`. Only identity-affecting inputs (R13) are baked. Material
+  slots are not in this group: they are stable per set and are baked into the
+  cached record (R8a).
 
 ### 5.3 Draw_list
 
@@ -516,8 +528,9 @@ Drawing:
 - R15: Contains only the per-primitive parameters not covered by its
   `Draw_list`: what is needed to (a) cull the entry (world-space AABB) and
   (b) emit its indirect draw command and per-primitive GPU data (index range,
-  vertex offsets, transform source, stable material / skin reference — not
-  the GPU slot, see R8a — and per-entry flags).
+  vertex offsets, transform source, stable material / skin reference — the
+  material *slot* is baked into the cached record, the joint slot is not; see
+  R8a — and per-entry flags).
 - R16: Layout is value-type and cache friendly: fixed size, no per-entry heap
   indirection on the hot path. References to cold/owning data (the
   `Draw_list_object`) go through indices, not pointers that the hot path must

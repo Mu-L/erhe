@@ -12,7 +12,7 @@
 #include "erhe_scene_renderer/draw_indirect_buffer.hpp"
 #include "erhe_scene_renderer/joint_buffer.hpp"
 #include "erhe_scene_renderer/light_buffer.hpp"
-#include "erhe_scene_renderer/material_buffer.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 //#include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_scene_renderer/primitive_buffer.hpp"
 
@@ -111,7 +111,12 @@ public:
         // entry (6 passes each in point_cube_render_passes).
         const Light_set&                                                   light_set;
         const std::span<const std::shared_ptr<erhe::scene::Skin>>&         skins{};
-        const std::span<const std::shared_ptr<erhe::primitive::Material>>& materials{};
+        // The material slot space this shadow pass resolves through, already
+        // updated for this frame (D5): the scene root's FORWARD set when this
+        // call takes the bucket path, the Draw_list_scene's own set when it
+        // takes the draw-list path. Filled by Shadow_render_node, which is
+        // where that choice is already made.
+        Material_set*                                                      material_source{nullptr};
         Light_projections&                                                 light_projections;
         bool                                                               reverse_depth{true};
         erhe::math::Depth_range                                            depth_range{erhe::math::Depth_range::zero_to_one};
@@ -212,7 +217,10 @@ private:
         const std::initializer_list<const std::span<const std::shared_ptr<erhe::scene::Mesh>>>&  mesh_spans,
         const erhe::Item_filter&                                                                 shadow_filter,
         uint32_t                                                                                 boolean_mask_force_enable,
-        bool                                                                                     exclude_unlit_primitives
+        bool                                                                                     exclude_unlit_primitives,
+        // The set the calling pass binds; the records written here are
+        // consumed by that same pass (doc/draw_list_material_set_plan.md D5).
+        const Material_set*                                                                      material_source
     );
 
     erhe::graphics::Device&                       m_graphics_device;
@@ -228,8 +236,7 @@ private:
     // only the pipeline for the active cull mode ever builds GPU pipelines.
     std::array<erhe::graphics::Base_render_pipeline, shadow_cull_mode_count> m_pipelines;
     std::array<erhe::graphics::Base_render_pipeline, shadow_cull_mode_count> m_pipelines_depth_clamp;
-    std::shared_ptr<erhe::graphics::Texture>      m_dummy_texture;
-    erhe::graphics::Sampler                       m_fallback_sampler;
+
 
     erhe::graphics::Vertex_input_state            m_vertex_input;
     erhe::scene_renderer::Draw_indirect_buffer    m_draw_indirect_buffer;
@@ -237,10 +244,8 @@ private:
     Light_buffer                                  m_light_buffer;
     Camera_buffer                                 m_camera_buffer;
     Primitive_buffer                              m_primitive_buffer;
-    Material_buffer                               m_material_buffer;
     // TODO Re-add per-cascade GPU timers; the cascade Render_pass objects
     // are owned by Shadow_render_node, so the timers should live there.
-    std::unique_ptr<erhe::graphics::Texture_heap> m_texture_heap;
     // Per-render() caster / receiver world AABB gather for the tight frustum
     // fit; members (cleared each call) so the vectors keep their capacity.
     std::vector<erhe::math::Aabb>                 m_caster_world_aabbs;

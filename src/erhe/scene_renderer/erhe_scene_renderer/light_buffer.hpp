@@ -219,7 +219,12 @@ public:
     // TODO A bit hacky injection of these parameters..
     float                                                 brdf_phi         {0.0f};
     float                                                 brdf_incident_phi{0.0f};
-    std::shared_ptr<erhe::primitive::Material>            brdf_material    {};
+    // Pre-resolved slot of the BRDF slice material in the set that pass binds.
+    // A slot, not a Material: once the raster path stops calling the legacy
+    // Material_buffer::update() nothing writes Material::material_buffer_index
+    // any more, and resolving here would read an index from another path's
+    // slot space (D5).
+    uint32_t                                              brdf_material_slot{0};
 };
 
 // The probe volume the forward pass samples. Mirrors the Ddgi_renderer's

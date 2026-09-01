@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_scene_renderer/draw_list_key.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -60,11 +61,13 @@ public:
     // Every entry belonging to this object, for O(entries of this object)
     // unregister / flag update / rebuild.
     std::vector<Draw_list_entry_location> locations;
-    // Distinct materials the object's primitives referenced at registration
-    // (raw pointers; kept alive through info.mesh). Used to maintain the
-    // material identity watch (R12 material-content edits) and to find the
-    // objects to re-register when a watched material changes.
-    std::vector<const erhe::primitive::Material*> materials;
+    // Slots of the distinct materials the object's primitives reference, in
+    // the owning Draw_list_scene's Material_set. The reference these ids stand
+    // for is what keeps each slot assigned for as long as this object's cached
+    // records name it (R2, R3), and write_slot_fields() resolves a primitive's
+    // material through this list rather than through the set - a short scan
+    // over one object's materials that cannot fail for a registered object.
+    std::vector<Material_slot_id>         material_slots;
     // Node_transforms::world_from_node_serial the records were last written
     // from (transform hook dedup: several updates of one node in a frame
     // rewrite the object's records once).

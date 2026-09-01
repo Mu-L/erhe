@@ -30,6 +30,7 @@ namespace erhe::scene_renderer {
 
 class Draw_list;
 class Draw_list_scene;
+class Material_set;
 class Render_bucket;
 
 class Primitive_struct
@@ -151,14 +152,21 @@ public:
         bool                                                       use_id_ranges = false
     ) -> erhe::graphics::Ring_buffer_range;
 
+    // material_source is the set this pass binds - the owning Scene_root's
+    // FORWARD set for the bucket path (doc/draw_list_material_set_plan.md D5),
+    // so a record's material_index and the buffer bound when it is drawn agree.
+    // Null writes slot 0 for every primitive, which is what Id_renderer wants:
+    // its shader reads only the id and it binds no material set at all.
     auto update(
         const Render_bucket&                bucket,
+        const Material_set*                 material_source,
         erhe::primitive::Primitive_mode     primitive_mode,
         const Primitive_interface_settings& settings,
         bool                                use_id_ranges = false
     ) -> erhe::graphics::Ring_buffer_range;
 
-    // Draw-list overload (doc/draw_list_renderer_requirements.md R8/R8a):
+    // Draw-list overload (doc/draw_list_renderer_requirements.md R8/R8a; the
+    // material slot it resolves comes from the draw list's own Material_set):
     // writes one primitive record per entry in [begin, end) of draw_list that
     // passes filter (evaluated on the entry's mirrored flag bits), in entry
     // order. Draw_indirect_buffer::update(Draw_list, ...) with the same
@@ -204,6 +212,7 @@ private:
     // write_offset by one record and maintains m_id_offset / m_id_ranges.
     void write_primitive(
         erhe::scene::Mesh&                  mesh,
+        const Material_set*                 material_source,
         uint16_t                            mesh_primitive_index,
         // The variant the bucket chose. base_vertex, the index ranges and the
         // quantization AABB all have to come from the mesh that is drawn.

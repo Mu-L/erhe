@@ -9,6 +9,7 @@
 #include "erhe_graphics/render_pipeline.hpp"
 #include "erhe_graphics/scoped_debug_group.hpp"
 #include "erhe_profile/profile.hpp"
+#include "erhe_verify/verify.hpp"
 
 namespace erhe::scene_renderer {
 
@@ -49,6 +50,11 @@ auto Draw_list_renderer::render(const Render_parameters& parameters) -> Draw_sta
     ERHE_PROFILE_FUNCTION();
 
     const Base_render_parameters& base = parameters.base;
+
+    // The set this pass binds and the set its cached records name have to be
+    // the same one (D5). The caller picks both, so pin them together here
+    // rather than trusting the two fields to stay in step.
+    ERHE_VERIFY(base.material_source == &parameters.draw_list_scene.get_material_set());
 
     // Early out before any upload / bind, mirroring the bucket path's empty
     // mesh-span check: nothing passes the filter for these layers.

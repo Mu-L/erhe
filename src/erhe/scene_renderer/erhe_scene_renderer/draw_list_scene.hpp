@@ -57,6 +57,8 @@ public:
 };
 
 // Everything draw_color() needs beyond what the lists carry (R6/R7/R8/R8a).
+// Not the material set: that is this scene's own (R8a as amended), reached
+// through get_material_set() by the pass that binds it.
 // GPU buffers are the caller's (Forward_renderer); the caller has already
 // done its per-pass camera / light / material / joint / texture-heap
 // update + bind sequence.
@@ -245,12 +247,17 @@ private:
     class Pending_op
     {
     public:
-        enum class Kind : uint8_t { register_, unregister, reregister, set_flags, transform, refresh };
+        enum class Kind : uint8_t { rebuild_all, register_, unregister, reregister, set_flags, transform, refresh };
         Kind                               kind      {Kind::register_};
         std::shared_ptr<erhe::scene::Mesh> mesh      {};
         Draw_mobility                      mobility  {Draw_mobility::dynamic};
         uint64_t                           flag_bits {0};
     };
+
+    // D1d: set_exclude_unlit_from_shadows() is reached from inside the
+    // rendergraph, after this frame's Material_set::update(), so its rebuild
+    // is deferred to the next flush.
+    void enqueue_rebuild_all();
 
     void assert_main_thread() const;
     auto allocate_object   () -> uint32_t;
@@ -284,8 +291,13 @@ private:
     // components. Watched per distinct registered material (use-counted);
     // check_material_changes() runs in flush_pending() and re-registers every
     // object using a material whose hash changed.
-    void watch_object_materials  (uint32_t object_index);
-    void unwatch_object_materials(uint32_t object_index);
+    // Membership of this object's materials in this draw list's Material_set,
+    // taken BEFORE any record write (R3, D1a). sync_object_materials applies
+    // the DIFFERENCE between the object's previous and current material lists,
+    // so a material shared between the two keeps a positive count throughout
+    // and never loses its slot in between.
+    void sync_object_materials   (uint32_t object_index);
+    void release_object_materials(uint32_t object_index);
     void check_material_changes  ();
     void resolve_color_list  (Draw_list& draw_list);                    // all enumerated view configs
     auto resolve_color_stages(Draw_list& draw_list, uint16_t multiview_count) -> const erhe::graphics::Reloadable_shader_stages*;
@@ -330,15 +342,13 @@ private:
     std::size_t                                                      m_refresh_count{0};
     std::size_t                                                      m_slot_sync_count{0};
 
-    class Material_watch
-    {
-    public:
-        std::size_t use_count    {0};
-        uint64_t    identity_hash{0};
-        // Material::material_buffer_index the records were last written from.
-        uint32_t    slot         {0};
-    };
-    std::unordered_map<const erhe::primitive::Material*, Material_watch> m_material_watches;
+    // Shader-variant identity of each material any registered object uses.
+    // NOT the material set's concern: a change here re-registers objects
+    // (their draw list identity may have moved), while a change to what a
+    // record is written from only dirties the material buffer. Conflating the
+    // two would re-register the world on every colour tweak.
+    std::unordered_map<const erhe::primitive::Material*, uint64_t>   m_material_identity_hashes;
+
     std::size_t                                                      m_material_change_count{0};
 
     Color_environment                                                m_color_environment{};

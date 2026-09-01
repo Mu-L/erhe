@@ -258,8 +258,21 @@ auto Mcp_server::query_draw_lists(const json& args) -> std::string
                 if (material != nullptr) {
                     e["material_id"]   = material->get_id();
                     e["material_name"] = material->get_name();
-                    // The shared mutable field the record was written from
-                    // (removed by phase 6 of the material set plan).
+                    // Where the material actually lives in the slot space
+                    // these records name: the DRAW-LIST set of this scene
+                    // (not the root's forward set - the same material
+                    // normally holds a different slot in each). A record
+                    // whose material_index disagrees with this is stale, and
+                    // that disagreement IS the reported bug.
+                    const std::optional<uint32_t> slot = draw_list_scene->get_material_set().get_slot(material);
+                    if (slot.has_value()) {
+                        e["material_set_slot"] = slot.value();
+                    } else {
+                        e["material_set_slot"] = nullptr;
+                    }
+                    // The shared mutable field the raster path used to write
+                    // (phase 4 stopped writing it from this path; phase 6
+                    // removes it).
                     e["material_buffer_index"] = material->material_buffer_index;
                 }
             }

@@ -183,6 +183,9 @@ public:
     [[nodiscard]] auto find          (const erhe::primitive::Material* material) const -> Material_slot_id;
     [[nodiscard]] auto get_slot      (const erhe::primitive::Material* material) const -> std::optional<uint32_t>;
     [[nodiscard]] auto is_valid      (const Material_slot_id& id) const -> bool;
+    // The material a slot id names, or null when the id no longer validates.
+    // What a record writer resolves an object's own slot ids through.
+    [[nodiscard]] auto get_material   (const Material_slot_id& id) const -> const erhe::primitive::Material*;
     // Highest live slot + 1, i.e. how many slots the GPU write covers. Holes
     // inside it are zero-filled.
     [[nodiscard]] auto get_slot_count() const -> std::size_t;

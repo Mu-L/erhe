@@ -234,7 +234,8 @@ void Forward_renderer::render(const Render_parameters& parameters)
                 );
             }
 
-            Ring_buffer_range primitive_range = m_primitive_buffer.update(bucket, parameters.primitive_mode, parameters.primitive_settings);
+            // The FORWARD set - the one this pass binds (D5).
+            Ring_buffer_range primitive_range = m_primitive_buffer.update(bucket, base.material_source, parameters.primitive_mode, parameters.primitive_settings);
             Draw_indirect_buffer_range draw_indirect_buffer_range = m_draw_indirect_buffer.update(bucket, parameters.primitive_mode);
             ERHE_VERIFY(draw_indirect_buffer_range.draw_indirect_count == bucket.entries.size());
             m_primitive_buffer.bind(render_encoder, primitive_range);
@@ -271,13 +272,12 @@ void Forward_renderer::draw_primitives(
     // so the shared bind group is always complete.
     m_pass_resources.get_glyph_buffer().bind(render_encoder);
 
-    m_pass_resources.get_texture_heap().reset_heap(render_encoder.get_command_buffer());
-
     using Ring_buffer_range = erhe::graphics::Ring_buffer_range;
-    Ring_buffer_range material_range = m_pass_resources.get_material_buffer().update(m_pass_resources.get_texture_heap(), base.materials);
-    if (material_range.get_buffer() != nullptr) {
-        m_pass_resources.get_material_buffer().bind(render_encoder, material_range);
-    }
+
+    // Already updated for this frame (D6); this pass binds it and resets
+    // nothing. Bound after the light buffer's sampled-image binds below, as
+    // the heap bind has always been.
+    Material_set& material_set = m_pass_resources.resolve_material_source(base.material_source);
 
     // draw_primitives() is used for both scene-camera passes (composer
     // fullscreen passes with a Render_context camera) and bare full-
@@ -340,7 +340,7 @@ void Forward_renderer::draw_primitives(
         m_pass_resources.get_ddgi_probe_data_texture()
     );
 
-    m_pass_resources.get_texture_heap().bind(render_encoder);
+    material_set.bind(render_encoder);
 
     const erhe::graphics::Base_render_pipeline_create_info& pipeline = parameters.base_render_pipeline.data;
     erhe::graphics::Scoped_debug_group pass_scope{
@@ -365,7 +365,6 @@ void Forward_renderer::draw_primitives(
         render_encoder.draw_primitives    (pipeline.input_assembly.primitive_topology, 0, parameters.vertex_count);
     }
 
-    material_range.release();
     light_range.release();
 
     if (light_control_range.has_value()) {
@@ -375,7 +374,8 @@ void Forward_renderer::draw_primitives(
         camera_range.value().release();
     }
 
-    m_pass_resources.get_texture_heap().unbind(render_encoder.get_command_buffer());
+    // R9: bind / unbind stay per pass.
+    material_set.unbind(render_encoder.get_command_buffer());
 }
 
 auto Forward_renderer::prewarm_standard_variants(const Prewarm_parameters& parameters) -> std::size_t

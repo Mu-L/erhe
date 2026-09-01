@@ -464,13 +464,37 @@ void write_transform_fields(std::byte* record, const Primitive_struct& offsets, 
     std::memcpy(record + offsets.normal_transform, &normal_transform, sizeof(glm::mat4));
 }
 
-void write_slot_fields(std::byte* record, const Primitive_struct& offsets, const erhe::scene::Mesh& mesh, const erhe::scene::Mesh_primitive& mesh_primitive)
+// The material slot comes from the OBJECT, not from the set: membership was
+// established before any record write (R3, D1a), so the primitive's material
+// is in the object's own list and the id it holds IS the slot. A miss means R3
+// was violated for a registered object - a plan bug - and rendering the wrong
+// material silently is exactly the class of failure this design removes, so it
+// aborts rather than falling back.
+void write_slot_fields(
+    std::byte*                         record,
+    const Primitive_struct&            offsets,
+    const Draw_list_object&            object,
+    const Material_set&                material_set,
+    const erhe::scene::Mesh&           mesh,
+    const erhe::scene::Mesh_primitive& mesh_primitive
+)
 {
-    const erhe::primitive::Material* material         = mesh_primitive.material.get();
-    const uint32_t                   material_index   = (material != nullptr) ? material->material_buffer_index : 0u;
+    const erhe::primitive::Material* material       = mesh_primitive.material.get();
+    uint32_t                         material_index = 0u;
+    if (material != nullptr) {
+        bool found = false;
+        for (const Material_slot_id& id : object.material_slots) {
+            if (material_set.get_material(id) == material) {
+                material_index = id.index;
+                found          = true;
+                break;
+            }
+        }
+        ERHE_VERIFY(found);
+    }
     const std::shared_ptr<erhe::scene::Skin>& skin    = mesh.skin;
-    const float                      skinning_factor  = skin ? 1.0f : 0.0f;
-    const uint32_t                   base_joint_index = skin ? skin->skin_data.joint_buffer_index : 0u;
+    const float                               skinning_factor  = skin ? 1.0f : 0.0f;
+    const uint32_t                            base_joint_index = skin ? skin->skin_data.joint_buffer_index : 0u;
     std::memcpy(record + offsets.material_index,   &material_index,   sizeof(uint32_t));
     std::memcpy(record + offsets.skinning_factor,  &skinning_factor,  sizeof(float));
     std::memcpy(record + offsets.base_joint_index, &base_joint_index, sizeof(uint32_t));
@@ -521,7 +545,7 @@ void Draw_list_scene::write_entry_record(const Draw_list_object& object, const D
     // color / size: pass-dependent, patched by Primitive_buffer::update() per
     // draw; zero here.
     std::memcpy(record + offsets.lightmap_scale_offset, &mesh_primitive.lightmap_uv_scale_offset, sizeof(glm::vec4));
-    write_slot_fields(record, offsets, *mesh, mesh_primitive);
+    write_slot_fields(record, offsets, object, m_material_set, *mesh, mesh_primitive);
     std::memcpy(record + offsets.base_vertex, &entry.base_vertex, sizeof(uint32_t));
     const erhe::primitive::Primitive*   primitive   = mesh_primitive.primitive.get();
     // The variant the entry's draw parameters were baked from, not a fresh
@@ -554,7 +578,7 @@ void Draw_list_scene::write_object_gpu_slots(const uint32_t object_index)
     for (const Draw_list_entry_location& location : object.locations) {
         const Draw_list_entry& entry = m_draw_lists[location.draw_list_index].entries[location.entry_index];
         ERHE_VERIFY(entry.mesh_primitive_index < mesh_primitives.size());
-        write_slot_fields(get_record(location), offsets, *mesh, mesh_primitives[entry.mesh_primitive_index]);
+        write_slot_fields(get_record(location), offsets, object, m_material_set, *mesh, mesh_primitives[entry.mesh_primitive_index]);
     }
     object.joint_slot = mesh->skin ? mesh->skin->skin_data.joint_buffer_index : 0u;
 }
@@ -572,6 +596,12 @@ void Draw_list_scene::refresh_object_records(const uint32_t object_index)
             return;
         }
     }
+    // After the early return above, and before the rewrite: this replays
+    // entries against a scene that may have mutated since the refresh was
+    // enqueued, so the records may be about to name materials the object did
+    // not have. Syncing before the early return would instead release a
+    // dropped material while the un-rewritten records still name it.
+    sync_object_materials(object_index);
     for (const Draw_list_entry_location& location : object.locations) {
         const Draw_list_entry& entry = m_draw_lists[location.draw_list_index].entries[location.entry_index];
         write_entry_record(object, entry, get_record(location));
@@ -606,44 +636,11 @@ void Draw_list_scene::sync_gpu_slots()
 {
     ERHE_PROFILE_FUNCTION();
 
-    // Material / joint GPU slots are assigned by the drawing renderer's
-    // Material_buffer::update() / Joint_buffer::update() (R8a) right before
-    // this is called from draw_color() / draw_shadow(). Compare the few
-    // distinct watched materials and the skinned objects against the values
-    // the records were written from; only a scene material-list / skin-list
-    // change makes them differ.
-    std::vector<const erhe::primitive::Material*> changed_materials;
-    for (std::unordered_map<const erhe::primitive::Material*, Material_watch>::value_type& entry : m_material_watches) {
-        const uint32_t slot = entry.first->material_buffer_index;
-        if (slot != entry.second.slot) {
-            entry.second.slot = slot;
-            changed_materials.push_back(entry.first);
-        }
-    }
-    if (!changed_materials.empty()) {
-        for (std::size_t i = 0, end = m_objects.size(); i < end; ++i) {
-            const Draw_list_object& object = m_objects[i];
-            if (!object.alive) {
-                continue;
-            }
-            bool uses_changed = false;
-            for (const erhe::primitive::Material* material : object.materials) {
-                for (const erhe::primitive::Material* changed : changed_materials) {
-                    if (material == changed) {
-                        uses_changed = true;
-                        break;
-                    }
-                }
-                if (uses_changed) {
-                    break;
-                }
-            }
-            if (uses_changed) {
-                write_object_gpu_slots(static_cast<uint32_t>(i));
-                ++m_slot_sync_count;
-            }
-        }
-    }
+    // Materials need no sync any more: a cached record's material_index is
+    // this scene's own Material_set slot, assigned before the record was
+    // written and held for as long as the record exists (R2, R3). What is
+    // left is the joint half, whose slots are still assigned per
+    // Joint_buffer::update() call by the drawing renderer.
     for (const uint32_t object_index : m_skinned_object_indices) {
         const Draw_list_object& object = m_objects[object_index];
         ERHE_VERIFY(object.alive);
@@ -712,8 +709,10 @@ auto Draw_list_scene::register_object(const Draw_list_object_create_info& create
     m_object_index_by_mesh.emplace(mesh, object_index);
     ++m_alive_object_count;
 
+    // Membership first: add_entries() writes records that name these slots,
+    // and a slot must be assigned before a record can name it (R3).
+    sync_object_materials(object_index);
     add_entries(object_index);
-    watch_object_materials(object_index);
     // add_entries() wrote the records from the live node / slots; remember
     // what they were written from for the transform dedup / slot sync.
     {
@@ -728,62 +727,76 @@ auto Draw_list_scene::register_object(const Draw_list_object_create_info& create
     return Draw_list_object_id{object_index, object.generation};
 }
 
-void Draw_list_scene::watch_object_materials(const uint32_t object_index)
+void Draw_list_scene::sync_object_materials(const uint32_t object_index)
 {
     Draw_list_object& object = m_objects[object_index];
-    object.materials.clear();
+
+    // Already on the main thread, inside this scene's own flush, so the set's
+    // direct (non-enqueued) form is the right one.
+    std::vector<std::shared_ptr<erhe::primitive::Material>> materials;
     for (const erhe::scene::Mesh_primitive& mesh_primitive : object.info.mesh->get_primitives()) {
-        const erhe::primitive::Material* material = mesh_primitive.material.get();
-        if (material == nullptr) {
-            continue;
+        if (mesh_primitive.material) {
+            materials.push_back(mesh_primitive.material);
         }
+    }
+    m_material_set.sync_object_materials(
+        static_cast<uint64_t>(object_index),
+        std::span<const std::shared_ptr<erhe::primitive::Material>>{materials}
+    );
+
+    // The object's own resolution table, rebuilt from the set the diff just
+    // settled. Distinct materials only, in first-use order.
+    object.material_slots.clear();
+    for (const std::shared_ptr<erhe::primitive::Material>& material : materials) {
+        const Material_slot_id id = m_material_set.find(material.get());
+        ERHE_VERIFY(id.is_valid());
         bool seen = false;
-        for (const erhe::primitive::Material* known : object.materials) {
-            if (known == material) {
+        for (const Material_slot_id& known : object.material_slots) {
+            if (known == id) {
                 seen = true;
                 break;
             }
         }
-        if (seen) {
-            continue;
+        if (!seen) {
+            object.material_slots.push_back(id);
         }
-        object.materials.push_back(material);
-        Material_watch& watch = m_material_watches[material];
-        if (watch.use_count == 0) {
-            watch.identity_hash = material_identity_hash(material);
-            watch.slot          = material->material_buffer_index;
-        }
-        ++watch.use_count;
+    }
+
+    // Identity hashes for check_material_changes(); a material this object is
+    // the first to use gets its baseline here.
+    for (const std::shared_ptr<erhe::primitive::Material>& material : materials) {
+        m_material_identity_hashes.try_emplace(material.get(), material_identity_hash(material.get()));
     }
 }
 
-void Draw_list_scene::unwatch_object_materials(const uint32_t object_index)
+void Draw_list_scene::release_object_materials(const uint32_t object_index)
 {
     Draw_list_object& object = m_objects[object_index];
-    for (const erhe::primitive::Material* material : object.materials) {
-        const std::unordered_map<const erhe::primitive::Material*, Material_watch>::iterator it = m_material_watches.find(material);
-        if (it == m_material_watches.end()) {
-            continue;
-        }
-        if (it->second.use_count > 0) {
-            --it->second.use_count;
-        }
-        if (it->second.use_count == 0) {
-            m_material_watches.erase(it);
-        }
-    }
-    object.materials.clear();
+    m_material_set.release_object_materials(static_cast<uint64_t>(object_index));
+    object.material_slots.clear();
 }
 
 void Draw_list_scene::check_material_changes()
 {
     ERHE_PROFILE_FUNCTION();
 
+    // Prune first, and by set membership: a material that has left the set has
+    // lost its last strong reference and may already be destroyed, so its key
+    // must not be dereferenced. Looking it up compares pointers in a hash map
+    // and dereferences nothing, which is what makes this safe to do here
+    // rather than at the moment the reference was dropped.
+    for (
+        std::unordered_map<const erhe::primitive::Material*, uint64_t>::iterator i = m_material_identity_hashes.begin();
+        i != m_material_identity_hashes.end();
+    ) {
+        i = m_material_set.find(i->first).is_valid() ? std::next(i) : m_material_identity_hashes.erase(i);
+    }
+
     std::vector<const erhe::primitive::Material*> changed;
-    for (std::unordered_map<const erhe::primitive::Material*, Material_watch>::value_type& entry : m_material_watches) {
+    for (std::unordered_map<const erhe::primitive::Material*, uint64_t>::value_type& entry : m_material_identity_hashes) {
         const uint64_t hash = material_identity_hash(entry.first);
-        if (hash != entry.second.identity_hash) {
-            entry.second.identity_hash = hash;
+        if (hash != entry.second) {
+            entry.second = hash;
             changed.push_back(entry.first);
         }
     }
@@ -800,7 +813,8 @@ void Draw_list_scene::check_material_changes()
             continue;
         }
         bool uses_changed = false;
-        for (const erhe::primitive::Material* material : object.materials) {
+        for (const Material_slot_id& id : object.material_slots) {
+            const erhe::primitive::Material* material = m_material_set.get_material(id);
             for (const erhe::primitive::Material* changed_material : changed) {
                 if (material == changed_material) {
                     uses_changed = true;
@@ -834,7 +848,7 @@ void Draw_list_scene::unregister_object(const Draw_list_object_id id)
         return;
     }
     remove_entries(id.index);
-    unwatch_object_materials(id.index);
+    release_object_materials(id.index);
     m_object_index_by_mesh.erase(object.info.mesh.get());
     --m_alive_object_count;
     if (object.mobility == Draw_mobility::skinned) {
@@ -897,8 +911,17 @@ void Draw_list_scene::set_exclude_unlit_from_shadows(const bool value)
     m_exclude_unlit_from_shadows = value;
     // Shadow list membership is baked into the cached entries; the flag only
     // takes effect once they are re-classified.
-    log_draw_list->info("Draw_list_scene: exclude unlit from shadows = {}; rebuilding draw lists", value);
-    rebuild_all();
+    //
+    // ENQUEUED, not applied here (D1d): the caller is Shadow_render_node,
+    // three lines before Shadow_renderer::render(), i.e. inside
+    // execute_rendergraph_node and after this frame's Material_set::update().
+    // Rebuilding there would take references that could assign a slot past the
+    // written copy, and would rewrite every cached record mid-frame after some
+    // viewport passes may already have consumed them. The consequence to
+    // accept is that the frame the user toggles the setting renders shadows
+    // with the previous caster classification, self-correcting on the next.
+    log_draw_list->info("Draw_list_scene: exclude unlit from shadows = {}; queueing draw list rebuild", value);
+    enqueue_rebuild_all();
 }
 
 void Draw_list_scene::rebuild_all()
@@ -924,9 +947,11 @@ void Draw_list_scene::rebuild_all()
         object.negative_determinant = sample_negative_determinant(*mesh);
         object.layer_id             = mesh->layer_id;
         object.flag_bits            = mesh->get_flag_bits();
+        // Before add_entries(), and a diff rather than release-then-take: the
+        // old sequence dropped every reference to zero for an instant, freeing
+        // slots the records written one line earlier already named.
+        sync_object_materials(static_cast<uint32_t>(i));
         add_entries(static_cast<uint32_t>(i));
-        unwatch_object_materials(static_cast<uint32_t>(i));
-        watch_object_materials(static_cast<uint32_t>(i));
         const erhe::scene::Node* node = mesh->get_node();
         object.transform_serial = (node != nullptr) ? node->node_data.transforms.world_from_node_serial : 0u;
         object.joint_slot       = mesh->skin ? mesh->skin->skin_data.joint_buffer_index : 0u;
@@ -1048,6 +1073,12 @@ auto Draw_list_scene::get_pending_count() const -> std::size_t
     return m_pending.size();
 }
 
+void Draw_list_scene::enqueue_rebuild_all()
+{
+    const std::lock_guard<std::mutex> lock{m_pending_mutex};
+    m_pending.push_back(Pending_op{.kind = Pending_op::Kind::rebuild_all});
+}
+
 void Draw_list_scene::flush_pending()
 {
     ERHE_PROFILE_FUNCTION();
@@ -1058,8 +1089,25 @@ void Draw_list_scene::flush_pending()
         const std::lock_guard<std::mutex> lock{m_pending_mutex};
         ops.swap(m_pending);
     }
+    // A queued rebuild runs FIRST, ahead of this flush's register / unregister
+    // / refresh ops, so it cannot undo them (D1d). Several enqueued rebuilds
+    // collapse into one - the rebuild is over the whole object table either
+    // way.
+    {
+        const bool rebuild_queued = std::any_of(
+            ops.begin(),
+            ops.end(),
+            [](const Pending_op& op) { return op.kind == Pending_op::Kind::rebuild_all; }
+        );
+        if (rebuild_queued) {
+            rebuild_all();
+        }
+    }
     for (const Pending_op& op : ops) {
         switch (op.kind) {
+            case Pending_op::Kind::rebuild_all: {
+                break; // already applied above
+            }
             case Pending_op::Kind::register_: {
                 register_object(Draw_list_object_create_info{.mesh = op.mesh, .mobility = op.mobility});
                 break;
