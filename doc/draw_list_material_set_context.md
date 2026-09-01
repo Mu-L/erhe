@@ -6,10 +6,13 @@ needed once implementation starts - the plan is self-contained for that.
 
 ## Status and handoff (2026-08-31)
 
-**The material work itself is not started.** Phase 1 (the MCP surface plus the
-red V3 test) has not begun; no `Material_set`, `Material_slot` or
-`Multi_copy_buffer` exists. `Material::material_buffer_index`
-is still the shared mutable field and the reported bug still reproduces.
+**Phase 1 has landed (`b653c5fdb`); phase 2 is next.** The MCP surface and the
+V3 regression test exist and the test is **red**, reproducing the reported
+asymmetry over cached records: with mesh A assigned first the two records read
+A=14 B=0, and with the order reversed A=0 B=15. Nothing about how materials
+reach the GPU has changed - no `Material_set`, `Material_slot` or
+`Multi_copy_buffer` exists yet, and `Material::material_buffer_index` is still
+the shared mutable field.
 
 **Four things this plan depended on have already landed**, so read the tree
 before trusting an older reading of the sections below:
