@@ -584,7 +584,15 @@ Meaningful on **Vulkan only**. There, `m_max_textures`
 (`vulkan_texture_heap.hpp:72`) must stay `<=` `max_texture_heap_size` in the
 set-1 pipeline layout (`vulkan_device_init.cpp:2249`, currently 4096); the valid
 range is therefore 1..`max_texture_heap_size`, because the set uses a variable
-descriptor count (`vulkan_texture_heap.cpp:176`). On GL the sampler-array path
+descriptor count (`vulkan_texture_heap.cpp:176`).
+
+**Correction, found in phase 5.** That was only half true as the code stood:
+`Texture_heap` also built its own set-1 *descriptor set layout* sized
+`m_max_textures`, and a set allocated from a layout that declares a different
+descriptor count is not compatible with the pipeline layout - the bind is
+rejected, and the editor aborts on it. The layout is now always
+`max_texture_heap_size` wide and `max_textures` sizes only the variable
+descriptor count and the slots the heap hands out, which is what D2a intended. On GL the sampler-array path
 sizes itself from `max_per_stage_descriptor_samplers`
 (`gl_texture_heap.cpp:44-50`) and the bindless path grows on demand, so the
 parameter is accepted and ignored; likewise Metal and null.
@@ -1408,7 +1416,9 @@ base. The compiler enumerates the last readers: the trace line at
 the slot from the mesh's scene root's forward set). After this commit the reported
 bug is unrepresentable.
 
-**Phase 7 - Verification.** Section 4.
+**Phase 7 - Verification.** Section 4. What has and has not been run is
+recorded in `doc/draw_list_material_set_context.md`; the automated half is
+green and the interactive half needs a person at the keyboard.
 
 ## 4. Verification
 

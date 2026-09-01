@@ -5,16 +5,17 @@ much of the plan has been reviewed, and why the work exists at all. The plan
 itself is self-contained for implementing; this is what to read before picking
 it up.
 
-## Status: what exists, and what phase 5 must do
+## Status: the plan is implemented; what verification is left
 
 **The reported bug is fixed**, and its regression test says so: V3 is green,
 in both assignment orders. A material's slot is now a property of the
 `Material_set` that issued it, so a cached draw-list record and the buffer
 bound when it is drawn agree by construction.
 
-`Material::material_buffer_index` still exists but nothing in the raster path
-writes it any more: the compute path (DDGI, ray tracer) is its last writer and
-reader until phase 5, and phase 6 removes the field.
+`Material::material_buffer_index` is **gone**, along with `preview_slot`, the
+legacy ring-based `Material_buffer::update()` and its `Ring_buffer_client`
+base. A material has no slot of its own any more, so the bug is no longer
+expressible.
 
 **What exists and is unit-tested, but has no callers:**
 
@@ -66,11 +67,24 @@ pass binds; `Draw_list_object` holds `Material_slot_id`s and
 the material half of `sync_gpu_slots()` are gone;
 `set_exclude_unlit_from_shadows` enqueues its rebuild (D1d); R8a is amended.
 
-**Phase 5 is next**: `Ddgi_renderer`, `Ray_trace_renderer` and `Scene_tlas`
-move to the root's forward set. Until then those three keep their own material
-buffers and library-order indices, which is self-consistent - each writes its
-TLAS instance records and reads them back within one pass - and they are the
-only remaining writers of `Material::material_buffer_index`.
+**Phases 5 and 6 have landed too.** `Ddgi_renderer`, `Ray_trace_renderer` and
+`Scene_tlas` resolve through the root's forward set and own no material buffer,
+texture heap or fallback pair; the field is deleted.
+
+**Two erhe_graphics bugs surfaced while doing it**, both fixed and both
+pre-existing in the sense that no earlier caller could reach them:
+
+- `Texture_heap` built its own set-1 descriptor set layout sized
+  `max_textures`, while the pipeline layout's set 1 is always
+  `max_texture_heap_size` wide. Any heap sized down produced descriptor sets
+  `vkCmdBindDescriptorSets` rejects outright, which aborts the editor on the
+  first bind. **D2a is wrong as written**: `max_textures` may size the variable
+  descriptor count, never the layout.
+- `Texture_heap` bound its set with the pipeline layout of the
+  `Bind_group_layout` it was *constructed* with. Set 1 is compatible only with
+  a pipeline layout that agrees on every lower-numbered set, so that held only
+  while a heap had one consumer. It now binds with the layout the encoder was
+  set to.
 
 **The R4 cheap path (D11) has landed too**, as its own commit after the switch.
 `Scene_root::on_mesh_material_changed` enqueues a material update;
@@ -112,6 +126,43 @@ it.
    of which the plan depends on: stop `Shadow_renderer` duplicating the same
    six buffers, and stop `Id_renderer` borrowing a joint buffer through
    `Forward_renderer::get_joint_buffer()`.
+
+**Phase 7, what has been run** (2026-09-01, Windows):
+
+- Builds, Debug: Vulkan (ninja), OpenGL (`build_tests`), null/headless
+  (`build_vs2026_null_backend`). **Quest not built or run** - it needs the
+  headset and a fresh explicit confirmation.
+- `ctest` over `build_tests`: **668 pass, 0 fail** (25 disabled, 1 pre-existing
+  skip).
+- `mcp_server_tests`: **42 pass, 5 pre-existing skips**; V3 green in both
+  assignment orders.
+- Vulkan validation layers on, DDGI on (256 probes), 200 frames: **no
+  validation errors**.
+- `src/example/example.exe`: runs and renders textured glTF, no errors (V4.12).
+  It writes its material buffer exactly once by construction - one
+  `sync_library` + `update` in the constructor, nothing in its loop.
+- ID picking through the null set (V4.9): `pick_at` resolves correctly.
+- **The R10 / R11 measurement**: default scene, 14 materials. Each of the
+  root's two sets writes once (3584 bytes) and then nothing - zero material
+  bytes and zero heap resets per steady-state frame, against a whole-buffer
+  rewrite plus a heap reset per pass per frame before. `get_draw_lists` reports
+  the counters.
+- **V4.5a's central property**: editing one material's base colour directly on
+  the `Material` object, with no notification, dirties **both** of the root's
+  sets exactly once each.
+
+**Phase 7, what is NOT run** and needs a person at the keyboard:
+
+- The V4 interactive checks: live slider/picker dragging across every
+  `Material_data` field (V4.2 - the standing hole-in-the-hash risk), texture
+  re-bake (V4.3), cross-scene assignment (V4.4), preview churn with the hotbar
+  and inventory open (V4.6), brush preview (V4.7), lightmap streaming (V4.8),
+  BRDF slice window (V4.10), async glTF import and its undo (V4.11).
+- V5's A/B screenshots. `capture_screenshot` reports "the swapchain does not
+  support reading its images back" in this configuration, so the pixel
+  comparison needs a build where readback works.
+- The OpenGL sampler-array (non-bindless) heap path specifically.
+- Quest.
 
 **Verification recipe.** Build `editor` and the test targets in `build_tests`
 (configured **OpenGL**, so the Vulkan path needs `scripts/build_ninja_win_vulkan.bat`
