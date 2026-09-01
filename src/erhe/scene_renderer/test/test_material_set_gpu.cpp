@@ -174,10 +174,13 @@ protected:
     {
         {
             // The slot index travels in through the readback block itself.
-            const std::span<std::byte> map = m_readback->get_map();
+            // begin_write/end_write rather than get_map: read_buffer() unmaps
+            // after every readback, so no standing mapping survives between
+            // calls.
+            const std::span<std::byte> map = m_readback->begin_write(0, sizeof(float));
             const float                slot_as_float = std::bit_cast<float>(slot);
             std::memcpy(map.data(), &slot_as_float, sizeof(float));
-            m_readback->flush_bytes(0, sizeof(float));
+            m_readback->end_write(0, sizeof(float));
         }
         submit_and_wait(
             [&](erhe::graphics::Command_buffer& command_buffer) {
