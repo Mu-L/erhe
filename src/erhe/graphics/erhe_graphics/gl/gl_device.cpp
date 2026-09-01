@@ -1795,7 +1795,7 @@ auto Device_impl::supports_worker_contexts() const -> bool
     return !m_worker_context_windows.empty();
 }
 
-auto Device_impl::acquire_worker_context_slot() -> int
+auto Device_impl::acquire_worker_context_slot(const std::source_location& location) -> int
 {
     // Only a thread with no context current may acquire: the main thread
     // never comes here (Scoped_worker_context no-ops for it) and nested
@@ -1805,9 +1805,48 @@ auto Device_impl::acquire_worker_context_slot() -> int
     int slot = -1;
     {
         std::unique_lock<std::mutex> lock{m_worker_context_pool_mutex};
-        m_worker_context_pool_condition.wait(lock, [this]() { return !m_free_worker_context_slots.empty(); });
+        // Acquire watchdog - proposal E of
+        // doc/gl-worker-context-enforcement.md. This wait observes the real
+        // deadlock condition the compile-time guards only approximate, and
+        // a wedged pool looks BUSY from outside (parents parked in
+        // Subflow::join spin in _corun_until), so without this report
+        // nothing points at the context pool at all. Keep waiting rather
+        // than abort: a long wait can also be legitimate contention.
+        constexpr std::chrono::seconds watchdog_interval{10};
+        while (
+            !m_worker_context_pool_condition.wait_for(
+                lock,
+                watchdog_interval,
+                [this]() { return !m_free_worker_context_slots.empty(); }
+            )
+        ) {
+            std::string holders;
+            for (std::size_t i = 0, end = m_worker_context_slot_holders.size(); i < end; ++i) {
+                const Worker_context_slot_holder& holder = m_worker_context_slot_holders[i];
+                std::ostringstream thread_id_stream;
+                thread_id_stream << holder.thread_id;
+                holders += fmt::format(
+                    "  slot {}: thread {} acquired at {}:{}\n",
+                    i + 1,
+                    thread_id_stream.str(),
+                    holder.acquire_site.file_name(),
+                    holder.acquire_site.line()
+                );
+            }
+            log_threads->error(
+                "GL worker context pool: acquire from {}:{} has waited more than {} seconds with every slot held:\n{}",
+                location.file_name(),
+                location.line(),
+                watchdog_interval.count(),
+                holders
+            );
+        }
         slot = m_free_worker_context_slots.back();
         m_free_worker_context_slots.pop_back();
+        m_worker_context_slot_holders[slot - 1] = Worker_context_slot_holder{
+            .thread_id    = std::this_thread::get_id(),
+            .acquire_site = location
+        };
     }
     m_worker_context_windows[slot - 1]->make_current();
     set_gl_context_index(slot);
@@ -1829,6 +1868,7 @@ void Device_impl::release_worker_context_slot(const int slot)
     set_gl_context_index(-1);
     {
         const std::lock_guard<std::mutex> lock{m_worker_context_pool_mutex};
+        m_worker_context_slot_holders[slot - 1] = Worker_context_slot_holder{};
         m_free_worker_context_slots.push_back(slot);
     }
     m_worker_context_pool_condition.notify_one();

@@ -37,7 +37,7 @@ Scoped_worker_context::Scoped_worker_context(Device& device, const std::source_l
         return;
     }
     t_acquire_site = location;
-    m_slot = device.get_impl().acquire_worker_context_slot();
+    m_slot = device.get_impl().acquire_worker_context_slot(location);
 }
 
 Scoped_worker_context::~Scoped_worker_context() noexcept

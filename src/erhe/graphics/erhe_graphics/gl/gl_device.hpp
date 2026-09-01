@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <source_location>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -216,8 +218,10 @@ public:
     // thread, sets the thread's context index, and drains this context's
     // deferred container-delete and shared-scrub queues. Returns the
     // context slot index (1..pool size). The calling thread must have no
-    // context current (context index -1).
-    [[nodiscard]] auto acquire_worker_context_slot() -> int;
+    // context current (context index -1). The location is the construction
+    // site of the acquiring Scoped_worker_context, recorded per slot so the
+    // acquire watchdog can name the holders of a wedged pool.
+    [[nodiscard]] auto acquire_worker_context_slot(const std::source_location& location) -> int;
     // Clears the context from the calling thread, resets the context index
     // to -1, and returns the slot to the pool.
     void release_worker_context_slot(int slot);
@@ -273,6 +277,18 @@ private:
     std::mutex              m_worker_context_pool_mutex;
     std::condition_variable m_worker_context_pool_condition;
     std::vector<int>        m_free_worker_context_slots;
+    // Holder of each pool slot (index = slot - 1), for the acquire
+    // watchdog's report; guarded by m_worker_context_pool_mutex. Proposal E
+    // of doc/gl-worker-context-enforcement.md: a wedged pool looks BUSY
+    // (parked parents spin in _corun_until), so without a report naming the
+    // holders nothing points at the context pool at all.
+    class Worker_context_slot_holder
+    {
+    public:
+        std::thread::id      thread_id   {};
+        std::source_location acquire_site{};
+    };
+    std::array<Worker_context_slot_holder, gl_worker_context_pool_size> m_worker_context_slot_holders;
 
     // Persistent empty VAO bound for draws whose pipeline declares no vertex
     // input (core-profile GL rejects glDraw* with VAO 0). Created eagerly by
