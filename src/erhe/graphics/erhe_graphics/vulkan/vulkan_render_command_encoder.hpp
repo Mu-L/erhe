@@ -51,6 +51,10 @@ private:
     Command_buffer&          m_command_buffer;
     const Bind_group_layout* m_bind_group_layout{nullptr};
     VkPipelineLayout         m_pipeline_layout  {VK_NULL_HANDLE};
+
+public:
+    // See the note on the compute encoder's accessor.
+    [[nodiscard]] auto get_pipeline_layout() const -> VkPipelineLayout { return m_pipeline_layout; }
     VkBuffer                 m_index_buffer     {VK_NULL_HANDLE};
     VkBuffer                 m_indirect_buffer  {VK_NULL_HANDLE};
     VkIndexType              m_index_type       {VK_INDEX_TYPE_UINT32};

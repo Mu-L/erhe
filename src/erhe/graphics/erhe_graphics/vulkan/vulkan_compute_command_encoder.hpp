@@ -42,6 +42,14 @@ private:
     Command_buffer&          m_command_buffer;
     const Bind_group_layout* m_bind_group_layout{nullptr};
     VkPipelineLayout         m_pipeline_layout  {VK_NULL_HANDLE};
+
+public:
+    // The layout of the pipeline this encoder is recording against. The
+    // texture heap binds its set with THIS rather than with the layout it was
+    // constructed from: descriptor set 1 is only compatible with a pipeline
+    // whose layout agrees on every lower-numbered set, and one heap now serves
+    // dispatches declared with different set 0 layouts.
+    [[nodiscard]] auto get_pipeline_layout() const -> VkPipelineLayout { return m_pipeline_layout; }
 };
 
 } // namespace erhe::graphics

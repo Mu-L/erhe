@@ -60,6 +60,12 @@ public:
     // hand the cb to Scoped_debug_group's cb-targeted ctor.
     [[nodiscard]] auto get_command_buffer() -> Command_buffer&;
 
+    // Backend access, for the parts of the backend that need the state this
+    // encoder is recording against (the texture heap needs the bound
+    // pipeline's layout to bind its descriptor set).
+    [[nodiscard]] auto get_impl()       -> Compute_command_encoder_impl&;
+    [[nodiscard]] auto get_impl() const -> const Compute_command_encoder_impl&;
+
 private:
     erhe::utility::pimpl_ptr<Compute_command_encoder_impl, 128, 16> m_impl;
 };

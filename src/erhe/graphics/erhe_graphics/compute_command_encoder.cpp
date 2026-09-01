@@ -69,4 +69,14 @@ auto Compute_command_encoder::get_command_buffer() -> Command_buffer&
     return m_impl->get_command_buffer();
 }
 
+auto Compute_command_encoder::get_impl() -> Compute_command_encoder_impl&
+{
+    return *m_impl;
+}
+
+auto Compute_command_encoder::get_impl() const -> const Compute_command_encoder_impl&
+{
+    return *m_impl;
+}
+
 } // namespace erhe::graphics
