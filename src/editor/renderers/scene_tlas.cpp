@@ -12,6 +12,7 @@
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
+#include "erhe_scene_renderer/material_set.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
 #include "erhe_scene_renderer/primitive_buffer.hpp"
 #include "erhe_verify/verify.hpp"
@@ -207,8 +208,9 @@ auto Scene_tlas::get_or_create_blas(
 }
 
 auto Scene_tlas::update(
-    erhe::graphics::Command_buffer& command_buffer,
-    const erhe::scene::Mesh_layer&  content_layer
+    erhe::graphics::Command_buffer&           command_buffer,
+    const erhe::scene::Mesh_layer&            content_layer,
+    const erhe::scene_renderer::Material_set* material_source
 ) -> Frame
 {
     using namespace erhe::graphics;
@@ -292,7 +294,13 @@ auto Scene_tlas::update(
                 erhe::scene_renderer::get_position_quantization(buffer_mesh->bounding_box);
 
             const erhe::primitive::Material* material       = mesh_primitive.material.get();
-            const uint32_t                   material_index = (material != nullptr) ? material->material_buffer_index : 0u;
+            // The slot in the set this frame's dispatch binds. Slot 0 on a
+            // miss, the same policy the bucket path takes: a mesh registered
+            // after this frame's material flush is visible here one frame
+            // before its materials are referenced.
+            const uint32_t                   material_index = (material_source != nullptr)
+                ? material_source->get_slot(material).value_or(0u)
+                : 0u;
             const bool                       transmissive   = (material != nullptr) && (material->data.transmission > 0.0f);
 
             m_instance_records.push_back(

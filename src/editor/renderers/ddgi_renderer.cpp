@@ -123,18 +123,6 @@ Ddgi_renderer::Ddgi_renderer(
         static_cast<int>(c_control_binding_point),
         erhe::graphics::Shader_resource::Type::uniform_block
     }
-    , m_fallback_sampler{
-        graphics_device,
-        erhe::graphics::Sampler_create_info{
-            .min_filter        = erhe::graphics::Filter::nearest,
-            .mag_filter        = erhe::graphics::Filter::nearest,
-            .mipmap_mode       = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-            .address_mode      = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
-            .compare_enable    = false,
-            .compare_operation = erhe::graphics::Compare_operation::always,
-            .debug_label       = "Ddgi_renderer::m_fallback_sampler"
-        }
-    }
 {
     using namespace erhe::graphics;
 
@@ -299,23 +287,12 @@ Ddgi_renderer::Ddgi_renderer(
         }
     );
 
-    m_material_buffer = std::make_unique<erhe::scene_renderer::Material_buffer>(
-        graphics_device,
-        program_interface.material_interface
-    );
     m_light_buffer = std::make_unique<erhe::scene_renderer::Light_buffer>(
         graphics_device,
         init_command_buffer,
         program_interface.light_interface
     );
     m_light_projections = std::make_unique<erhe::scene_renderer::Light_projections>();
-    m_dummy_texture = graphics_device.create_dummy_texture(init_command_buffer, erhe::dataformat::Format::format_8_vec4_srgb);
-    m_texture_heap = std::make_unique<Texture_heap>(
-        graphics_device,
-        *m_dummy_texture.get(),
-        m_fallback_sampler,
-        m_trace_bind_group_layout.get()
-    );
     m_control_buffer = std::make_unique<Ring_buffer_client>(
         graphics_device,
         Buffer_target::uniform,
@@ -948,15 +925,13 @@ void Ddgi_renderer::tick(erhe::graphics::Command_buffer& command_buffer, Scene_r
         return;
     }
 
-    // Materials: upload the scene's whole content library, like the raster
-    // and ray trace paths do; Material_buffer::update() assigns each
-    // material's material_buffer_index, which the instance records capture.
-    const std::shared_ptr<Content_library>& content_library = scene_root.get_content_library();
-    if (!content_library || !content_library->materials) {
-        return;
-    }
-    const std::vector<std::shared_ptr<erhe::primitive::Material>>& materials = content_library->materials->get_all<erhe::primitive::Material>();
-    if (materials.empty()) {
+    // Materials: the scene root's FORWARD set, already updated for this frame
+    // by App_scenes::update_material_sets() (doc/draw_list_material_set_plan.md
+    // D5, D6). This dispatch binds it and the TLAS instance records name slots
+    // in it, so the two agree by construction rather than because the buffer
+    // happens to have been rewritten from the same list a moment ago.
+    erhe::scene_renderer::Material_set& material_set = scene_root.get_material_set();
+    if (material_set.get_live_count() == 0) {
         return;
     }
 
@@ -993,9 +968,7 @@ void Ddgi_renderer::tick(erhe::graphics::Command_buffer& command_buffer, Scene_r
 
     m_sky_radiance = glm::vec3{scene_root.get_scene().ambient_light};
 
-    m_texture_heap->reset_heap(command_buffer);
-    Ring_buffer_range material_range = m_material_buffer->update(*m_texture_heap.get(), materials);
-    Scene_tlas::Frame tlas_frame     = m_scene_tlas->update(command_buffer, *scene_root.layers().content());
+    Scene_tlas::Frame tlas_frame     = m_scene_tlas->update(command_buffer, *scene_root.layers().content(), &material_set);
     ERHE_VERIFY(tlas_frame.is_valid());
     Ring_buffer_range light_range    = m_light_buffer->update(m_light_projections.get(), m_sky_radiance);
     Ring_buffer_range control_range  = update_control_buffer();
@@ -1006,24 +979,22 @@ void Ddgi_renderer::tick(erhe::graphics::Command_buffer& command_buffer, Scene_r
         Compute_command_encoder encoder = m_graphics_device.make_compute_command_encoder(command_buffer);
         encoder.set_bind_group_layout(m_trace_bind_group_layout.get());
         encoder.set_compute_pipeline(*m_trace_pipeline);
-        m_material_buffer->bind(encoder, material_range);
         m_light_buffer->bind_light_buffer(encoder, light_range);
         m_control_buffer->bind(encoder, control_range);
         m_scene_tlas->bind_instance_records(encoder, tlas_frame);
         encoder.set_acceleration_structure(m_tlas_binding_point, *tlas_frame.acceleration_structure);
         encoder.set_storage_image(m_ray_data_binding_point,   *m_ray_data_texture);
         encoder.set_storage_image(m_probe_data_binding_point, *m_probe_data_texture);
-        m_texture_heap->bind(encoder);
+        material_set.bind(encoder);
         encoder.dispatch_compute(
             static_cast<std::uintptr_t>((m_rays_per_probe + c_trace_workgroup_size - 1) / c_trace_workgroup_size),
             static_cast<std::uintptr_t>(m_probes_per_update),
             1
         );
     }
-    material_range.release();
     light_range.release();
     tlas_frame.instance_records.release();
-    m_texture_heap->unbind(command_buffer);
+    material_set.unbind(command_buffer);
 
     // The blend passes read this tick's ray data.
     command_buffer.memory_barrier(Memory_barrier_mask::shader_image_access_barrier_bit);

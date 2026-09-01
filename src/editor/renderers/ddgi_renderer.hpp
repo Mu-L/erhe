@@ -218,12 +218,11 @@ private:
     std::unique_ptr<erhe::graphics::Bind_group_layout>        m_relocate_bind_group_layout;
     std::unique_ptr<erhe::graphics::Reloadable_shader_stages> m_relocate_shader_stages;
     std::unique_ptr<erhe::graphics::Compute_pipeline>         m_relocate_pipeline;
-    std::unique_ptr<erhe::scene_renderer::Material_buffer>    m_material_buffer;
+    // No material buffer, texture heap or fallback pair: the tracing dispatch
+    // binds the scene root's forward Material_set, which owns all three
+    // (doc/draw_list_material_set_plan.md D5).
     std::unique_ptr<erhe::scene_renderer::Light_buffer>       m_light_buffer;
     std::unique_ptr<erhe::scene_renderer::Light_projections>  m_light_projections;
-    erhe::graphics::Sampler                                   m_fallback_sampler;
-    std::shared_ptr<erhe::graphics::Texture>                  m_dummy_texture;
-    std::unique_ptr<erhe::graphics::Texture_heap>             m_texture_heap;
     uint32_t                                                  m_tlas_binding_point      {0};
     uint32_t                                                  m_ray_data_binding_point  {0};
     uint32_t                                                  m_probe_data_binding_point{0};

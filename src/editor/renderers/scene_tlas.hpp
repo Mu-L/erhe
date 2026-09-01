@@ -27,6 +27,7 @@ namespace erhe::scene {
     class Mesh_layer;
 }
 namespace erhe::scene_renderer {
+    class Material_set;
     class Mesh_memory;
 }
 
@@ -129,9 +130,15 @@ public:
     // frame's top level structure, and uploads their records. Must be
     // called outside a render pass. Returns an invalid Frame when there is
     // nothing to trace against.
+    //
+    // material_source is the set the tracing dispatch binds - the scene root's
+    // FORWARD set (doc/draw_list_material_set_plan.md D5). Each instance
+    // record's material_index is a slot in it, so the two must be the same
+    // object; null writes slot 0 for every instance.
     [[nodiscard]] auto update(
-        erhe::graphics::Command_buffer&  command_buffer,
-        const erhe::scene::Mesh_layer&   content_layer
+        erhe::graphics::Command_buffer&                command_buffer,
+        const erhe::scene::Mesh_layer&                 content_layer,
+        const erhe::scene_renderer::Material_set*      material_source
     ) -> Frame;
 
     void bind_instance_records(erhe::graphics::Compute_command_encoder& encoder, const Frame& frame);

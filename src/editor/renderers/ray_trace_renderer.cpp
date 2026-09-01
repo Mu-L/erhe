@@ -85,18 +85,6 @@ Ray_trace_renderer::Ray_trace_renderer(
         static_cast<int>(c_control_binding_point),
         erhe::graphics::Shader_resource::Type::uniform_block
     }
-    , m_fallback_sampler{
-        graphics_device,
-        erhe::graphics::Sampler_create_info{
-            .min_filter        = erhe::graphics::Filter::nearest,
-            .mag_filter        = erhe::graphics::Filter::nearest,
-            .mipmap_mode       = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-            .address_mode      = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
-            .compare_enable    = false,
-            .compare_operation = erhe::graphics::Compare_operation::always,
-            .debug_label       = "Ray_trace_renderer::m_fallback_sampler"
-        }
-    }
 {
     using namespace erhe::graphics;
     using erhe::utility::Debug_label;
@@ -270,21 +258,10 @@ Ray_trace_renderer::Ray_trace_renderer(
         graphics_device,
         program_interface.camera_interface
     );
-    m_material_buffer = std::make_unique<erhe::scene_renderer::Material_buffer>(
-        graphics_device,
-        program_interface.material_interface
-    );
     m_light_buffer = std::make_unique<erhe::scene_renderer::Light_buffer>(
         graphics_device,
         init_command_buffer,
         program_interface.light_interface
-    );
-    m_dummy_texture = graphics_device.create_dummy_texture(init_command_buffer, erhe::dataformat::Format::format_8_vec4_srgb);
-    m_texture_heap = std::make_unique<Texture_heap>(
-        graphics_device,
-        *m_dummy_texture.get(),
-        m_fallback_sampler,
-        m_bind_group_layout.get()
     );
     m_control_buffer = std::make_unique<Ring_buffer_client>(
         graphics_device,
@@ -445,27 +422,19 @@ void Ray_trace_renderer::render(
         );
     }
 
-    // Materials: upload the scene's whole content library, like the raster
-    // path does; Material_buffer::update() assigns each material's
-    // material_buffer_index, which the instance records below capture.
-    const std::shared_ptr<Content_library>& content_library = scene_root.get_content_library();
-    if (!content_library || !content_library->materials) {
+    // Materials: the scene root's FORWARD set, already updated for this frame
+    // (doc/draw_list_material_set_plan.md D5, D6). This dispatch binds it and
+    // the TLAS instance records name slots in it.
+    erhe::scene_renderer::Material_set& material_set = scene_root.get_material_set();
+    if (material_set.get_live_count() == 0) {
+        // No materials means no shadeable content; keep the last output.
         return;
     }
-    const std::vector<std::shared_ptr<erhe::primitive::Material>>& materials = content_library->materials->get_all<erhe::primitive::Material>();
-    if (materials.empty()) {
-        // No materials means no shadeable content (and Material_buffer
-        // returns an unbindable empty range); keep the last output.
-        return;
-    }
-
-    m_texture_heap->reset_heap(command_buffer);
-    Ring_buffer_range material_range = m_material_buffer->update(*m_texture_heap.get(), materials);
 
     // Acceleration structures + per-instance records for this frame (shared
     // Scene_tlas helper: bottom level cache, per-frame-in-flight top level
     // slot, instance record ring buffer).
-    Scene_tlas::Frame tlas_frame = m_scene_tlas->update(command_buffer, *content_layer);
+    Scene_tlas::Frame tlas_frame = m_scene_tlas->update(command_buffer, *content_layer, &material_set);
     ERHE_VERIFY(tlas_frame.is_valid());
 
     // Lights + ambient. Light_buffer::update() writes per-light data only
@@ -514,13 +483,12 @@ void Ray_trace_renderer::render(
         encoder.set_bind_group_layout(m_bind_group_layout.get());
         encoder.set_compute_pipeline(*m_pipeline);
         m_camera_buffer->bind(encoder, camera_range);
-        m_material_buffer->bind(encoder, material_range);
         m_light_buffer->bind_light_buffer(encoder, light_range);
         m_control_buffer->bind(encoder, control_range);
         m_scene_tlas->bind_instance_records(encoder, tlas_frame);
         encoder.set_acceleration_structure(m_tlas_binding_point, *tlas_frame.acceleration_structure);
         encoder.set_storage_image(m_output_binding_point, *m_output_texture);
-        m_texture_heap->bind(encoder);
+        material_set.bind(encoder);
         encoder.dispatch_compute(
             (static_cast<std::uintptr_t>(output_width)  + 7) / 8,
             (static_cast<std::uintptr_t>(output_height) + 7) / 8,
@@ -528,11 +496,10 @@ void Ray_trace_renderer::render(
         );
     }
     camera_range.release();
-    material_range.release();
     light_range.release();
     control_range.release();
     tlas_frame.instance_records.release();
-    m_texture_heap->unbind(command_buffer);
+    material_set.unbind(command_buffer);
 
     // The output becomes a sampled texture for the ImGui display.
     command_buffer.memory_barrier(Memory_barrier_mask::shader_image_access_barrier_bit);
