@@ -9,6 +9,7 @@
 #include "assets/asset_manager.hpp"
 #include "content_library/content_library.hpp"
 #include "operations/material_change_operation.hpp"
+#include "operations/mesh_material_assign_operation.hpp"
 #include "operations/operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "preview/material_preview.hpp"
@@ -861,9 +862,10 @@ auto Mcp_server::action_create_material(const json& args) -> std::string
 //   path it was written against, rather than depending on which windows
 //   happen to be open.
 //
-// Not undoable, deliberately: material assignment pushes no Operation today
-// (doc/draw_list_material_set_plan.md, section 1, out of scope), and adding
-// one here would give the tool behaviour the drag-drop gesture does not have.
+// Undoable, like the gesture: the assignment goes onto the operation stack
+// through Mesh_material_assign_operation, so an MCP assignment can be undone
+// with the same Ctrl+Z the user would press after a drag-drop. execute_now
+// keeps the tool's contract that the result it reports is already applied.
 auto Mcp_server::action_assign_mesh_material(const json& args) -> std::string
 {
     const std::string scene_name      = args.value("scene_name", "");
@@ -935,9 +937,14 @@ auto Mcp_server::action_assign_mesh_material(const json& args) -> std::string
     const std::shared_ptr<erhe::primitive::Material> previous = primitives[primitive_index].material;
     const bool changed = (previous != material);
 
-    // The one writer (R4): everything downstream - the scene host hooks, the
-    // draw-list re-register - hangs off this call, exactly as for a drag-drop.
-    mesh->set_primitive_material(primitive_index, material);
+    // Mesh::set_primitive_material stays the one writer (R4) - the operation
+    // calls it, so everything downstream (the scene host hooks, the draw-list
+    // re-register) is raised exactly as for a drag-drop.
+    const std::shared_ptr<Mesh_material_assign_operation> operation =
+        make_mesh_material_assign_operation(mesh, primitive_index, material);
+    if (operation && (m_context.operation_stack != nullptr)) {
+        m_context.operation_stack->execute_now(operation);
+    }
 
     // Render the preview, the way an open Properties window would.
     bool preview_rendered = false;
