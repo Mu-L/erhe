@@ -1,6 +1,9 @@
 # Enforcing the GL worker-context blocking invariant
 
-Status: **proposal**. Nothing here is implemented. Companion to
+Status: **implemented** (2026-09-01). A, B, D and E are all in the tree; see
+"Implementation" at the end for where each lives, the decisions taken on the
+"Before landing" items, and the runtime verification. The body below is kept
+as the design rationale. Companion to
 `doc/gl-worker-thread-contexts.md`, which describes the subsystem itself;
 this document covers only how to keep one of its rules from being broken by
 future code.
@@ -537,7 +540,7 @@ the WORKER pool rather than the GL pool, and none of A, B or E covers it -
 (`gltf_fastgltf.hpp:329`), so the main-thread parse callers that never set it
 run them too and park the main thread.
 
-## Before landing
+## Before landing (resolved 2026-09-01 except item 1; see Implementation)
 
 1. Decide whether the scopes at `items.cpp:207` and
    `geometry_graph_window.cpp:733` should be narrowed to match
@@ -576,3 +579,58 @@ run them too and park the main thread.
   `Mcp_server` queues requests from its HTTP threads (`mcp_server.cpp:360-375`)
   and `process_queued_requests` is driven from the tick at `editor.cpp:652`,
   as `mcp_server.cpp:444` states.)
+
+## Implementation (2026-09-01)
+
+Where each proposal lives:
+
+- **Backend-neutral accessors** (before-landing item 2):
+  `thread_holds_worker_context()`, `thread_worker_context_slot()` and
+  `thread_worker_context_acquire_site()` in
+  `erhe_graphics/scoped_worker_context.{hpp,cpp}`, constant off OpenGL.
+  `Scoped_worker_context` records its construction site (defaulted
+  `std::source_location`) thread-locally on the outermost worker scope, and
+  passes it to the acquire so the watchdog can name holders.
+- **A**: `src/erhe/task` (`erhe::task`), wrappers `spawn`, `spawn_dependent`,
+  `run`, `emplace` per the table in section A. Every scheduling site in
+  `src/editor`, `erhe_gltf` and `erhe_raytrace` goes through them. Active in
+  Release (`ERHE_VERIFY`-style). The failure report names the spawn site and
+  the acquire site of the held scope.
+- **The `erhe_raytrace` seam** (before-landing item 4): resolved by
+  construction. `set_executor(tf::Executor*)` became
+  `set_task_spawner(std::function<void(std::function<void()>)>)`
+  (`raytrace_executor.hpp`); the editor injects a lambda that routes through
+  `erhe::task::spawn`, so the library's one spawn is guarded without a
+  graphics dependency in `erhe_raytrace` - which no longer links Taskflow at
+  all. Its tests inject a plain-`silent_async` spawner (no shared device).
+- **B**: `src/editor/task_guard.{hpp,cpp}`, attached in `editor.cpp` right
+  after the executor is created. **Debug builds only** (before-landing item
+  5): the check is a proxy that can abort on a harmless park, and a
+  registered observer costs on every task entry/exit. No-op under `NDEBUG`.
+- **D**: `scripts/check_task_spawns.py`, run as the `task-spawn-guard` job in
+  `.github/workflows/build.yml`. Scans `src/editor` and `src/erhe` with
+  comments stripped; exempts `src/erhe/task` and `*/test/*` (tests run their
+  own executors with no shared device). Verified to fail on a synthetic
+  violation.
+- **E**: in `Device_impl::acquire_worker_context_slot` (`gl_device.cpp`):
+  10-second `wait_for` slices; each timeout with every slot held logs (to
+  `log_threads`, error level) the requesting site and per-slot holders
+  (thread id + acquire site, kept in `m_worker_context_slot_holders` under
+  the pool mutex). It keeps waiting rather than aborts: a long wait can also
+  be legitimate contention.
+
+Runtime verification (before-landing item 3), Debug OpenGL build with B
+attached, driven over MCP: ABeautifulGame.glb import (worker parse with
+nested flows + GPU build under scope), geometry-graph evaluation (box node
+-> output, payload built), and `lightmap_prepare_tiles` on the imported
+scene (7 meshes, 12 pieces, 4 tiles committed - the subflow shape the
+document is about). Neither A nor B fired; the editor stayed healthy and
+the 48-test MCP integration suite passed against it afterwards. Build
+sweep: opengl, vulkan and null-backend (graphics=none) editors, full
+716-test suite green.
+
+Still open: before-landing item 1 (narrowing the scopes at `items.cpp:207`
+and `geometry_graph_window.cpp:733`, and passing
+`op_builds_gpu_meshes=false` in `Operations::make_raytrace`) - a throughput
+bug, not an enforcement gap, tracked as its own task. The lock-ordering
+observation and proposals C / F remain unimplemented by choice.
