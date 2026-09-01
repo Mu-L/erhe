@@ -1373,9 +1373,23 @@ empty set; `Material_buffer::write_records()` is the span writer the sets use.
   then).
 - The R4 cheap path (D11), **as its own commit after the phase 4 commit**:
   the full re-register is already correct, so the optimization lands on its own
-  and leaves the atomic switch standing by itself.
+  and leaves the atomic switch standing by itself. **Still outstanding.**
 
 V3 turns green here.
+
+Two things the implementation settled that the design did not say:
+
+- **`Scene_pass_resources` and `Shadow_renderer` take the shared empty set by
+  reference at construction**, because `material_source == nullptr` has to
+  resolve to *something* and neither owns one. `Editor` hands them
+  `Material_set_factory::get_empty_material_set()`; the example, which has no
+  pass without materials of its own, hands them its own set.
+- **V3's second assertion had to change with the index space.** It compared a
+  cached record's `material_index` against `Material::material_buffer_index`,
+  which after this phase nothing in the raster path writes. `get_draw_lists`
+  gained a per-entry `material_set_slot` - the material's slot in that scene's
+  **draw-list** set - and the test compares against that. The comparison is
+  the same claim, now stated in the slot space the records actually name.
 
 **Phase 5 - Compute path.** `Ddgi_renderer`, `Ray_trace_renderer` and
 `Scene_tlas` move to the root's **forward** set (D5).

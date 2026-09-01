@@ -5,12 +5,16 @@ much of the plan has been reviewed, and why the work exists at all. The plan
 itself is self-contained for implementing; this is what to read before picking
 it up.
 
-## Status: what exists, and what phase 4 must do
+## Status: what exists, and what phase 5 must do
 
-**The reported bug still reproduces**, and its regression test says so.
-`Material::material_buffer_index` is still the single mutable field every
-`Material_buffer::update()` rewrites, and no frame behaves differently from
-before the work started.
+**The reported bug is fixed**, and its regression test says so: V3 is green,
+in both assignment orders. A material's slot is now a property of the
+`Material_set` that issued it, so a cached draw-list record and the buffer
+bound when it is drawn agree by construction.
+
+`Material::material_buffer_index` still exists but nothing in the raster path
+writes it any more: the compute path (DDGI, ray tracer) is its last writer and
+reader until phase 5, and phase 6 removes the field.
 
 **What exists and is unit-tested, but has no callers:**
 
@@ -52,14 +56,28 @@ the writer reads by construction.
 is phase 4 - so the reported bug still reproduces and V3 is still red by
 design.
 
-**Phase 4 is next**, and its prerequisite `Draw_list_renderer` commit is still
-outstanding (below).
+**Phase 4 has landed**, and with it the prerequisite `Draw_list_renderer`
+split. `Base_render_parameters` carries a `Material_set* material_source`
+instead of a material list; `Scene_pass_resources`, `Forward_renderer` and
+`Shadow_renderer` own no material buffer, texture heap or fallback pair and
+reset nothing per pass; `Primitive_buffer` looks slots up in the set its own
+pass binds; `Draw_list_object` holds `Material_slot_id`s and
+`write_slot_fields` resolves through them with a verify; `Material_watch` and
+the material half of `sync_gpu_slots()` are gone;
+`set_exclude_unlit_from_shadows` enqueues its rebuild (D1d); R8a is amended.
 
-**The prerequisite commit has not been made.** The plan's section 3 asks for
-`Draw_list_renderer` to be split out of `Forward_renderer` before the material
-work; phases 1 and 2 did not need it, and it is still outstanding. D5 is
-written against `Draw_list_renderer` throughout, so it has to land before
-phase 4.
+**Phase 5 is next**: `Ddgi_renderer`, `Ray_trace_renderer` and `Scene_tlas`
+move to the root's forward set. Until then those three keep their own material
+buffers and library-order indices, which is self-consistent - each writes its
+TLAS instance records and reads them back within one pass - and they are the
+only remaining writers of `Material::material_buffer_index`.
+
+**Also outstanding: the R4 cheap path (D11)**, which the plan puts in phase 4
+as its own commit after the switch. The full re-register is already correct, so
+this is an optimization: when a material swap leaves `Draw_list_key::blending`,
+`::double_sided` and `::primitive_key` unchanged, `sync_object_materials` +
+`write_object_gpu_slots` is the cheaper update than a full unregister +
+re-register.
 
 **Confidence, by part.** The membership analysis (section 1 below, and D1, D1a,
 D1d in the plan) has seven independent review rounds behind it, and the seventh
@@ -132,6 +150,12 @@ again:**
 - `erhe::graphics::Texture` **is itself a `Texture_reference`** that returns
   itself, so a plain texture needs no wrapper; `Texture_reference` is abstract
   and cannot be constructed directly.
+- The MCP test harness's readiness probe is **`/health`, which answers before
+  the default scene exists**. A test run started the moment health goes green
+  fails with `Scene not found: ` (empty name). Give the editor a few more
+  seconds, or re-run.
+- `nlohmann::json{value}` builds an **array**, not a scalar. Assign the value
+  directly (`e["k"] = v;`) when writing a number into an MCP payload.
 
 ## 1. Motivation
 
