@@ -5,16 +5,22 @@ Status: **proposal**. Nothing here is implemented. Companion to
 this document covers only how to keep one of its rules from being broken by
 future code.
 
-This document has been through five independent code reviews; the corrections
-are folded in, and the surviving unknowns are listed under "Not verified".
-Every round found errors in the previous round's additions, so treat the
-newest material here as the least tested: round 2 corrected the observer
-firing-point list and a wrong claim that `scene_builder.cpp:739` parks a
-worker; round 3 corrected the failure signature (co-run spins, it does not
-idle); round 4 found that a claimed observer coverage hole did not exist
+This document has been through seven independent code reviews; the
+corrections are folded in, and the surviving unknowns are listed under "Not
+verified". Every round found errors in the previous round's additions, so
+treat the newest material here as the least tested. Round 2 corrected the
+observer firing-point list and a wrong claim that `scene_builder.cpp:739`
+parks a worker; round 3 corrected the failure signature (co-run spins, it does
+not idle); round 4 found that a claimed observer coverage hole did not exist
 (`_invoke_runtime_task_impl` fires from `runtime.hpp`, not `executor.hpp`);
 round 5 found "Before landing" restating a wrong reason the body had just
-corrected.
+corrected; round 6 found that round 5's own correction was wrong; round 7
+found three `make_raytrace` sites attributed to a scope they are not under,
+and a caller list presented as closed that was not.
+
+The recurring failure is **derived lists and confident call-path reasoning**,
+not the conclusions - which have survived every round. Re-derive from code
+before trusting any enumeration here.
 
 **Checking the Taskflow citations**: they are against the pin, CPM
 `VERSION 4.1.0` -> `.cpm_cache/taskflow/bc568e1dc483c1fbe6b4018bb0a3086f760f676d`.
@@ -28,11 +34,13 @@ line numbers there are wildly different.
 
 That is the real constraint, and it is not mechanically checkable. Two
 checkable approximations are proposed below (A and B). **Both are proxies**,
-and in different directions: each has false positives (it fires where no
-deadlock is possible), and B additionally has false negatives - it is
-structurally blind to the acquire-wedge and to `run().wait()` parks. Neither
-is a superset of the real condition. The gap for each is recorded so a later
-reader does not mistake a guard for the rule.
+and neither is a superset of the real condition: each has false positives (it
+fires where no deadlock is possible) AND false negatives. A misses a wait on
+tasks spawned before the context was acquired, any non-task blocking, any call
+site reaching `tf::Executor` directly, and every non-taskflow pool; B is
+structurally blind to the acquire-wedge and to `run().wait()` parks. The gap
+for each is recorded with it, so a later reader does not mistake a guard for
+the rule.
 
 The enforced form of A is the stricter, simpler statement:
 
@@ -127,10 +135,15 @@ process-global mutex are reached from inside scopes.
   (`src/editor/operations/mesh_operation.cpp:342`, and the same pattern in
   `geometry_operations.cpp:690`, `merge_operation.cpp:189`,
   `merge_static_subtree_operation.cpp:228`, `paint_colors_operation.cpp:103`,
-  `paint_weights_operation.cpp:111`, `move_mesh_vertices_operation.cpp:147`,
-  and `src/editor/transform/mesh_component_transform.cpp:635,1094,1182`); and
-  `geometry_graph_window.cpp:733` -> `evaluate_if_dirty` ->
+  `paint_weights_operation.cpp:111`, `move_mesh_vertices_operation.cpp:147`);
+  and `geometry_graph_window.cpp:733` -> `evaluate_if_dirty` ->
   `src/editor/geometry_graph/nodes/geometry_output_node.cpp:196`.
+  NOT `src/editor/transform/mesh_component_transform.cpp:635,1094,1182`,
+  despite looking like the same pattern: those sit in
+  `Mesh_component_transform::commit` / `fork_group` / `extrude_group`, whose
+  only callers are `Transform_tool::apply_component_transform` /
+  `commit_component_edit` - the gizmo drag path and MCP, both main-thread and
+  under no scope.
 - **Geogram's internal `parallel_for` pool**, plus the global
   `geogram_lock()` recursive mutex that `Geometry::process()` takes
   (`src/erhe/geometry/erhe_geometry/geometry.cpp:83,1439-1443`), reached under
@@ -171,7 +184,7 @@ above, which cites the region-level `552,561`):
   case.
 - **`src/erhe/raytrace/erhe_raytrace/bvh/bvh_scene.cpp:363` -
   `executor->silent_async(...)`**, using the editor's executor injected via
-  `erhe::raytrace::set_executor` (`src/editor/editor.cpp:1393`). A spawn site
+  `erhe::raytrace::set_executor` (`src/editor/editor.cpp:1392`). A spawn site
   in a library *below* the editor, so it is a seam enforcement has to reach
   (see C) - but a **latent** gap, not a live one. Two independent reasons, and
   it takes both to settle it (see the warning below):
@@ -182,12 +195,22 @@ above, which cites the region-level `552,561`):
     `async_raytrace_kickoff_operation.cpp:251,258`, and those lines sit inside
     the `context.scene_commit_queue->enqueue(...)` lambda opened at `:208`,
     which `Scene_commit_queue::flush()` runs from the main tick
-    (`editor.cpp:557`). The other `update_rt_primitives` callers
-    (`operations_window.cpp:2231`, also a commit-queue lambda;
-    `parsers/gltf.cpp:784`; `prefab_library.cpp:54`) are main-thread too. The
-    one worker-side route, `parse_mesh` -> `Mesh::set_primitives`
-    (`gltf_fastgltf.cpp:2579,2594`), has no raytrace geometry yet, so
-    `mesh.cpp:64`'s `if (rt_geometry)` never builds a `Raytrace_primitive`;
+    (`editor.cpp:557`). `Mesh::update_rt_primitives` has many more callers
+    than that - `Mesh::add_primitive` (`mesh.cpp:144`), `Mesh::set_primitives`
+    (`:150`) and the two `Mesh` constructors (`:213`, `:223`) reach it from
+    roughly thirty-five sites across brushes, the scene builder, the geometry
+    graph, the operations, the previews and the XR visualisations. Every one
+    checked is main-thread (operation `execute`/`undo`/`apply` run from the
+    operation stack, `commit_prepare` from `Lightmap_partitioner::update`,
+    `Brush::make_instance` from `create.cpp` / `scene_builder.cpp` / MCP,
+    `retarget_meshes` from the prefab load finish), and the one genuinely
+    worker-side route - `parse_primitive` -> `Mesh::add_primitive`
+    (`gltf_fastgltf.cpp:2579,2594`, in the parallel mesh flow) - builds no
+    raytrace geometry at parse time, so `mesh.cpp:64`'s `if (rt_geometry)`
+    never constructs a `Raytrace_primitive`. **Treat that as a spot-check, not
+    an enumeration**: the set is large enough that the honest support for the
+    conclusion is the `k_min_tlas_children` argument below, which does not
+    depend on enumerating callers at all;
   - and even if a worker caller appeared, a per-primitive `Bvh_scene` attaches
     exactly one geometry (`mesh_raytrace.cpp:33`) while `start_tlas_build`
     bails below `k_min_tlas_children = 4` (`bvh_scene.hpp:88`,
@@ -214,9 +237,14 @@ a standalone app that parses on the main thread with its own executor and
 takes no scope. Note this is **inference from inspection**
 (`gltf_fastgltf.hpp:107` and `gltf_fastgltf.cpp:1505` are comments stating no
 device access), and `doc/gl-worker-thread-contexts.md` still lists that code as
-"never explicitly examined". They do block a taskflow worker with no co-run when
-`editor_settings->load.parallel_gltf_parse` is on, which gates them
-(`gltf_fastgltf.cpp:1097,1160,1558`; set at `gltf_load_task.cpp:197`). That is hold-and-wait on the *worker* pool rather than the GL pool,
+"never explicitly examined". They do block on `run().wait()` with no co-run whenever
+`Gltf_parse_arguments::parallel` is set (`gltf_fastgltf.cpp:1097,1160,1558`).
+That flag **defaults to true** (`gltf_fastgltf.hpp:329`);
+`gltf_load_task.cpp:197` sets it from
+`editor_settings->load.parallel_gltf_parse`, and `parsers/gltf.cpp:877,1617`
+set it too, but `asset_manager.cpp:1162` and `prefab_library.cpp:264` take the
+default - so those main-thread parses run the nested flows and park the MAIN
+thread. No GL slot is involved either way. That is hold-and-wait on the *worker* pool rather than the GL pool,
 and it is worth being explicit that **no proposal here covers it**: a deadlock
 there involves no GL slot, so A, B and E are all blind to it. It needs its own
 treatment - `corun` instead of `wait()` is the usual answer.
@@ -299,7 +327,7 @@ are the style to match.
 
 `tf::ObserverInterface` (`taskflow/observer/interface.hpp:94-108`: `set_up`,
 `on_entry(WorkerView, TaskView)`, `on_exit`) is attached with
-`executor.make_observer<T>()` (`executor.hpp:1561`).
+`executor.make_observer<T>()` (`executor.hpp:1549`).
 `Executor::_observer_prologue` / `_observer_epilogue` wrap task execution.
 Re-derived by grepping the call sites, they fire from six of the invoke
 paths - **not all of them**, see the coverage hole below:
@@ -320,7 +348,7 @@ so it dispatches through that path, and its prologue/epilogue sit around
 `lightmap_partitioner.cpp:286` therefore nests strictly inside an observed
 outer task - exactly what B needs for the one case this document exists for.
 `_corun_until` runs local-queue and stolen tasks through `_invoke`
-(`executor.hpp:2314-2352`), and `Subflow::join` reaches it via `_corun_graph`,
+(`executor.hpp:2314-2355`), and `Subflow::join` reaches it via `_corun_graph`,
 so co-run on a parked thread also fires `on_entry`.
 
 **Node-kind coverage is effectively complete.** `_invoke`'s switch
@@ -336,7 +364,7 @@ preempt, so the worker frame unwinds rather than parking in-frame, and it can
 never co-run a nested task onto itself. A future `emplace([](tf::Runtime&){…})`
 is therefore observed, and the two unobserved kinds - `Node::MODULE` from
 `composed_of` (`flow_builder.hpp:1621`) and `Node::ADOPTED_MODULE` from
-`adopt(Graph&&)` (`flow_builder.hpp:1628`) - cannot park. Preemption paths fire the prologue only on first entry, and
+`adopt(Graph&&)` (`flow_builder.hpp:1627`) - cannot park. Preemption paths fire the prologue only on first entry, and
 `TF_EXECUTOR_EXCEPTION_HANDLER` (`core/error.hpp:94-99`) catches inside the
 prologue/epilogue window, so a depth counter will not drift - except in a
 build with `TF_DISABLE_EXCEPTION_HANDLING` (`error.hpp:91-92`), where the
@@ -510,5 +538,5 @@ none of A, B, D or E would detect it.
 - That B does not fire in practice (item 3 above).
 - (Settled, kept for the record: MCP dispatch does run on the main thread -
   `Mcp_server` queues requests from its HTTP threads (`mcp_server.cpp:360-375`)
-  and `process_queued_requests` is driven from the tick at `editor.cpp:652`,
+  and `process_queued_requests` is driven from the tick at `editor.cpp:656`,
   as `mcp_server.cpp:444` states.)
