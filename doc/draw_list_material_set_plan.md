@@ -1282,6 +1282,37 @@ Two things the implementation settled that the design did not say:
 No consumer reads either set's slots yet, so the frame is unchanged. Ships with
 V2.
 
+Three things the implementation settled that the design did not say:
+
+- **The content hash and the record writer are generated from one list**, which
+  is what D10's open question asked for. `Material_record_inputs`
+  (`material_buffer.hpp`) is every value one record is written from, resolved:
+  the POD fields, and per texture slot the resolved `const Texture*`, the
+  `const Sampler*` and the packed rotation / scale / offset.
+  `gather_material_record_inputs()` builds it, `write_record()` writes from it
+  and nothing else, and the hash is the hash of the whole struct. The two
+  cannot drift, because a field that is not in the struct reaches neither.
+- **The shared fallback pair and the empty set are owned by
+  `Material_set_factory` (`editor/renderers/material_set_factory.{hpp,cpp}`),
+  not by `App_rendering`** as D3 says. `App_rendering` is built inside the
+  construction taskflow, and so are the scene roots and both previews, each of
+  which needs a GPU-backed set from its own constructor; an owner built inside
+  that graph is visible to some of them and not others depending on
+  scheduling. The factory is constructed next to `Program_interface`, before
+  the taskflow, and published into `App_context` on the spot. D3's stated
+  reason - "created where an init command buffer exists" - holds there too.
+- **`Material_set` keeps a membership-only default constructor.** V1 runs
+  against no device at all, and phase 3 does not take that away: the GPU half
+  is held behind a `unique_ptr` that a create info with no device leaves null,
+  and `has_gpu()` reports it. The deviceless editor configurations take that
+  path as well.
+
+V2 as shipped covers V2.1-4, 7-10 and 13 plus an `invalidate()` case, reading
+records back through a compute shader that binds the set exactly as a pass
+does. V2.5, 6, 11, 12 and 14-16 are deferred to phase 4: they need a record
+writer that actually consults a set, or a raster pass sampling through the
+heap, neither of which exists until the index space switches.
+
 This phase also sets `max_textures` (D2a) and the initial material count (D9)
 per set: 4096 textures for the sets of roots that render content; 256 textures
 and a small initial count for the two preview roots, the shared empty set and
@@ -1296,6 +1327,13 @@ naive count suggests, but it is now a doubling on the main roots and must be
 measured here rather than at the end (V5, section 5).
 
 **Phase 4 - Atomic index-space switch.**
+
+Phase 3's shape to build on: `Scene_root::get_material_set()` is the forward
+set and `Draw_list_scene::get_material_set()` the draw-list one, both live and
+updated per frame by `App_scenes::update_material_sets()`;
+`App_context::material_set_factory` hands out create infos and owns the shared
+empty set; `Material_buffer::write_records()` is the span writer the sets use.
+
 
 - `Scene_pass_resources` and `Shadow_renderer` take `Material_set*
   material_source` through `Base_render_parameters`; delete their material

@@ -5,7 +5,7 @@ much of the plan has been reviewed, and why the work exists at all. The plan
 itself is self-contained for implementing; this is what to read before picking
 it up.
 
-## Status: what exists, and what phase 3 must do
+## Status: what exists, and what phase 4 must do
 
 **The reported bug still reproduces**, and its regression test says so.
 `Material::material_buffer_index` is still the single mutable field every
@@ -13,6 +13,9 @@ it up.
 before the work started.
 
 **What exists and is unit-tested, but has no callers:**
+
+(This list is phase 2's; phase 3 gave every entry an owner except
+`Multi_copy_buffer`, which is now reached through `Material_set` alone.)
 
 - `erhe_graphics/multi_copy_buffer.{hpp,cpp}` - the persistent storage of D9;
 - `Device::is_frame_completed()` / `get_number_of_frames_in_flight()` on all
@@ -31,15 +34,26 @@ order reversed A=0 B=15 - the reported asymmetry, in the cached records. It
 turns green in phase 4. Its MCP surface is `assign_mesh_material` and
 `get_draw_lists`'s per-mesh `entries` array.
 
-**Phase 3 is next**: `Material_set`'s GPU half (D2, D10), the two kinds of
-owner (D3, D4), the schedule (D6), and the Vulkan descriptor-set use-stamping
-fix (D2b). Two things about it that the plan states but are easy to miss:
+**Phase 3 has landed.** `Material_set` now has its GPU half - the material
+buffer, the texture heap and `update` / `bind` / `unbind` / `invalidate`, with
+D10's content-hash invalidation - and both kinds of owner exist and are fed:
+`Scene_root` carries the forward set and references its meshes' materials into
+it from the four mesh hooks, `Draw_list_scene` carries the draw-list set, and
+the library-only owners (BRDF slice, the standalone example, the shared empty
+set) each construct their own. `App_scenes::update_material_sets()` runs the D6
+schedule after `flush_draw_lists()`; the previews and the BRDF slice run their
+own at their render entry points. The Vulkan descriptor-set use-stamping fix
+(D2b) is in. `Material_buffer` keeps its ring-based `update()` until phase 6;
+the span-writing record writer sits alongside it and both go through one
+`Material_record_inputs` gather, so the content hash covers exactly the bytes
+the writer reads by construction.
 
-- the class currently has no GPU data members at all, which is what lets V1 run
-  deviceless. Phase 3 adds them, so it also decides `Material_set_create_info`
-  and every construction site;
-- `Material_buffer` keeps its existing ring-based `update()` until phase 6.
-  Phase 3 adds the span-writing record writer alongside it.
+**No frame behaves differently yet.** Nothing reads either set's slots - that
+is phase 4 - so the reported bug still reproduces and V3 is still red by
+design.
+
+**Phase 4 is next**, and its prerequisite `Draw_list_renderer` commit is still
+outstanding (below).
 
 **The prerequisite commit has not been made.** The plan's section 3 asks for
 `Draw_list_renderer` to be split out of `Forward_renderer` before the material
@@ -64,13 +78,12 @@ it.
    after the review rounds above. The specific things to check are that every
    invalidation reaches both sets (V4.5a) and the footprint doubling on main
    roots (phase 3 sizing, V5).
-2. **D10's content hash is the top *correctness* risk**, and phase 3 is where
-   it is written. It must cover exactly the bytes `Material_buffer`'s record
-   writer reads, or a material silently stops updating - the same symptom as
-   the bug being fixed, with a new cause. Worth an explicit field-by-field
-   cross-check against the writer, and a decision on whether the hash and the
-   writer should be generated from one list rather than kept in step by
-   comment. With two sets it has to fire for both.
+2. ~~**D10's content hash is the top *correctness* risk.**~~ **Settled in
+   phase 3, by construction rather than by cross-check.** The hash and the
+   record writer both read `Material_record_inputs` and nothing else
+   (`material_buffer.hpp`), built by one `gather_material_record_inputs()`, so
+   a field the writer reads is a field the hash covers. Both sets get it: the
+   hash pass is in `Material_set::update()`, which every set runs.
 3. **Phase 4 is one large commit.** Check whether the R8a amendment and the
    `Primitive_buffer` signature change can be split out ahead of it.
 4. **Amending R8a** in `doc/draw_list_renderer_requirements.md` is a phase 4
@@ -87,9 +100,13 @@ as well). For V3: launch `build_tests/src/editor/Debug/editor.exe`, wait on
 `127.0.0.1:3743/health`, then run `mcp_server_tests.exe` with
 `ERHE_MCP_TEST_TIMEOUT_S=1` (`scripts/run_mcp_tests.ps1` does not forward
 `--gtest_filter`). Baseline: 41 pass, 5 pre-existing skips, V3 red.
-`erhe_scene_renderer_tests` 20 pass, `erhe_graphics_gpu_tests` 75 pass + 1
+`erhe_scene_renderer_tests` 20 pass (V1, deviceless),
+`erhe_scene_renderer_gpu_tests` 10 pass (V2, device-backed; built only where
+`erhe::gpu_test_support` exists), `erhe_graphics_gpu_tests` 75 pass + 1
 pre-existing skip. Running the editor rewrites
-`config/editor/editor_settings.json` - revert it before committing.
+`config/editor/editor_settings.json` - revert it before committing. For a quick
+smoke run of the whole frame, set `quit_after_frames` in that file and revert
+it afterwards.
 
 **Traps found while implementing, which the next session would otherwise hit
 again:**
@@ -106,6 +123,15 @@ again:**
   `ERHE_GRAPHICS_API=none`.
 - The material preview's churn pattern settles at **two** slots, not one,
   because the new material is referenced before the old one is released.
+- **`App_rendering` cannot own anything a scene root or a preview needs from
+  its constructor.** It is built inside `Editor`'s construction taskflow, and
+  so are they, with no edge ordering them; `App_context` is filled after the
+  whole graph runs. Anything in that position goes before the taskflow and is
+  published into `App_context` on the spot - which is what
+  `Material_set_factory` does.
+- `erhe::graphics::Texture` **is itself a `Texture_reference`** that returns
+  itself, so a plain texture needs no wrapper; `Texture_reference` is abstract
+  and cannot be constructed directly.
 
 ## 1. Motivation
 
