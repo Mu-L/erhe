@@ -219,6 +219,54 @@ auto Mcp_server::query_draw_lists(const json& args) -> std::string
             });
         }
     }
+    // Per-entry record inspection, for one mesh at a time
+    // (doc/draw_list_material_set_plan.md, phase 1). Bounded on purpose: a
+    // scene's every entry would be a huge payload, and the thing worth
+    // reading is what ONE mesh's cached records resolved to. material_index
+    // is read out of the cached record, material_id / material_name off the
+    // live Mesh_primitive - a disagreement between them IS the reported bug.
+    json entries        = json::array();
+    const bool entries_wanted = args.contains("mesh_name") || args.contains("mesh_id");
+    if (entries_wanted) {
+        const std::shared_ptr<erhe::scene::Node> node = find_node_in_scene(*sr, args, "mesh_id", "mesh_name");
+        if (!node) {
+            return make_error_content("Mesh node not found in scene: " + scene_name);
+        }
+        const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
+        if (!mesh) {
+            return make_error_content("Node has no mesh: " + node->get_name());
+        }
+        const erhe::scene_renderer::Draw_list_object_id object_id = draw_list_scene->find_object(mesh.get());
+        const erhe::scene_renderer::Draw_list_object*   object    = draw_list_scene->get_object(object_id);
+        if (object == nullptr) {
+            return make_error_content("Mesh is not registered with the draw list scene: " + mesh->get_name());
+        }
+        const std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_primitives();
+        for (const erhe::scene_renderer::Draw_list_entry_location& location : object->locations) {
+            const erhe::scene_renderer::Draw_list& draw_list = draw_list_scene->get_draw_lists()[location.draw_list_index];
+            const erhe::scene_renderer::Draw_list_entry& entry = draw_list.entries[location.entry_index];
+            json e = {
+                {"draw_list_index",      location.draw_list_index},
+                {"entry_index",          location.entry_index},
+                {"mesh_primitive_index", entry.mesh_primitive_index},
+                {"key",                  draw_list.key.describe()},
+                // The cached record's material GPU slot - what the draw uses.
+                {"material_index",       draw_list_scene->get_entry_material_index(location)}
+            };
+            if (entry.mesh_primitive_index < mesh_primitives.size()) {
+                const erhe::primitive::Material* material = mesh_primitives[entry.mesh_primitive_index].material.get();
+                if (material != nullptr) {
+                    e["material_id"]   = material->get_id();
+                    e["material_name"] = material->get_name();
+                    // The shared mutable field the record was written from
+                    // (removed by phase 6 of the material set plan).
+                    e["material_buffer_index"] = material->material_buffer_index;
+                }
+            }
+            entries.push_back(std::move(e));
+        }
+    }
+
     json result = {
         {"scene",                  sr->get_name()},
         {"has_draw_lists",         true},
@@ -243,6 +291,9 @@ auto Mcp_server::query_draw_lists(const json& args) -> std::string
     };
     if (verbose) {
         result["draw_lists"] = lists;
+    }
+    if (entries_wanted) {
+        result["entries"] = entries;
     }
     return make_json_content(result).dump();
 }

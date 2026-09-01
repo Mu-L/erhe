@@ -429,6 +429,19 @@ auto Draw_list_scene::get_record(const Draw_list_entry_location& location) -> st
     return draw_list.primitive_records.data() + static_cast<std::size_t>(location.entry_index) * m_primitive_record_stride;
 }
 
+auto Draw_list_scene::get_entry_material_index(const Draw_list_entry_location& location) const -> uint32_t
+{
+    ERHE_VERIFY(location.draw_list_index < m_draw_lists.size());
+    const Draw_list& draw_list = m_draw_lists[location.draw_list_index];
+    ERHE_VERIFY(location.entry_index < draw_list.entries.size());
+    ERHE_VERIFY(draw_list.primitive_records.size() == draw_list.entries.size() * m_primitive_record_stride);
+    const std::byte* record = draw_list.primitive_records.data() +
+        static_cast<std::size_t>(location.entry_index) * m_primitive_record_stride;
+    uint32_t material_index = 0;
+    std::memcpy(&material_index, record + m_primitive_interface.offsets.material_index, sizeof(uint32_t));
+    return material_index;
+}
+
 namespace {
 
 // Same math as Primitive_buffer::write_primitive(): the normal matrix is the

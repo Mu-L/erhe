@@ -202,6 +202,15 @@ public:
     // (Primitive_interface::primitive_struct size).
     [[nodiscard]] auto get_primitive_record_stride() const -> std::size_t { return m_primitive_record_stride; }
 
+    // The material GPU slot one entry's CACHED record was written with
+    // (doc/draw_list_material_set_plan.md, phase 1). This is what a draw
+    // resolves the material through, and it is not derivable from the mesh:
+    // a record written from a clobbered Material::material_buffer_index
+    // keeps naming the wrong slot while the Mesh_primitive still names the
+    // right material. The regression test for that bug has to compare
+    // records, so it needs to read them.
+    [[nodiscard]] auto get_entry_material_index(const Draw_list_entry_location& location) const -> uint32_t;
+
     // Diagnostics: how many times the color environment changed (each change
     // re-resolves every color list) and how many lazy resolutions happened.
     [[nodiscard]] auto get_color_environment_change_count() const -> std::size_t { return m_color_environment_change_count; }

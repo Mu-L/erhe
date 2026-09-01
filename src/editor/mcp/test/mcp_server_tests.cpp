@@ -1439,3 +1439,213 @@ TEST_F(Mcp_test, undo_of_gltf_import_announces_the_removed_items)
     client.call_tool("close_scene", json{{"scene_name", scene}});
     advance_frames(client, 4);
 }
+
+// ---- Material slot regression (doc/draw_list_material_set_plan.md V3) -------
+//
+// The reported bug: assigning one material to a second mesh leaves that mesh
+// nearly unchanged, and reversing the order moves the failure to the other
+// mesh. The cause is a single mutable Material::material_buffer_index that the
+// material preview's own one-material Material_buffer::update() rewrites, so a
+// cached draw-list record written afterwards names the wrong slot.
+//
+// The assertion is deliberately about the CACHED RECORDS, not about what the
+// meshes' materials say: the Mesh_primitive names the right material in both
+// the broken and the fixed editor - only the record differs. Two meshes
+// carrying the same material must resolve through the same slot.
+//
+// Expected RED until phase 4 of the plan lands.
+
+namespace {
+
+// The node to address a created shape by: place_brush_instance puts the mesh
+// on a child node when it makes one, and the material tools take the node
+// that actually carries the Mesh.
+[[nodiscard]] auto create_mesh_node(
+    Mcp_client&        client,
+    const std::string& scene,
+    const std::string& name,
+    const double       x
+) -> std::size_t
+{
+    Mcp_client::Tool_result r = client.call_tool("create_shape", json{
+        {"scene_name",  scene},
+        {"shape",       "box"},
+        {"name",        name},
+        {"position",    {x, 0.0, 0.0}},
+        {"motion_mode", "none"}
+    });
+    if (r.is_error) {
+        ADD_FAILURE() << "create_shape failed: " << r.text;
+        return 0;
+    }
+    if (r.payload.contains("mesh_node_id")) {
+        return r.payload["mesh_node_id"].get<std::size_t>();
+    }
+    return r.payload.value("node_id", std::size_t{0});
+}
+
+// A material of this name, created if the scene has none. Look-then-create
+// rather than create-only keeps the test re-runnable against a live editor
+// (create_material refuses a duplicate name), and rather than "take the
+// library's first two materials", because those sit at material buffer slot 0
+// and 1 - and a clobber TO slot 0 is invisible on a material that is already
+// there. The bug needs a material with a slot of its own.
+[[nodiscard]] auto ensure_material(
+    Mcp_client&        client,
+    const std::string& scene,
+    const std::string& name
+) -> std::size_t
+{
+    Mcp_client::Tool_result existing = client.call_tool("get_scene_materials", json{{"scene_name", scene}});
+    if (!existing.is_error && existing.payload.contains("materials")) {
+        for (const json& material : existing.payload["materials"]) {
+            if (material.value("name", "") == name) {
+                return material.value("id", std::size_t{0});
+            }
+        }
+    }
+    Mcp_client::Tool_result created = client.call_tool("create_material", json{
+        {"scene_name", scene},
+        {"name",       name},
+        {"base_color", {0.8, 0.1, 0.1}}
+    });
+    if (created.is_error) {
+        ADD_FAILURE() << "create_material failed: " << created.text;
+        return 0;
+    }
+    return created.payload.value("id", std::size_t{0});
+}
+
+// The material GPU slot the mesh's first cached primitive record was written
+// with, plus the material that record's primitive actually names.
+class Record_slot
+{
+public:
+    bool          found                {false};
+    std::uint32_t material_index       {0};  // the cached record's slot
+    std::uint32_t material_buffer_index{0};  // the shared mutable field it was written from
+    std::size_t   material_id          {0};
+};
+
+[[nodiscard]] auto read_record_slot(Mcp_client& client, const std::string& scene, const std::size_t mesh_node_id) -> Record_slot
+{
+    Record_slot out;
+    Mcp_client::Tool_result r = client.call_tool("get_draw_lists", json{
+        {"scene_name", scene},
+        {"mesh_id",    mesh_node_id}
+    });
+    if (r.is_error) {
+        ADD_FAILURE() << "get_draw_lists failed: " << r.text;
+        return out;
+    }
+    if (!r.payload.value("has_draw_lists", false)) {
+        return out;  // caller skips
+    }
+    if (!r.payload.contains("entries") || r.payload["entries"].empty()) {
+        ADD_FAILURE() << "mesh has no draw list entries: " << r.text;
+        return out;
+    }
+    const json& entry = r.payload["entries"][0];
+    out.found                 = true;
+    out.material_index        = entry.value("material_index",        std::uint32_t{0});
+    out.material_buffer_index = entry.value("material_buffer_index", std::uint32_t{0});
+    out.material_id           = entry.value("material_id",           std::size_t{0});
+    return out;
+}
+
+// Assign, then let a frame render before returning: the asymmetry only shows
+// up because Draw_list_scene::sync_gpu_slots() repairs the first mesh during a
+// draw BETWEEN the two assignments. With both assignments inside one
+// flush_draw_lists() both records are written wrong identically and an
+// equality assertion would pass with the bug present.
+void assign_and_render(
+    Mcp_client&        client,
+    const std::string& scene,
+    const std::size_t  mesh_node_id,
+    const std::size_t  material_id
+)
+{
+    Mcp_client::Tool_result r = client.call_tool("assign_mesh_material", json{
+        {"scene_name",  scene},
+        {"mesh_id",     mesh_node_id},
+        {"material_id", material_id}
+    });
+    ASSERT_FALSE(r.is_error) << "assign_mesh_material failed: " << r.text;
+    advance_frames(client, 3);
+}
+
+} // anonymous namespace
+
+TEST_F(Mcp_test, material_drag_to_second_mesh_uses_same_record_slot)
+{
+    Mcp_client&       client = Mcp_env::get().client();
+    const std::string scene  = Mcp_env::get().scene_name();
+
+    const std::size_t mesh_a = create_mesh_node(client, scene, "slot_test_a", -2.0);
+    const std::size_t mesh_b = create_mesh_node(client, scene, "slot_test_b",  2.0);
+    ASSERT_NE(mesh_a, 0u);
+    ASSERT_NE(mesh_b, 0u);
+    advance_frames(client, 3);
+
+    const std::size_t material_forward = ensure_material(client, scene, "slot_test_forward");
+    const std::size_t material_reverse = ensure_material(client, scene, "slot_test_reverse");
+    ASSERT_NE(material_forward, 0u);
+    ASSERT_NE(material_reverse, 0u);
+
+    {
+        // Forward order: A first, then B - the reported reproduction.
+        assign_and_render(client, scene, mesh_a, material_forward);
+        assign_and_render(client, scene, mesh_b, material_forward);
+
+        const Record_slot a = read_record_slot(client, scene, mesh_a);
+        const Record_slot b = read_record_slot(client, scene, mesh_b);
+        if (!a.found || !b.found) {
+            client.call_tool("delete_nodes", json{{"scene_name", scene}, {"names", {"slot_test_a", "slot_test_b"}}});
+            GTEST_SKIP() << "scene has no draw lists (use_draw_lists off?)";
+        }
+        ASSERT_EQ(a.material_id, material_forward) << "assignment did not reach mesh A";
+        ASSERT_EQ(b.material_id, material_forward) << "assignment did not reach mesh B";
+        // The mechanism is the material preview rewriting the shared
+        // Material::material_buffer_index to 0 (its library holds one
+        // material). A material that already lives at slot 0 in the scene's
+        // own library cannot show it, so the comparison below would pass for
+        // the wrong reason.
+        if (a.material_buffer_index == 0) {
+            client.call_tool("delete_nodes", json{{"scene_name", scene}, {"names", {"slot_test_a", "slot_test_b"}}});
+            GTEST_SKIP() << "test material sits at material buffer slot 0; the clobber is unobservable";
+        }
+        EXPECT_EQ(a.material_index, b.material_index)
+            << "two meshes carrying one material resolve through different GPU slots: "
+            << "A=" << a.material_index << " B=" << b.material_index;
+        // Equality alone can hold for the wrong reason - both records stale at
+        // the same wrong slot. So each record must also name the slot the
+        // material actually occupies. Today that is the shared
+        // Material::material_buffer_index; from phase 4 of
+        // doc/draw_list_material_set_plan.md it becomes the material's slot in
+        // the root's DRAW-LIST material set (not the forward set - the same
+        // material holds a different slot in each), and phase 6 deletes the
+        // field this reads.
+        EXPECT_EQ(a.material_index, a.material_buffer_index) << "mesh A's cached record is stale";
+        EXPECT_EQ(b.material_index, b.material_buffer_index) << "mesh B's cached record is stale";
+    }
+
+    {
+        // Reverse order: B first, then A. The bug moves with the order, so the
+        // failing side swaps; equality has to hold either way.
+        assign_and_render(client, scene, mesh_b, material_reverse);
+        assign_and_render(client, scene, mesh_a, material_reverse);
+
+        const Record_slot a = read_record_slot(client, scene, mesh_a);
+        const Record_slot b = read_record_slot(client, scene, mesh_b);
+        ASSERT_TRUE(a.found && b.found);
+        ASSERT_EQ(a.material_id, material_reverse);
+        ASSERT_EQ(b.material_id, material_reverse);
+        EXPECT_EQ(a.material_index, b.material_index)
+            << "reversed assignment order: A=" << a.material_index << " B=" << b.material_index;
+        EXPECT_EQ(a.material_index, a.material_buffer_index) << "mesh A's cached record is stale";
+        EXPECT_EQ(b.material_index, b.material_buffer_index) << "mesh B's cached record is stale";
+    }
+
+    client.call_tool("delete_nodes", json{{"scene_name", scene}, {"names", {"slot_test_a", "slot_test_b"}}});
+    advance_frames(client, 3);
+}

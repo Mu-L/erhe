@@ -11,6 +11,7 @@
 #include "operations/material_change_operation.hpp"
 #include "operations/operation.hpp"
 #include "operations/operation_stack.hpp"
+#include "preview/material_preview.hpp"
 #include "scene/scene_root.hpp"
 #include "texture_graph/graph_texture.hpp"
 
@@ -19,6 +20,8 @@
 #include "erhe_graphics/texture.hpp"
 #include "erhe_item/item.hpp"
 #include "erhe_primitive/material.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
 
 #include <glm/glm.hpp>
@@ -839,6 +842,137 @@ auto Mcp_server::action_create_material(const json& args) -> std::string
         {"scene",   scene_root->get_name()},
         {"applied", applied}
     }).dump();
+}
+
+// Assign a material to one mesh primitive - the MCP equivalent of dragging a
+// material from the library onto a mesh (doc/draw_list_material_set_plan.md,
+// phase 1). Two things make this a test surface rather than a convenience:
+//
+// - it goes through Mesh::set_primitive_material(), the one writer of a
+//   primitive's material (R4), so every notification the editor raises for a
+//   drag-drop is raised here too;
+// - it renders the material preview once, exactly as an open Properties
+//   window would. That is what reproduces the reported bug deterministically:
+//   the preview's Material_buffer::update() rewrites the shared
+//   Material::material_buffer_index to its own one-material list, and the
+//   draw-list flush later in the same frame writes cached records from it.
+//   Without this the regression test would depend on which windows happen to
+//   be open.
+//
+// Not undoable, deliberately: material assignment pushes no Operation today
+// (doc/draw_list_material_set_plan.md, section 1, out of scope), and adding
+// one here would give the tool behaviour the drag-drop gesture does not have.
+auto Mcp_server::action_assign_mesh_material(const json& args) -> std::string
+{
+    const std::string scene_name      = args.value("scene_name", "");
+    const std::size_t primitive_index = args.value("primitive_index", std::size_t{0});
+
+    Scene_root* const scene_root = find_scene(scene_name);
+    if (scene_root == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+
+    const std::shared_ptr<erhe::scene::Node> node = find_node_in_scene(*scene_root, args, "mesh_id", "mesh_name");
+    if (!node) {
+        return make_error_content("Mesh node not found in scene: " + scene_name);
+    }
+    const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
+    if (!mesh) {
+        return make_error_content("Node has no mesh: " + node->get_name());
+    }
+    const std::vector<erhe::scene::Mesh_primitive>& primitives = mesh->get_primitives();
+    if (primitive_index >= primitives.size()) {
+        return make_error_content(
+            "primitive_index " + std::to_string(primitive_index) + " out of range for mesh '" +
+            mesh->get_name() + "' (" + std::to_string(primitives.size()) + " primitives)"
+        );
+    }
+
+    // Material resolution mirrors edit_material: the id path reaches any
+    // scene's library and the asset manager (cross-scene assignment is a real
+    // gesture - dragging one scene's material onto another scene's mesh), the
+    // name path looks in the target scene's own library.
+    const std::size_t material_id   = args.value("material_id", std::size_t{0});
+    const std::string material_name = args.value("material_name", "");
+    std::shared_ptr<erhe::primitive::Material> material;
+    if (material_id != 0) {
+        material = find_material_by_id(material_id);
+        if (!material) {
+            return make_error_content("Material not found with id: " + std::to_string(material_id));
+        }
+    } else if (!material_name.empty()) {
+        const std::shared_ptr<Content_library> library = scene_root->get_content_library();
+        if (!library || !library->materials) {
+            return make_error_content("Scene has no material library: " + scene_name);
+        }
+        std::vector<std::size_t> matching_ids;
+        for (const std::shared_ptr<erhe::primitive::Material>& mat : library->materials->get_all<erhe::primitive::Material>()) {
+            if (mat->get_name() == material_name) {
+                if (!material) {
+                    material = mat;
+                }
+                matching_ids.push_back(mat->get_id());
+            }
+        }
+        if (!material) {
+            return make_error_content("Material not found: " + material_name);
+        }
+        if (matching_ids.size() > 1) {
+            json r = make_text_content(
+                "Material name '" + material_name + "' matches " +
+                std::to_string(matching_ids.size()) + " materials"
+            );
+            r["isError"]       = true;
+            r["candidate_ids"] = matching_ids;
+            return r.dump();
+        }
+    } else {
+        return make_error_content("material_name or material_id is required");
+    }
+
+    const std::shared_ptr<erhe::primitive::Material> previous = primitives[primitive_index].material;
+    const bool changed = (previous != material);
+
+    // The one writer (R4): everything downstream - the scene host hooks, the
+    // draw-list re-register - hangs off this call, exactly as for a drag-drop.
+    mesh->set_primitive_material(primitive_index, material);
+
+    // Render the preview, the way an open Properties window would.
+    bool preview_rendered = false;
+    if (args.value("render_preview", true) &&
+        (m_context.material_preview != nullptr) &&
+        (m_context.graphics_device != nullptr) &&
+        (m_context.current_command_buffer != nullptr))
+    {
+        // Take the preview off any external thumbnail target first, then give
+        // it a small one of its own: Thumbnails renders into a caller-supplied
+        // texture, and this must not scribble into whichever one was last used.
+        m_context.material_preview->set_color_texture({});
+        m_context.material_preview->resize(64, 64);
+        m_context.material_preview->update_rendertarget(*m_context.graphics_device);
+        m_context.material_preview->render_preview(material);
+        preview_rendered = true;
+    }
+
+    // node_id / node_name echo what mesh_id / mesh_name addressed (the node
+    // carrying the mesh, the same convention get_draw_lists uses); mesh is the
+    // mesh item's own name, which can differ from the node's.
+    json result = {
+        {"scene",            scene_root->get_name()},
+        {"node_name",        node->get_name()},
+        {"node_id",          node->get_id()},
+        {"mesh",             mesh->get_name()},
+        {"primitive_index",  primitive_index},
+        {"material",         material->get_name()},
+        {"material_id",      material->get_id()},
+        {"changed",          changed},
+        {"preview_rendered", preview_rendered}
+    };
+    if (previous) {
+        result["previous_material"]    = previous->get_name();
+        result["previous_material_id"] = previous->get_id();
+    }
+    return make_json_content(result).dump();
 }
 
 auto Mcp_server::action_copy_library_item(const json& args) -> std::string

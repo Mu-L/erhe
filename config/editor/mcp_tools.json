@@ -2300,6 +2300,46 @@
     "name": "create_material"
   },
   {
+    "name": "assign_mesh_material",
+    "description": "Assign a material to one primitive of a mesh - the MCP equivalent of dragging a material from the library onto a mesh. Goes through Mesh::set_primitive_material(), so every notification a drag-drop raises is raised here. Also renders the material preview once (render_preview=false to skip), the way an open Properties window would, so behaviour does not depend on which windows are open. NOT undoable: material assignment pushes no operation in the editor either (doc/draw_list_material_set_plan.md). Identify the mesh by mesh_name or mesh_id (its node), and the material by material_name (in this scene's library) or material_id (any scene, or a loaded asset container).",
+    "inputSchema": {
+      "properties": {
+        "scene_name": {
+          "description": "Name of the scene holding the mesh",
+          "type": "string"
+        },
+        "mesh_name": {
+          "description": "Name of the mesh's node",
+          "type": "string"
+        },
+        "mesh_id": {
+          "description": "Item id of the mesh's node (alternative to mesh_name)",
+          "type": "integer"
+        },
+        "primitive_index": {
+          "description": "Index into the mesh's primitives (default 0)",
+          "type": "integer"
+        },
+        "material_name": {
+          "description": "Name of the material in this scene's content library",
+          "type": "string"
+        },
+        "material_id": {
+          "description": "Item id of the material; reaches any scene's library and loaded asset containers (alternative to material_name)",
+          "type": "integer"
+        },
+        "render_preview": {
+          "description": "Render the material preview once after assigning (default true)",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scene_name"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "description": "Copy a content-library item from one scene's library to another's. Copies never alias: the copy is a fresh item owned by the target scene (brushes share their expensive payload by reference). Name collisions in the target get a ' (N)' suffix. Textures and graph assets cannot be copied; a copied material keeps its texture references into the source scene's textures (they render, but do not export with the target scene). Not undoable.",
     "inputSchema": {
       "properties": {
@@ -6236,7 +6276,7 @@
   },
   {
     "name": "get_draw_lists",
-    "description": "Inspect the scene's persistent draw lists (Draw_list_scene, doc/draw_list_renderer_requirements.md): registered object count, draw list / entry counts, pending (unflushed) change count and runtime negative-determinant flip count. verbose=true also lists every non-empty draw list with its identity key. has_draw_lists=false when the scene root has no Draw_list_scene (preview / tool scenes). Also reports resolution diagnostics: color_environment_change_count (each change re-resolves every color list), lazy_resolution_count (one-off first-use resolutions), material_change_count (material identity changes that re-registered objects).",
+    "description": "Inspect the scene's persistent draw lists (Draw_list_scene, doc/draw_list_renderer_requirements.md): registered object count, draw list / entry counts, pending (unflushed) change count and runtime negative-determinant flip count. verbose=true also lists every non-empty draw list with its identity key. has_draw_lists=false when the scene root has no Draw_list_scene (preview / tool scenes). Also reports resolution diagnostics: color_environment_change_count (each change re-resolves every color list), lazy_resolution_count (one-off first-use resolutions), material_change_count (material identity changes that re-registered objects). Supplying mesh_name or mesh_id adds an entries array for that one mesh: per entry its draw list / entry index, mesh_primitive_index, identity key, the material_index its CACHED primitive record was written with (what the draw actually resolves the material through), and the live Mesh_primitive's material_id / material_name / material_buffer_index. A material_index that disagrees with the material the mesh names is a stale cached record.",
     "inputSchema": {
       "properties": {
         "scene_name": {
@@ -6246,6 +6286,14 @@
         "verbose": {
           "description": "Include per-draw-list details (default false)",
           "type": "boolean"
+        },
+        "mesh_name": {
+          "description": "List the cached primitive records of this mesh's node (adds 'entries')",
+          "type": "string"
+        },
+        "mesh_id": {
+          "description": "Item id of the mesh's node (alternative to mesh_name)",
+          "type": "integer"
         }
       },
       "required": [

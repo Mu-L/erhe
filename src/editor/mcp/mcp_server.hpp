@@ -233,6 +233,7 @@ private:
     auto action_batch           (const nlohmann::json& args) -> std::string;
     auto action_edit_material   (const nlohmann::json& args) -> std::string;
     auto action_create_material (const nlohmann::json& args) -> std::string;
+    auto action_assign_mesh_material(const nlohmann::json& args) -> std::string;
     auto action_copy_library_item(const nlohmann::json& args) -> std::string;
     auto action_set_scene_settings(const nlohmann::json& args) -> std::string;
     auto action_save_scene      (const nlohmann::json& args) -> std::string;
