@@ -117,6 +117,9 @@ public:
     [[nodiscard]] auto create_dummy_texture               (Command_buffer& init_command_buffer, erhe::dataformat::Format format) -> std::shared_ptr<Texture>;
     [[nodiscard]] auto get_buffer_alignment               (Buffer_target target) -> std::size_t;
     [[nodiscard]] auto get_frame_index                    () const -> uint64_t;
+    [[nodiscard]] auto get_number_of_frames_in_flight     () const -> std::size_t;
+    // Conservative: see Device::is_frame_completed().
+    [[nodiscard]] auto is_frame_completed                 (uint64_t frame) const -> bool;
     [[nodiscard]] auto wait_for_displayed_frame           (std::int64_t frame_id, uint64_t timeout_ns) -> Present_wait_result;
                   void set_present_target_time            (std::int64_t frame_id, double target_time_seconds, double hold_until_seconds);
     [[nodiscard]] auto get_frame_pacing_tier              () const -> Frame_pacing_tier;
@@ -225,6 +228,11 @@ private:
     // "2-frame delay" heuristic that assumed frame N-2 was GPU-done.
     std::mutex                       m_completion_mutex;
     std::vector<uint64_t>            m_pending_completed_frames;
+    // One past the highest frame the GPU has retired (same meaning as the
+    // Vulkan backend's watermark). Frames are submitted to one queue and so
+    // complete in submission order; drain_completed_frames() advances this as
+    // it retires them. Only ever moves forward.
+    uint64_t                         m_latest_completed_frame{0};
 
     // Autorelease pool covering one device frame: opened by wait_frame(),
     // drained by end_frame(). Every command buffer, command encoder and

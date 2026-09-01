@@ -369,6 +369,11 @@ void Device_impl::drain_completed_frames()
         m_pending_completed_frames.erase(m_pending_completed_frames.begin(), keep_begin);
     }
     for (const uint64_t completed_frame : drained) {
+        // Frames go to one queue and so complete in submission order; taking
+        // the maximum therefore claims nothing that is not already done.
+        if (completed_frame + 1 > m_latest_completed_frame) {
+            m_latest_completed_frame = completed_frame + 1;
+        }
         for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
             ring_buffer->frame_completed(completed_frame);
         }
@@ -698,6 +703,15 @@ void Device_impl::wait_idle()
         command_buffer->waitUntilCompleted();
     }
 
+    // Every command buffer submitted so far has completed, so everything
+    // before the frame still being recorded is retired - the same statement
+    // the GL backend makes after glFinish(), and what keeps
+    // Device::is_frame_completed() moving for a consumer whose frames produce
+    // no completion callbacks of their own.
+    if (m_frame_index > m_latest_completed_frame) {
+        m_latest_completed_frame = m_frame_index;
+    }
+
     // All prior cbs (including device-frame cbs) have now completed on
     // the GPU. Drain any pending frame-completion enqueues and flush
     // their frame_completed callbacks so staging buffers / ring buffer
@@ -756,6 +770,16 @@ auto Device_impl::get_buffer_alignment(const Buffer_target target) -> std::size_
 auto Device_impl::get_frame_index() const -> uint64_t
 {
     return m_frame_index;
+}
+
+auto Device_impl::get_number_of_frames_in_flight() const -> std::size_t
+{
+    return static_cast<std::size_t>(s_max_frames_in_flight);
+}
+
+auto Device_impl::is_frame_completed(const uint64_t frame) const -> bool
+{
+    return frame < m_latest_completed_frame;
 }
 
 auto Device_impl::allocate_ring_buffer_entry(

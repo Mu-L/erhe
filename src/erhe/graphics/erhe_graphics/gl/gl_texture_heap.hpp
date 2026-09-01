@@ -1,6 +1,8 @@
 #pragma once
 
 #include "erhe_graphics/texture_heap.hpp"
+
+#include <cstddef>
 #include <vector>
 
 namespace erhe::graphics {
@@ -15,7 +17,8 @@ public:
         Device&                    device,
         const Texture&             fallback_texture,
         const Sampler&             fallback_sampler,
-        const Bind_group_layout*   bind_group_layout = nullptr
+        const Bind_group_layout*   bind_group_layout = nullptr,
+        std::size_t                max_textures = 4096
     );
     ~Texture_heap_impl() noexcept;
 

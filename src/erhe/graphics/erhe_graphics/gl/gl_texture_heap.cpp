@@ -20,7 +20,8 @@ Texture_heap_impl::Texture_heap_impl(
     Device&                    device,
     const Texture&             fallback_texture,
     const Sampler&             fallback_sampler,
-    const Bind_group_layout*   bind_group_layout
+    const Bind_group_layout*   bind_group_layout,
+    const std::size_t          /*max_textures*/  // sizes nothing here; see Texture_heap
 )
     : m_device             {device}
     , m_fallback_texture   {fallback_texture}

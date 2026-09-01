@@ -21,7 +21,8 @@ public:
         Device&                    device,
         const Texture&             fallback_texture,
         const Sampler&             fallback_sampler,
-        const Bind_group_layout*   bind_group_layout
+        const Bind_group_layout*   bind_group_layout,
+        std::size_t                max_textures = 4096
     );
     ~Texture_heap_impl() noexcept;
 

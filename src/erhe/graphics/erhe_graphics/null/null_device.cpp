@@ -318,6 +318,22 @@ auto Device_impl::get_frame_index() const -> uint64_t
     return m_frame_index;
 }
 
+auto Device_impl::get_number_of_frames_in_flight() const -> std::size_t
+{
+    return s_number_of_frames_in_flight;
+}
+
+// No GPU executes anything here, so a frame is retired as soon as the frame
+// index has moved past it. Stated as "strictly before the current frame"
+// rather than "always true" so that a consumer behaves the same way against
+// this backend as against a real one: the open frame is never retired, which
+// is what keeps a consumer from writing over memory the frame it is still
+// recording will read.
+auto Device_impl::is_frame_completed(const uint64_t frame) const -> bool
+{
+    return frame < m_frame_index;
+}
+
 auto Device_impl::allocate_ring_buffer_entry(
     const Buffer_target     buffer_target,
     const Ring_buffer_usage  usage,

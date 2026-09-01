@@ -18,9 +18,10 @@ Texture_heap::Texture_heap(
     Device&                  device,
     const Texture&           fallback_texture,
     const Sampler&           fallback_sampler,
-    const Bind_group_layout* bind_group_layout
+    const Bind_group_layout* bind_group_layout,
+    const std::size_t        max_textures
 )
-    : m_impl{device, fallback_texture, fallback_sampler, bind_group_layout}
+    : m_impl{device, fallback_texture, fallback_sampler, bind_group_layout, max_textures}
 {
     static_assert(sizeof(Texture_heap_impl) <= 512);
     static_assert(alignof(Texture_heap_impl) <= 16);

@@ -1218,14 +1218,22 @@ V3 is written and shown **red** here, before any behaviour change.
 **Phase 2 - Device-agnostic foundations, no callers.**
 
 - `Device::is_frame_completed()` promoted to the public API and implemented on
-  all four backends, plus `Device::get_number_of_frames_in_flight()` (D9).
+  all four backends, plus `Device::get_number_of_frames_in_flight()` (D9). GL
+  and Metal keep a highest-retired watermark advanced from the completion sink
+  they already had, and both also advance it in `wait_idle()`, which proves
+  every earlier frame retired: GL plants a fence only when something asked for
+  a sync, so without that the watermark would never move for a consumer whose
+  frames request none.
 - New `erhe_graphics/multi_copy_buffer.{hpp,cpp}` (D9), with its own unit tests
   (V6).
-- New `erhe_scene_renderer/material_set.{hpp,cpp}` (D1, D2): `Material_slot`,
-  `Material_slot_id` and `Material_set` - membership and GPU state in one type -
-  with the header naming the material layer alone (D0). The dependency
-  direction is worth a compile-time check in the test target: a translation
-  unit that includes only `material_set.hpp` must build.
+- New `erhe_scene_renderer/material_set.{hpp,cpp}` (D1): `Material_slot`,
+  `Material_slot_id` and `Material_set`'s **membership half** - the slot table,
+  the two reference sources, the enqueue / flush path and the dirty edge. The
+  GPU half (D2) is phase 3, which adds the buffer, the heap and
+  update / bind / unbind to this same type; keeping the data members out until
+  then is what lets V1 run with no device at all. The header names the material
+  layer alone (D0), and V1 is the standing check on that: it links against
+  `erhe::scene_renderer` and `erhe::primitive` and nothing else.
 - `Texture_heap` gains the defaulted `max_textures` parameter (D2a).
 - Also extracts `gpu_test_fixture` / `gpu_test_environment` from
   `src/erhe/graphics/test` into a reusable `erhe_gpu_test_support` target.
@@ -1233,6 +1241,21 @@ V3 is written and shown **red** here, before any behaviour change.
 Nothing in the tree uses any of it yet. `Material_buffer` is untouched and keeps
 writing `material->material_buffer_index` - every existing reader still depends
 on it until phase 6. Ships with the V1 and V6 tests.
+
+Two things the implementation settled that the design did not say:
+
+- **`Buffer::begin_write(offset, count)` is not usable for a multi-copy write.**
+  On the persistently mapped path it ignores its offset and returns the
+  whole-buffer map, so every copy would land at offset zero.
+  `Multi_copy_buffer` therefore writes through `Buffer::get_map().subspan()`
+  where there is a map and through a CPU staging block plus
+  `upload_sub_data()` where there is not - the same two paths `Ring_buffer`
+  takes, for the same reason.
+- **`begin_write` grows rather than stalls when every other copy is in use.**
+  The backends answer "is this frame retired?" conservatively, so a consumer
+  sized exactly to the frames in flight can find no free copy through no fault
+  of its own. Taking a fresh allocation (and retiring the old one) keeps that
+  from wedging the caller or, worse, overwriting a copy a frame is reading.
 
 **Phase 3 - Sets get owners.**
 
@@ -1377,8 +1400,12 @@ all three need adding.
 17. `object_churn_does_not_grow_the_slot_table` - **R14**, the leak guard for
     object-sourced membership. Simulate the material-preview pattern: repeat
     {add_ref(new material), release(previous material)} 100 times with a fresh
-    material each round; slot count stays at one and the released materials'
-    strong references are dropped.
+    material each round; the slot table stays at two and the released
+    materials' strong references are dropped. Two rather than one because the
+    new material is referenced *before* the old one is released - the ordering
+    that keeps a shared material from ever reaching zero (D1a) - so both hold a
+    slot for an instant. The property is that the table does not grow with the
+    number of rounds.
 18. `enqueued_reference_is_not_visible_until_flush` and
     `flush_applies_enqueued_references_in_order` - **R13.** The deferral path
     `Scene_root::register_mesh` needs from a worker thread (D1c).
@@ -1558,17 +1585,27 @@ the suite near four minutes.
 - Quest: only if the OpenXR path is touched; every launch behind a fresh
   explicit confirmation prompt.
 
-### V6 - `Multi_copy_buffer` unit tests (null device)
+### V6 - `Multi_copy_buffer` tests
 
-Against the null device, in `erhe_graphics_tests`:
+In `erhe_graphics_gpu_tests`, not the deviceless `erhe_graphics_tests`: the copy
+choice is driven by the device's frame-completion predicate and by `bind()`
+stamping the current frame, so these need a `Device`, which the deviceless
+target does not create. They bind the buffer as the uniform input of a small
+compute shader that copies it into a storage buffer, so each assertion is about
+what the GPU actually read. That target is built wherever a device comes up
+(`_gpu_tests_supported`), which today excludes the null backend; the null
+device answers the same `is_frame_completed()` contract, so extending the
+condition to cover it is future work rather than a gap in what V6 states.
 
 1. `first_commit_becomes_current` and `bind_before_commit_returns_false`.
 2. `clean_frames_rebind_same_offset` - many binds, one commit, one offset.
 3. `begin_write_never_returns_the_current_copy`.
-4. `begin_write_refuses_a_copy_an_in_flight_frame_bound` - drive the fake frame
-   clock: bind copy 0 on frames 1..5 without committing, then commit on frame 5
-   and assert the new copy differs from 0 even though 0 was *committed* long ago.
-   **The D9 stamping rule; fails against a commit-time stamp.**
+4. `begin_write_refuses_a_copy_this_frame_bound` - bind two copies inside one
+   still-open frame; a third write must go somewhere else again. Stated within
+   one frame rather than across several because the test fixture retires each
+   frame before returning, so "an unretired frame" can only be the open one.
+   **The D9 stamping rule; fails against a commit-time stamp**, which would
+   leave the first copy looking free while the frame still reads it.
 5. `copies_recycle_when_updating_every_frame` - update and bind on every frame
    for 3 * copy_count frames; every `begin_write` succeeds and no copy is
    written while a non-completed frame bound it.
@@ -1579,6 +1616,9 @@ Against the null device, in `erhe_graphics_tests`:
    grow before that frame completes, and assert the old `Buffer` is destroyed
    only once `is_frame_completed()` passes the frame that bound it. **The
    growth half of D9.**
+8. `exhausting_the_copies_allocates_rather_than_stalling` - with every copy
+   bound by the open frame, a further write reallocates instead of stalling or
+   overwriting.
 
 ## 5. Risks
 

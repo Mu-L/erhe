@@ -37,13 +37,20 @@ Texture_heap_impl::Texture_heap_impl(
     Device&                    device,
     const Texture&             fallback_texture,
     const Sampler&             fallback_sampler,
-    const Bind_group_layout*   bind_group_layout
+    const Bind_group_layout*   bind_group_layout,
+    const std::size_t          max_textures
 )
     : m_device_impl           {device.get_impl()}
     , m_bind_group_layout     {bind_group_layout}
     , m_fallback_texture      {fallback_texture}
     , m_fallback_sampler      {fallback_sampler}
+    , m_max_textures          {max_textures}
 {
+    // The set-1 layout was created with max_texture_heap_size descriptors
+    // (vulkan_device_init.cpp); a heap that asked for more would allocate a
+    // variable descriptor count the layout cannot satisfy.
+    ERHE_VERIFY(m_max_textures >= 1);
+    ERHE_VERIFY(m_max_textures <= max_texture_heap_size);
     // The texture heap is the bindless color sampled-image array (set 1,
     // binding 0). The shader accesses it via sampler2D / sampler2D_array,
     // which can only commit to a single image aspect, so all textures stored

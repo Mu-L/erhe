@@ -51,11 +51,36 @@ elseif ((ERHE_GRAPHICS_API STREQUAL "opengl") OR (ERHE_GRAPHICS_API STREQUAL "me
 endif ()
 
 if (_gpu_tests_supported)
+    # The device bring-up and the per-test frame / readback helpers are shared
+    # with the other libraries' GPU test targets (erhe_scene_renderer_tests'
+    # device-backed half), so they are a library rather than sources compiled
+    # into this executable. It is defined here because this is where the
+    # device-support condition above is decided; erhe/graphics is configured
+    # before every library that consumes it.
+    set(_gpu_support_target "erhe_gpu_test_support")
+    add_library(${_gpu_support_target} STATIC
+        gpu_test_environment.cpp
+        gpu_test_environment.hpp
+        gpu_test_fixture.cpp
+        gpu_test_fixture.hpp
+    )
+    target_link_libraries(${_gpu_support_target}
+        PUBLIC
+            erhe::graphics
+            erhe::window
+            erhe::dataformat
+            GTest::gtest
+        PRIVATE
+            erhe::log
+            erhe::verify
+    )
+    target_include_directories(${_gpu_support_target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    erhe_target_settings(${_gpu_support_target} "erhe/tests")
+    add_library(erhe::gpu_test_support ALIAS ${_gpu_support_target})
+
     set(_gpu_target "erhe_graphics_gpu_tests")
     add_executable(${_gpu_target}
         main.cpp
-        gpu_test_environment.cpp
-        gpu_test_fixture.cpp
         test_m1_device_up.cpp
         test_m2_clear_color.cpp
         test_m3_triangle.cpp
@@ -90,6 +115,7 @@ if (_gpu_tests_supported)
         test_texture_cube.cpp
         test_texgen_render.cpp
         test_worker_context.cpp
+        test_multi_copy_buffer.cpp
     )
 
     # GL-specific worker-context tests: worker-side texture upload and
@@ -103,6 +129,7 @@ if (_gpu_tests_supported)
 
     target_link_libraries(${_gpu_target}
         PRIVATE
+            erhe::gpu_test_support
             erhe::graphics
             erhe::texgen
             erhe::window

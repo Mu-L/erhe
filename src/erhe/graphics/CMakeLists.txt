@@ -47,6 +47,8 @@ erhe_target_sources_grouped(
     erhe_graphics/image_writer.hpp
     erhe_graphics/image_writer_null.hpp
     erhe_graphics/image_writer_fpng.hpp
+    erhe_graphics/multi_copy_buffer.cpp
+    erhe_graphics/multi_copy_buffer.hpp
     erhe_graphics/native_format.cpp
     erhe_graphics/native_format.hpp
     erhe_graphics/renderdoc_app.h

@@ -1162,6 +1162,13 @@ void Device_impl::install_gl_debug_callback()
 
 void Device_impl::frame_completed(const uint64_t completed_frame)
 {
+    // A signaled fence for completed_frame proves every command submitted
+    // before it is done too, so the watermark takes the maximum rather than
+    // requiring each frame to report in turn - frames that never got a fence
+    // would otherwise hold it back forever.
+    if (completed_frame + 1 > m_latest_completed_frame) {
+        m_latest_completed_frame = completed_frame + 1;
+    }
     for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
         ring_buffer->frame_completed(completed_frame);
     }
@@ -1345,6 +1352,15 @@ void Device_impl::wait_idle()
     for (uint64_t frame : completed_frames) {
         frame_completed(frame);
     }
+    // gl::finish() above proves every command submitted so far is done, frames
+    // that never got a fence included, so everything before the frame still
+    // being recorded is retired. Without this the watermark would only ever
+    // advance for fenced frames, and a consumer that asks
+    // Device::is_frame_completed() would be told "no" indefinitely in a
+    // workload that never requests a sync.
+    if (m_frame_index > m_latest_completed_frame) {
+        m_latest_completed_frame = m_frame_index;
+    }
 
     // Anything left in m_completion_handlers is for a frame that was
     // never paired with a fence sync; drain it too.
@@ -1362,6 +1378,20 @@ auto Device_impl::is_in_swapchain_frame() const -> bool
 auto Device_impl::get_frame_index() const -> uint64_t
 {
     return m_frame_index;
+}
+
+// GL runs no fixed frame-in-flight ring: depth is bounded by the fences
+// end_frame() plants. This is the sizing hint for consumers that hold one
+// copy per unretired frame; over-reporting only costs memory, and a consumer
+// that runs out of copies grows (see Multi_copy_buffer).
+auto Device_impl::get_number_of_frames_in_flight() const -> std::size_t
+{
+    return s_number_of_frames_in_flight;
+}
+
+auto Device_impl::is_frame_completed(const uint64_t frame) const -> bool
+{
+    return frame < m_latest_completed_frame;
 }
 
 auto Device_impl::allocate_ring_buffer_entry(

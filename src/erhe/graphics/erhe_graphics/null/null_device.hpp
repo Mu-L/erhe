@@ -97,6 +97,9 @@ public:
     [[nodiscard]] auto create_dummy_texture               (Command_buffer& init_command_buffer, erhe::dataformat::Format format) -> std::shared_ptr<Texture>;
     [[nodiscard]] auto get_buffer_alignment               (Buffer_target target) -> std::size_t;
     [[nodiscard]] auto get_frame_index                    () const -> uint64_t;
+    [[nodiscard]] auto get_number_of_frames_in_flight     () const -> std::size_t;
+    // Conservative: see Device::is_frame_completed().
+    [[nodiscard]] auto is_frame_completed                 (uint64_t frame) const -> bool;
     [[nodiscard]] auto wait_for_displayed_frame           (std::int64_t frame_id, uint64_t timeout_ns) -> Present_wait_result;
                   void set_present_target_time            (std::int64_t frame_id, double target_time_seconds, double hold_until_seconds);
     [[nodiscard]] auto get_frame_pacing_tier              () const -> Frame_pacing_tier;
@@ -125,6 +128,7 @@ private:
     std::unique_ptr<Surface> m_surface;
     Shader_monitor           m_shader_monitor;
     Device_info              m_info;
+    static constexpr std::size_t s_number_of_frames_in_flight = 2;
     uint64_t                 m_frame_index{1};
     // Frame-completion handlers: nothing executes on a GPU, so a frame is
     // complete as soon as it is recorded - handlers fire in end_frame().

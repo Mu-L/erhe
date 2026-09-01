@@ -2,8 +2,9 @@
 
 #include "erhe_utility/pimpl_ptr.hpp"
 
-#include <memory>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 
 namespace erhe::graphics {
 
@@ -27,7 +28,15 @@ public:
         Device&                  device,
         const Texture&           fallback_texture,
         const Sampler&           fallback_sampler,
-        const Bind_group_layout* bind_group_layout = nullptr
+        const Bind_group_layout* bind_group_layout = nullptr,
+        // Upper bound on how many distinct texture/sampler pairs this heap can
+        // hold. Meaningful on Vulkan, where it sizes the variable descriptor
+        // count and must stay <= max_texture_heap_size in the set-1 pipeline
+        // layout; the OpenGL sampler-array path sizes itself from the device's
+        // per-stage sampler limit and the bindless path grows on demand, so
+        // there, as on Metal and null, it is accepted and ignored. Defaulted so
+        // heaps that do not care keep their current calls.
+        std::size_t              max_textures = 4096
     );
     ~Texture_heap() noexcept;
 

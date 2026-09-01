@@ -127,6 +127,9 @@ public:
     [[nodiscard]] auto create_dummy_texture               (Command_buffer& init_command_buffer, erhe::dataformat::Format format) -> std::shared_ptr<Texture>;
     [[nodiscard]] auto get_buffer_alignment               (Buffer_target target) -> std::size_t;
     [[nodiscard]] auto get_frame_index                    () const -> uint64_t;
+    [[nodiscard]] auto get_number_of_frames_in_flight     () const -> std::size_t;
+    // Conservative: see Device::is_frame_completed().
+    [[nodiscard]] auto is_frame_completed                 (uint64_t frame) const -> bool;
     [[nodiscard]] auto allocate_ring_buffer_entry         (Buffer_target buffer_target, Ring_buffer_usage usage, std::size_t byte_count) -> Ring_buffer_range;
     [[nodiscard]] auto make_blit_command_encoder          (Command_buffer& command_buffer) -> Blit_command_encoder;
     [[nodiscard]] auto make_compute_command_encoder       (Command_buffer& command_buffer) -> Compute_command_encoder;
@@ -327,12 +330,21 @@ private:
     std::size_t                               m_min_buffer_size = 2 * 1024 * 1024; // TODO
 
     std::array<Frame_sync, 16>            m_frame_syncs;
+    // Sizing hint only; see get_number_of_frames_in_flight().
+    static constexpr std::size_t          s_number_of_frames_in_flight = 3;
     uint64_t                              m_frame_index{1};
     Device_frame_state                    m_state{Device_frame_state::idle};
     bool                                  m_had_swapchain_frame{false};
     std::chrono::steady_clock::time_point m_last_ok_frame_timestamp;
     std::vector<uint64_t>                 m_pending_frames;
     std::vector<uint64_t>                 m_completed_frames;
+    // One past the highest frame the GPU has retired, i.e. the same meaning
+    // the Vulkan backend's watermark has. GL fences are in-order and a
+    // signaled fence for frame N proves every command submitted before it is
+    // done, so frames that never got a fence (end_frame() only creates one
+    // when something asked for a sync) are covered by the next fenced frame
+    // rather than needing one of their own. Only ever moves forward.
+    uint64_t                              m_latest_completed_frame{0};
     bool                                  m_need_sync{false};
 
     std::unique_ptr<Ring_buffer_client>   m_staging_buffer;

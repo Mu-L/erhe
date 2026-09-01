@@ -586,6 +586,19 @@ public:
     [[nodiscard]] auto create_dummy_texture               (Command_buffer& init_command_buffer, erhe::dataformat::Format format) -> std::shared_ptr<Texture>;
     [[nodiscard]] auto get_buffer_alignment               (Buffer_target target) -> std::size_t;
     [[nodiscard]] auto get_frame_index                    () const -> uint64_t;
+
+    // How many device frames the backend keeps in flight. Sizes anything that
+    // must hold one copy per unretired frame.
+    [[nodiscard]] auto get_number_of_frames_in_flight     () const -> std::size_t;
+
+    // True when the GPU has fully retired all work submitted for the given
+    // frame index -- memory last read by that frame can be written again, and
+    // resources it referenced can be destroyed. Every backend answers this
+    // CONSERVATIVELY: a frame that is in fact complete may still be reported
+    // incomplete (costing a deferral), never the reverse (which would corrupt
+    // a frame still reading).
+    [[nodiscard]] auto is_frame_completed                 (uint64_t frame) const -> bool;
+
     [[nodiscard]] auto allocate_ring_buffer_entry         (Buffer_target buffer_target, Ring_buffer_usage usage, std::size_t byte_count) -> Ring_buffer_range;
     [[nodiscard]] auto make_blit_command_encoder          (Command_buffer& command_buffer) -> Blit_command_encoder;
     [[nodiscard]] auto make_compute_command_encoder       (Command_buffer& command_buffer) -> Compute_command_encoder;

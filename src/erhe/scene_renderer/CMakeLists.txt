@@ -29,6 +29,8 @@ erhe_target_sources_grouped(
     erhe_scene_renderer/light_set.hpp
     erhe_scene_renderer/material_buffer.cpp
     erhe_scene_renderer/material_buffer.hpp
+    erhe_scene_renderer/material_set.cpp
+    erhe_scene_renderer/material_set.hpp
     erhe_scene_renderer/mesh_memory.cpp
     erhe_scene_renderer/mesh_memory.hpp
     erhe_scene_renderer/buffer_pool.hpp
@@ -113,3 +115,7 @@ source_group("codegen generated" FILES ${_scene_renderer_gen}/mesh_memory_config
 target_include_directories(${_target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
 erhe_target_settings(${_target} "erhe")
+
+if (${ERHE_BUILD_TESTS} STREQUAL "ON")
+    add_subdirectory(test)
+endif ()

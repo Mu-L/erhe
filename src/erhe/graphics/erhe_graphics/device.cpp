@@ -188,6 +188,14 @@ auto Device::get_frame_index() const -> uint64_t
 {
     return m_impl->get_frame_index();
 }
+auto Device::get_number_of_frames_in_flight() const -> std::size_t
+{
+    return m_impl->get_number_of_frames_in_flight();
+}
+auto Device::is_frame_completed(const uint64_t frame) const -> bool
+{
+    return m_impl->is_frame_completed(frame);
+}
 auto Device::allocate_ring_buffer_entry(Buffer_target buffer_target, Ring_buffer_usage usage, std::size_t byte_count) -> Ring_buffer_range
 {
     return m_impl->allocate_ring_buffer_entry(buffer_target, usage, byte_count);
