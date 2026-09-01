@@ -16,7 +16,10 @@ not idle); round 4 found that a claimed observer coverage hole did not exist
 round 5 found "Before landing" restating a wrong reason the body had just
 corrected; round 6 found that round 5's own correction was wrong; round 7
 found three `make_raytrace` sites attributed to a scope they are not under,
-and a caller list presented as closed that was not.
+and a caller list presented as closed that was not; round 8 found a missed
+BVH-under-scope route (`Operations::make_raytrace` reaches the BVH build via
+`prepare_real_raytrace()`, a name a `make_raytrace` grep does not match) and
+two stale `editor.cpp` line cites.
 
 The recurring failure is **derived lists and confident call-path reasoning**,
 not the conclusions - which have survived every round. Re-derive from code
@@ -135,7 +138,17 @@ process-global mutex are reached from inside scopes.
   (`src/editor/operations/mesh_operation.cpp:342`, and the same pattern in
   `geometry_operations.cpp:690`, `merge_operation.cpp:189`,
   `merge_static_subtree_operation.cpp:228`, `paint_colors_operation.cpp:103`,
-  `paint_weights_operation.cpp:111`, `move_mesh_vertices_operation.cpp:147`);
+  `paint_weights_operation.cpp:111`, `move_mesh_vertices_operation.cpp:147`;
+  plus a route a `make_raytrace` grep does not find:
+  `Operations::make_raytrace` (`operations_window.cpp:2183`) dispatches with
+  the **default** `op_builds_gpu_meshes = true` (`items.hpp:135`) and its
+  worker op calls `prepare_real_raytrace()` at `operations_window.cpp:2210` -
+  geometry conversion plus BVH build (`primitive.cpp:703`) under the scope,
+  though the op builds no GPU meshes at all. Its comment says "Same two
+  phases as the deferred glTF finalize", but the finalize passes the flag
+  `false` (`async_raytrace_kickoff_operation.cpp:294,329`); this op should
+  too - a third instance of the "Before landing" item 1 throughput bug, with
+  a one-argument fix);
   and `geometry_graph_window.cpp:733` -> `evaluate_if_dirty` ->
   `src/editor/geometry_graph/nodes/geometry_output_node.cpp:196`.
   NOT `src/editor/transform/mesh_component_transform.cpp:635,1094,1182`,
@@ -184,7 +197,7 @@ above, which cites the region-level `552,561`):
   case.
 - **`src/erhe/raytrace/erhe_raytrace/bvh/bvh_scene.cpp:363` -
   `executor->silent_async(...)`**, using the editor's executor injected via
-  `erhe::raytrace::set_executor` (`src/editor/editor.cpp:1392`). A spawn site
+  `erhe::raytrace::set_executor` (`src/editor/editor.cpp:1393`). A spawn site
   in a library *below* the editor, so it is a seam enforcement has to reach
   (see C) - but a **latent** gap, not a live one. Two independent reasons, and
   it takes both to settle it (see the warning below):
@@ -238,7 +251,8 @@ takes no scope. Note this is **inference from inspection**
 (`gltf_fastgltf.hpp:107` and `gltf_fastgltf.cpp:1505` are comments stating no
 device access), and `doc/gl-worker-thread-contexts.md` still lists that code as
 "never explicitly examined". They do block on `run().wait()` with no co-run whenever
-`Gltf_parse_arguments::parallel` is set (`gltf_fastgltf.cpp:1097,1160,1558`).
+`Gltf_parse_arguments::parallel` is set (`gltf_fastgltf.cpp:1109,1165,1571`;
+the guarding `if (m_arguments.parallel)` lines are 1097, 1160, 1558).
 That flag **defaults to true** (`gltf_fastgltf.hpp:329`);
 `gltf_load_task.cpp:197` sets it from
 `editor_settings->load.parallel_gltf_parse`, and `parsers/gltf.cpp:877,1617`
@@ -529,7 +543,11 @@ run them too and park the main thread.
    `geometry_graph_window.cpp:733` should be narrowed to match
    `async_raytrace_kickoff_operation.cpp` and `lightmap_partitioner.cpp`,
    which keep raytrace and geogram work outside the slot. This is a real
-   throughput bug independent of enforcement.
+   throughput bug independent of enforcement. The same decision covers
+   `Operations::make_raytrace` (`operations_window.cpp:2183`), which takes
+   the default `op_builds_gpu_meshes = true` yet builds no GPU meshes;
+   passing `false` (as the deferred finalize already does) removes its
+   scope entirely.
 2. Add the backend-neutral context-index accessor; neither A nor B compiles
    without it.
 3. Run the lightmap parallel path, a glTF load and a geometry-graph evaluation
@@ -556,5 +574,5 @@ run them too and park the main thread.
 - That B does not fire in practice (item 3 above).
 - (Settled, kept for the record: MCP dispatch does run on the main thread -
   `Mcp_server` queues requests from its HTTP threads (`mcp_server.cpp:360-375`)
-  and `process_queued_requests` is driven from the tick at `editor.cpp:656`,
+  and `process_queued_requests` is driven from the tick at `editor.cpp:652`,
   as `mcp_server.cpp:444` states.)
