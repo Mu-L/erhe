@@ -202,14 +202,16 @@ auto project_ray(
 {
     ERHE_PROFILE_FUNCTION();
 
-    bool stored_visibility_state{false};
+    // Hide the mesh for the cast and restore its exact local state after,
+    // so an inherited visibility is not baked into a local value.
+    std::optional<erhe::property::Local_state> stored_visibility_state{};
     if (ignore_mesh != nullptr) {
-        stored_visibility_state = ignore_mesh->is_visible();
+        stored_visibility_state = ignore_mesh->read_local_state(erhe::Item_base::visible_property.get());
         ignore_mesh->hide();
     }
     ERHE_DEFER(
         if (ignore_mesh != nullptr) {
-            ignore_mesh->set_visible(stored_visibility_state);
+            ignore_mesh->apply_local_state(erhe::Item_base::visible_property.get(), stored_visibility_state);
         }
     );
 

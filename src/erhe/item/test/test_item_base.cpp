@@ -20,7 +20,7 @@ TEST(ItemBase, DefaultConstruction)
     auto item = std::make_shared<Concrete_item>();
     EXPECT_NE(item->get_id(), 0u);
     EXPECT_TRUE(item->get_name().empty());
-    EXPECT_EQ(item->get_flag_bits(), erhe::Item_flags::none);
+    EXPECT_EQ(item->get_flag_bits(), erhe::Item_flags::visible); // the derived bits start at the property defaults
 }
 
 TEST(ItemBase, NamedConstruction)
@@ -47,18 +47,18 @@ TEST(ItemBase, UniqueIds)
 TEST(ItemBase, EnableFlagBits)
 {
     auto item = std::make_shared<Concrete_item>();
-    EXPECT_FALSE(item->is_visible());
-    item->enable_flag_bits(erhe::Item_flags::visible);
-    EXPECT_TRUE(item->is_visible());
+    EXPECT_EQ(item->get_flag_bits() & erhe::Item_flags::content, 0u);
+    item->enable_flag_bits(erhe::Item_flags::content);
+    EXPECT_EQ(item->get_flag_bits() & erhe::Item_flags::content, erhe::Item_flags::content);
 }
 
 TEST(ItemBase, DisableFlagBits)
 {
     auto item = std::make_shared<Concrete_item>();
-    item->enable_flag_bits(erhe::Item_flags::visible);
-    EXPECT_TRUE(item->is_visible());
-    item->disable_flag_bits(erhe::Item_flags::visible);
-    EXPECT_FALSE(item->is_visible());
+    item->enable_flag_bits(erhe::Item_flags::content);
+    EXPECT_EQ(item->get_flag_bits() & erhe::Item_flags::content, erhe::Item_flags::content);
+    item->disable_flag_bits(erhe::Item_flags::content);
+    EXPECT_EQ(item->get_flag_bits() & erhe::Item_flags::content, 0u);
 }
 
 TEST(ItemBase, SetFlagBitsTrue)
@@ -130,7 +130,6 @@ TEST(ItemBase, IsShownInUi)
 TEST(ItemBase, MultipleFlagBits)
 {
     auto item = std::make_shared<Concrete_item>();
-    item->enable_flag_bits(erhe::Item_flags::visible);
     item->enable_flag_bits(erhe::Item_flags::selected);
     item->enable_flag_bits(erhe::Item_flags::content);
     EXPECT_TRUE(item->is_visible());

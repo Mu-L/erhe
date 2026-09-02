@@ -198,7 +198,7 @@ auto read_graph_asset_json(
     }
     live_nodes.clear();
 
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     const std::shared_ptr<AssetT> owning = std::dynamic_pointer_cast<AssetT>(asset.shared_from_this());
     for (const std::shared_ptr<NodeT>& node : new_nodes) {
         node->enable_flag_bits(flags);

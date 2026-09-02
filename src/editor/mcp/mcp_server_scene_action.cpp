@@ -328,10 +328,17 @@ auto Mcp_server::action_set_item_flags(const json& args) -> std::string
             r["isError"] = true;
             return r.dump();
         }
+        if ((bit & erhe::Item_flags::derived) != 0u) {
+            json r = make_text_content(
+                "'" + flag_val.get<std::string>() + "' is a property (visible / shadow_cast / lightmapped, inherited down the node tree); use set_item_property with value true / false"
+            );
+            r["isError"] = true;
+            return r.dump();
+        }
         flag_bits |= bit;
     }
     if ((flag_bits == 0) || target_ids.empty()) {
-        json r = make_text_content("Give ids and at least one persistent flag name (e.g. \"lightmapped\", \"shadow_cast\")");
+        json r = make_text_content("Give ids and at least one persistent flag name (e.g. \"no_transform_update\", \"lock_edit\")");
         r["isError"] = true;
         return r.dump();
     }
@@ -339,9 +346,9 @@ auto Mcp_server::action_set_item_flags(const json& args) -> std::string
 
     json updated = json::array();
     for (const std::shared_ptr<erhe::Item_base>& item : find_items_by_ids(*sr, target_ids)) {
-        // Mesh-scoped flags (lightmapped, shadow_cast) live on the Mesh
-        // attachment; a Node id resolves to its mesh so callers can pass the
-        // ids that get_scene_nodes returns.
+        // Mesh-scoped flags live on the Mesh attachment; a Node id resolves
+        // to its mesh so callers can pass the ids that get_scene_nodes
+        // returns.
         std::shared_ptr<erhe::Item_base> target = item;
         const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_mesh(item);
         if (mesh) {
@@ -1387,7 +1394,7 @@ auto Mcp_server::place_brush_instance(
         attach_node = std::make_shared<erhe::scene::Node>(instance_name.empty() ? std::string{brush.get_name()} : instance_name);
         // visible: inert while the node is empty, but attachments added later
         // sync their visibility from the node.
-        attach_node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui);
+        attach_node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui);
         glm::mat4 pose_world = erhe::math::create_translation<float>(position);
         if (rotation.has_value()) {
             pose_world = pose_world * glm::mat4_cast(rotation.value());
@@ -2124,9 +2131,9 @@ auto Mcp_server::action_create_light(const json& args) -> std::string
         light->layer_id    = sr->layers().light()->id;
         if (args.contains("inner_spot_angle")) { light->set_inner_spot_angle(args.value("inner_spot_angle", light->get_inner_spot_angle())); }
         if (args.contains("outer_spot_angle")) { light->set_outer_spot_angle(args.value("outer_spot_angle", light->get_outer_spot_angle())); }
-        light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui | erhe::Item_flags::show_debug_visualizations);
+        light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui | erhe::Item_flags::show_debug_visualizations);
         node->attach(light);
-        node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui);
+        node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui);
         // The node is attached to the scene via the queued insert operation below;
         // set the world transform now (preserved by Node::set_parent).
         node->set_world_from_node(erhe::math::create_translation<float>(position));

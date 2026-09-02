@@ -4,8 +4,10 @@
     "title": "ERHE_node glTF node extension",
     "type": "object",
     "properties": {
-        "flags":      {"type": "array", "items": {"type": "string"}},
-        "mesh_flags": {"type": "array", "items": {"type": "string"}}
+        "flags":           {"type": "array", "items": {"type": "string"}},
+        "properties":      {"type": "object", "additionalProperties": {"type": "string"}, "description": "Local values of the node's registered properties (name -> text); present since the property system's D23, absent in older files whose flags list visible / shadow_cast / lightmapped"},
+        "mesh_flags":      {"type": "array", "items": {"type": "string"}},
+        "mesh_properties": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Local values of the mesh attachment's registered properties (name -> text)"}
     },
     "required": ["flags"]
 }

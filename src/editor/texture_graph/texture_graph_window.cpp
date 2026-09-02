@@ -201,7 +201,7 @@ void Texture_graph_window::evaluate_and_render(Graph_texture& graph_texture)
 
 void Texture_graph_window::insert_node(Graph_texture& graph_texture, const std::shared_ptr<Texture_graph_node>& node)
 {
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     node->set_owning_graph_texture(std::dynamic_pointer_cast<Graph_texture>(graph_texture.shared_from_this()));
     graph_texture.nodes().push_back(node);

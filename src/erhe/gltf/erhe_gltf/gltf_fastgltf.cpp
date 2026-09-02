@@ -548,19 +548,43 @@ constexpr Serialized_item_flag c_serialized_item_flags[] = {
     return erhe::scene::Projection::Type::perspective_vertical;
 }
 
-// Applies a parsed flag-name array exactly: every persistent flag is
-// enabled when listed and disabled when not (unknown names ignored).
-void apply_persistent_flags(erhe::Item_base& item, const simdjson::dom::array& flags_array)
+// Applies the "<prefix>flags" name array exactly (every persistent flag
+// enabled when listed, disabled when not, unknown names ignored) and the
+// "<prefix>properties" local values (D23). A payload with flags but no
+// properties object is an older file: visible / shadow_cast / lightmapped
+// are read from its flags list.
+void apply_persistent_flags_and_properties(
+    erhe::Item_base&            item,
+    const simdjson::dom::object& extension_object,
+    const std::string_view       flags_key,
+    const std::string_view       properties_key
+)
 {
+    simdjson::dom::array flags_array;
+    const bool has_flags = extension_object.at_key(flags_key).get_array().get(flags_array) == simdjson::SUCCESS;
     uint64_t listed_bits = 0;
-    for (const simdjson::dom::element flag_element : flags_array) {
-        std::string_view flag_name;
-        if (flag_element.get_string().get(flag_name) != simdjson::SUCCESS) {
-            continue;
+    if (has_flags) {
+        for (const simdjson::dom::element flag_element : flags_array) {
+            std::string_view flag_name;
+            if (flag_element.get_string().get(flag_name) != simdjson::SUCCESS) {
+                continue;
+            }
+            listed_bits |= persistent_item_flag_from_name(flag_name);
         }
-        listed_bits |= persistent_item_flag_from_name(flag_name);
+        apply_persistent_item_flags(item, listed_bits);
     }
-    apply_persistent_item_flags(item, listed_bits);
+    simdjson::dom::object properties_object;
+    if (extension_object.at_key(properties_key).get_object().get(properties_object) == simdjson::SUCCESS) {
+        for (const simdjson::dom::key_value_pair member : properties_object) {
+            std::string_view value;
+            if (member.value.get_string().get(value) != simdjson::SUCCESS) {
+                continue;
+            }
+            static_cast<void>(apply_item_local_property(item, member.key, value));
+        }
+    } else if (has_flags) {
+        apply_legacy_derived_item_flags(item, listed_bits);
+    }
 }
 
 [[nodiscard]] auto is_number(std::string_view s) -> bool
@@ -1874,7 +1898,7 @@ private:
         erhe_camera->set_source_path(m_arguments.path);
         copy_uid(camera, *erhe_camera);
         m_data_out.cameras[camera_index] = erhe_camera;
-        erhe_camera->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        erhe_camera->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
         auto* projection = erhe_camera->projection();
 
 	    std::visit(
@@ -1982,7 +2006,7 @@ private:
             fix_spot_light(*erhe_light);
         }
         erhe_light->layer_id = 0;
-        erhe_light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        erhe_light->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
     }
 
     class Primitive_entry
@@ -2655,11 +2679,10 @@ private:
         erhe_mesh.layer_id = m_arguments.mesh_layer_id;
         erhe_mesh.enable_flag_bits(
             Item_flags::content     |
-            Item_flags::visible     |
             Item_flags::show_in_ui  |
-            Item_flags::shadow_cast |
             Item_flags::id
         );
+        erhe_mesh.set_value(erhe::Item_base::shadow_cast_property, true);
         for (std::size_t i = 0, end = mesh.primitives.size(); i < end; ++i) {
             parse_primitive(erhe_mesh, mesh_index, mesh, i);
         }
@@ -2756,7 +2779,7 @@ private:
         auto erhe_node = std::make_shared<erhe::scene::Node>(node_name);
         erhe_node->set_source_path(m_arguments.path);
         copy_uid(node, *erhe_node);
-        erhe_node->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        erhe_node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
         m_data_out.nodes[node_index] = erhe_node;
         erhe_node->Hierarchy::set_parent(parent);
         parse_node_transform(node, erhe_node);
@@ -2829,7 +2852,7 @@ private:
                         fmt::format("{} instance {}", node_name, i)
                     );
                     instance_node->set_source_path(m_arguments.path);
-                    instance_node->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+                    instance_node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
                     instance_node->Hierarchy::set_parent(erhe_node);
                     instance_node->node_data.transforms.parent_from_node = instances[i];
                     instance_node->update_world_from_node();
@@ -3797,15 +3820,10 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                     continue;
                 }
                 if (extension_name == "ERHE_node") {
-                    simdjson::dom::array flags_array;
-                    if (extension_object.at_key("flags").get_array().get(flags_array) == simdjson::SUCCESS) {
-                        apply_persistent_flags(*node, flags_array);
-                    }
-                    if (extension_object.at_key("mesh_flags").get_array().get(flags_array) == simdjson::SUCCESS) {
-                        const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
-                        if (mesh) {
-                            apply_persistent_flags(*mesh, flags_array);
-                        }
+                    apply_persistent_flags_and_properties(*node, extension_object, "flags", "properties");
+                    const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
+                    if (mesh) {
+                        apply_persistent_flags_and_properties(*mesh, extension_object, "mesh_flags", "mesh_properties");
                     }
                 } else if (extension_name == "ERHE_light") {
                     const std::shared_ptr<erhe::scene::Light> light = erhe::scene::get_attachment<erhe::scene::Light>(node.get());
@@ -3817,10 +3835,7 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                         if ((extension_object.at_key("infinite_range").get_bool().get(bool_value) == simdjson::SUCCESS) && bool_value) {
                             light->set_range(0.0f);
                         }
-                        simdjson::dom::array flags_array;
-                        if (extension_object.at_key("flags").get_array().get(flags_array) == simdjson::SUCCESS) {
-                            apply_persistent_flags(*light, flags_array);
-                        }
+                        apply_persistent_flags_and_properties(*light, extension_object, "flags", "properties");
                     }
                 }
             }
@@ -3870,10 +3885,7 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                 if (read_float(extension_object, "shadow_range", float_value)) {
                     camera->set_shadow_range(float_value);
                 }
-                simdjson::dom::array flags_array;
-                if (extension_object.at_key("flags").get_array().get(flags_array) == simdjson::SUCCESS) {
-                    apply_persistent_flags(*camera, flags_array);
-                }
+                apply_persistent_flags_and_properties(*camera, extension_object, "flags", "properties");
             }
         }
 
@@ -5199,7 +5211,7 @@ private:
             ",\"ortho_left\":{},\"ortho_width\":{},\"ortho_bottom\":{},\"ortho_height\":{}"
             ",\"frustum_left\":{},\"frustum_right\":{},\"frustum_bottom\":{},\"frustum_top\":{}"
             ",\"infinite_z_far\":{}"
-            ",\"exposure\":{},\"shadow_range\":{},\"flags\":{}}}",
+            ",\"exposure\":{},\"shadow_range\":{},\"flags\":{},\"properties\":{}}}",
             projection_type_name(projection.projection_type),
             projection.z_near, projection.z_far,
             projection.fov_x, projection.fov_y,
@@ -5208,7 +5220,8 @@ private:
             projection.frustum_left, projection.frustum_right, projection.frustum_bottom, projection.frustum_top,
             projection.infinite_z_far ? "true" : "false",
             erhe_camera.get_exposure(), erhe_camera.get_shadow_range(),
-            persistent_item_flags_to_json(erhe_camera.get_flag_bits())
+            persistent_item_flags_to_json(erhe_camera.get_flag_bits()),
+            item_local_properties_to_json(erhe_camera)
         );
         m_internal_camera_extensions.emplace(gltf_camera_index, std::move(members));
     }
@@ -5719,19 +5732,25 @@ private:
     )
     {
         std::string members = fmt::format(
-            "\"ERHE_node\":{{\"flags\":{}",
-            persistent_item_flags_to_json(erhe_node.get_flag_bits())
+            "\"ERHE_node\":{{\"flags\":{},\"properties\":{}",
+            persistent_item_flags_to_json(erhe_node.get_flag_bits()),
+            item_local_properties_to_json(erhe_node)
         );
         if (erhe_mesh) {
-            members += fmt::format(",\"mesh_flags\":{}", persistent_item_flags_to_json(erhe_mesh->get_flag_bits()));
+            members += fmt::format(
+                ",\"mesh_flags\":{},\"mesh_properties\":{}",
+                persistent_item_flags_to_json(erhe_mesh->get_flag_bits()),
+                item_local_properties_to_json(*erhe_mesh)
+            );
         }
         members += "}";
         if (erhe_light) {
             members += fmt::format(
-                ",\"ERHE_light\":{{\"cast_shadow\":{},\"infinite_range\":{},\"flags\":{}}}",
+                ",\"ERHE_light\":{{\"cast_shadow\":{},\"infinite_range\":{},\"flags\":{},\"properties\":{}}}",
                 erhe_light->get_cast_shadow() ? "true" : "false",
                 (erhe_light->get_range() <= 0.0f) ? "true" : "false",
-                persistent_item_flags_to_json(erhe_light->get_flag_bits())
+                persistent_item_flags_to_json(erhe_light->get_flag_bits()),
+                item_local_properties_to_json(*erhe_light)
             );
         }
         m_internal_node_extensions.emplace(gltf_node_index, std::move(members));

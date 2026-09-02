@@ -4885,7 +4885,7 @@
     "name": "generate_texture_coordinates"
   },
   {
-    "description": "Enable or disable persistent (authored) item flags by name on scene items. Mesh-scoped flags (lightmapped, shadow_cast) go on the Mesh attachment; passing a Node id resolves to its mesh automatically, so get_scene_nodes ids work directly. Flag names match glTF serialization (e.g. \"lightmapped\", \"shadow_cast\", \"visible\").",
+    "description": "Enable or disable persistent (authored) item flags by name on scene items. Mesh-scoped flags go on the Mesh attachment; passing a Node id resolves to its mesh automatically, so get_scene_nodes ids work directly. Flag names match glTF serialization (e.g. \"no_transform_update\", \"lock_edit\"). visible, shadow_cast and lightmapped are properties (inherited down the node tree): use set_item_property with value true / false.",
     "inputSchema": {
       "properties": {
         "enabled": {

@@ -564,7 +564,6 @@ void Hotbar::init_radial_menu(erhe::scene_renderer::Mesh_memory& mesh_memory, Sc
 
     m_radial_menu_background_mesh->enable_flag_bits(
         erhe::Item_flags::content |
-        erhe::Item_flags::visible |
         erhe::Item_flags::show_in_ui
     );
 
@@ -572,7 +571,6 @@ void Hotbar::init_radial_menu(erhe::scene_renderer::Mesh_memory& mesh_memory, Sc
     m_radial_menu_node->attach(m_radial_menu_background_mesh);
     m_radial_menu_node->enable_flag_bits(
         erhe::Item_flags::content    |
-        erhe::Item_flags::visible    |
         erhe::Item_flags::show_in_ui
     );
 }

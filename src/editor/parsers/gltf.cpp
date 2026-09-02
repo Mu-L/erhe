@@ -1096,9 +1096,9 @@ auto make_import_gltf_operation(
         key_light->set_intensity(1.0f);
         key_light->set_range(0.0f);
         key_light->layer_id  = scene_root->layers().light()->id;
-        key_light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
+        key_light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
         default_key_light_node->attach          (key_light);
-        default_key_light_node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
+        default_key_light_node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
         const glm::quat key_quat{0.8535534f, -0.3535534f, -0.353553385f, -0.146446586f};
         default_key_light_node->set_parent_from_node(glm::mat4{key_quat});
 
@@ -1109,9 +1109,9 @@ auto make_import_gltf_operation(
         fill_light->set_intensity(0.5f);
         fill_light->set_range(0.0f);
         fill_light->layer_id  = scene_root->layers().light()->id;
-        fill_light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
+        fill_light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
         default_fill_light_node->attach          (fill_light);
-        default_fill_light_node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
+        default_fill_light_node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
         const glm::quat fill_quat{-0.353553444f, -0.8535534f, 0.146446645f, -0.353553325f};
         default_fill_light_node->set_parent_from_node(glm::mat4{fill_quat});
     }

@@ -454,7 +454,6 @@ auto instantiate_prefab(
     ERHE_VERIFY(prefab);
 
     constexpr uint64_t node_flags =
-        erhe::Item_flags::visible |
         erhe::Item_flags::content |
         erhe::Item_flags::expand  |
         erhe::Item_flags::show_in_ui;
@@ -692,7 +691,7 @@ void attach_prefab_instance(
 )
 {
     std::shared_ptr<Prefab_instance> prefab_instance = std::make_shared<Prefab_instance>(prefab->source_path, prefab->name);
-    prefab_instance->enable_flag_bits(erhe::Item_flags::visible | erhe::Item_flags::no_message | erhe::Item_flags::show_in_ui);
+    prefab_instance->enable_flag_bits(erhe::Item_flags::no_message | erhe::Item_flags::show_in_ui);
     node->attach(prefab_instance);
 
     for (const std::shared_ptr<erhe::Hierarchy>& child : prefab->template_root->get_children()) {

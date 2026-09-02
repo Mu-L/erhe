@@ -8,7 +8,7 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 
 - **`Unique_id<T>`** - Thread-safe atomic ID generator. Non-copyable, movable. Each template instantiation has an independent counter.
 - **`Item_base`** - Base class for all items. Provides ID, name, flags, tags, source path, debug label. Inherits `enable_shared_from_this` - all instances must be created via `std::make_shared`. Also derives from `erhe::property::Dependency_object` (see `src/erhe/property/notes.md`): every item carries a property store, and `get_property_owner_type()` returns `get_type()` so property metadata resolves by item type.
-- **`Item_flags`** - Bitmask constants for item state (visible, selected, hovered, opaque, etc.) with `to_string()`.
+- **`Item_flags`** - Bitmask constants for item state (visible, selected, hovered, opaque, etc.) with `to_string()`. `visible`, `shadow_cast` and `lightmapped` (`Item_flags::derived`) are mirrors of the `Item_base::visible_property` / `shadow_cast_property` / `lightmapped_property` effective values (inherits-flagged bool properties, `doc/property-system-plan.md` D23): `set_flag_bits` rejects them (logged, dropped); write the property (`set_visible`, `show`, `hide`, `set_value`). The bit is written by the property changed callback, so an inherited change and a tree move keep it current and every `Item_filter` / `is_visible()` reader stays a bit test.
 - **`Item_type`** - Bitmask constants for item types (mesh, camera, light, node, etc.) used by the `is<T>()` template.
 - **`Item_filter`** - Four-criteria bitmask filter (all-set, any-set, all-clear, any-clear) with AND semantics.
 - **`Item<Base, Intermediate, Self, Kind>`** - CRTP template providing `clone()`, `get_type()`, `get_type_name()`. Three clone modes: copy constructor, custom clone constructor, not clonable.
@@ -20,7 +20,8 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 ### Item_base
 - `get_id()`, `get_name()`, `set_name()`, `describe(level)`
 - `get_flag_bits()`, `set_flag_bits()`, `enable_flag_bits()`, `disable_flag_bits()`
-- `is_visible()`, `is_selected()`, `is_hovered()`, `show()`, `hide()`, `set_selected()`
+- `is_visible()`, `is_selected()`, `is_hovered()`, `show()`, `hide()`, `set_visible()`, `set_selected()` - `show` / `hide` / `set_visible` write a local `visible_property` value; `clear_value(visible_property)` returns to the inherited / default value
+- `visible_property`, `shadow_cast_property`, `lightmapped_property` - owner type 0 (listed for every item type), default true / false / false, `inherits`
 - `add_tag()`, `remove_tag()`, `has_tag()`, `get_tags()`, `clear_tags()`
 - `set_source_path()`, `get_source_path()`
 - `set_gltf_uid()`, `get_gltf_uid()` - glTF 2.1 unique ID (persistent file-scoped identity; assigned once at import or first export by `erhe::gltf`, never changed afterwards, NOT copied by copy/clone)
@@ -74,5 +75,6 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 | `test_hierarchy_smoke.cpp` | 1 | Randomized stress test (create/reparent/remove/clone/iterate) with deterministic seed |
 | `test_item_host.cpp` | 6 | Host resolution, lock guard with/without host |
 | `test_properties.cpp` | 4 | Metadata by item type, inheritance through `Hierarchy`, reparent / remove re-reads, clone keeps local values |
+| `test_item_visibility.cpp` | 6 | Derived flag bits follow local, inherited and tree-change values of the visible / shadow_cast / lightmapped properties; `set_flag_bits` drops derived bits; copy re-derives |
 
 Test harness (`main.cpp`) bootstraps `erhe::file::log_file` before `erhe::item::initialize_logging()` to break a circular dependency.

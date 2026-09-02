@@ -27,6 +27,10 @@ public:
     static constexpr std::string_view static_type_name{"Node_attachment"};
     [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return erhe::Item_type::node_attachment; }
     auto get_item_host() const -> erhe::Item_host* override;
+
+    // Inherits-flagged properties (visible, shadow_cast, lightmapped) flow
+    // from the node to its attachments (D23).
+    [[nodiscard]] auto get_inheritance_parent() const -> const erhe::property::Dependency_object* override;
     
     // Public API
     virtual auto clone_attachment() const -> std::shared_ptr<Node_attachment>;

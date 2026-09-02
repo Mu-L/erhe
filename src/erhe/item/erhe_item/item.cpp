@@ -1,5 +1,6 @@
 #include "erhe_item/item.hpp"
 #include "erhe_item/item_host.hpp"
+#include "erhe_item/item_log.hpp"
 #include "erhe_utility/bit_helpers.hpp"
 #include "erhe_verify/verify.hpp"
 
@@ -98,6 +99,52 @@ auto Item_filter::describe() const -> std::string
 
 // -----------------------------------------------------------------------------
 
+const erhe::property::Property<bool> Item_base::visible_property = erhe::property::Property<bool>::register_property(
+    "visible", 0,
+    erhe::property::Property_metadata{.default_value = true, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.label = "Visible"}}
+);
+const erhe::property::Property<bool> Item_base::shadow_cast_property = erhe::property::Property<bool>::register_property(
+    "shadow_cast", 0,
+    erhe::property::Property_metadata{.default_value = false, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Cast Shadow"}}
+);
+const erhe::property::Property<bool> Item_base::lightmapped_property = erhe::property::Property<bool>::register_property(
+    "lightmapped", 0,
+    erhe::property::Property_metadata{.default_value = false, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Lightmapped"}}
+);
+
+void Item_base::on_flag_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args)
+{
+    Item_base& item = static_cast<Item_base&>(object);
+    const bool value = erhe::property::get_as<bool>(args.new_value);
+    if (&args.property == &visible_property.get()) {
+        item.set_derived_flag_bit(Item_flags::visible, value);
+    } else if (&args.property == &shadow_cast_property.get()) {
+        item.set_derived_flag_bit(Item_flags::shadow_cast, value);
+    } else if (&args.property == &lightmapped_property.get()) {
+        item.set_derived_flag_bit(Item_flags::lightmapped, value);
+    }
+}
+
+void Item_base::set_derived_flag_bit(const uint64_t bit, const bool value)
+{
+    const uint64_t old_flag_bits = m_flag_bits;
+    m_flag_bits = value ? (m_flag_bits | bit) : (m_flag_bits & ~bit);
+    if (m_flag_bits != old_flag_bits) {
+        bump_item_mutation_serial();
+        handle_flag_bits_update(old_flag_bits, m_flag_bits);
+    }
+}
+
+// After a copy: the copy has no parent, so an inherited value of the source
+// does not survive; the derived bits must agree with the copied entries.
+void Item_base::rederive_flag_bits()
+{
+    m_flag_bits = (m_flag_bits & ~Item_flags::derived)
+        | (get_value(visible_property)     ? Item_flags::visible     : 0u)
+        | (get_value(shadow_cast_property) ? Item_flags::shadow_cast : 0u)
+        | (get_value(lightmapped_property) ? Item_flags::lightmapped : 0u);
+}
+
 Item_base::Item_base() = default;
 
 Item_base::Item_base(const std::string_view name)
@@ -118,6 +165,7 @@ Item_base::Item_base(const Item_base& other)
     , m_debug_label{erhe::utility::Debug_label{fmt::format("{}##{}", m_name, get_id())}}
     , m_source_path{other.m_source_path ? std::make_unique<std::filesystem::path>(*other.m_source_path) : nullptr}
 {
+    rederive_flag_bits();
 }
 
 auto Item_base::operator=(const Item_base& other) -> Item_base&
@@ -127,6 +175,7 @@ auto Item_base::operator=(const Item_base& other) -> Item_base&
     m_name        = other.m_name;
     m_debug_label = erhe::utility::Debug_label{fmt::format("{}##{}", m_name, get_id())};
     m_source_path = other.m_source_path ? std::make_unique<std::filesystem::path>(*other.m_source_path) : nullptr;
+    rederive_flag_bits();
     return *this;
 }
 
@@ -147,8 +196,16 @@ auto Item_base::get_flag_bits() const -> uint64_t
     return m_flag_bits;
 }
 
-void Item_base::set_flag_bits(const uint64_t mask, const bool value)
+void Item_base::set_flag_bits(const uint64_t requested_mask, const bool value)
 {
+    uint64_t mask = requested_mask;
+    if ((mask & Item_flags::derived) != 0u) {
+        erhe::item::log->error(
+            "Item_base::set_flag_bits({}) on '{}': {} is a property (visible_property / shadow_cast_property / lightmapped_property); the derived bits are dropped from the mask",
+            value, m_name, Item_flags::to_string(mask & Item_flags::derived)
+        );
+        mask &= ~Item_flags::derived;
+    }
     const auto old_flag_bits = m_flag_bits;
     if (value) {
         m_flag_bits = m_flag_bits | mask;
@@ -201,17 +258,17 @@ void Item_base::set_selected(const bool selected)
 
 void Item_base::set_visible(const bool value)
 {
-    set_flag_bits(Item_flags::visible, value);
+    set_value(visible_property, value);
 }
 
 void Item_base::show()
 {
-    set_flag_bits(Item_flags::visible, true);
+    set_value(visible_property, true);
 }
 
 void Item_base::hide()
 {
-    set_flag_bits(Item_flags::visible, false);
+    set_value(visible_property, false);
 }
 
 auto Item_base::is_visible() const -> bool

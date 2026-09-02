@@ -102,7 +102,7 @@ auto Asset_browser::make_node(const std::filesystem::path& path, Asset_node* con
     } else {
         new_node = std::make_shared<Asset_file_other>(path);
     }
-    new_node->enable_flag_bits(erhe::Item_flags::visible);
+    new_node->show();
     if (parent) {
         new_node->set_parent(parent);
     }

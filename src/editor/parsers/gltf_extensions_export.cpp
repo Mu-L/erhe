@@ -85,6 +85,13 @@ namespace {
     return nlohmann::json::parse(erhe::gltf::persistent_item_flags_to_json(item.get_flag_bits()));
 }
 
+// Local property values next to the flags (D23; the erhe::gltf writers do
+// the same for ERHE_node / ERHE_camera / ERHE_light).
+[[nodiscard]] auto json_properties(const erhe::Item_base& item) -> nlohmann::json
+{
+    return nlohmann::json::parse(erhe::gltf::item_local_properties_to_json(item));
+}
+
 // Same guard as the scene.json save passes: nodes inside a prefab instance
 // subtree are not exported (the instance root exports as an externalAsset
 // reference), so no payloads may be built for them.
@@ -342,6 +349,7 @@ void add_gltf_editor_state(
                     {"grid_track_extent_y", json_float_array(layout->grid_track_extent[1])},
                     {"grid_track_extent_z", json_float_array(layout->grid_track_extent[2])},
                     {"flags",            json_flags(*layout)},
+                    {"properties",       json_properties(*layout)},
                 };
             }
             if (layout_item) {
@@ -357,6 +365,7 @@ void add_gltf_editor_state(
                     {"grid_cell",      json_ivec3(layout_item->grid_cell)},
                     {"grid_span",      json_ivec3(layout_item->grid_span)},
                     {"flags",          json_flags(*layout_item)},
+                    {"properties",     json_properties(*layout_item)},
                 };
             }
             append_members(arguments.extension_payloads.nodes[node.get()], fmt::format("\"ERHE_layout\":{}", layout_json.dump()));

@@ -93,6 +93,9 @@ public:
     void set_parent          (const std::shared_ptr<erhe::Hierarchy>& parent, std::size_t position) override;
     void handle_parent_update(erhe::Hierarchy* old_parent, erhe::Hierarchy* new_parent)             override;
 
+    // Inherited properties reach child nodes and then attachments (D23).
+    void for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback) override;
+
     // Public API
     [[nodiscard]] auto get_parent_node() const -> std::shared_ptr<Node>;
     void set_node_parent(Node* parent);

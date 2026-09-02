@@ -658,7 +658,7 @@ auto Scene_commands::create_new_empty_node(erhe::scene::Node* parent) -> std::sh
     // the node - without it anything attached to an "empty" node would be
     // invisibly stuck.
     auto new_empty_node = std::make_shared<erhe::scene::Node>("new empty node");
-    new_empty_node->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+    new_empty_node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
     m_context.operation_stack->queue(
         std::make_shared<Item_insert_remove_operation>(
             Item_insert_remove_operation::Parameters{
@@ -766,7 +766,7 @@ auto Scene_commands::add_bone_tip_nodes(const std::shared_ptr<erhe::scene::Node>
         const glm::vec3 tail_local = bone_tail_in_joint_space(*skin, joint_index);
 
         auto tip_node = std::make_shared<erhe::scene::Node>(fmt::format("{} tip", bone->get_name()));
-        tip_node->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        tip_node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
         compound_parameters.operations.push_back(
             std::make_shared<Item_insert_remove_operation>(
                 Item_insert_remove_operation::Parameters{
@@ -1051,7 +1051,7 @@ auto Scene_commands::attach_new_empty_mesh(erhe::scene::Node& node) -> std::shar
     // geometry, but it needs the visible flag so anything added later is not
     // stuck invisible (same reasoning as create_new_empty_node).
     auto mesh = std::make_shared<erhe::scene::Mesh>("new mesh");
-    mesh->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+    mesh->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
     Scene_root* scene_root = get_scene_root(&node);
     if (scene_root != nullptr) {
         mesh->layer_id = scene_root->layers().content()->id;
@@ -1160,7 +1160,7 @@ auto Scene_commands::create_new_rendertarget(erhe::scene::Node* parent) -> std::
     }
 
     mesh->layer_id = scene_root->layers().rendertarget()->id;
-    mesh->enable_flag_bits(erhe::Item_flags::rendertarget | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui);
+    mesh->enable_flag_bits(erhe::Item_flags::rendertarget | erhe::Item_flags::show_in_ui);
 
     // Node specifies transform for rendertarget in 3D scene
     auto node = std::make_shared<erhe::scene::Node>("rendertarget node");
@@ -1177,7 +1177,6 @@ auto Scene_commands::create_new_rendertarget(erhe::scene::Node* parent) -> std::
     node->attach(mesh);
     node->enable_flag_bits(
         erhe::Item_flags::rendertarget |
-        erhe::Item_flags::visible      |
         erhe::Item_flags::show_in_ui
     );
 

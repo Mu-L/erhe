@@ -20,7 +20,9 @@
 #include "texture_graph/graph_texture.hpp"
 #include "texture_graph/texture_graph_window.hpp"
 #include "operations/item_insert_remove_operation.hpp"
+#include "operations/compound_operation.hpp"
 #include "operations/item_set_flag_bits_operation.hpp"
+#include "operations/property_set_operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "prefabs/prefab_instance.hpp"
 #include "scene/attachment_types.hpp"
@@ -659,13 +661,16 @@ auto Scene_root::make_browser_window(
                 ImGui::EndMenu();
             }
 
-            // Lightmap flag (undoable): set / clear Item_flags::lightmapped
-            // on every mesh under the clicked node's subtree - or under
-            // every selected node when the clicked node is selected (the
-            // Cut / Delete convention above). The mesh list is collected in
-            // the deferred operation (selection can change between the
-            // click and the deferred run) and pre-filtered to meshes whose
-            // state actually changes, so undo is an exact inverse.
+            // Lightmapped (undoable): the lightmapped property is inherited
+            // down the node tree (D23), so the recursive command writes the
+            // local value on the clicked node - or on every selected node
+            // when the clicked node is selected (the Cut / Delete convention
+            // above) - and clears the local values of every node and mesh
+            // below it, so the subtree follows the root afterward. The
+            // items are collected in the deferred operation (selection can
+            // change between the click and the deferred run); items whose
+            // local state already matches are skipped, so undo is an exact
+            // inverse.
             {
                 const auto queue_lightmap_flag = [&context, node, &deferred_operations](const bool enable) {
                     deferred_operations.push_back(
@@ -682,41 +687,43 @@ auto Scene_root::make_browser_window(
                             if (roots.empty()) {
                                 roots.push_back(node);
                             }
+                            const erhe::property::Dependency_property& property = erhe::Item_base::lightmapped_property.get();
                             // Guard against double-collect when the selection
                             // holds both an ancestor and its descendant.
-                            std::unordered_set<const erhe::Item_base*>    seen;
-                            std::vector<std::shared_ptr<erhe::Item_base>> meshes;
-                            const std::function<void(erhe::scene::Node&)> visit = [&](erhe::scene::Node& visited_node) {
+                            std::unordered_set<const erhe::Item_base*> seen;
+                            Compound_operation::Parameters             parameters;
+                            const auto queue_state = [&](const std::shared_ptr<erhe::Item_base>& item, const std::optional<erhe::property::Local_state>& after) {
+                                if (!seen.insert(item.get()).second) {
+                                    return;
+                                }
+                                const std::optional<erhe::property::Local_state> before = item->read_local_state(property);
+                                if (before == after) {
+                                    return;
+                                }
+                                parameters.operations.push_back(std::make_shared<Property_set_operation>(item, property, before, after));
+                            };
+                            const std::function<void(erhe::scene::Node&)> clear_below = [&](erhe::scene::Node& visited_node) {
                                 for (const std::shared_ptr<erhe::scene::Node_attachment>& attachment : visited_node.get_attachments()) {
-                                    const std::shared_ptr<erhe::scene::Mesh> mesh = std::dynamic_pointer_cast<erhe::scene::Mesh>(attachment);
-                                    if (!mesh || !seen.insert(mesh.get()).second) {
-                                        continue;
-                                    }
-                                    const bool lightmapped = (mesh->get_flag_bits() & erhe::Item_flags::lightmapped) != 0u;
-                                    if (lightmapped != enable) {
-                                        meshes.push_back(mesh);
+                                    if (attachment) {
+                                        queue_state(attachment, std::nullopt);
                                     }
                                 }
                                 for (const std::shared_ptr<erhe::Hierarchy>& child : visited_node.get_children()) {
                                     const std::shared_ptr<erhe::scene::Node> child_node = std::dynamic_pointer_cast<erhe::scene::Node>(child);
                                     if (child_node) {
-                                        visit(*child_node);
+                                        queue_state(child_node, std::nullopt);
+                                        clear_below(*child_node);
                                     }
                                 }
                             };
                             for (const std::shared_ptr<erhe::scene::Node>& root : roots) {
-                                visit(*root);
+                                queue_state(root, erhe::property::Local_state{erhe::property::Property_value{enable}});
+                                clear_below(*root);
                             }
-                            if (meshes.empty()) {
+                            if (parameters.operations.empty()) {
                                 return;
                             }
-                            auto op = std::make_shared<Item_set_flag_bits_operation>(
-                                std::move(meshes),
-                                erhe::Item_flags::lightmapped,
-                                enable,
-                                enable ? "Enable Lightmap" : "Disable Lightmap"
-                            );
-                            context.operation_stack->queue(op);
+                            context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
                         }
                     );
                 };

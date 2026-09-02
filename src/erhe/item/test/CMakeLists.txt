@@ -22,6 +22,7 @@ add_executable(${_target}
     test_hierarchy_smoke.cpp
     test_item_host.cpp
     test_properties.cpp
+    test_item_visibility.cpp
 )
 
 target_link_libraries(${_target}

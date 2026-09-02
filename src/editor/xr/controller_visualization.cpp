@@ -168,7 +168,7 @@ Controller_visualization::Controller_visualization(
         hand.node             = std::make_shared<erhe::scene::Node>(node_name);
         hand.placeholder_mesh = std::make_shared<erhe::scene::Mesh>(mesh_name);
         hand.placeholder_mesh->add_primitive(primitive, controller_material);
-        hand.node->enable_flag_bits(erhe::Item_flags::visible);
+        hand.node->show();
         hand.placeholder_mesh->enable_flag_bits(erhe::Item_flags::controller);
         hand.placeholder_mesh->layer_id = m_content_layer_id;
         hand.node->attach(hand.placeholder_mesh);
@@ -209,7 +209,7 @@ void Controller_visualization::load_render_model(App_context& context, erhe::xr:
     std::shared_ptr<erhe::scene::Node> model_root = std::make_shared<erhe::scene::Node>(
         right_hand ? "Controller model right" : "Controller model left"
     );
-    model_root->enable_flag_bits(erhe::Item_flags::visible);
+    model_root->show();
 
     erhe::gltf::Image_transfer image_transfer{*context.graphics_device};
     const erhe::gltf::Gltf_parse_arguments parse_arguments{
@@ -248,7 +248,7 @@ void Controller_visualization::load_render_model(App_context& context, erhe::xr:
         if (!node) {
             continue;
         }
-        node->enable_flag_bits(erhe::Item_flags::visible);
+        node->show();
         const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
         if (!mesh) {
             continue;
@@ -258,8 +258,8 @@ void Controller_visualization::load_render_model(App_context& context, erhe::xr:
         // battery level is not queryable by third-party apps on Quest (see
         // doc/xr-controller-render-model.md), so hide the quad entirely.
         if (node->get_name().ends_with("batteryIndicatorQuad")) {
-            node->disable_flag_bits(erhe::Item_flags::visible);
-            mesh->disable_flag_bits(erhe::Item_flags::visible);
+            node->hide();
+            mesh->hide();
             continue;
         }
         mesh->enable_flag_bits(erhe::Item_flags::controller);
@@ -410,10 +410,10 @@ void Controller_visualization::update_hand(
     const erhe::xr::Xr_action_pose* pose = hand.has_render_model ? grip_pose : aim_pose;
     const bool tracked = (pose != nullptr) && (pose->location.locationFlags != 0);
     if (!tracked) {
-        hand.node->disable_flag_bits(erhe::Item_flags::visible);
+        hand.node->hide();
         return;
     }
-    hand.node->enable_flag_bits(erhe::Item_flags::visible);
+    hand.node->show();
     const glm::mat4 orientation = glm::mat4_cast(pose->orientation);
     const glm::mat4 translation = glm::translate(glm::mat4{1}, pose->position + camera_offset);
     const glm::mat4 m           = translation * orientation;

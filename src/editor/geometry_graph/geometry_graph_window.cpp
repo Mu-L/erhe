@@ -177,7 +177,7 @@ auto Geometry_graph_window::get_nodes() -> const std::vector<std::shared_ptr<Geo
 
 void Geometry_graph_window::insert_node(Graph_mesh& graph_mesh, const std::shared_ptr<Geometry_graph_node>& node)
 {
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     // The output node of a graph publishes to the owning asset (consumed
     // by Geometry_graph_mesh attachments); graphs only live in the content

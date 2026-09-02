@@ -13,6 +13,7 @@ add_executable(${_target}
     main.cpp
     test_animation_apply.cpp
     test_animation_sampler.cpp
+    test_attachment_inheritance.cpp
     test_camera_properties.cpp
     test_light_frame.cpp
     test_light_properties.cpp

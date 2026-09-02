@@ -199,13 +199,10 @@ void Create::window_imgui()
             if (m_brush && create_instance) {
                 using Item_flags = erhe::Item_flags;
                 const uint64_t node_flags =
-                    Item_flags::visible     |
                     Item_flags::content     |
                     Item_flags::show_in_ui;
                 const uint64_t mesh_flags =
-                    Item_flags::visible     |
                     Item_flags::content     |
-                    Item_flags::shadow_cast |
                     Item_flags::id          |
                     Item_flags::show_in_ui;
 

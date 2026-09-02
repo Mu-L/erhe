@@ -205,7 +205,7 @@ void Rendertarget_mesh::resize_rendertarget(
 
     mesh_memory.flush(command_buffer);
 
-    enable_flag_bits(erhe::Item_flags::visible | erhe::Item_flags::id |erhe::Item_flags::rendertarget);
+    enable_flag_bits(erhe::Item_flags::id |erhe::Item_flags::rendertarget);
 }
 
 auto Rendertarget_mesh::get_texture() const -> std::shared_ptr<erhe::graphics::Texture>

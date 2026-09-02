@@ -76,21 +76,33 @@ namespace {
 }
 
 // Applies a "flags" name array exactly (enable listed, disable unlisted
-// persistent flags); leaves the item's flags untouched when the payload
-// carries no flags array (older / foreign files keep their default set).
+// persistent flags) and the "properties" local values (D23); leaves the
+// item's flags untouched when the payload carries no flags array (older /
+// foreign files keep their default set). Flags without a properties object
+// is an older file: visible / shadow_cast / lightmapped come from its flags.
 void apply_flags(erhe::Item_base& item, const nlohmann::json& payload)
 {
     const auto it = payload.find("flags");
-    if ((it == payload.end()) || !it->is_array()) {
-        return;
-    }
+    const bool has_flags = (it != payload.end()) && it->is_array();
     uint64_t listed_bits = 0;
-    for (const nlohmann::json& flag_name : *it) {
-        if (flag_name.is_string()) {
-            listed_bits |= erhe::gltf::persistent_item_flag_from_name(flag_name.get<std::string>());
+    if (has_flags) {
+        for (const nlohmann::json& flag_name : *it) {
+            if (flag_name.is_string()) {
+                listed_bits |= erhe::gltf::persistent_item_flag_from_name(flag_name.get<std::string>());
+            }
         }
+        erhe::gltf::apply_persistent_item_flags(item, listed_bits);
     }
-    erhe::gltf::apply_persistent_item_flags(item, listed_bits);
+    const auto properties_it = payload.find("properties");
+    if ((properties_it != payload.end()) && properties_it->is_object()) {
+        for (const auto& [name, value] : properties_it->items()) {
+            if (value.is_string()) {
+                static_cast<void>(erhe::gltf::apply_item_local_property(item, name, value.get<std::string>()));
+            }
+        }
+    } else if (has_flags) {
+        erhe::gltf::apply_legacy_derived_item_flags(item, listed_bits);
+    }
 }
 
 } // anonymous namespace

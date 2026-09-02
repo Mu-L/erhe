@@ -408,8 +408,8 @@ auto Bone_visualization::make_proxy(const std::shared_ptr<erhe::scene::Node>& jo
     // prefabs; id is added/removed by apply_proxy_flags() to gate picking.
     // Deliberately no `content` bit - a proxy must never be mistaken for scene
     // content.
-    proxy.mesh->enable_flag_bits(erhe::Item_flags::bone_proxy | erhe::Item_flags::visible);
-    proxy.node->enable_flag_bits(erhe::Item_flags::bone_proxy | erhe::Item_flags::visible);
+    proxy.mesh->enable_flag_bits(erhe::Item_flags::bone_proxy);
+    proxy.node->enable_flag_bits(erhe::Item_flags::bone_proxy);
 
     proxy.node->attach(proxy.mesh);
     proxy.node->set_parent(joint);

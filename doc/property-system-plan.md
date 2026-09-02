@@ -3,7 +3,8 @@
 Status: phases 0-4 and 6-8 implemented and verified (library, item
 integration, editor operation / rows / MCP tools / startup command, Material
 migration, Node transform properties, Light and Camera migrations, observer
-users, expressions and bindings). Section 7 holds the remaining work.
+users, expressions and bindings, inherited flags). Section 7 holds the
+remaining work.
 
 Reference: the WPF property system in `~/git/tksuoran/wpf`, files under
 `src/Microsoft.DotNet.Wpf/src/WindowsBase/System/Windows/`:
@@ -489,6 +490,102 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
   - Serialization stays with D14: formulas are session state until the
     extras work lands (section 7).
 
+- D23 Inherited flags (`visible`, `shadow_cast`, `lightmapped`).
+  - What exists today. `Item_flags::visible` is a self bit; the only
+    propagation is `Node_attachment::handle_node_update` /
+    `handle_node_flag_bits_update` copying the node's bit onto each
+    attachment, so a mesh is visible exactly when its node is and a hidden
+    node does not hide its child nodes. `shadow_cast` and `lightmapped` are
+    self bits on meshes with no propagation. `Item_flags::invisible_parent`
+    is not visibility propagation: `Scene_root` sets it on the scene root
+    node and the item tree skips that row and lists its children in its
+    place. It stays as it is; the section 7 sentence that said it goes away
+    was wrong.
+  - Properties. `Item_base` registers `visible` (default `true`),
+    `shadow_cast` (default `false`) and `lightmapped` (default `false`) as
+    inherits-flagged `bool` properties with owner type 0, so every item
+    type lists them (`for_each_property_of_type` matches owner 0 against
+    every type). The semantics are the D8 ones: the closest ancestor with a
+    local value wins, as CSS `visibility` (a child under a hidden parent can
+    be shown with a local `true`); WPF `IsVisible` (parent AND self) is not
+    reproduced, because the coerced value of a local write is stored at
+    write time (D7) and cannot follow a later parent change. None of the
+    three carries an R15 editor flag: the draw lists read the derived bits
+    (next point), so nothing in the editor hook is needed. `shadow_cast`
+    and `lightmapped` carry `.ui.group = "Rendering"`; `visible` is
+    ungrouped. All three keep `serialize`.
+  - Inheritance tree. A `Node_attachment` is not a `Hierarchy`; it overrides
+    `get_inheritance_parent()` to return its node and `Node::
+    for_each_inheritance_child` visits child nodes, then attachments.
+    `Node_attachment::set_node` (the one path that changes the node
+    pointer) captures the attachment's inheritance snapshot before the move
+    and applies it after, the way `Hierarchy::set_parent` does for a
+    subtree, so a mesh moved between nodes is notified of its new
+    inherited visibility.
+    This replaces the `visible` half of the attachment flag mirroring; the
+    `selected` / `hovered_*` mirroring stays (those are not properties).
+  - Derived bits (R14). The three bits stay in the flag word as derived
+    bits: the properties' shared changed callback writes the new effective
+    value into the item's bit through a private `Item_base::
+    set_derived_flag_bit`, which bumps the mutation serial and runs
+    `handle_flag_bits_update` as `set_flag_bits` does. An inherited change
+    reaches every descendant without a local value through D8, and a tree
+    move through the snapshots, so the bit is always the effective value.
+    Every reader is unchanged: `Item_filter` over the draw-list entry flag
+    words, `is_visible()`, the shadow / lightmap / raytrace mask tests, the
+    glTF exporter's flag list. `Item_base`'s constructor starts the word
+    with `visible` set (the property default, no parent yet), and the copy
+    constructor and assignment re-derive the three bits from the copied
+    entries after `Dependency_object` is copied (a copy has no parent, so
+    an inherited `false` does not survive the copy; the bit must agree).
+  - Writers. `set_flag_bits` (and the `enable_` / `disable_` wrappers) with
+    a derived bit in the mask is a programming error: it logs one error
+    naming the bit and drops those bits from the mask. `set_visible` /
+    `show` / `hide` write the `visible` property (local value), which is
+    what the item tree, the tools and the raytrace hide-restore need;
+    `Node_raytrace` restores the previous *local state* (`read_local_state`
+    / `apply_local_state`) around its hide, so an inherited value is not
+    baked into a local one. Every construction-site
+    `enable_flag_bits(... | visible | ...)` drops the `visible` bit: with
+    the default `true` the item is visible, and a local `true` on a mesh
+    would stop the node's hide from reaching it (the point of the change).
+    A construction site that today relies on the bit being absent to start
+    hidden calls `hide()` explicitly. `shadow_cast` and `lightmapped`
+    construction writes become `set_value(shadow_cast_property, true)`
+    (a local value, the current per-mesh semantics; a group node's local
+    value reaches only meshes without one).
+  - Editor. The generic property rows (D12) draw the three checkboxes with
+    source, reset and undo for free; the `Properties::item_flags` grid
+    skips the derived bits. "Enable / Disable Lightmap (Recursive)" in the
+    item context menu becomes one `Compound_operation` that sets the local
+    value on the selected items and clears it on their descendants, so the
+    subtree follows the ancestor afterward; `Item_set_flag_bits_operation`
+    keeps serving `no_transform_update`. MCP `set_item_flags` rejects the
+    three names with a message pointing at `set_item_property`;
+    `get_item_properties` lists them.
+  - Serialization (the node / mesh half of the D14 extras work). The
+    `ERHE_node` extension gains `"properties"` (the node's) and
+    `"mesh_properties"` (its mesh's) objects of local values, written with
+    D16 `to_string` for every non-bridged, non-expression local value whose
+    property has `serialize` (today: the three flags; tomorrow any
+    store-backed node or mesh property), and read back through
+    `parse_value` and `set_value` (a failed parse or an unknown name is
+    logged and skipped). The exporter stops listing `visible`,
+    `shadow_cast` and `lightmapped` in the `flags` arrays; the importer
+    keeps reading them from old files (`visible` absent from a listed
+    `flags` array sets local `false`; `shadow_cast` / `lightmapped` present
+    set local `true`) so existing scenes load as before.
+  - Tests. `src/erhe/item/test/test_item_visibility.cpp` (defaults, the
+    derived bit follows local, inherited and tree-change values, `show` /
+    `hide` / `set_visible` write local values, a derived bit in a
+    `set_flag_bits` mask is dropped, copy re-derives the bits) and
+    `src/erhe/scene/test/test_attachment_inheritance.cpp` (a mesh inherits
+    from its node, follows a node hide and an ancestor hide, a local
+    `true` on the mesh survives the node hide, moving the mesh between a
+    hidden and a visible node notifies once with the right old value,
+    `shadow_cast` set on a group node reaches meshes without a local
+    value).
+
 ## 4. Migration design
 
 ### 4.1 Material
@@ -759,6 +856,38 @@ built and launched on the Metal build to verify the affected window.
   logger. Every binary that initializes `erhe::item` logging now
   initializes the property logger first.
 
+### Phase 9 - inherited flags
+
+- D23: the `Item_base` properties, derived bits, `Node_attachment`
+  inheritance parent and `Node` attachment snapshots, then the writer
+  migration (construction masks, `set_visible` / `show` / `hide`,
+  `Node_raytrace`), the editor pieces (flag grid, lightmap context menu,
+  MCP `set_item_flags`), and the `ERHE_node` `properties` /
+  `mesh_properties` serialization with the old-file flag read path.
+- Tests: `test_item_visibility.cpp`, `test_attachment_inheritance.cpp`,
+  and the existing item / scene / gltf tests.
+- Verify (section 8): `set_item_property` `visible` `false` on a node with
+  children hiding the subtree's meshes in a `capture_screenshot`, a child
+  node's local `true` showing it again, `undo` in order; `get_item_properties`
+  reporting `inherited` on a child; `shadow_cast` `true` on a group node
+  reaching a child as `inherited`; `export_gltf` with `editor_state: true`
+  followed by `import_gltf` giving identical local values and the same
+  inherited sources; a legacy-format file with `visible` missing from a
+  node's `flags` loading that node hidden.
+- Found during implementation, fixed alongside: `Node_attachment::set_node`
+  ran on a destroyed attachment when the old node's attachment list was the
+  last owner (`Node::~Node` and `Node::detach` call it through a raw pointer
+  and `handle_remove_attachment` erases the owning `shared_ptr` mid-call);
+  it was harmless while nothing after the erase touched the object, and
+  the snapshot apply did. `set_node` now holds a `shared_ptr` to itself for
+  the duration.
+- Behavior notes: `grid_tool` "Add Grid" previously created an invisible
+  grid by omitting the bit and now creates a visible one (the checkbox in
+  the grid window still toggles it); `Quad_view` hides its rendertarget
+  node at construction, as the omitted bit did before; the camera
+  `properties` object repeats `exposure` / `shadow_range` next to the
+  native `ERHE_camera` fields (both import to the same value).
+
 ## 6. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -795,11 +924,6 @@ sealing are future work (section 7).
 - Read-only computed properties through `Property_key<T>` (R6): world
   transform, world bounds, child count, exposed for MCP, the Properties
   window and the expression variables of the value-provider item.
-- Inherited flags replacing hand-rolled propagation: `visible`,
-  `shadow_cast` and `lightmapped` become inherits-flagged `bool`
-  properties, and `Item_flags::invisible_parent` with its propagation code
-  goes away. Lands after the `Node` migration (phase 4) so the R14
-  measurement covers it.
 - Layout per-child hints as attached properties (WPF `DockPanel.Dock`,
   `Grid.Row`): `Layout` registers alignment and margin as attached
   properties and reads them from each child node, so a child carries its
@@ -815,7 +939,9 @@ sealing are future work (section 7).
 - Editor per-item state as attached properties registered by the editor:
   item tree expansion, sheet-window formulas.
 - glTF extras serialization of local values for properties without a native
-  glTF field (D14), honoring the `serialize` flag (D4).
+  glTF field (D14), honoring the `serialize` flag (D4): done for nodes and
+  meshes in D23 (`ERHE_node` `properties` / `mesh_properties`); lights,
+  cameras and materials still write only their native fields.
 - Animation channels targeting arbitrary properties (not only node TRS),
   which becomes possible once `Animation_channel` stores a
   `Dependency_property` index instead of `Animation_path`.
@@ -872,6 +998,25 @@ sealing are future work (section 7).
   translation, the light's stored intensity) and `redo` reinstalling the
   formula; and `capture_screenshot` with the light selected showing the
   `= Intensity` row with the formula text.
+  The checks that passed at the end of phase 9 (`reparent_node` builds the
+  subtree; the default scene is flat): `set_item_property` `visible`
+  `false` on `dodecahedron` with `icosahedron` reparented under it removing
+  both from `capture_screenshot` (the cube and cuboctahedron are outside
+  the default view, use objects that are in it), `get_item_properties`
+  on the child reporting `source` `inherited` on the node and its mesh,
+  `visible` `true` on the child bringing it back, two `undo`s restoring the
+  states in order, `shadow_cast` `true` on the parent reported `inherited`
+  on the child, `export_gltf` with `editor_state: true` writing
+  `ERHE_node` `properties` / `mesh_properties` (`{"visible":"false"}`,
+  `{"shadow_cast":"true","lightmapped":"true"}`) and `import_gltf` giving
+  the same local values and sources, a GLB rewritten without the
+  `properties` objects and with `visible` listed in every `flags` array
+  except one node importing that node with local `false` and its mesh
+  `inherited`, `set_item_flags` with `visible` rejected with the
+  `set_item_property` hint, and `capture_screenshot` with a hidden empty
+  node selected showing the `* Visible` row unchecked under its transform
+  rows. The generic rows sit below the Mesh section for a mesh-carrying
+  node, so select an empty node for the screenshot.
 - `capture_screenshot` works on the Metal swapchain (the same one-frame
   arm-then-collect protocol as the Vulkan windowed build), so the visual
   check of the Properties rows is `capture_screenshot` with a `path` in

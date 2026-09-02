@@ -57,6 +57,8 @@ class Instance_create_info final
 public:
     uint64_t                                   node_flags     {0};
     uint64_t                                   mesh_flags     {0};
+    bool                                       mesh_shadow_cast{true};  // local value of Item_base::shadow_cast_property on the mesh
+    bool                                       mesh_lightmapped{false}; // likewise lightmapped_property; false leaves it inherited
     Scene_root*                                scene_root     {nullptr};
     glm::mat4                                  world_from_node{1.0f};
     std::shared_ptr<erhe::primitive::Material> material;

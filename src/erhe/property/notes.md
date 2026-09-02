@@ -80,7 +80,8 @@ the value before the batch and after it.
 `inherits` metadata makes a property without a local value read the closest
 ancestor's effective value through two virtuals the object provides
 (`get_inheritance_parent`, `for_each_inheritance_child`; `erhe::Hierarchy`
-implements them). Inherited values are not cached: a read walks up until an
+implements them, `erhe::scene::Node` adds its attachments as children and
+`Node_attachment` names its node as parent). Inherited values are not cached: a read walks up until an
 ancestor with a local value. A set or clear on an inherits property notifies
 every descendant without a local value, stopping at descendants that have
 one. A tree change uses `capture_inheritance_snapshot` before and

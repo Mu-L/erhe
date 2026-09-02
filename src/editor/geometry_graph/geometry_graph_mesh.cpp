@@ -186,7 +186,7 @@ void Geometry_graph_mesh::apply_baked_products()
             // visible + render_wireframe only: no `content` (skipped by all
             // fill / point passes), no shadow_cast, no id (not pickable);
             // the primitive has no raytrace shape, so hover misses it too.
-            m_ghost_mesh->enable_flag_bits(erhe::Item_flags::visible | erhe::Item_flags::render_wireframe);
+            m_ghost_mesh->enable_flag_bits(erhe::Item_flags::render_wireframe);
             node->attach(m_ghost_mesh);
             m_controlled_node = node->shared_node_from_this();
         }
@@ -216,7 +216,8 @@ void Geometry_graph_mesh::apply_baked_products()
     if (!m_mesh) {
         m_mesh = std::make_shared<erhe::scene::Mesh>(node->get_name() + " Mesh");
         m_mesh->layer_id = scene_root->layers().content()->id;
-        m_mesh->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::shadow_cast | erhe::Item_flags::id);
+        m_mesh->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::id);
+        m_mesh->set_value(erhe::Item_base::shadow_cast_property, true);
         node->attach(m_mesh);
         m_controlled_node = node->shared_node_from_this();
     }

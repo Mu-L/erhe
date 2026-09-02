@@ -97,7 +97,6 @@ Quad_view::Quad_view(
         );
         m_rendertarget_mesh->layer_id = scene_root.layers().rendertarget()->id;
         m_rendertarget_mesh->enable_flag_bits(
-            erhe::Item_flags::visible |
             erhe::Item_flags::show_in_developer_ui
         );
 
@@ -108,6 +107,9 @@ Quad_view::Quad_view(
         // only content-flagged children, so the hotbar / hud quad never leaks
         // into a saved scene (its texture has no serializable image source).
         m_rendertarget_node->enable_flag_bits(erhe::Item_flags::rendertarget | erhe::Item_flags::show_in_developer_ui);
+        // Hidden until the owner (hotbar, hud) calls set_visible; the mesh
+        // inherits the node's visibility.
+        m_rendertarget_node->hide();
     }
 
     m_imgui_host = std::make_shared<Rendertarget_imgui_host>(
@@ -255,10 +257,7 @@ void Quad_view::set_scale(float scale)
 void Quad_view::set_visible(bool visible)
 {
     if (m_rendertarget_node) {
-        m_rendertarget_node->set_visible(visible);
-    }
-    if (m_rendertarget_mesh) {
-        m_rendertarget_mesh->set_visible(visible);
+        m_rendertarget_node->set_visible(visible); // the mesh inherits it
     }
 #if defined(ERHE_XR_LIBRARY_OPENXR)
     if (m_quad_layer) {

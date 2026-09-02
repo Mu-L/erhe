@@ -6,7 +6,8 @@
     "properties": {
         "cast_shadow":    {"type": "boolean"},
         "infinite_range": {"type": "boolean"},
-        "flags":          {"type": "array", "items": {"type": "string"}}
+        "flags":          {"type": "array", "items": {"type": "string"}},
+        "properties":     {"type": "object", "additionalProperties": {"type": "string"}, "description": "Local values of the light's registered properties (name -> text)"}
     },
     "required": ["cast_shadow", "infinite_range"]
 }

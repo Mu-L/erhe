@@ -27,7 +27,7 @@ DONE, committed, verified:
 
 Test loop (MCP, editor launched hidden; UPDATED 2026-08-05 - the legacy
 standalone flow was removed, lightmap_prepare_tiles is the only front
-door): set_item_flags lightmapped -> lightmap_prepare_tiles {scene_name}
+door): set_item_property lightmapped true -> lightmap_prepare_tiles {scene_name}
 (poll get_async_status until idle) -> lightmap_bake_gbuffer ->
 lightmap_bake_direct (optional debug_png), or lightmap_set_baking for
 the interactive bake. Or interactively via the Lightmap window (Prepare

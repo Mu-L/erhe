@@ -38,7 +38,8 @@
         "infinite_z_far": {"type": "boolean", "default": false},
         "exposure":       {"type": "number"},
         "shadow_range":   {"type": "number"},
-        "flags":          {"type": "array", "items": {"type": "string"}}
+        "flags":          {"type": "array", "items": {"type": "string"}},
+        "properties":     {"type": "object", "additionalProperties": {"type": "string"}, "description": "Local values of the camera's registered properties (name -> text)"}
     },
     "required": ["projection_type"]
 }

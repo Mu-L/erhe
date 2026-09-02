@@ -64,7 +64,17 @@ TEST(Item_properties, item_type_drives_metadata_and_lookup)
     EXPECT_EQ(Property_registry::get().find(c_type_gadget, "tint"), gadget_tint.get_ptr());
 
     std::vector<std::string> names;
-    Property_registry::get().for_each_property_of_type(widget->get_type(), [&](const Dependency_property& p) { names.emplace_back(p.get_name()); });
+    // Item_base's owner-0 properties (visible, shadow_cast, lightmapped)
+    // are listed for every type; their order relative to this file's
+    // statics is static-initialization order, so filter them out.
+    Property_registry::get().for_each_property_of_type(
+        widget->get_type(),
+        [&](const Dependency_property& p) {
+            if (p.get_owner_type() != 0) {
+                names.emplace_back(p.get_name());
+            }
+        }
+    );
     ASSERT_EQ(names.size(), std::size_t{2});
     EXPECT_EQ(names[0], "tint");
     EXPECT_EQ(names[1], "count");

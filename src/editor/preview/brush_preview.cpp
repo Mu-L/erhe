@@ -73,7 +73,6 @@ void Brush_preview::make_preview_scene()
     m_node = std::make_shared<erhe::scene::Node>("Brush Preview Node");
     m_node->enable_flag_bits(
         erhe::Item_flags::brush   |
-        erhe::Item_flags::visible |
         erhe::Item_flags::no_message
     );
     const auto paremt = m_scene_root_shared->get_hosted_scene()->get_root_node();
@@ -263,7 +262,6 @@ void Brush_preview::render_preview(
         m_mesh = std::make_shared<erhe::scene::Mesh>("Brush Preview Mesh");
         m_mesh->enable_flag_bits(
             erhe::Item_flags::brush       |
-            erhe::Item_flags::visible     |
             erhe::Item_flags::no_message  |
             erhe::Item_flags::show_in_developer_ui
         );

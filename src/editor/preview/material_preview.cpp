@@ -109,9 +109,9 @@ void Material_preview::make_preview_scene(erhe::scene_renderer::Mesh_memory& mes
 
     using Item_flags = erhe::Item_flags;
     m_mesh->layer_id = m_scene_root_shared->layers().content()->id;
-    m_mesh->enable_flag_bits(Item_flags::content | Item_flags::visible);
+    m_mesh->enable_flag_bits(Item_flags::content);
     m_node->attach(m_mesh);
-    m_node->enable_flag_bits(Item_flags::content | Item_flags::visible);
+    m_node->enable_flag_bits(Item_flags::content);
 
     const auto paremt = m_scene_root_shared->get_hosted_scene()->get_root_node();
     m_node->set_parent(paremt);

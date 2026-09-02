@@ -249,7 +249,7 @@ TEST(Hierarchy, GetChildCountWithFilter)
 
     c1->show();
     c2->show();
-    // c3 not visible
+    c3->hide();
 
     erhe::Item_filter filter;
     filter.require_all_bits_set = erhe::Item_flags::visible;

@@ -1586,10 +1586,10 @@ void Headset_view::setup_root_camera()
     m_root_node = get_scene_root()->get_scene().get_root_node();
     m_headset_node = std::make_shared<erhe::scene::Node>("Headset Root Node");
     m_headset_node->set_parent(m_root_node);
-    m_headset_node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui | erhe::Item_flags::visible);
+    m_headset_node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui);
 
     m_root_camera = std::make_shared<erhe::scene::Camera>("Root Camera");
-    m_root_camera->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui | erhe::Item_flags::visible);
+    m_root_camera->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui);
     auto& projection = *m_root_camera->projection();
     projection.fov_y           = glm::radians(35.0f);
     projection.projection_type = erhe::scene::Projection::Type::perspective_vertical;
@@ -1607,9 +1607,10 @@ void Headset_view::setup_pointer_pick_camera()
     // the controller aim pose each frame and looks down the control ray
     // (-Z). A narrow vertical fov concentrates angular resolution around the
     // ray so the centre texel samples the surface the controller points at.
-    // No content / visible flags: it must never be composited or listed.
+    // No content flag and hidden: it must never be composited or listed.
     m_pointer_pick_node   = std::make_shared<erhe::scene::Node>("Pointer Pick Camera Node");
     m_pointer_pick_camera = std::make_shared<erhe::scene::Camera>("Pointer Pick Camera");
+    m_pointer_pick_node->hide();
     erhe::scene::Projection& projection = *m_pointer_pick_camera->projection();
     projection.projection_type = erhe::scene::Projection::Type::perspective_vertical;
     projection.fov_y           = glm::radians(10.0f);

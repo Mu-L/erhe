@@ -209,7 +209,15 @@ void Merge_static_subtree_operation::build_target(
         ERHE_VERIFY(source_mesh);
         target.mesh = std::make_shared<Mesh>(fmt::format("{} merged", root->get_name()));
         target.mesh->layer_id = source_mesh->layer_id;
-        target.mesh->enable_flag_bits(source_mesh->get_flag_bits());
+        target.mesh->enable_flag_bits(source_mesh->get_flag_bits() & ~erhe::Item_flags::derived);
+        // visible / shadow_cast / lightmapped are properties: copy the
+        // source's local values, an inherited value comes from the target's
+        // own node.
+        for (const erhe::property::Property<bool>& property : {erhe::Item_base::visible_property, erhe::Item_base::shadow_cast_property, erhe::Item_base::lightmapped_property}) {
+            if (const std::optional<bool> local = source_mesh->read_local_value(property); local.has_value()) {
+                target.mesh->set_value(property, local.value());
+            }
+        }
         target.mesh_created = true;
     } else {
         target.primitives_before = target.mesh->get_primitives();

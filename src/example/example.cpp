@@ -572,10 +572,10 @@ private:
         light->set_intensity(intensity);
         light->set_range(0.0f);
         light->layer_id  = 0;
-        light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        light->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
         node->attach          (light);
         node->set_parent      (m_scene.get_root_node());
-        node->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
 
         const glm::mat4 m = erhe::math::create_look_at(
             position,                     // eye
@@ -603,10 +603,10 @@ private:
         light->set_intensity(intensity);
         light->set_range(25.0f);
         light->layer_id  = 0;
-        light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        light->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
         node->attach          (light);
         node->set_parent      (m_scene.get_root_node());
-        node->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
 
         const glm::mat4 m = erhe::math::create_translation<float>(position);
         node->set_parent_from_node(m);

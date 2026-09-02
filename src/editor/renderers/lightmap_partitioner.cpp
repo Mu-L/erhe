@@ -776,23 +776,23 @@ void Lightmap_partitioner::commit_prepare()
             entry.piece_mesh->layer_id = scene_root.layers().content()->id;
             entry.piece_mesh->set_primitives(piece_primitives);
             // Render proxies: draw + cast shadows in place of the source
-            // (apply_visibility toggles their visible flag), but stay out
+            // (hidden until apply_visibility shows them), but stay out
             // of the item tree (no show_in_ui), the ID buffer (no id flag),
             // raytrace picking (render_proxy -> mask 0 in
             // raytrace_node_mask) and glTF export. Selection and editing
             // always target the proxy_hidden original.
             entry.piece_mesh->enable_flag_bits(
                 erhe::Item_flags::content      |
-                erhe::Item_flags::shadow_cast  |
                 erhe::Item_flags::render_proxy
             );
+            entry.piece_mesh->set_value(erhe::Item_base::shadow_cast_property, true);
+            entry.piece_mesh->hide();
             entry.piece_node->attach(entry.piece_mesh);
             // Piece nodes hold world-space geometry on a static identity
             // transform: skip the per-frame transform update pass and lock
             // them against the viewport transform tool.
             entry.piece_node->enable_flag_bits(
                 erhe::Item_flags::content                 |
-                erhe::Item_flags::visible                 |
                 erhe::Item_flags::render_proxy            |
                 erhe::Item_flags::no_transform_update     |
                 erhe::Item_flags::lock_viewport_transform
@@ -834,7 +834,6 @@ void Lightmap_partitioner::commit_prepare()
         m_group_node = std::make_shared<erhe::scene::Node>("Lightmap Pieces");
         m_group_node->enable_flag_bits(
             erhe::Item_flags::content                 |
-            erhe::Item_flags::visible                 |
             erhe::Item_flags::render_proxy            |
             erhe::Item_flags::no_transform_update     |
             erhe::Item_flags::lock_viewport_transform
@@ -1009,9 +1008,9 @@ void Lightmap_partitioner::apply_visibility()
         }
         if (entry.piece_mesh) {
             if (m_render_with_lightmaps) {
-                entry.piece_mesh->enable_flag_bits(erhe::Item_flags::visible);
+                entry.piece_mesh->show();
             } else {
-                entry.piece_mesh->disable_flag_bits(erhe::Item_flags::visible);
+                entry.piece_mesh->hide();
             }
         }
     }

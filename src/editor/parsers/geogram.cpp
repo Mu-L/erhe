@@ -72,13 +72,10 @@ void import_geogram(
     geometry->process({.flags = flags});
 
     constexpr uint64_t mesh_flags =
-        erhe::Item_flags::visible     |
         erhe::Item_flags::content     |
-        erhe::Item_flags::shadow_cast |
         erhe::Item_flags::id          |
         erhe::Item_flags::show_in_ui;
     constexpr uint64_t node_flags =
-        erhe::Item_flags::visible     |
         erhe::Item_flags::content     |
         erhe::Item_flags::show_in_ui;
     constexpr erhe::primitive::Normal_style normal_style = erhe::primitive::Normal_style::corner_normals;
@@ -97,6 +94,7 @@ void import_geogram(
 
     mesh->layer_id = scene_root.layers().content()->id;
     mesh->enable_flag_bits(mesh_flags);
+    mesh->set_value       (erhe::Item_base::shadow_cast_property, true);
     node->attach          (mesh);
     node->enable_flag_bits(node_flags);
     node->set_world_from_node(

@@ -1330,6 +1330,9 @@ void Properties::item_flags(const std::shared_ptr<erhe::Item_base>& item)
 
     const uint64_t flags = item->get_flag_bits();
     for (uint64_t bit_position = 0; bit_position < Item_flags::count; ++ bit_position) {
+        if (((uint64_t{1} << bit_position) & Item_flags::derived) != 0u) {
+            continue; // visible / shadow_cast / lightmapped: property rows (D23)
+        }
         add_entry(Item_flags::c_bit_labels[bit_position], [item, bit_position, flags, this]() {
             const uint64_t bit_mask = uint64_t{1} << bit_position;
             bool           value    = test_bit_set(flags, bit_mask);

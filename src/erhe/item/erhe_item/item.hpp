@@ -122,6 +122,12 @@ public:
         hovered_in_graph | child_hovered_in_graph | ancestor_hovered_in_graph |
         negative_determinant | affects_shadow;
 
+    // Derived bits (D23 in doc/property-system-plan.md): the effective value
+    // of the visible / shadow_cast / lightmapped properties, written only by
+    // the property changed callback. set_flag_bits rejects them; write the
+    // property instead (set_visible, set_value(shadow_cast_property, ...)).
+    static constexpr uint64_t derived = visible | shadow_cast | lightmapped;
+
     static constexpr const char* c_bit_labels[] =
     {
         "No Message",
@@ -434,6 +440,14 @@ public:
     [[nodiscard]] auto get_debug_label             () const -> erhe::utility::Debug_label;
     [[nodiscard]] auto describe                    (int level = 0) const -> std::string;
 
+    // Inherited flags (D23): the closest ancestor with a local value wins;
+    // the effective value is mirrored into the flag word (Item_flags::derived)
+    // so filters and readers stay bit tests.
+    static const erhe::property::Property<bool> visible_property;
+    static const erhe::property::Property<bool> shadow_cast_property;
+    static const erhe::property::Property<bool> lightmapped_property;
+
+    // Rejects Item_flags::derived bits in mask (logged, dropped).
     void set_flag_bits    (uint64_t mask, bool value);
     void enable_flag_bits (uint64_t mask);
     void disable_flag_bits(uint64_t mask);
@@ -449,11 +463,16 @@ public:
     void remove_tag       (std::string_view tag);
     void clear_tags       ();
 
+private:
+    static void on_flag_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args);
+    void        set_derived_flag_bit    (uint64_t bit, bool value);
+    void        rederive_flag_bits      ();
+
 protected:
     // Not copied: a copy / clone starts outside any owning container.
     Item_host*                             m_item_host  {nullptr};
     Unique_id<Item_base>                   m_id         {};
-    uint64_t                               m_flag_bits  {Item_flags::none};
+    uint64_t                               m_flag_bits  {Item_flags::visible}; // derived bits start at the property defaults
     std::string                            m_name       {};
     erhe::utility::Debug_label             m_debug_label{};
     std::unique_ptr<std::filesystem::path> m_source_path{};

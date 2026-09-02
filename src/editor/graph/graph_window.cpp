@@ -115,7 +115,7 @@ auto Graph_window::make_constant() -> Shader_graph_node*
 {
     m_nodes.push_back(std::make_shared<Constant>());
     Shader_graph_node* node = m_nodes.back().get();
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     return node;
 }
@@ -124,7 +124,7 @@ auto Graph_window::make_passthrough() -> Shader_graph_node*
 {
     m_nodes.push_back(std::make_shared<Passthrough>());
     Shader_graph_node* node = m_nodes.back().get();
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     return node;
 }
@@ -133,7 +133,7 @@ auto Graph_window::make_load() -> Shader_graph_node*
 {
     m_nodes.push_back(std::make_shared<Load>());
     Shader_graph_node* node = m_nodes.back().get();
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     return node;
 }
@@ -141,7 +141,7 @@ auto Graph_window::make_store() -> Shader_graph_node*
 {
     m_nodes.push_back(std::make_shared<Store>());
     Shader_graph_node* node = m_nodes.back().get();
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     return node;
 }
@@ -150,7 +150,7 @@ auto Graph_window::make_add() -> Shader_graph_node*
 {
     m_nodes.push_back(std::make_shared<Add>());
     Shader_graph_node* node = m_nodes.back().get();
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     return node;
 }
@@ -159,7 +159,7 @@ auto Graph_window::make_sub() -> Shader_graph_node*
 {
     m_nodes.push_back(std::make_shared<Subtract>());
     Shader_graph_node* node = m_nodes.back().get();
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     return node;
 }
@@ -168,7 +168,7 @@ auto Graph_window::make_mul() -> Shader_graph_node*
 {
     m_nodes.push_back(std::make_shared<Multiply>());
     Shader_graph_node* node = m_nodes.back().get();
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     return node;
 }
@@ -177,7 +177,7 @@ auto Graph_window::make_div() -> Shader_graph_node*
 {
     m_nodes.push_back(std::make_shared<Divide>());
     Shader_graph_node* node = m_nodes.back().get();
-    constexpr uint64_t flags = erhe::Item_flags::visible | erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
+    constexpr uint64_t flags = erhe::Item_flags::content | erhe::Item_flags::show_in_ui;
     node->enable_flag_bits(flags);
     return node;
 }

@@ -237,7 +237,10 @@ auto run_hierarchy_smoke(const uint64_t seed, const double duration_seconds) -> 
             auto node = pick_random(rng, nodes);
             if (node) {
                 const auto flag = uint64_t{1} << (rng() % erhe::Item_flags::count);
-                if (rng() % 2 == 0) {
+                if ((flag & erhe::Item_flags::derived) != 0u) {
+                    // visible / shadow_cast / lightmapped are properties
+                    node->set_value(erhe::Item_base::visible_property, (rng() % 2 == 0));
+                } else if (rng() % 2 == 0) {
                     node->enable_flag_bits(flag);
                 } else {
                     node->disable_flag_bits(flag);

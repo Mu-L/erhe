@@ -357,6 +357,12 @@ auto Brush::make_instance(const Instance_create_info& instance_create_info) -> s
 
     mesh->layer_id = instance_create_info.scene_root->layers().content()->id;
     mesh->enable_flag_bits   (instance_create_info.mesh_flags);
+    if (instance_create_info.mesh_shadow_cast) {
+        mesh->set_value(erhe::Item_base::shadow_cast_property, true);
+    }
+    if (instance_create_info.mesh_lightmapped) {
+        mesh->set_value(erhe::Item_base::lightmapped_property, true);
+    }
     node->set_world_from_node(instance_create_info.world_from_node);
     node->attach             (mesh);
     node->enable_flag_bits   (instance_create_info.node_flags);
@@ -416,13 +422,10 @@ auto place_brush_in_scene(
 ) -> std::shared_ptr<erhe::scene::Node>
 {
     constexpr uint64_t mesh_flags =
-        erhe::Item_flags::visible     |
         erhe::Item_flags::content     |
-        erhe::Item_flags::shadow_cast |
         erhe::Item_flags::id          |
         erhe::Item_flags::show_in_ui;
     constexpr uint64_t node_flags =
-        erhe::Item_flags::visible     |
         erhe::Item_flags::content     |
         erhe::Item_flags::expand      |
         erhe::Item_flags::show_in_ui;
@@ -445,7 +448,6 @@ auto place_brush_in_scene(
     instance_node->attach(brush_placement);
     brush_placement->enable_flag_bits(
         erhe::Item_flags::brush      |
-        erhe::Item_flags::visible    |
         erhe::Item_flags::no_message |
         erhe::Item_flags::show_in_ui
     );

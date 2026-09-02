@@ -257,6 +257,16 @@ auto Node::get_attachment_count(const erhe::Item_filter& filter) const -> std::s
     return result;
 }
 
+void Node::for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback)
+{
+    Hierarchy::for_each_inheritance_child(callback);
+    for (const std::shared_ptr<Node_attachment>& attachment : node_data.attachments) {
+        if (attachment) {
+            callback(*attachment);
+        }
+    }
+}
+
 void Node::handle_add_attachment(const std::shared_ptr<Node_attachment>& attachment, std::size_t position)
 {
     ERHE_VERIFY(attachment);
