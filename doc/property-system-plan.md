@@ -162,8 +162,9 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
   `affects_draw_list_partition`, `affects_shader_variant`, `serialize`;
   `serialize` is set by default) and a `Property_ui` block (R17:
   `std::optional<float> min, max, step`, `enum class Presentation { plain,
-  color, angle_degrees, slider }`, `std::string_view group, tooltip`, `bool
-  developer_only`). The flags and the UI block are data only; the editor
+  color, angle_degrees, slider }`, `std::string_view group, tooltip, label`,
+  `bool developer_only`, `Visible_when visible_when` - a predicate on the
+  inspected object). The flags and the UI block are data only; the editor
   reads them (D11, D12) and the library never acts on them. Metadata
   resolution for (property, object) walks the override list for the object's
   `get_type()` bits: an override whose owner mask equals the bits wins, then
@@ -251,8 +252,13 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
   (D4) selects the widget variant and its limits: `color` draws a color
   edit for vec3 / vec4, `angle_degrees` converts radians to degrees for
   display, `slider` draws a slider within `min` / `max`, `group` collapses
-  rows under a header, `tooltip` is the hover text, and `developer_only`
-  rows show only in the editor's developer mode. Each row's tooltip shows
+  rows under a header, `tooltip` is the hover text, `label` replaces the
+  property name as the row label, `developer_only` rows show only in the
+  editor's developer mode, and a row with `visible_when` is listed only
+  while the predicate holds for every selected item (Material hides its
+  PBR rows for unlit materials, its anisotropy rows for BxDF models
+  without anisotropy, and alpha cutoff outside the alpha-test blending
+  mode). Each row's tooltip shows
   its `Value_source` (local, inherited, default), its default value and a
   quaternion's raw x y z w; the label carries a `*` prefix when a local
   value differs from the default; the context menu offers "Reset to default"
@@ -536,10 +542,6 @@ with the first two.
 - Observer users (D15): the material preview redraw, `Shadow_render_node`
   on a light's `cast_shadow`, the geometry graph transform-from-node; today
   these still react through the message bus or by polling.
-- Conditional row visibility: a `visible_when` predicate in `Property_ui`
-  so the generic rows can hide `alpha_cutoff` unless the blending mode is
-  alpha test, the anisotropy rows unless the BxDF model supports them, and
-  the PBR rows for unlit materials, as the hand-written material rows did.
 - Further item migrations, in priority order and each reusing the phase 3
   recipe: `Light` (color, intensity, temperature, spot angles, cast shadow),
   `Camera` projection (near, far, fov), `Layout` (type, axis, volume),
@@ -576,9 +578,11 @@ with the first two.
   `export_gltf` with `editor_state: true` followed by `import_gltf` giving
   identical property values on the imported copy, and
   `get_transform_update_stats` unchanged after node property writes.
-- `capture_screenshot` is not available on the Metal swapchain; a visual
-  check of the Properties rows needs the desktop unlocked and
-  `screencapture -x <png>`, or the headless Vulkan build on Windows.
+- `capture_screenshot` works on the Metal swapchain (the same one-frame
+  arm-then-collect protocol as the Vulkan windowed build), so the visual
+  check of the Properties rows is `capture_screenshot` with a `path` in
+  the scratch directory, cropped to the Properties window; system screen
+  capture tools are not used (they trip the endpoint security agent).
 - The generated Xcode project lists sources from the CMake files; an
   undefined-symbol link error after adding a file means the project is
   stale, re-run the configure script.

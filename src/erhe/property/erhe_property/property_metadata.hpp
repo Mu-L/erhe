@@ -66,6 +66,11 @@ public:
         slider          // float / int slider within min..max
     };
 
+    // Row shown only while this returns true for the inspected object
+    // (e.g. a material's alpha cutoff only in the alpha-test blending
+    // mode); unset = always shown.
+    using Visible_when = std::function<bool(const Dependency_object&)>;
+
     std::optional<float> min           {};
     std::optional<float> max           {};
     std::optional<float> step          {};
@@ -73,6 +78,8 @@ public:
     std::string_view     group         {};
     std::string_view     tooltip       {};
     bool                 developer_only{false};
+    std::string_view     label         {}; // row label; empty = the property name
+    Visible_when         visible_when  {};
 };
 
 // Storage outside the object's entry store (doc/property-system-plan.md

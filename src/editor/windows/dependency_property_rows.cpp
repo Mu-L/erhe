@@ -65,16 +65,32 @@ void Dependency_property_rows::add_rows(Property_editor& editor, const std::vect
             }
         );
     }
+    const uint64_t owner_type = m_items.front()->get_property_owner_type();
     if (!m_context.developer_mode) {
-        const uint64_t owner_type = m_items.front()->get_property_owner_type();
         std::erase_if(properties, [owner_type](const Dependency_property* property) { return property->get_metadata(owner_type).ui.developer_only; });
     }
+    // Conditional rows (Property_ui::visible_when): shown while the
+    // predicate holds for every selected item.
+    std::erase_if(
+        properties,
+        [this, owner_type](const Dependency_property* property) {
+            const Property_ui::Visible_when& visible_when = property->get_metadata(owner_type).ui.visible_when;
+            if (!visible_when) {
+                return false;
+            }
+            for (const std::shared_ptr<erhe::Item_base>& item : m_items) {
+                if (!visible_when(*item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    );
     if (properties.empty()) {
         return;
     }
 
     // Ungrouped rows first, then each group in order of first appearance.
-    const uint64_t owner_type = m_items.front()->get_property_owner_type();
     for (const Dependency_property* property : properties) {
         if (property->get_metadata(owner_type).ui.group.empty()) {
             row(editor, *property);
@@ -102,9 +118,11 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     const erhe::Item_base&   first    = *m_items.front();
     const Property_metadata& metadata = property.get_metadata(first.get_property_owner_type());
 
-    // Label: "*" marks a local value that differs from the default.
-    const bool differs_from_default = first.has_local_value(property) && !(first.get_value(property) == metadata.default_value.value());
-    std::string label = differs_from_default ? std::string{"* "} + std::string{property.get_name()} : std::string{property.get_name()};
+    // Label: Property_ui::label or the property name; "*" marks a local
+    // value that differs from the default.
+    const bool             differs_from_default = first.has_local_value(property) && !(first.get_value(property) == metadata.default_value.value());
+    const std::string_view label_text           = metadata.ui.label.empty() ? property.get_name() : metadata.ui.label;
+    std::string label = differs_from_default ? std::string{"* "} + std::string{label_text} : std::string{label_text};
 
     std::string tooltip{metadata.ui.tooltip};
     if (!tooltip.empty()) {

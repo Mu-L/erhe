@@ -79,7 +79,7 @@ const Property<glm::vec3> Node::translation_property = Property<glm::vec3>::regi
     Property_metadata{
         .default_value = glm::vec3{0.0f, 0.0f, 0.0f},
         .flags         = c_transform_flags,
-        .ui            = Property_ui{.step = 0.01f, .tooltip = "Position relative to the parent node"},
+        .ui            = Property_ui{.step = 0.01f, .tooltip = "Position relative to the parent node", .label = "Translation"},
         .bridge        = make_transform_bridge<glm::vec3>(&Trs_transform::get_translation, &Trs_transform::set_translation)
     }
 );
@@ -88,7 +88,7 @@ const Property<glm::quat> Node::rotation_property = Property<glm::quat>::registe
     Property_metadata{
         .default_value = glm::quat{1.0f, 0.0f, 0.0f, 0.0f},
         .flags         = c_transform_flags,
-        .ui            = Property_ui{.step = 0.5f, .tooltip = "Rotation relative to the parent node (edited as Euler degrees)"},
+        .ui            = Property_ui{.step = 0.5f, .tooltip = "Rotation relative to the parent node (edited as Euler degrees)", .label = "Rotation"},
         .bridge        = make_transform_bridge<glm::quat>(&Trs_transform::get_rotation, &Trs_transform::set_rotation)
     }
 );
@@ -97,7 +97,7 @@ const Property<glm::vec3> Node::scale_property = Property<glm::vec3>::register_p
     Property_metadata{
         .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
         .flags         = c_transform_flags,
-        .ui            = Property_ui{.step = 0.01f, .tooltip = "Scale relative to the parent node"},
+        .ui            = Property_ui{.step = 0.01f, .tooltip = "Scale relative to the parent node", .label = "Scale"},
         .bridge        = make_transform_bridge<glm::vec3>(&Trs_transform::get_scale, &Trs_transform::set_scale)
     }
 );

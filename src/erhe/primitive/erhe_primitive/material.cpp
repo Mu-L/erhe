@@ -18,9 +18,15 @@ auto unit_range(const Property_value& v) -> bool
     return (f >= 0.0f) && (f <= 1.0f);
 }
 
-auto slider(const float min, const float max, const std::string_view tooltip = {}) -> Property_ui
+auto slider(
+    const float                     min,
+    const float                     max,
+    const std::string_view          label,
+    const std::string_view          tooltip      = {},
+    const Property_ui::Visible_when visible_when = {}
+) -> Property_ui
 {
-    return Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::slider, .tooltip = tooltip};
+    return Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::slider, .tooltip = tooltip, .label = label, .visible_when = visible_when};
 }
 
 // Flags: the draw lists partition by blending class, double-sidedness, the
@@ -30,69 +36,90 @@ auto slider(const float min, const float max, const std::string_view tooltip = {
 constexpr uint32_t c_partition = Property_flags::serialize | Property_flags::affects_draw_list_partition;
 constexpr uint32_t c_variant   = Property_flags::serialize | Property_flags::affects_shader_variant;
 
+// Row visibility (Property_ui::visible_when): the PBR rows hide for unlit
+// materials, the anisotropy rows show only for BxDF models that support
+// anisotropy, and alpha cutoff only in the alpha-test blending mode.
+auto is_lit(const erhe::property::Dependency_object& object) -> bool
+{
+    return static_cast<const Material&>(object).get_bxdf_model() != Bxdf_model::unlit;
+}
+auto is_anisotropic(const erhe::property::Dependency_object& object) -> bool
+{
+    return supports_anisotropy(static_cast<const Material&>(object).get_bxdf_model());
+}
+auto is_brushed_metal(const erhe::property::Dependency_object& object) -> bool
+{
+    const Material& material = static_cast<const Material&>(object);
+    return supports_anisotropy(material.get_bxdf_model()) && material.get_use_circular_brushed_metal();
+}
+auto is_alpha_test(const erhe::property::Dependency_object& object) -> bool
+{
+    return static_cast<const Material&>(object).get_blending_mode() == Material_blending_mode::alpha_test;
+}
+
 } // anonymous namespace
 
 const Property<glm::vec3> Material::base_color_property = Property<glm::vec3>::register_property(
-    "base_color", c_owner, Property_metadata{.default_value = glm::vec3{1.0f, 1.0f, 1.0f}, .ui = Property_ui{.presentation = Property_ui::Presentation::color}}
+    "base_color", c_owner, Property_metadata{.default_value = glm::vec3{1.0f, 1.0f, 1.0f}, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .label = "Base Color"}}
 );
 const Property<float> Material::opacity_property = Property<float>::register_property(
-    "opacity", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f)}, unit_range
+    "opacity", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f, "Opacity")}, unit_range
 );
 const Property<glm::vec2> Material::roughness_property = Property<glm::vec2>::register_property(
-    "roughness", c_owner, Property_metadata{.default_value = glm::vec2{0.5f, 0.5f}, .ui = Property_ui{.min = 0.001f, .max = 1.0f, .step = 0.005f, .tooltip = "X and Y roughness; Y is used by anisotropic BxDF models"}}
+    "roughness", c_owner, Property_metadata{.default_value = glm::vec2{0.5f, 0.5f}, .ui = Property_ui{.min = 0.001f, .max = 1.0f, .step = 0.005f, .tooltip = "X and Y roughness; Y is used by anisotropic BxDF models", .label = "Roughness", .visible_when = is_lit}}
 );
 const Property<float> Material::metallic_property = Property<float>::register_property(
-    "metallic", c_owner, Property_metadata{.default_value = 0.0f, .ui = slider(0.0f, 1.0f)}, unit_range
+    "metallic", c_owner, Property_metadata{.default_value = 0.0f, .ui = slider(0.0f, 1.0f, "Metallic", {}, is_lit)}, unit_range
 );
 const Property<float> Material::reflectance_property = Property<float>::register_property(
-    "reflectance", c_owner, Property_metadata{.default_value = 0.5f, .ui = slider(0.35f, 1.0f)}
+    "reflectance", c_owner, Property_metadata{.default_value = 0.5f, .ui = slider(0.35f, 1.0f, "Reflectance", {}, is_lit)}
 );
 const Property<glm::vec3> Material::emissive_property = Property<glm::vec3>::register_property(
-    "emissive", c_owner, Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.presentation = Property_ui::Presentation::color}}
+    "emissive", c_owner, Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .label = "Emissive"}}
 );
 const Property<float> Material::ior_property = Property<float>::register_property(
-    "ior", c_owner, Property_metadata{.default_value = 1.5f, .ui = slider(1.0f, 3.0f, "Index of refraction")}
+    "ior", c_owner, Property_metadata{.default_value = 1.5f, .ui = slider(1.0f, 3.0f, "IOR", "Index of refraction", is_lit)}
 );
 const Property<float> Material::transmission_property = Property<float>::register_property(
-    "transmission", c_owner, Property_metadata{.default_value = 0.0f, .ui = slider(0.0f, 1.0f)}, unit_range
+    "transmission", c_owner, Property_metadata{.default_value = 0.0f, .ui = slider(0.0f, 1.0f, "Transmission", {}, is_lit)}, unit_range
 );
 const Property<float> Material::normal_texture_scale_property = Property<float>::register_property(
-    "normal_texture_scale", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f, "Strength of the bound normal texture")}
+    "normal_texture_scale", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f, "Normal Map Scale", "Strength of the bound normal texture")}
 );
 const Property<Normalmap_encoding> Material::normalmap_encoding_property = Property<Normalmap_encoding>::register_property(
     "normalmap_encoding", c_owner, c_normalmap_encoding_enum_info,
     Property_metadata{
         .default_value = erhe::property::make_value(Normalmap_encoding::right_handed_three_channel),
         .flags         = c_variant,
-        .ui            = Property_ui{.tooltip = "Storage encoding of the bound normal texture. A KTX2 normal-mode texture overrides the channel layout; the handedness is always honored"}
+        .ui            = Property_ui{.tooltip = "Storage encoding of the bound normal texture. A KTX2 normal-mode texture overrides the channel layout; the handedness is always honored", .label = "Normal Map Encoding"}
     }
 );
 const Property<float> Material::occlusion_texture_strength_property = Property<float>::register_property(
-    "occlusion_texture_strength", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f)}, unit_range
+    "occlusion_texture_strength", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f, "Occlusion Strength")}, unit_range
 );
 const Property<Bxdf_model> Material::bxdf_model_property = Property<Bxdf_model>::register_property(
     "bxdf_model", c_owner, c_bxdf_model_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Bxdf_model::isotropic_brdf), .flags = c_partition | c_variant}
+    Property_metadata{.default_value = erhe::property::make_value(Bxdf_model::isotropic_brdf), .flags = c_partition | c_variant, .ui = Property_ui{.label = "BxDF Model"}}
 );
 const Property<Material_blending_mode> Material::blending_mode_property = Property<Material_blending_mode>::register_property(
     "blending_mode", c_owner, c_material_blending_mode_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Material_blending_mode::opaque), .flags = c_partition | c_variant}
+    Property_metadata{.default_value = erhe::property::make_value(Material_blending_mode::opaque), .flags = c_partition | c_variant, .ui = Property_ui{.label = "Blending Mode"}}
 );
 const Property<bool> Material::double_sided_property = Property<bool>::register_property(
-    "double_sided", c_owner, Property_metadata{.default_value = false, .flags = c_partition}
+    "double_sided", c_owner, Property_metadata{.default_value = false, .flags = c_partition, .ui = Property_ui{.label = "Double Sided"}}
 );
 const Property<float> Material::alpha_cutoff_property = Property<float>::register_property(
-    "alpha_cutoff", c_owner, Property_metadata{.default_value = 0.5f, .ui = slider(0.0f, 1.0f, "Used by the Alpha Test blending mode")}, unit_range
+    "alpha_cutoff", c_owner, Property_metadata{.default_value = 0.5f, .ui = slider(0.0f, 1.0f, "Alpha Cutoff", "Used by the Alpha Test blending mode", is_alpha_test)}, unit_range
 );
 const Property<bool> Material::use_circular_brushed_metal_property = Property<bool>::register_property(
-    "use_circular_brushed_metal", c_owner, Property_metadata{.default_value = false, .flags = c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only"}}
+    "use_circular_brushed_metal", c_owner, Property_metadata{.default_value = false, .flags = c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only", .label = "Circular Brushed Metal", .visible_when = is_anisotropic}}
 );
 const Property<Texgen_mode> Material::circular_brushed_metal_texgen_mode_property = Property<Texgen_mode>::register_property(
     "circular_brushed_metal_texgen_mode", c_owner, c_texgen_mode_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Texgen_mode::uv1), .flags = c_variant, .ui = Property_ui{.tooltip = "Texgen source for the circular brushed metal block"}}
+    Property_metadata{.default_value = erhe::property::make_value(Texgen_mode::uv1), .flags = c_variant, .ui = Property_ui{.tooltip = "Texgen source for the circular brushed metal block", .label = "Brushed Metal Texgen", .visible_when = is_brushed_metal}}
 );
 const Property<bool> Material::use_aniso_control_property = Property<bool>::register_property(
-    "use_aniso_control", c_owner, Property_metadata{.default_value = false, .flags = c_partition | c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only"}}
+    "use_aniso_control", c_owner, Property_metadata{.default_value = false, .flags = c_partition | c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only", .label = "Aniso Control", .visible_when = is_anisotropic}}
 );
 
 Material::Material()                           = default;
