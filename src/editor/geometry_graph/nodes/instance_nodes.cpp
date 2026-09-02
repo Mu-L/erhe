@@ -1,4 +1,5 @@
 #include "geometry_graph/nodes/instance_nodes.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 
@@ -13,6 +14,38 @@
 namespace editor {
 
 // Distribute_points_node
+
+auto Distribute_points_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Distribute_points_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const erhe::property::Property<int> Distribute_points_node::count_property =
+    erhe::property::Property<int>::register_property(
+        "count", erhe::Item_type::graph_node, Distribute_points_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = 100,
+            .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
+            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 100000.0f, .step = 1.0f, .group = "Parameters", .label = "Count"},
+            .bridge        = make_node_member_bridge<Distribute_points_node>(&Distribute_points_node::m_count)
+        }
+    );
+
+const erhe::property::Property<int> Distribute_points_node::seed_property =
+    erhe::property::Property<int>::register_property(
+        "seed", erhe::Item_type::graph_node, Distribute_points_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none,
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Seed"},
+            .bridge = make_node_member_bridge<Distribute_points_node>(&Distribute_points_node::m_seed)
+        }
+    );
 
 Distribute_points_node::Distribute_points_node()
     : Geometry_graph_node{"Distribute Points"}
@@ -126,6 +159,39 @@ void Distribute_points_node::read_parameters(const nlohmann::json& in)
 }
 
 // Instance_on_points_node
+
+auto Instance_on_points_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Instance_on_points_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const erhe::property::Property<float> Instance_on_points_node::scale_property =
+    erhe::property::Property<float>::register_property(
+        "scale", erhe::Item_type::graph_node, Instance_on_points_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = 1.0f,
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Scale"},
+            .bridge        = make_node_member_bridge<Instance_on_points_node>(&Instance_on_points_node::m_scale)
+        }
+    );
+
+const erhe::property::Property<bool> Instance_on_points_node::align_to_normal_property =
+    erhe::property::Property<bool>::register_property(
+        "align", erhe::Item_type::graph_node, Instance_on_points_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = true,
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Align to normal"},
+            .bridge        = make_node_member_bridge<Instance_on_points_node>(&Instance_on_points_node::m_align_to_normal)
+        }
+    );
 
 Instance_on_points_node::Instance_on_points_node()
     : Geometry_graph_node{"Instance on Points"}

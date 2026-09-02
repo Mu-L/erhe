@@ -2,6 +2,8 @@
 
 #include "geometry_graph/geometry_graph_node.hpp"
 
+#include "erhe_property/dependency_property.hpp"
+
 namespace editor {
 
 // Scatters points on the surface of the input geometry: facets are fan
@@ -18,6 +20,13 @@ public:
     void imgui   () override;
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
+
+    // Parameter properties bridged over the members below (D18 / D27);
+    // Mesh_torus_node is the recipe.
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<int> count_property;
+    static const erhe::property::Property<int> seed_property;
 
 private:
     int m_count{100};
@@ -36,6 +45,11 @@ public:
     void imgui   () override;
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
+
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<float> scale_property;
+    static const erhe::property::Property<bool>  align_to_normal_property;
 
 private:
     float m_scale          {1.0f};

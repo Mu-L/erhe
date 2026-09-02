@@ -2,6 +2,8 @@
 
 #include "geometry_graph/geometry_graph_node.hpp"
 
+#include "erhe_property/dependency_property.hpp"
+
 #include <glm/glm.hpp>
 
 namespace editor {
@@ -15,6 +17,12 @@ public:
     void imgui   () override;
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
+
+    // Parameter property bridged over the member below (D18 / D27);
+    // Mesh_torus_node is the recipe.
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<float> value_property;
 
 private:
     float m_value{0.0f};
@@ -30,6 +38,10 @@ public:
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
 
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<int> value_property;
+
 private:
     int m_value{0};
 };
@@ -43,6 +55,10 @@ public:
     void imgui   () override;
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
+
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<glm::vec3> value_property;
 
 private:
     glm::vec3 m_value{0.0f, 0.0f, 0.0f};
