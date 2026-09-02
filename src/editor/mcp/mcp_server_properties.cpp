@@ -115,6 +115,7 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
     const uint64_t owner_type = item->get_property_owner_type();
     erhe::property::Property_registry::get().for_each_property_of_type(
         item->get_type(),
+        item->get_property_owner_subtype(),
         [&](const erhe::property::Dependency_property& property) {
             const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
             const std::optional<erhe::property::Property_value> local      = item->read_local_value(property);
@@ -177,7 +178,7 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
     if (property_name.empty()) {
         return make_error_content("property is required");
     }
-    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_type(item->get_type(), property_name);
+    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_type(item->get_type(), item->get_property_owner_subtype(), property_name);
     if (property == nullptr) {
         return make_error_content("Item '" + item->get_name() + "' (" + std::string{item->get_type_name()} + ") has no property '" + property_name + "'");
     }
@@ -294,7 +295,7 @@ auto Mcp_server::action_set_item_style(const json& args) -> std::string
         if (entry.property->is_read_only()) {
             continue;
         }
-        if (registry.find_for_type(item->get_type(), entry.property->get_name()) == entry.property) {
+        if (registry.find_for_type(item->get_type(), item->get_property_owner_subtype(), entry.property->get_name()) == entry.property) {
             values.set(*entry.property, entry.value);
         }
     }

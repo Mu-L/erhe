@@ -57,14 +57,16 @@ void Dependency_property_rows::add_rows(Property_editor& editor, const std::vect
     std::vector<const Dependency_property*> properties;
     registry.for_each_property_of_type(
         m_items->front()->get_type(),
+        m_items->front()->get_property_owner_subtype(),
         [&properties](const Dependency_property& property) { properties.push_back(&property); }
     );
     for (std::size_t i = 1; i < m_items->size(); ++i) {
-        const uint64_t type_bits = (*m_items)[i]->get_type();
+        const uint64_t type_bits     = (*m_items)[i]->get_type();
+        const uint32_t owner_subtype = (*m_items)[i]->get_property_owner_subtype();
         std::erase_if(
             properties,
-            [&registry, type_bits](const Dependency_property* property) {
-                return registry.find_for_type(type_bits, property->get_name()) != property;
+            [&registry, type_bits, owner_subtype](const Dependency_property* property) {
+                return registry.find_for_type(type_bits, owner_subtype, property->get_name()) != property;
             }
         );
     }
@@ -601,7 +603,7 @@ void Dependency_property_rows::paste_properties_as_style()
             if (entry.property->is_read_only()) {
                 continue;
             }
-            if (registry.find_for_type(item->get_type(), entry.property->get_name()) == entry.property) {
+            if (registry.find_for_type(item->get_type(), item->get_property_owner_subtype(), entry.property->get_name()) == entry.property) {
                 filtered.set(*entry.property, entry.value);
             }
         }
@@ -655,7 +657,7 @@ void Dependency_property_rows::paste_properties()
             if (entry.property->is_read_only()) {
                 continue;
             }
-            if (registry.find_for_type(item->get_type(), entry.property->get_name()) == entry.property) {
+            if (registry.find_for_type(item->get_type(), item->get_property_owner_subtype(), entry.property->get_name()) == entry.property) {
                 filtered.set(*entry.property, entry.value);
             }
         }
