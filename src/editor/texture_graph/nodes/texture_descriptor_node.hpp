@@ -52,6 +52,17 @@ public:
     // shown and the graph-level "Reseed all" targets it).
     [[nodiscard]] auto is_seeded() const -> bool;
 
+    // Registered parameter properties (property-system D27 / section 4.5):
+    // one subtype per descriptor, allocated by
+    // register_texture_graph_properties() at startup; the bridges reach the
+    // live values through these accessors (registration is descriptor-driven,
+    // not a static class member, so it has no class access).
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] auto parameter_value(std::size_t index) -> erhe::texgen::Parameter_value&;
+    [[nodiscard]] auto parameter_value(std::size_t index) const -> const erhe::texgen::Parameter_value&;
+    [[nodiscard]] auto get_seed() const -> float { return m_seed; }
+    void set_seed(const float seed) { m_seed = seed; }
+
 private:
     const erhe::texgen::Node_descriptor&         m_descriptor;
     std::vector<erhe::texgen::Parameter_value>   m_parameter_values; // parallel to m_descriptor.parameters

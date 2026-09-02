@@ -1,4 +1,5 @@
 #include "texture_graph/nodes/texture_descriptor_node.hpp"
+#include "texture_graph/texture_graph_properties.hpp"
 #include "texture_graph/texture_payload.hpp"
 #include "texture_graph/texture_graph_widgets.hpp"
 
@@ -170,6 +171,21 @@ void Texture_descriptor_node::imgui()
 auto Texture_descriptor_node::descriptor() const -> const erhe::texgen::Node_descriptor*
 {
     return &m_descriptor;
+}
+
+auto Texture_descriptor_node::get_property_owner_subtype() const -> uint32_t
+{
+    return texture_descriptor_owner_subtype(&m_descriptor);
+}
+
+auto Texture_descriptor_node::parameter_value(const std::size_t index) -> erhe::texgen::Parameter_value&
+{
+    return m_parameter_values.at(index);
+}
+
+auto Texture_descriptor_node::parameter_value(const std::size_t index) const -> const erhe::texgen::Parameter_value&
+{
+    return m_parameter_values.at(index);
 }
 
 auto Texture_descriptor_node::is_seeded() const -> bool

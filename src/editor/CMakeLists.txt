@@ -295,6 +295,7 @@ erhe_target_sources_grouped(
     graph_editor/graph_editor_window_base.hpp
     graph_editor/graph_link_routing.hpp
     graph_editor/graph_node_drag_payload.hpp
+    graph_editor/graph_node_property_bridge.hpp
     graph_editor/graph_operations.hpp
     graph_editor/graph_serialization.hpp
     graph_editor/node_edge.hpp
@@ -544,6 +545,8 @@ erhe_target_sources_grouped(
     texture_graph/texture_graph_node_factory.cpp
     texture_graph/texture_graph_node_factory.hpp
     texture_graph/texture_graph_operations.hpp
+    texture_graph/texture_graph_properties.cpp
+    texture_graph/texture_graph_properties.hpp
     texture_graph/texture_graph_widgets.cpp
     texture_graph/texture_graph_widgets.hpp
     texture_graph/texture_graph_window.cpp

@@ -102,9 +102,12 @@ class Property_registry
 public:
     [[nodiscard]] static auto get() -> Property_registry&;
 
-    // Registration happens from static initializers of the owning classes,
-    // before any thread other than main exists; reads after that are
-    // lock-free. (owner_type, name) must be unique.
+    // Registration happens from static initializers of the owning classes
+    // and from single-threaded early startup (descriptor-driven
+    // registrations whose tables are function-local statics, e.g. the
+    // texture graph's register_texture_graph_properties), before any
+    // thread other than main exists; reads after that are lock-free.
+    // (owner_type, owner_subtype, name) must be unique.
     auto register_property(Dependency_property::Registration&& registration) -> const Dependency_property&;
     void add_owner        (const Dependency_property& property, uint64_t owner_type);
 

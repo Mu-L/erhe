@@ -106,6 +106,7 @@
 #include "scene/viewport_scene_view.hpp"
 #include "scene/viewport_scene_views.hpp"
 #include "texture_graph/graph_texture.hpp"
+#include "texture_graph/texture_graph_properties.hpp"
 #include "texture_graph/texture_graph_window.hpp"
 #include "tools/bone_visualization.hpp"
 #include "tools/weight_display.hpp"
@@ -4253,6 +4254,13 @@ void run_editor(const std::string& startup_commands_path, const std::string& sta
 #endif
         editor::initialize_logging();
     }
+
+    // Descriptor-driven property registrations (texture graph node
+    // parameters): the descriptors are function-local statics, so this
+    // cannot ride C++ static initialization; here we are still
+    // single-threaded, which is the registry's write-window invariant
+    // (property-system D3 / R12).
+    register_texture_graph_properties();
 
     erhe::time::sleep_initialize();
     erhe::physics::initialize_physics_system();
