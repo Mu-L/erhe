@@ -21,6 +21,7 @@ target_link_libraries(
     ${_target}
     PUBLIC
         erhe::profile
+        erhe::property
         erhe::utility
         glm::glm-header-only
         Taskflow

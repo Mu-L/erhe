@@ -111,6 +111,7 @@ Item_base::Item_base(const std::string_view name)
 // a new object and gets its own uid at first export.
 Item_base::Item_base(const Item_base& other)
     : enable_shared_from_this{other}
+    , erhe::property::Dependency_object{other}
     , m_flag_bits  {other.m_flag_bits & ~Item_flags::selected}
     , m_name       {other.m_name}
     , m_debug_label{erhe::utility::Debug_label{fmt::format("{}##{}", m_name, get_id())}}
@@ -120,6 +121,7 @@ Item_base::Item_base(const Item_base& other)
 
 auto Item_base::operator=(const Item_base& other) -> Item_base&
 {
+    erhe::property::Dependency_object::operator=(other);
     m_flag_bits   = other.m_flag_bits & ~Item_flags::selected;
     m_name        = other.m_name;
     m_debug_label = erhe::utility::Debug_label{fmt::format("{}##{}", m_name, get_id())};

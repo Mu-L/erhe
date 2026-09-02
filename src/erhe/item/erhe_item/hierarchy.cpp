@@ -176,12 +176,18 @@ void Hierarchy::set_parent(const std::shared_ptr<Hierarchy>& new_parent_, const 
     ERHE_VERIFY(new_parent_.get() != this);
     std::shared_ptr<Hierarchy> old_parent_shared = m_parent.lock();
     Hierarchy*                 old_parent         = old_parent_shared.get();
-    m_parent = new_parent_;
-    Hierarchy* new_parent = new_parent_.get();
+    Hierarchy*                 new_parent         = new_parent_.get();
 
     if (old_parent == new_parent) {
+        m_parent = new_parent_;
         return;
     }
+
+    // Inherited property values of this subtree may change with the parent;
+    // capture them while the old parent is still in place so the change
+    // notifications after the move carry the right old values.
+    const erhe::property::Inheritance_snapshot inheritance_snapshot = capture_inheritance_snapshot();
+    m_parent = new_parent_;
 
     log->trace(
         "Parent change for '{}' old parent = '{}', new parent = '{}'",
@@ -213,6 +219,21 @@ void Hierarchy::set_parent(const std::shared_ptr<Hierarchy>& new_parent_, const 
     set_depth_recursive(new_parent ? new_parent->get_depth() + 1 : 0);
     handle_parent_update(old_parent, new_parent);
     hierarchy_sanity_check();
+    apply_inheritance_snapshot(inheritance_snapshot);
+}
+
+auto Hierarchy::get_inheritance_parent() const -> const erhe::property::Dependency_object*
+{
+    return m_parent.lock().get();
+}
+
+void Hierarchy::for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback)
+{
+    for (const std::shared_ptr<Hierarchy>& child : m_children) {
+        if (child) {
+            callback(*child);
+        }
+    }
 }
 
 void Hierarchy::set_parent(Hierarchy* parent)

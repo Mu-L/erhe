@@ -35,6 +35,11 @@ public:
     virtual void handle_remove_child (Hierarchy* child_node);
     virtual void handle_parent_update(Hierarchy* old_parent, Hierarchy* new_parent);
 
+    // Implements erhe::property::Dependency_object: inherits-flagged
+    // properties flow down the parent / child tree.
+    [[nodiscard]] auto get_inheritance_parent() const -> const erhe::property::Dependency_object* override;
+    void for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback) override;
+
     [[nodiscard]] auto get_parent          () const -> std::weak_ptr<Hierarchy>;
     [[nodiscard]] auto get_depth           () const -> size_t;
     [[nodiscard]] auto get_children        () const -> const std::vector<std::shared_ptr<Hierarchy>>&;

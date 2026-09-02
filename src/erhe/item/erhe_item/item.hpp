@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_item/unique_id.hpp"
+#include "erhe_property/dependency_object.hpp"
 #include "erhe_utility/debug_label.hpp"
 
 #include <cstdint>
@@ -380,6 +381,7 @@ public:
 class Item_base
     : public std::enable_shared_from_this<Item_base>
     , public Clonable_base<Item_base>
+    , public erhe::property::Dependency_object
 {
 public:
     Item_base();
@@ -392,6 +394,10 @@ public:
     [[nodiscard]] virtual auto get_type     () const -> uint64_t         { return 0; };
     [[nodiscard]] virtual auto get_type_name() const -> std::string_view { return "Item_base"; };
     [[nodiscard]] virtual auto get_item_host() const -> Item_host*       { return m_item_host; }
+
+    // Implements erhe::property::Dependency_object: property metadata is
+    // resolved by the item's type bits.
+    [[nodiscard]] auto get_property_owner_type() const -> uint64_t override { return get_type(); }
 
     // For items whose host is tracked by an owning container (e.g. the
     // editor's content library): the container maintains this pointer on

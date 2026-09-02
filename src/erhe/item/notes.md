@@ -7,12 +7,12 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 ## Key Types
 
 - **`Unique_id<T>`** - Thread-safe atomic ID generator. Non-copyable, movable. Each template instantiation has an independent counter.
-- **`Item_base`** - Base class for all items. Provides ID, name, flags, tags, source path, debug label. Inherits `enable_shared_from_this` - all instances must be created via `std::make_shared`.
+- **`Item_base`** - Base class for all items. Provides ID, name, flags, tags, source path, debug label. Inherits `enable_shared_from_this` - all instances must be created via `std::make_shared`. Also derives from `erhe::property::Dependency_object` (see `src/erhe/property/notes.md`): every item carries a property store, and `get_property_owner_type()` returns `get_type()` so property metadata resolves by item type.
 - **`Item_flags`** - Bitmask constants for item state (visible, selected, hovered, opaque, etc.) with `to_string()`.
 - **`Item_type`** - Bitmask constants for item types (mesh, camera, light, node, etc.) used by the `is<T>()` template.
 - **`Item_filter`** - Four-criteria bitmask filter (all-set, any-set, all-clear, any-clear) with AND semantics.
 - **`Item<Base, Intermediate, Self, Kind>`** - CRTP template providing `clone()`, `get_type()`, `get_type_name()`. Three clone modes: copy constructor, custom clone constructor, not clonable.
-- **`Hierarchy`** - Parent/child tree built on `Item_base`. Supports reparenting, depth tracking, recursive traversal (`for_each`), removal (splice or recursive), and cloning with `adopt_orphan_children()`.
+- **`Hierarchy`** - Parent/child tree built on `Item_base`. Supports reparenting, depth tracking, recursive traversal (`for_each`), removal (splice or recursive), and cloning with `adopt_orphan_children()`. Implements the `Dependency_object` inheritance virtuals (`get_inheritance_parent`, `for_each_inheritance_child`) so `inherits`-flagged properties flow down the tree; `set_parent` captures an inheritance snapshot before the move and applies it after, so the subtree's property-changed notifications carry the old values.
 - **`Item_host`** - Abstract host for items, provides a mutex for synchronized access. `Item_host_lock_guard` falls back to a static orphan mutex when no host is available.
 
 ## Public API
@@ -44,6 +44,7 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 
 ## Dependencies
 
+- `erhe::property` - `Dependency_object` base of `Item_base`
 - `erhe::profile` - `ERHE_PROFILE_MUTEX` for Tracy-aware mutexes
 - `erhe::utility` - `Debug_label`, `test_bit_set()`, `test_any_rhs_bits_set()`
 - `erhe::log` (private) - spdlog-based logging
@@ -60,7 +61,7 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 
 ## Testing
 
-106 unit tests in `test/` using Google Test (CPM-fetched). Run with `ERHE_BUILD_TESTS=ON`.
+115 unit tests in `test/` using Google Test (CPM-fetched). Run with `ERHE_BUILD_TESTS=ON`.
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -72,5 +73,6 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 | `test_hierarchy.cpp` | 35 | Construction, reparent, traversal, removal, copy/assign depth + parent correctness |
 | `test_hierarchy_smoke.cpp` | 1 | Randomized stress test (create/reparent/remove/clone/iterate) with deterministic seed |
 | `test_item_host.cpp` | 6 | Host resolution, lock guard with/without host |
+| `test_properties.cpp` | 4 | Metadata by item type, inheritance through `Hierarchy`, reparent / remove re-reads, clone keeps local values |
 
 Test harness (`main.cpp`) bootstraps `erhe::file::log_file` before `erhe::item::initialize_logging()` to break a circular dependency.
