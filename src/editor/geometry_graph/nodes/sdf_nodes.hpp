@@ -10,6 +10,8 @@
 
 #include "geometry_graph/geometry_graph_node.hpp"
 
+#include "erhe_property/dependency_property.hpp"
+
 #include <glm/glm.hpp>
 
 namespace editor {
@@ -38,6 +40,15 @@ public:
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
 
+    // Parameter properties bridged over the members below (D18 / D27);
+    // Mesh_torus_node is the recipe. voxel_size bridges into the nested
+    // Sdf_create_parameters with hand-written get / set.
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<float>     voxel_size_property;
+    static const erhe::property::Property<float>     radius_property;
+    static const erhe::property::Property<glm::vec3> center_property;
+
 private:
     Sdf_create_parameters m_create_parameters{};
     float                 m_radius{1.0f};
@@ -53,6 +64,14 @@ public:
     void imgui   () override;
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
+
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<float>     voxel_size_property;
+    static const erhe::property::Property<glm::vec3> p0_property;
+    static const erhe::property::Property<glm::vec3> p1_property;
+    static const erhe::property::Property<float>     radius0_property;
+    static const erhe::property::Property<float>     radius1_property;
 
 private:
     Sdf_create_parameters m_create_parameters{};
@@ -73,6 +92,10 @@ public:
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
 
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<float> voxel_size_property;
+
 private:
     Sdf_create_parameters m_create_parameters{};
 };
@@ -87,6 +110,10 @@ public:
     void imgui   () override;
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
+
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<float> adaptivity_property;
 
 private:
     float m_adaptivity{0.0f};
@@ -108,6 +135,10 @@ public:
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
 
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<Boolean_operation> operation_property;
+
 private:
     Boolean_operation m_operation{Boolean_operation::union_operation};
 };
@@ -122,6 +153,10 @@ public:
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
 
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<float> distance_property;
+
 private:
     float m_distance{0.1f};
 };
@@ -135,6 +170,10 @@ public:
     void imgui   () override;
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
+
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<int> iterations_property;
 
 private:
     int m_iterations{1};

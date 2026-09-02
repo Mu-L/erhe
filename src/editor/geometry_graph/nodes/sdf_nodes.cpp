@@ -1,6 +1,7 @@
 #include "geometry_graph/nodes/sdf_nodes.hpp"
 
 #include "graph_editor/graph_editor_widgets.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_voxel/voxel.hpp"
@@ -54,6 +55,76 @@ void Sdf_create_parameters::read(const nlohmann::json& in)
 
 // Sdf_sphere_node
 
+namespace {
+
+using erhe::property::Property;
+using erhe::property::Property_metadata;
+using erhe::property::Property_ui;
+
+// The voxel size lives inside the shared Sdf_create_parameters member, so
+// the bridge reaches through it instead of a plain member pointer.
+template <typename NodeT>
+[[nodiscard]] auto make_voxel_size_bridge(Sdf_create_parameters NodeT::* member) -> erhe::property::Property_bridge
+{
+    return erhe::property::Property_bridge{
+        .get = [member](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+            return (static_cast<const NodeT&>(object).*member).voxel_size;
+        },
+        .set = [member](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
+            NodeT& node = static_cast<NodeT&>(object);
+            (node.*member).voxel_size = std::get<float>(value);
+            node.mark_dirty();
+        }
+    };
+}
+
+[[nodiscard]] auto voxel_size_ui() -> Property_ui
+{
+    return Property_ui{.min = c_min_voxel_size, .max = c_max_voxel_size, .step = 0.001f, .group = "Parameters", .label = "Voxel size"};
+}
+
+} // anonymous namespace
+
+auto Sdf_sphere_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Sdf_sphere_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<float> Sdf_sphere_node::voxel_size_property = Property<float>::register_property(
+    "voxel_size", erhe::Item_type::graph_node, Sdf_sphere_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 0.05f,
+        .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
+        .ui            = voxel_size_ui(),
+        .bridge        = make_voxel_size_bridge<Sdf_sphere_node>(&Sdf_sphere_node::m_create_parameters)
+    }
+);
+
+const Property<float> Sdf_sphere_node::radius_property = Property<float>::register_property(
+    "radius", erhe::Item_type::graph_node, Sdf_sphere_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 1.0f,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius"},
+        .bridge        = make_node_member_bridge<Sdf_sphere_node>(&Sdf_sphere_node::m_radius)
+    }
+);
+
+const Property<glm::vec3> Sdf_sphere_node::center_property = Property<glm::vec3>::register_property(
+    "center", erhe::Item_type::graph_node, Sdf_sphere_node::property_owner_subtype(),
+    Property_metadata{
+        .flags  = erhe::property::Property_flags::none,
+        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Center"},
+        .bridge = make_node_member_bridge<Sdf_sphere_node>(&Sdf_sphere_node::m_center)
+    }
+);
+
 Sdf_sphere_node::Sdf_sphere_node()
     : Geometry_graph_node{"SDF Sphere"}
 {
@@ -102,6 +173,67 @@ void Sdf_sphere_node::read_parameters(const nlohmann::json& in)
 }
 
 // Sdf_capsule_node
+
+auto Sdf_capsule_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Sdf_capsule_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<float> Sdf_capsule_node::voxel_size_property = Property<float>::register_property(
+    "voxel_size", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 0.05f,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = voxel_size_ui(),
+        .bridge        = make_voxel_size_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_create_parameters)
+    }
+);
+
+const Property<glm::vec3> Sdf_capsule_node::p0_property = Property<glm::vec3>::register_property(
+    "p0", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = glm::vec3{0.0f, -1.0f, 0.0f},
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.step = 0.01f, .group = "Parameters", .label = "P0"},
+        .bridge        = make_node_member_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_p0)
+    }
+);
+
+const Property<glm::vec3> Sdf_capsule_node::p1_property = Property<glm::vec3>::register_property(
+    "p1", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = glm::vec3{0.0f, 1.0f, 0.0f},
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.step = 0.01f, .group = "Parameters", .label = "P1"},
+        .bridge        = make_node_member_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_p1)
+    }
+);
+
+const Property<float> Sdf_capsule_node::radius0_property = Property<float>::register_property(
+    "radius0", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 0.5f,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius 0"},
+        .bridge        = make_node_member_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_radius0)
+    }
+);
+
+const Property<float> Sdf_capsule_node::radius1_property = Property<float>::register_property(
+    "radius1", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 0.5f,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius 1"},
+        .bridge        = make_node_member_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_radius1)
+    }
+);
 
 Sdf_capsule_node::Sdf_capsule_node()
     : Geometry_graph_node{"SDF Capsule"}
@@ -166,6 +298,27 @@ void Sdf_capsule_node::read_parameters(const nlohmann::json& in)
 
 // Sdf_from_geometry_node
 
+auto Sdf_from_geometry_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Sdf_from_geometry_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<float> Sdf_from_geometry_node::voxel_size_property = Property<float>::register_property(
+    "voxel_size", erhe::Item_type::graph_node, Sdf_from_geometry_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 0.05f,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = voxel_size_ui(),
+        .bridge        = make_voxel_size_bridge<Sdf_from_geometry_node>(&Sdf_from_geometry_node::m_create_parameters)
+    }
+);
+
 Sdf_from_geometry_node::Sdf_from_geometry_node()
     : Geometry_graph_node{"Voxelize"}
 {
@@ -205,6 +358,26 @@ void Sdf_from_geometry_node::read_parameters(const nlohmann::json& in)
 }
 
 // Sdf_to_geometry_node
+
+auto Sdf_to_geometry_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Sdf_to_geometry_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<float> Sdf_to_geometry_node::adaptivity_property = Property<float>::register_property(
+    "adaptivity", erhe::Item_type::graph_node, Sdf_to_geometry_node::property_owner_subtype(),
+    Property_metadata{
+        .flags  = erhe::property::Property_flags::none,
+        .ui     = Property_ui{.min = 0.0f, .max = 1.0f, .step = 0.01f, .group = "Parameters", .label = "Adaptivity"},
+        .bridge = make_node_member_bridge<Sdf_to_geometry_node>(&Sdf_to_geometry_node::m_adaptivity)
+    }
+);
 
 Sdf_to_geometry_node::Sdf_to_geometry_node()
     : Geometry_graph_node{"SDF Mesh"}
@@ -254,6 +427,37 @@ void Sdf_to_geometry_node::read_parameters(const nlohmann::json& in)
 }
 
 // Sdf_boolean_node
+
+namespace {
+constexpr erhe::property::Enum_entry c_sdf_boolean_operation_entries[] = {
+    {"Union",        static_cast<int32_t>(Sdf_boolean_node::Boolean_operation::union_operation)},
+    {"Intersection", static_cast<int32_t>(Sdf_boolean_node::Boolean_operation::intersection)},
+    {"Difference",   static_cast<int32_t>(Sdf_boolean_node::Boolean_operation::difference)},
+};
+const erhe::property::Enum_info c_sdf_boolean_operation_enum_info{"Sdf_boolean_operation", c_sdf_boolean_operation_entries};
+} // anonymous namespace
+
+auto Sdf_boolean_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Sdf_boolean_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<Sdf_boolean_node::Boolean_operation> Sdf_boolean_node::operation_property =
+    Property<Sdf_boolean_node::Boolean_operation>::register_property(
+        "operation", erhe::Item_type::graph_node, Sdf_boolean_node::property_owner_subtype(),
+        c_sdf_boolean_operation_enum_info,
+        Property_metadata{
+            .flags  = erhe::property::Property_flags::none,
+            .ui     = Property_ui{.group = "Parameters", .label = "Operation"},
+            .bridge = make_node_member_bridge<Sdf_boolean_node>(&Sdf_boolean_node::m_operation)
+        }
+    );
 
 Sdf_boolean_node::Sdf_boolean_node()
     : Geometry_graph_node{"SDF Boolean"}
@@ -327,6 +531,27 @@ void Sdf_boolean_node::read_parameters(const nlohmann::json& in)
 
 // Sdf_offset_node
 
+auto Sdf_offset_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Sdf_offset_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<float> Sdf_offset_node::distance_property = Property<float>::register_property(
+    "distance", erhe::Item_type::graph_node, Sdf_offset_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 0.1f,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = -1.0f, .max = 1.0f, .step = 0.005f, .group = "Parameters", .label = "Distance"},
+        .bridge        = make_node_member_bridge<Sdf_offset_node>(&Sdf_offset_node::m_distance)
+    }
+);
+
 Sdf_offset_node::Sdf_offset_node()
     : Geometry_graph_node{"SDF Offset"}
 {
@@ -377,6 +602,27 @@ void Sdf_offset_node::read_parameters(const nlohmann::json& in)
 }
 
 // Sdf_smooth_node
+
+auto Sdf_smooth_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Sdf_smooth_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<int> Sdf_smooth_node::iterations_property = Property<int>::register_property(
+    "iterations", erhe::Item_type::graph_node, Sdf_smooth_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 1,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 0.0f, .max = 20.0f, .group = "Parameters", .label = "Iterations"},
+        .bridge        = make_node_member_bridge<Sdf_smooth_node>(&Sdf_smooth_node::m_iterations)
+    }
+);
 
 Sdf_smooth_node::Sdf_smooth_node()
     : Geometry_graph_node{"SDF Smooth"}
