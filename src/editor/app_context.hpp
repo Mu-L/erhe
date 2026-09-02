@@ -32,7 +32,9 @@ namespace erhe::scene_renderer {
     class Shader_variant_cache;
     class Texel_renderer;
 }
+namespace erhe { class Item_base; }
 namespace erhe::commands { class Commands; }
+namespace erhe::property { class Dependency_property; }
 namespace erhe::frame_pacing { class Frame_pacing_observer; }
 namespace erhe::window { class Context_window; }
 
@@ -179,6 +181,12 @@ public:
     // (lightmap prepare, MCP get_async_status) must treat any of these as
     // "scene still changing".
     [[nodiscard]] auto get_async_in_flight_count() const -> std::size_t;
+
+    // The one place that maps a property's consequence flags
+    // (erhe::property::Property_flags, doc/property-system-plan.md D11) to
+    // editor actions. Called after every property write made through
+    // Property_set_operation / Property_set_apply_operation.
+    void on_item_property_changed(erhe::Item_base& item, const erhe::property::Dependency_property& property);
 
     // Set at the top of Editor construction, before parts construction.
     // Main-thread-only parts (e.g. Operation_stack) verify their callers

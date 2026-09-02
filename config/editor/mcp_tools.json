@@ -6427,5 +6427,58 @@
       "type": "object"
     },
     "name": "free_undone_loads"
+  },
+  {
+    "description": "List the registered properties of one item (doc/property-system-plan.md): for each, its name, type (bool, int, float, vec2, vec3, vec4, quat, string, enum), effective value, value source (default, inherited, local), local value (null when the item has no local value), default, read_only, inherits, coerced, consequence flags, and enum_labels for enumerations. Values are strings: 'true'/'false', numbers, space-separated vector components, quaternions as 'x y z w', enumeration labels. Also lists attached properties that have a local value on the item. Identify the item by item_id (unique item id, any scene) or item_name (in scene_name, or the first scene); nodes, node attachments (meshes, lights, cameras, ...) and content-library materials are found.",
+    "inputSchema": {
+      "properties": {
+        "item_id": {
+          "description": "Unique item id (from get_scene_items / the item tree)",
+          "type": "integer"
+        },
+        "item_name": {
+          "description": "Item name, looked up in scene_name (or the first scene)",
+          "type": "string"
+        },
+        "scene_name": {
+          "description": "Scene to look item_name up in (optional)",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_item_properties"
+  },
+  {
+    "description": "Set one registered property of an item as an undoable operation (Property_set_operation). value is the property's string form (see get_item_properties) - 'true'/'false', a number, space- or comma-separated vector components, a quaternion as 'x y z w', or an enumeration label; a JSON number, bool or array of numbers is accepted too. Pass null (or omit value) to clear the local value so the property falls back to its inherited or default value. Rejected values (wrong type, enumeration label not in the table, failed validate) return an error and change nothing. The write is queued on the operation stack and applied on the next frame.",
+    "inputSchema": {
+      "properties": {
+        "item_id": {
+          "description": "Unique item id (any scene)",
+          "type": "integer"
+        },
+        "item_name": {
+          "description": "Item name, looked up in scene_name (or the first scene)",
+          "type": "string"
+        },
+        "property": {
+          "description": "Property name as listed by get_item_properties",
+          "type": "string"
+        },
+        "scene_name": {
+          "description": "Scene to look item_name up in (optional)",
+          "type": "string"
+        },
+        "value": {
+          "description": "New value in string form, or null to reset to default"
+        }
+      },
+      "required": [
+        "property"
+      ],
+      "type": "object"
+    },
+    "name": "set_item_property"
   }
 ]

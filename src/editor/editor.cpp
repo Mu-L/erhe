@@ -73,6 +73,8 @@
 #include "graphics/texture_file_loader.hpp"
 #include "graphics/thumbnails.hpp"
 #include "operations/operation_stack.hpp"
+#include "operations/property_set_operation.hpp"
+#include "scene/item_lookup.hpp"
 #include "operations/operations_window.hpp"
 #include "physics/physics_window.hpp"
 #include "preview/brush_preview.hpp"
@@ -170,6 +172,8 @@
 #include "erhe_imgui/windows/log_window.hpp"
 #include "erhe_imgui/windows/performance_window.hpp"
 #include "erhe_imgui/windows/pipelines.hpp"
+#include "erhe_property/dependency_property.hpp"
+#include "erhe_property/property_string.hpp"
 #include "erhe_item/item_log.hpp"
 #include "erhe_log/log.hpp"
 #include "erhe_math/math_log.hpp"
@@ -3474,6 +3478,53 @@ public:
         }
     }
 
+    void run_set_property_command(simdjson::ondemand::object* args_obj)
+    {
+        if (args_obj == nullptr) {
+            log_startup->warn("commands.json: scene.set_property requires args 'item', 'property' and optionally 'value'");
+            return;
+        }
+        if (!m_default_scene) {
+            log_startup->warn("commands.json: scene.set_property needs a scene; run scene.create first (skipping)");
+            return;
+        }
+        std::string_view item_sv;
+        std::string_view property_sv;
+        std::string_view value_sv;
+        if (args_obj->find_field_unordered("item").get_string().get(item_sv) != simdjson::SUCCESS) {
+            log_startup->warn("commands.json: scene.set_property requires a string 'args.item'");
+            return;
+        }
+        if (args_obj->find_field_unordered("property").get_string().get(property_sv) != simdjson::SUCCESS) {
+            log_startup->warn("commands.json: scene.set_property requires a string 'args.property'");
+            return;
+        }
+        const bool has_value = (args_obj->find_field_unordered("value").get_string().get(value_sv) == simdjson::SUCCESS);
+
+        const std::shared_ptr<erhe::Item_base> item = find_item_in_scene_by_name(*m_default_scene, item_sv);
+        if (!item) {
+            log_startup->warn("commands.json: scene.set_property: item '{}' not found", item_sv);
+            return;
+        }
+        const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_type(item->get_type(), property_sv);
+        if (property == nullptr) {
+            log_startup->warn("commands.json: scene.set_property: {} '{}' has no property '{}'", item->get_type_name(), item->get_name(), property_sv);
+            return;
+        }
+        std::optional<erhe::property::Property_value> after;
+        if (has_value) {
+            after = erhe::property::parse_value(*property, value_sv);
+            if (!after.has_value()) {
+                log_startup->warn("commands.json: scene.set_property: '{}' is not a valid {} for '{}'", value_sv, erhe::property::c_str(property->get_type()), property_sv);
+                return;
+            }
+        }
+        log_startup->info("commands.json: scene.set_property {} '{}' {} = {}", item->get_type_name(), item->get_name(), property_sv, has_value ? std::string{value_sv} : std::string{"<default>"});
+        m_app_context.operation_stack->queue(
+            std::make_shared<Property_set_operation>(item, *property, item->read_local_value(*property), after)
+        );
+    }
+
     void run_startup_script()
     {
         ERHE_PROFILE_FUNCTION();
@@ -3652,6 +3703,16 @@ public:
                 } else {
                     log_startup->warn("commands.json: scene.load_scene requires a string 'args.path'");
                 }
+                continue;
+            }
+
+            if (name == "scene.set_property") {
+                // {"name": "scene.set_property", "args": {"item": "<item name>", "property": "<name>", "value": "<string form>"}}
+                // Sets one registered property of an item in the default
+                // scene through Property_set_operation (undoable); value is
+                // the erhe_property/property_string.hpp form, omitted to
+                // reset to default (doc/property-system-plan.md D13).
+                run_set_property_command(has_args ? &args_obj : nullptr);
                 continue;
             }
 

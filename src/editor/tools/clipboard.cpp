@@ -425,6 +425,21 @@ void Clipboard::update_asset_userships()
     }
 }
 
+void Clipboard::set_property_contents(const erhe::property::Property_set& properties)
+{
+    m_property_contents = properties;
+}
+
+auto Clipboard::get_property_contents() const -> const erhe::property::Property_set&
+{
+    return m_property_contents;
+}
+
+auto Clipboard::has_property_contents() const -> bool
+{
+    return !m_property_contents.empty();
+}
+
 auto Clipboard::get_contents() -> const std::vector<std::shared_ptr<erhe::Item_base>>&
 {
     return m_contents;

@@ -324,6 +324,7 @@ erhe_target_sources_grouped(
     mcp/mcp_server_file_io.cpp
     mcp/mcp_server_graphs.cpp
     mcp/mcp_server_material.cpp
+    mcp/mcp_server_properties.cpp
     mcp/mcp_server_mesh_components.cpp
     mcp/mcp_server_references.cpp
     mcp/mcp_server_physics.cpp
@@ -354,6 +355,8 @@ erhe_target_sources_grouped(
     operations/item_reposition_in_parent_operation.cpp
     operations/item_reposition_in_parent_operation.hpp
     operations/material_change_operation.cpp
+    operations/property_set_operation.cpp
+    operations/property_set_operation.hpp
     operations/material_change_operation.hpp
     operations/mesh_material_assign_operation.cpp
     operations/mesh_material_assign_operation.hpp
@@ -512,6 +515,8 @@ erhe_target_sources_grouped(
     scene/scene_commands.hpp
     scene/draw_list_scene_dependencies.cpp
     scene/draw_list_scene_dependencies.hpp
+    scene/item_lookup.cpp
+    scene/item_lookup.hpp
     scene/scene_root.cpp
     scene/scene_root.hpp
     scene/scene_settings_resolve.cpp
@@ -647,6 +652,8 @@ erhe_target_sources_grouped(
     windows/item_reference.hpp
     windows/item_tree_window.cpp
     windows/item_tree_window.hpp
+    windows/dependency_property_rows.cpp
+    windows/dependency_property_rows.hpp
     windows/properties.cpp
     windows/properties.hpp
     windows/property_editor.cpp

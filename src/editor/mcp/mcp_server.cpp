@@ -678,6 +678,8 @@ auto Mcp_server::get_dispatch_table() -> std::span<const Mcp_server::Tool_dispat
         { "animation_edit_keyframe",        &Mcp_server::action_animation_edit_keyframe       },
         { "animation_create_key",           &Mcp_server::action_animation_create_key          },
         { "animation_delete_key",           &Mcp_server::action_animation_delete_key          },
+        { "get_item_properties",            &Mcp_server::query_item_properties                },
+        { "set_item_property",              &Mcp_server::action_set_item_property             },
         { "set_ray_trace",                  &Mcp_server::action_set_ray_trace                 },
         { "set_ddgi",                       &Mcp_server::action_set_ddgi                      },
     };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "erhe_property/property_set.hpp"
 #include "assets/asset_reference.hpp"
 #include "erhe_commands/command.hpp"
 #include "app_message.hpp"
@@ -57,6 +58,14 @@ public:
     void set_contents(const std::shared_ptr<erhe::Item_base>& item);
     auto get_contents() -> const std::vector<std::shared_ptr<erhe::Item_base>>&;
 
+    // Copy / Paste Properties (doc/property-system-plan.md D12): a bag of
+    // (property, value) read from one item's local values, applied to the
+    // selection by Property_set_apply_operation. Independent of the item
+    // contents above.
+    void set_property_contents(const erhe::property::Property_set& properties);
+    [[nodiscard]] auto get_property_contents() const -> const erhe::property::Property_set&;
+    [[nodiscard]] auto has_property_contents() const -> bool;
+
     // Scene-close leak watchdog support: the items the clipboard contents
     // keep alive on purpose - the held items themselves plus, transitively,
     // their attachments, mesh materials and material textures - so that
@@ -81,6 +90,7 @@ private:
     Clipboard_paste_command                       m_paste_command;
     App_context&                                  m_context;
     std::vector<std::shared_ptr<erhe::Item_base>> m_contents;
+    erhe::property::Property_set                  m_property_contents;
     std::vector<Asset_reference>                  m_asset_userships;
 
     Scene_view*                                   m_hover_scene_view          {nullptr};
