@@ -34,12 +34,22 @@ public:
         const Enum_info*  enum_info {nullptr}; // required when type == enumeration
         bool              read_only {false};
         bool              attached  {false};
+        // Second key dimension for classes that share owner type bits (all
+        // graph node kinds are Item_type::graph_node): properties registered
+        // with a non-zero subtype are listed and found only for objects whose
+        // get_property_owner_subtype() matches (WPF keys per class through
+        // DType; the subtype is that per-class identity). 0 = keyed by the
+        // owner type bits alone. Subtype ids come from
+        // allocate_property_owner_subtype() and are stable within a run only;
+        // properties serialize by name.
+        uint32_t          owner_subtype {0};
     };
 
     [[nodiscard]] auto get_index      () const -> uint16_t         { return m_index; }
     [[nodiscard]] auto get_name       () const -> std::string_view { return m_name; }
     [[nodiscard]] auto get_type       () const -> Property_type    { return m_type; }
     [[nodiscard]] auto get_owner_type () const -> uint64_t         { return m_owner_type; }
+    [[nodiscard]] auto get_owner_subtype() const -> uint32_t       { return m_owner_subtype; }
     [[nodiscard]] auto is_read_only   () const -> bool             { return m_read_only; }
     [[nodiscard]] auto is_attached    () const -> bool             { return m_attached; }
     [[nodiscard]] auto get_enum_info  () const -> const Enum_info* { return m_enum_info; }
@@ -78,6 +88,7 @@ private:
     std::string           m_name;
     Property_type         m_type;
     uint64_t              m_owner_type;
+    uint32_t              m_owner_subtype;
     bool                  m_read_only;
     bool                  m_attached;
     const Enum_info*      m_enum_info;
@@ -97,16 +108,25 @@ public:
     auto register_property(Dependency_property::Registration&& registration) -> const Dependency_property&;
     void add_owner        (const Dependency_property& property, uint64_t owner_type);
 
-    [[nodiscard]] auto find     (uint64_t owner_type, std::string_view name) const -> const Dependency_property*;
-    // The property named `name` among for_each_property_of_type(type_bits):
-    // what an object of that type means by the name.
-    [[nodiscard]] auto find_for_type(uint64_t type_bits, std::string_view name) const -> const Dependency_property*;
+    [[nodiscard]] auto find     (uint64_t owner_type, uint32_t owner_subtype, std::string_view name) const -> const Dependency_property*;
+    [[nodiscard]] auto find     (uint64_t owner_type, std::string_view name) const -> const Dependency_property* { return find(owner_type, 0, name); }
+    // The property named `name` among for_each_property_of_type(type_bits,
+    // owner_subtype): what an object of that type and subtype means by the
+    // name. On a name tie an exact-subtype registration wins over a
+    // subtype-0 one (WPF derived-DType shadowing).
+    [[nodiscard]] auto find_for_type(uint64_t type_bits, uint32_t owner_subtype, std::string_view name) const -> const Dependency_property*;
+    [[nodiscard]] auto find_for_type(uint64_t type_bits, std::string_view name) const -> const Dependency_property* { return find_for_type(type_bits, 0, name); }
     [[nodiscard]] auto get      (uint16_t index) const -> const Dependency_property&;
     [[nodiscard]] auto get_count() const -> std::size_t;
 
     // Non-attached properties whose owner type shares a bit with type_bits
-    // (or whose owner type is 0), in registration order.
-    void for_each_property_of_type(uint64_t type_bits, const std::function<void(const Dependency_property&)>& callback) const;
+    // (or whose owner type is 0), and whose owner subtype is 0 or equals
+    // owner_subtype, in registration order.
+    void for_each_property_of_type(uint64_t type_bits, uint32_t owner_subtype, const std::function<void(const Dependency_property&)>& callback) const;
+    void for_each_property_of_type(uint64_t type_bits, const std::function<void(const Dependency_property&)>& callback) const
+    {
+        for_each_property_of_type(type_bits, 0, callback);
+    }
 
 private:
     Property_registry() = default;
@@ -114,6 +134,7 @@ private:
     struct Owner_name_key
     {
         uint64_t    owner_type;
+        uint32_t    owner_subtype;
         std::string name;
         [[nodiscard]] auto operator==(const Owner_name_key&) const -> bool = default;
     };
@@ -121,7 +142,9 @@ private:
     {
         [[nodiscard]] auto operator()(const Owner_name_key& key) const -> std::size_t
         {
-            return std::hash<std::string>{}(key.name) ^ (std::hash<uint64_t>{}(key.owner_type) * 0x9e3779b97f4a7c15ull);
+            return std::hash<std::string>{}(key.name)
+                ^ (std::hash<uint64_t>{}(key.owner_type) * 0x9e3779b97f4a7c15ull)
+                ^ (std::hash<uint32_t>{}(key.owner_subtype) * 0xff51afd7ed558ccdull);
         }
     };
 
@@ -186,6 +209,59 @@ public:
                     .metadata   = std::move(metadata),
                     .validate   = std::move(validate),
                     .enum_info  = &enum_info,
+                }
+            )
+        };
+    }
+
+    // Subtype-keyed registrations (Registration::owner_subtype): the owning
+    // class allocates its subtype with allocate_property_owner_subtype()
+    // and returns it from get_property_owner_subtype().
+    template <Property_storable U = T>
+        requires (!Property_enum_type<U>)
+    static auto register_property(
+        std::string_view  name,
+        uint64_t          owner_type,
+        uint32_t          owner_subtype,
+        Property_metadata metadata = {},
+        Validate_callback validate = {}
+    ) -> Property<T>
+    {
+        return Property<T>{
+            &Property_registry::get().register_property(
+                Dependency_property::Registration{
+                    .name          = name,
+                    .type          = property_type_of<T>(),
+                    .owner_type    = owner_type,
+                    .metadata      = std::move(metadata),
+                    .validate      = std::move(validate),
+                    .owner_subtype = owner_subtype,
+                }
+            )
+        };
+    }
+
+    template <Property_storable U = T>
+        requires Property_enum_type<U>
+    static auto register_property(
+        std::string_view  name,
+        uint64_t          owner_type,
+        uint32_t          owner_subtype,
+        const Enum_info&  enum_info,
+        Property_metadata metadata = {},
+        Validate_callback validate = {}
+    ) -> Property<T>
+    {
+        return Property<T>{
+            &Property_registry::get().register_property(
+                Dependency_property::Registration{
+                    .name          = name,
+                    .type          = Property_type::enumeration,
+                    .owner_type    = owner_type,
+                    .metadata      = std::move(metadata),
+                    .validate      = std::move(validate),
+                    .enum_info     = &enum_info,
+                    .owner_subtype = owner_subtype,
                 }
             )
         };
@@ -337,5 +413,11 @@ private:
     explicit Property_key(Property<T> property) : m_property{property} {}
     Property<T> m_property;
 };
+
+// A fresh owner-subtype id (Registration::owner_subtype), monotonic from 1.
+// Run-local only: nothing persists subtype ids, properties serialize by
+// name. Callers cache it in a function-local static so static-init order
+// across translation units cannot bite.
+[[nodiscard]] auto allocate_property_owner_subtype() -> uint32_t;
 
 } // namespace erhe::property

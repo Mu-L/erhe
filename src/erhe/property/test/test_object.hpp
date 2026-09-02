@@ -43,6 +43,8 @@ public:
     }
 
     auto get_property_owner_type() const -> uint64_t override                  { return m_type; }
+    auto get_property_owner_subtype() const -> uint32_t override                { return m_owner_subtype; }
+    void set_property_owner_subtype(const uint32_t owner_subtype)               { m_owner_subtype = owner_subtype; }
     auto get_inheritance_parent () const -> const Dependency_object* override  { return m_parent; }
     void for_each_inheritance_child(const std::function<void(Dependency_object&)>& callback) override
     {
@@ -88,6 +90,7 @@ protected:
 
 private:
     uint64_t                  m_type;
+    uint32_t                  m_owner_subtype{0};
     Test_object*              m_parent{nullptr};
     std::vector<Test_object*> m_children;
 };

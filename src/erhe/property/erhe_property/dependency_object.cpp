@@ -444,6 +444,7 @@ void Dependency_object::for_each_local_value(const std::function<void(const Depe
     const uint64_t owner_type = get_property_owner_type();
     registry.for_each_property_of_type(
         owner_type,
+        get_property_owner_subtype(),
         [&bridged, owner_type](const Dependency_property& property) {
             if (property.get_metadata(owner_type).bridge.is_bound()) {
                 bridged.push_back(&property);
@@ -629,7 +630,7 @@ void Dependency_object::resolve_references(Effective_value_entry& entry, const D
         if (object == nullptr) {
             continue;
         }
-        const Dependency_property* source_property = registry.find_for_type(object->get_property_owner_type(), reference.property_name);
+        const Dependency_property* source_property = registry.find_for_type(object->get_property_owner_type(), object->get_property_owner_subtype(), reference.property_name);
         if (source_property == nullptr) {
             continue;
         }
@@ -754,6 +755,24 @@ void Dependency_object::invalidate_dependents(const Dependency_property& propert
             matching.push_back(dependent);
         }
     }
+    const Property_registry& registry = Property_registry::get();
+    for (const Dependent& dependent : matching) {
+        Effective_value_entry* entry = dependent.target->find_entry(dependent.target_index);
+        if ((entry == nullptr) || !entry->expression) {
+            continue;
+        }
+        dependent.target->evaluate_expression(*entry, registry.get(dependent.target_index));
+    }
+}
+
+void Dependency_object::invalidate_dependents() const
+{
+    if (!m_dependents) {
+        return;
+    }
+    // Re-evaluation may resolve or drop dependents on this object; iterate
+    // over a copy.
+    const std::vector<Dependent> matching = *m_dependents;
     const Property_registry& registry = Property_registry::get();
     for (const Dependent& dependent : matching) {
         Effective_value_entry* entry = dependent.target->find_entry(dependent.target_index);

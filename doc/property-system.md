@@ -37,8 +37,9 @@ editor can edit, undo and inspect item state through one generic
 mechanism instead of one hand-written path per field.
 
 Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
-`glm::vec4`, `glm::quat`, `std::string`, and C++ enumerations (any
-`enum class` with an enumerator table, see D2a).
+`glm::vec4`, `glm::ivec2`, `glm::ivec3`, `glm::ivec4`, `glm::quat`,
+`std::string`, and C++ enumerations (any `enum class` with an enumerator
+table, see D2a).
 
 ## 2. Requirements
 
@@ -128,7 +129,9 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
   object (D8).
 - D2 Value representation.
   `Property_value = std::variant<bool, int, float, glm::vec2, glm::vec3,
-  glm::vec4, glm::quat, std::string, Enum_value>` with a matching
+  glm::vec4, glm::quat, std::string, Enum_value, glm::ivec2, glm::ivec3,
+  glm::ivec4>` (the integer vectors appended so the variant indices of the
+  original types are stable) with a matching
   `enum class Property_type : uint8_t` whose enumerators are the variant
   indices. `Property<T>` is valid for `T` in that list or for any C++
   enumeration type (constrained with a concept); an enumeration `T` maps to
@@ -761,6 +764,26 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
     refuses it as read-only. Expression references (D22) reach a
     computed property through `find_for_type` and `get_value` with no
     special case: `{cube/world_translation.y}` is a valid source.
+
+- D27 Owner subtype (WPF per-class `DType` keying). WPF keys a
+  registration by the registering CLR class; erhe keys by `Item_type`
+  bits (D3), which every graph node kind shares (`Item_type::graph_node`),
+  so bits alone cannot give a torus node and a sphere node different
+  parameter sets. `Dependency_property::Registration::owner_subtype`
+  (`uint32_t`, default 0) is the per-class identity: registration,
+  `find`, `find_for_type` and `for_each_property_of_type` key on
+  (owner type, subtype, name), an object contributes its subtype through
+  `Dependency_object::get_property_owner_subtype()` (default 0), listing
+  for a subtype yields its own properties next to the subtype-0 ones, and
+  on a name tie the exact-subtype registration shadows the subtype-0 one
+  (WPF derived-DType shadowing). Subtype ids are allocated at
+  registration time (`allocate_property_owner_subtype()`, monotonic) and
+  are run-local: nothing persists them, properties serialize by name
+  everywhere (glTF extras, MCP, clipboard). The owning class caches its
+  id in a function-local static so static-initialization order across
+  translation units cannot bite. Metadata overrides (D4) stay keyed on
+  owner type bits only; a subtype registration carries its metadata in
+  its own record.
 
 ## 4. Implementation
 

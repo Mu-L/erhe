@@ -80,6 +80,12 @@ public:
     // get_type()).
     [[nodiscard]] virtual auto get_property_owner_type() const -> uint64_t { return 0; }
 
+    // Second registry key dimension for classes that share owner type bits
+    // (Registration::owner_subtype): property listing and name lookup for
+    // this object also match properties registered with this subtype.
+    // 0 = only subtype-0 properties apply.
+    [[nodiscard]] virtual auto get_property_owner_subtype() const -> uint32_t { return 0; }
+
     // Tree for inherits-flagged properties (Hierarchy overrides both).
     [[nodiscard]] virtual auto get_inheritance_parent() const -> const Dependency_object* { return nullptr; }
     virtual void for_each_inheritance_child(const std::function<void(Dependency_object&)>& callback) { static_cast<void>(callback); }
@@ -187,6 +193,12 @@ public:
     // set_value paths call it themselves. One null check when nothing
     // depends on the object.
     void invalidate_dependents(const Dependency_property& property) const;
+
+    // Re-evaluates every expression that reads any property of this object,
+    // for a storage-change funnel that does not know which properties
+    // changed (Graph_editor_node::mark_dirty). Guard with has_dependents().
+    void invalidate_dependents() const;
+    [[nodiscard]] auto has_dependents() const -> bool { return static_cast<bool>(m_dependents) && !m_dependents->empty(); }
 
     // Re-runs the coerce callback against the current local value and
     // notifies if the effective value changed (WPF CoerceValue). A property

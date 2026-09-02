@@ -102,6 +102,60 @@ TEST(Property_registry, add_owner_makes_property_findable_and_listed_for_new_own
     EXPECT_EQ(b.get_value(p), 4);
 }
 
+TEST(Property_registry, owner_subtype_keys_listing_and_lookup)
+{
+    Property_registry& registry = Property_registry::get();
+    const uint32_t subtype_1 = allocate_property_owner_subtype();
+    const uint32_t subtype_2 = allocate_property_owner_subtype();
+    EXPECT_NE(subtype_1, 0u);
+    EXPECT_NE(subtype_1, subtype_2);
+
+    // The same name registers under different subtypes of one owner type,
+    // and shadows a subtype-0 registration of that name.
+    const Property<float> sub_float_1 = Property<float>::register_property("reg_sub_float", type_a, subtype_1, Property_metadata{.default_value = 1.0f});
+    const Property<float> sub_float_2 = Property<float>::register_property("reg_sub_float", type_a, subtype_2, Property_metadata{.default_value = 2.0f});
+    const Property<float> sub_float_0 = Property<float>::register_property("reg_sub_float", type_a, Property_metadata{.default_value = 0.5f});
+    const Property<int>   sub_only    = Property<int>::register_property("reg_sub_only", type_a, subtype_1);
+
+    EXPECT_EQ(sub_float_1.get().get_owner_subtype(), subtype_1);
+    EXPECT_EQ(sub_float_0.get().get_owner_subtype(), 0u);
+
+    // find() keys on the (owner type, subtype, name) triple.
+    EXPECT_EQ(registry.find(type_a, subtype_1, "reg_sub_float"), sub_float_1.get_ptr());
+    EXPECT_EQ(registry.find(type_a, subtype_2, "reg_sub_float"), sub_float_2.get_ptr());
+    EXPECT_EQ(registry.find(type_a, "reg_sub_float"), sub_float_0.get_ptr());
+    EXPECT_EQ(registry.find(type_a, "reg_sub_only"), nullptr);
+
+    // Listing for a subtype includes its own and subtype-0 properties;
+    // listing without a subtype excludes every subtype registration.
+    std::vector<const Dependency_property*> listed_1;
+    registry.for_each_property_of_type(type_a, subtype_1, [&](const Dependency_property& p) { listed_1.push_back(&p); });
+    EXPECT_NE(std::find(listed_1.begin(), listed_1.end(), sub_float_1.get_ptr()), listed_1.end());
+    EXPECT_NE(std::find(listed_1.begin(), listed_1.end(), sub_only.get_ptr()), listed_1.end());
+    EXPECT_NE(std::find(listed_1.begin(), listed_1.end(), reg_float.get_ptr()), listed_1.end());
+    EXPECT_EQ(std::find(listed_1.begin(), listed_1.end(), sub_float_2.get_ptr()), listed_1.end());
+
+    std::vector<const Dependency_property*> listed_0;
+    registry.for_each_property_of_type(type_a, [&](const Dependency_property& p) { listed_0.push_back(&p); });
+    EXPECT_EQ(std::find(listed_0.begin(), listed_0.end(), sub_float_1.get_ptr()), listed_0.end());
+    EXPECT_EQ(std::find(listed_0.begin(), listed_0.end(), sub_only.get_ptr()), listed_0.end());
+
+    // find_for_type prefers the exact-subtype match on a name tie.
+    EXPECT_EQ(registry.find_for_type(type_a, subtype_1, "reg_sub_float"), sub_float_1.get_ptr());
+    EXPECT_EQ(registry.find_for_type(type_a, subtype_2, "reg_sub_float"), sub_float_2.get_ptr());
+    EXPECT_EQ(registry.find_for_type(type_a, "reg_sub_float"), sub_float_0.get_ptr());
+    EXPECT_EQ(registry.find_for_type(type_a, subtype_1, "reg_float"), reg_float.get_ptr());
+    EXPECT_EQ(registry.find_for_type(type_a, subtype_2, "reg_sub_only"), nullptr);
+
+    // An object's subtype selects its view of the registry.
+    Test_object o1{type_a};
+    o1.set_property_owner_subtype(subtype_1);
+    Test_object o2{type_a};
+    o2.set_property_owner_subtype(subtype_2);
+    EXPECT_EQ(o1.get_value(sub_float_1), 1.0f);
+    EXPECT_EQ(o2.get_value(sub_float_2), 2.0f);
+}
+
 TEST(Property_registry, read_only_key)
 {
     const Property_key<int> key = Property_key<int>::register_read_only("reg_read_only", type_a, Property_metadata{.default_value = 10});
