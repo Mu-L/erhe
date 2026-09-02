@@ -383,8 +383,8 @@ auto compute_light_layer_partition(
             // loops skip it entirely.
             continue;
         }
-        const std::size_t t = light_type_index(light->type);
-        if (light->cast_shadow && (partition.per_type_shadow[t] < light_count_limits.per_type_shadow[t])) {
+        const std::size_t t = light_type_index(light->get_light_type());
+        if (light->get_cast_shadow() && (partition.per_type_shadow[t] < light_count_limits.per_type_shadow[t])) {
             ++partition.per_type_shadow[t];
         } else if (partition.per_type_nonshadow[t] < light_count_limits.per_type_unshadowed[t]) {
             ++partition.per_type_nonshadow[t];

@@ -80,15 +80,15 @@ auto Light_set::resolve(
             continue;
         }
 
-        switch (light->type) {
+        switch (light->get_light_type()) {
             case erhe::scene::Light_type::directional: ++directional_light_count; break;
             case erhe::scene::Light_type::spot:        ++spot_light_count;        break;
             case erhe::scene::Light_type::point:       ++point_light_count;       break;
             default: break;
         }
 
-        const std::size_t t = light_type_index(light->type);
-        if (light->cast_shadow && (cursor_shadow[t] < per_type_shadow[t])) {
+        const std::size_t t = light_type_index(light->get_light_type());
+        if (light->get_cast_shadow() && (cursor_shadow[t] < per_type_shadow[t])) {
             m_lights[base_shadow[t] + cursor_shadow[t]] = light;
             ++cursor_shadow[t];
         } else if (cursor_nonshadow[t] < per_type_nonshadow[t]) {

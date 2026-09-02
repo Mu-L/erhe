@@ -1297,11 +1297,11 @@ auto Scene_builder::make_directional_light(
 
     auto node  = std::make_shared<erhe::scene::Node>(name);
     auto light = std::make_shared<erhe::scene::Light>(name);
-    light->type        = Light::Type::directional;
-    light->color       = color;
-    light->intensity   = intensity;
-    light->range       = 0.0f;
-    light->cast_shadow = cast_shadow;
+    light->set_light_type(Light::Type::directional);
+    light->set_color(color);
+    light->set_intensity(intensity);
+    light->set_range(0.0f);
+    light->set_cast_shadow(cast_shadow);
     light->layer_id    = m_scene_root->layers().light()->id;
     light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui | Item_flags::show_debug_visualizations);
     node->attach          (light);
@@ -1331,13 +1331,13 @@ auto Scene_builder::make_spot_light(
 
     auto node  = std::make_shared<erhe::scene::Node>(name);
     auto light = std::make_shared<erhe::scene::Light>(name);
-    light->type             = Light::Type::spot;
-    light->color            = color;
-    light->intensity        = intensity;
-    light->range            = 25.0f;
-    light->inner_spot_angle = spot_cone_angle[0];
-    light->outer_spot_angle = spot_cone_angle[1];
-    light->cast_shadow      = cast_shadow;
+    light->set_light_type(Light::Type::spot);
+    light->set_color(color);
+    light->set_intensity(intensity);
+    light->set_range(25.0f);
+    light->set_inner_spot_angle(spot_cone_angle[0]);
+    light->set_outer_spot_angle(spot_cone_angle[1]);
+    light->set_cast_shadow(cast_shadow);
     light->layer_id         = m_scene_root->layers().light()->id;
     light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
     node->attach          (light);
@@ -1361,11 +1361,11 @@ auto Scene_builder::make_point_light(
 
     auto node  = std::make_shared<erhe::scene::Node>(name);
     auto light = std::make_shared<erhe::scene::Light>(name);
-    light->type        = Light::Type::point;
-    light->color       = color;
-    light->intensity   = intensity;
-    light->range       = 25.0f;
-    light->cast_shadow = cast_shadow;
+    light->set_light_type(Light::Type::point);
+    light->set_color(color);
+    light->set_intensity(intensity);
+    light->set_range(25.0f);
+    light->set_cast_shadow(cast_shadow);
     light->layer_id    = m_scene_root->layers().light()->id;
     light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui | Item_flags::show_debug_visualizations);
     node->attach          (light);
@@ -1589,7 +1589,7 @@ void Scene_builder::animate_lights(const double time_d)
 
     for (auto i = lights.begin(); i != lights.end(); ++i) {
         const auto& l = *i;
-        if (l->type == Light::Type::directional) {
+        if (l->get_light_type() == Light::Type::directional) {
             continue;
         }
 

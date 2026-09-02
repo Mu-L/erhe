@@ -75,6 +75,7 @@ public:
     std::optional<float> max           {};
     std::optional<float> step          {};
     Presentation         presentation  {Presentation::plain};
+    bool                 logarithmic   {false}; // slider presentation: logarithmic scale (D20)
     std::string_view     group         {};
     std::string_view     tooltip       {};
     bool                 developer_only{false};

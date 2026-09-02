@@ -566,10 +566,10 @@ private:
 
         auto node  = std::make_shared<erhe::scene::Node>(name);
         auto light = std::make_shared<erhe::scene::Light>(name);
-        light->type      = erhe::scene::Light::Type::directional;
-        light->color     = color;
-        light->intensity = intensity;
-        light->range     = 0.0f;
+        light->set_light_type(erhe::scene::Light::Type::directional);
+        light->set_color(color);
+        light->set_intensity(intensity);
+        light->set_range(0.0f);
         light->layer_id  = 0;
         light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
         node->attach          (light);
@@ -597,10 +597,10 @@ private:
 
         auto node  = std::make_shared<erhe::scene::Node>(name);
         auto light = std::make_shared<erhe::scene::Light>(name);
-        light->type      = erhe::scene::Light::Type::point;
-        light->color     = color;
-        light->intensity = intensity;
-        light->range     = 25.0f;
+        light->set_light_type(erhe::scene::Light::Type::point);
+        light->set_color(color);
+        light->set_intensity(intensity);
+        light->set_range(25.0f);
         light->layer_id  = 0;
         light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
         node->attach          (light);

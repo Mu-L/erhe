@@ -1944,18 +1944,20 @@ private:
         float h{0.0f};
         float s{0.0f};
         float v{0.0f};
-        erhe::math::rgb_to_hsv(light.color.r, light.color.g, light.color.b, h, s, v);
-        erhe::math::hsv_to_rgb(h, s, 1.0f, light.color.r, light.color.g, light.color.b);
+        glm::vec3 color = light.get_color();
+        erhe::math::rgb_to_hsv(color.r, color.g, color.b, h, s, v);
+        erhe::math::hsv_to_rgb(h, s, 1.0f, color.r, color.g, color.b);
+        light.set_color(color);
 
-        light.intensity = 1000.0f;
+        light.set_intensity(1000.0f);
 
-        const float original_outer_spot_angle = light.outer_spot_angle;
-        light.outer_spot_angle = std::min(2.0f * original_outer_spot_angle, glm::pi<float>());
-        light.inner_spot_angle = original_outer_spot_angle;
+        const float original_outer_spot_angle = light.get_outer_spot_angle();
+        light.set_outer_spot_angle(std::min(2.0f * original_outer_spot_angle, glm::pi<float>()));
+        light.set_inner_spot_angle(original_outer_spot_angle);
 
         log_gltf->info(
             "fix_spot_lights: light '{}': color = {}, intensity = {}, inner spot angle = {}, outer spot angle = {}",
-            light.get_name(), light.color, light.intensity, light.inner_spot_angle, light.outer_spot_angle
+            light.get_name(), light.get_color(), light.get_intensity(), light.get_inner_spot_angle(), light.get_outer_spot_angle()
         );
     }
     void parse_light(const std::size_t light_index)
@@ -1969,18 +1971,14 @@ private:
         auto erhe_light = std::make_shared<erhe::scene::Light>(light_name);
         erhe_light->set_source_path(m_arguments.path);
         m_data_out.lights[light_index] = erhe_light;
-        erhe_light->color = glm::vec3{
-            light.color[0],
-            light.color[1],
-            light.color[2]
-        };
-        erhe_light->intensity        = light.intensity;
-        erhe_light->type             = to_erhe(light.type);
-        erhe_light->range            = light.range.has_value() ? light.range.value() : 1000.0f; // TODO KHR_lights_punctual says infinite..
-        erhe_light->inner_spot_angle = light.innerConeAngle.has_value() ? light.innerConeAngle.value() : 0.0f;
-        erhe_light->outer_spot_angle = light.outerConeAngle.has_value() ? light.outerConeAngle.value() : glm::pi<float>() / 4.0f;
+        erhe_light->set_color(glm::vec3{light.color[0], light.color[1], light.color[2]});
+        erhe_light->set_intensity(light.intensity);
+        erhe_light->set_light_type(to_erhe(light.type));
+        erhe_light->set_range(light.range.has_value() ? light.range.value() : 1000.0f); // TODO KHR_lights_punctual says infinite..
+        erhe_light->set_inner_spot_angle(light.innerConeAngle.has_value() ? light.innerConeAngle.value() : 0.0f);
+        erhe_light->set_outer_spot_angle(light.outerConeAngle.has_value() ? light.outerConeAngle.value() : glm::pi<float>() / 4.0f);
         // TODO Sensible defaults for inner and outer cone angles
-        if (m_arguments.fix_spot_lights && (erhe_light->type == erhe::scene::Light_type::spot)) {
+        if (m_arguments.fix_spot_lights && (erhe_light->get_light_type() == erhe::scene::Light_type::spot)) {
             fix_spot_light(*erhe_light);
         }
         erhe_light->layer_id = 0;
@@ -3814,10 +3812,10 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                     if (light) {
                         bool bool_value{false};
                         if (extension_object.at_key("cast_shadow").get_bool().get(bool_value) == simdjson::SUCCESS) {
-                            light->cast_shadow = bool_value;
+                            light->set_cast_shadow(bool_value);
                         }
                         if ((extension_object.at_key("infinite_range").get_bool().get(bool_value) == simdjson::SUCCESS) && bool_value) {
-                            light->range = 0.0f;
+                            light->set_range(0.0f);
                         }
                         simdjson::dom::array flags_array;
                         if (extension_object.at_key("flags").get_array().get(flags_array) == simdjson::SUCCESS) {
@@ -5731,8 +5729,8 @@ private:
         if (erhe_light) {
             members += fmt::format(
                 ",\"ERHE_light\":{{\"cast_shadow\":{},\"infinite_range\":{},\"flags\":{}}}",
-                erhe_light->cast_shadow ? "true" : "false",
-                (erhe_light->range <= 0.0f) ? "true" : "false",
+                erhe_light->get_cast_shadow() ? "true" : "false",
+                (erhe_light->get_range() <= 0.0f) ? "true" : "false",
                 persistent_item_flags_to_json(erhe_light->get_flag_bits())
             );
         }
@@ -5749,20 +5747,20 @@ private:
         fastgltf::Light gltf_light{};
         // Qualified: Gltf_exporter's from_erhe(Trs_transform) member hides
         // the namespace-scope overload set.
-        gltf_light.type      = erhe::gltf::from_erhe(erhe_light->type);
+        gltf_light.type      = erhe::gltf::from_erhe(erhe_light->get_light_type());
         // KHR_lights_punctual has no color temperature, so bake the blackbody
         // contribution into the exported color to preserve appearance.
         const glm::vec3 effective_color = erhe_light->get_effective_color();
         gltf_light.color     = fastgltf::math::nvec3{effective_color.x, effective_color.y, effective_color.z};
-        gltf_light.intensity = erhe_light->intensity;
+        gltf_light.intensity = erhe_light->get_intensity();
         // KHR_lights_punctual: range is not allowed on directional lights;
         // erhe uses range 0 to mean infinite.
-        if ((erhe_light->type != erhe::scene::Light_type::directional) && (erhe_light->range > 0.0f)) {
-            gltf_light.range = erhe_light->range;
+        if ((erhe_light->get_light_type() != erhe::scene::Light_type::directional) && (erhe_light->get_range() > 0.0f)) {
+            gltf_light.range = erhe_light->get_range();
         }
-        if (erhe_light->type == erhe::scene::Light_type::spot) {
-            gltf_light.innerConeAngle = erhe_light->inner_spot_angle;
-            gltf_light.outerConeAngle = erhe_light->outer_spot_angle;
+        if (erhe_light->get_light_type() == erhe::scene::Light_type::spot) {
+            gltf_light.innerConeAngle = erhe_light->get_inner_spot_angle();
+            gltf_light.outerConeAngle = erhe_light->get_outer_spot_angle();
         }
         gltf_light.name = erhe_light->get_name();
 

@@ -250,9 +250,9 @@ auto Icon_set::get_item_icon(const std::shared_ptr<erhe::Item_base>& item) const
     }
     if (test_bit_set(type_mask, erhe::Item_type::light)) {
         const auto light = std::static_pointer_cast<erhe::scene::Light>(item);
-        icon.color      = glm::vec4{light->color, 1.0f};
-        icon.live_color = &light->color;
-        switch (light->type) {
+        icon.color            = glm::vec4{light->get_color(), 1.0f};
+        icon.live_color_light = light.get();
+        switch (light->get_light_type()) {
             //using enum erhe::scene::Light_type;
             case erhe::scene::Light_type::spot:        icon.code = icons.spot_light; break;
             case erhe::scene::Light_type::directional: icon.code = icons.directional_light; break;
@@ -270,7 +270,7 @@ void Icon_set::item_icon(const std::shared_ptr<erhe::Item_base>& item, const flo
     const Item_icon icon = get_item_icon(item);
     const glm::vec4 color =
         (icon.live_color_material != nullptr) ? glm::vec4{icon.live_color_material->get_base_color(), 1.0f} :
-        (icon.live_color          != nullptr) ? glm::vec4{*icon.live_color, 1.0f} :
+        (icon.live_color_light    != nullptr) ? glm::vec4{icon.live_color_light->get_color(), 1.0f} :
         icon.color;
     draw_icon(icon.code, color, icon.font);
 }

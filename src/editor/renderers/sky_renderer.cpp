@@ -351,7 +351,7 @@ auto Sky_renderer::resolve_sun_direction(const Sky_config& sky_config, Scene_roo
 
     if (scene_root != nullptr) {
         for (const std::shared_ptr<erhe::scene::Light>& light : scene_root->layers().light()->lights) {
-            if (!light || (light->type != erhe::scene::Light_type::directional)) {
+            if (!light || (light->get_light_type() != erhe::scene::Light_type::directional)) {
                 continue;
             }
             const erhe::scene::Node* node = light->get_node();

@@ -4,6 +4,7 @@
 #include "erhe_scene/node_attachment.hpp"
 #include "erhe_scene/trs_transform.hpp"
 #include "erhe_math/aabb.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <limits>
 #include <memory>
@@ -18,6 +19,9 @@ enum class Light_type : unsigned int {
     point,
     spot
 };
+
+// Enumerator table for Light_type properties (labels match Light::c_type_strings).
+extern const erhe::property::Enum_info c_light_type_enum_info;
 
 class Shadow_frustum_fit_settings
 {
@@ -170,13 +174,6 @@ public:
     // Implements Node_attachment
     void handle_item_host_update(erhe::Item_host* old_item_host, erhe::Item_host* new_item_host) override;
 
-    // Call after editing type / cast_shadow / range (or anything else that
-    // decides whether and how the light is shaded): notifies the Scene_host
-    // (Scene_host::on_light_changed) so the scene's resolved light set
-    // (erhe::scene_renderer::Light_set) is re-resolved. Registration /
-    // unregistration (attach / detach) notifies on its own.
-    void notify_changed();
-
     // Public API
     [[nodiscard]] auto projection           (const Light_projection_parameters& parameters) const -> Projection;
     [[nodiscard]] auto projection_transforms(const Light_projection_parameters& parameters) const -> Light_projection_transforms;
@@ -191,16 +188,18 @@ public:
     // and the shadow renderer, so they always agree on which lights participate.
     [[nodiscard]] auto is_active() const -> bool
     {
-        return 
+        const Type      type             = get_light_type();
+        const glm::vec3 color            = get_color();
+        return
             (
                 (color.r > 0) || (color.g > 0) || (color.b > 0)
             ) &&
-            (intensity > 0.0f) &&
+            (get_intensity() > 0.0f) &&
             (
-                (type != Type::point) || (range > 0.0f)
+                (type != Type::point) || (get_range() > 0.0f)
             ) &&
             (
-                (type != Type::spot) || (outer_spot_angle > 0.0f)
+                (type != Type::spot) || (get_outer_spot_angle() > 0.0f)
             );
     }
 
@@ -208,7 +207,7 @@ public:
     // active and have its shadow flag set.
     [[nodiscard]] auto casts_shadow() const -> bool
     {
-        return is_active() && cast_shadow;
+        return is_active() && get_cast_shadow();
     }
 
     // The color the renderer illuminates with: color (acting as tint) modulated
@@ -239,24 +238,56 @@ public:
     // Requires an attached node.
     [[nodiscard]] auto get_light_frame() const -> Light_frame;
 
-    Type        type             {Type::directional};
-    glm::vec3   color            {1.0f, 1.0f, 1.0f};
+    // Registered properties (erhe::property, doc/property-system-plan.md
+    // section 4.3). The authored light state lives in the item's property
+    // store; every property shares one changed callback that re-resolves
+    // the scene's light set (D19), so no writer has to notify by hand.
+    static const erhe::property::Property<Light_type> light_type_property;
+    // Color acts as a tint; see get_effective_color().
+    static const erhe::property::Property<glm::vec3>  color_property;
     // Photometric intensity, matching glTF KHR_lights_punctual units:
     // lux (lm/m^2, illuminance) for directional lights, candela (lm/sr) for
     // point and spot lights. Scenes authored with arbitrary units keep
     // working; the units only give imported/exported content and the
     // photometric helpers a consistent meaning.
-    float       intensity        {1.0f};
+    static const erhe::property::Property<float>      intensity_property;
     // Correlated color temperature in Kelvin; 0 disables the temperature
-    // contribution (get_effective_color() then returns `color` unmodified).
-    float       temperature      {0.0f};
-    float       range            {100.0f}; // TODO projection far?
-    float       inner_spot_angle {glm::pi<float>() * 0.4f};
-    float       outer_spot_angle {glm::pi<float>() * 0.5f};
-    bool        cast_shadow      {true};
-    std::size_t layer_id         {};
+    // contribution (get_effective_color() then returns the color unmodified).
+    static const erhe::property::Property<float>      temperature_property;
+    static const erhe::property::Property<float>      range_property;
+    static const erhe::property::Property<float>      inner_spot_angle_property;
+    static const erhe::property::Property<float>      outer_spot_angle_property;
+    static const erhe::property::Property<bool>       cast_shadow_property;
+
+    [[nodiscard]] auto get_light_type      () const -> Type      { return get_value(light_type_property); }
+    [[nodiscard]] auto get_color           () const -> glm::vec3 { return get_value(color_property); }
+    [[nodiscard]] auto get_intensity       () const -> float     { return get_value(intensity_property); }
+    [[nodiscard]] auto get_temperature     () const -> float     { return get_value(temperature_property); }
+    [[nodiscard]] auto get_range           () const -> float     { return get_value(range_property); }
+    [[nodiscard]] auto get_inner_spot_angle() const -> float     { return get_value(inner_spot_angle_property); }
+    [[nodiscard]] auto get_outer_spot_angle() const -> float     { return get_value(outer_spot_angle_property); }
+    [[nodiscard]] auto get_cast_shadow     () const -> bool      { return get_value(cast_shadow_property); }
+
+    void set_light_type      (Type value)             { set_value(light_type_property, value); }
+    void set_color           (const glm::vec3& value) { set_value(color_property, value); }
+    void set_intensity       (float value)            { set_value(intensity_property, value); }
+    void set_temperature     (float value)            { set_value(temperature_property, value); }
+    void set_range           (float value)            { set_value(range_property, value); }
+    void set_inner_spot_angle(float value)            { set_value(inner_spot_angle_property, value); }
+    void set_outer_spot_angle(float value)            { set_value(outer_spot_angle_property, value); }
+    void set_cast_shadow     (bool value)             { set_value(cast_shadow_property, value); }
+
+    // Resolver output (light layer), not authored state: not a property.
+    std::size_t layer_id{};
 
 private:
+    // Changed callback of every Light property (D19): notifies the
+    // Scene_host (Scene_host::on_light_changed) so the scene's resolved
+    // light set (erhe::scene_renderer::Light_set) is re-resolved.
+    // Registration / unregistration (attach / detach) notifies on its own.
+    void notify_changed();
+    static void on_light_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args);
+
     [[nodiscard]] auto stable_directional_light_projection(const Light_projection_parameters& parameters) const -> Projection;
     [[nodiscard]] auto spot_light_projection              (const Light_projection_parameters& parameters) const -> Projection;
 

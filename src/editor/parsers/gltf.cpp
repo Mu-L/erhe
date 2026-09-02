@@ -1091,10 +1091,10 @@ auto make_import_gltf_operation(
     if (add_default_light) {
         default_key_light_node = std::make_shared<erhe::scene::Node>("Key Light");
         std::shared_ptr<erhe::scene::Light> key_light = std::make_shared<erhe::scene::Light>("Key Light");
-        key_light->type      = erhe::scene::Light::Type::directional;
-        key_light->color     = glm::vec3{1.0f, 1.0f, 1.0};
-        key_light->intensity = 1.0f;
-        key_light->range     = 0.0f;
+        key_light->set_light_type(erhe::scene::Light::Type::directional);
+        key_light->set_color(glm::vec3{1.0f, 1.0f, 1.0});
+        key_light->set_intensity(1.0f);
+        key_light->set_range(0.0f);
         key_light->layer_id  = scene_root->layers().light()->id;
         key_light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
         default_key_light_node->attach          (key_light);
@@ -1104,10 +1104,10 @@ auto make_import_gltf_operation(
 
         default_fill_light_node = std::make_shared<erhe::scene::Node>("Fill Light Node");
         std::shared_ptr<erhe::scene::Light> fill_light = std::make_shared<erhe::scene::Light>("Fill Light");
-        fill_light->type      = erhe::scene::Light::Type::directional;
-        fill_light->color     = glm::vec3{1.0f, 1.0f, 1.0};
-        fill_light->intensity = 0.5f;
-        fill_light->range     = 0.0f;
+        fill_light->set_light_type(erhe::scene::Light::Type::directional);
+        fill_light->set_color(glm::vec3{1.0f, 1.0f, 1.0});
+        fill_light->set_intensity(0.5f);
+        fill_light->set_range(0.0f);
         fill_light->layer_id  = scene_root->layers().light()->id;
         fill_light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui | erhe::Item_flags::exclude_from_prefab);
         default_fill_light_node->attach          (fill_light);

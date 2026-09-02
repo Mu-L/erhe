@@ -2,6 +2,7 @@
 
 #include "erhe_math/math_util.hpp"
 #include "erhe_math/viewport.hpp"
+#include "erhe_property/enum_info.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -9,6 +10,9 @@
 namespace erhe::scene {
 
 class Transform;
+
+// Enumerator table for Projection::Type properties (labels match Projection::c_type_strings).
+extern const erhe::property::Enum_info c_projection_type_enum_info;
 
 class Projection
 {

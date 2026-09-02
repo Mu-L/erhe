@@ -131,7 +131,7 @@ void Brush_preview::make_preview_scene()
     m_key_light      = std::make_shared<erhe::scene::Light>("Key Light");
     m_key_light->enable_flag_bits(erhe::Item_flags::content);
     m_key_light->layer_id  = m_scene_root_shared->layers().light()->id;
-    m_key_light->intensity = 2.0f;
+    m_key_light->set_intensity(2.0f);
     m_key_light_node = std::make_shared<erhe::scene::Node>("Key Light Node");
     m_key_light_node->enable_flag_bits(erhe::Item_flags::content);
     m_key_light_node->attach(m_key_light);
@@ -147,7 +147,7 @@ void Brush_preview::make_preview_scene()
     m_fill_light = std::make_shared<erhe::scene::Light>("Fill Light");
     m_fill_light->enable_flag_bits(erhe::Item_flags::content);
     m_fill_light->layer_id  = m_scene_root_shared->layers().light()->id;
-    m_fill_light->intensity = 0.5f;
+    m_fill_light->set_intensity(0.5f);
     m_fill_light_node = std::make_shared<erhe::scene::Node>("Fill Light Node");
     m_fill_light_node->enable_flag_bits(erhe::Item_flags::content);
     m_fill_light_node->attach(m_key_light);
@@ -334,12 +334,12 @@ void Brush_preview::render_preview(
     if (headlight_shading) {
         // Key light co-located with the fitted camera: Lambert diffuse
         // then falls off with dot(N, V) (the N.V-dimmed look).
-        m_key_light->intensity  = 2.5f;
-        m_fill_light->intensity = 0.0f;
+        m_key_light->set_intensity(2.5f);
+        m_fill_light->set_intensity(0.0f);
         m_key_light_node->set_world_from_node(new_world_from_node);
     } else {
-        m_key_light->intensity  = 2.0f;
-        m_fill_light->intensity = 0.5f;
+        m_key_light->set_intensity(2.0f);
+        m_fill_light->set_intensity(0.5f);
         m_key_light_node->set_world_from_node(
             erhe::math::create_look_at(
                 glm::vec3{8.0f, 8.0f, 8.0f},  // eye

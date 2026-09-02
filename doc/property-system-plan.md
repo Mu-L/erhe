@@ -1,8 +1,9 @@
 # Property system (WPF dependency-property port) - plan
 
-Status: phases 0-4 implemented and verified (library, item integration,
-editor operation / rows / MCP tools / startup command, Material migration,
-Node transform properties). Section 7 holds the remaining work.
+Status: phases 0-4 and 6 implemented and verified (library, item
+integration, editor operation / rows / MCP tools / startup command, Material
+migration, Node transform properties, Light and Camera migrations). Section 7
+holds the remaining work.
 
 Reference: the WPF property system in `~/git/tksuoran/wpf`, files under
 `src/Microsoft.DotNet.Wpf/src/WindowsBase/System/Windows/`:
@@ -327,6 +328,25 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
   force decomposition on every matrix write and change the world matrix of
   glTF matrix nodes to compose(decompose(M)).
 
+- D19 Item-side consequences through metadata callbacks. When a change of
+  a property has a consequence inside the item library itself (not in the
+  editor, which D11 covers), the owner registers the property with a
+  `property_changed` callback (D4) that runs the consequence, so every
+  writer - typed accessor, Properties row, `Property_set_operation`, MCP,
+  `scene.set_property`, glTF import, `Property_set::apply` - reaches it
+  and no call site has to remember a manual "notify" call. `Light` is the
+  first user (section 4.3): the light-set re-resolve
+  (`Scene_host::on_light_changed`) becomes the changed callback of every
+  `Light` property, and `Light::notify_changed()` stops being public API.
+  A callback only fires on an effective change (R4), so a write of the
+  current value costs nothing downstream, and D9 batching still collapses
+  a multi-property write into one callback per property.
+- D20 Logarithmic sliders. `Property_ui` gains `bool logarithmic` (data
+  only, like the rest of the block); the generic float slider row draws
+  with `ImGuiSliderFlags_Logarithmic` and a `%.4f` no-rounding format when
+  it is set. The light range / intensity and camera near / far rows are
+  logarithmic today and lose usability as linear sliders over 0..20000.
+
 ## 4. Migration design
 
 ### 4.1 Material
@@ -377,6 +397,81 @@ that would preserve it is section 7 work.
 R14 holds by construction: no per-frame path changed. The transform-update
 statistics (`get_transform_update_stats`) after the migration match the
 pre-migration run on the default scene.
+
+### 4.3 Light
+
+Every `Light` public field except `layer_id` becomes a registered property
+(owner type `Item_type::light`) stored in the entry store, the Material way
+(section 4.1), with the current initializers as defaults: `light_type`
+(`Light_type`, `Enum_info` table `c_light_type_enum_info` defined next to
+`Light::c_type_strings` in `light.cpp`, labels Directional / Point / Spot;
+named `light_type` with `get_light_type()` / `set_light_type()` because
+`get_type()` is the `Item_base` type-bits accessor),
+`color` (vec3, color presentation), `intensity` (float, logarithmic slider
+0.01..20000, tooltip stating the KHR_lights_punctual units: lux for
+directional, candela for point and spot), `temperature` (float, slider
+0..12000, 0 = off), `range` (float, logarithmic slider 1..20000),
+`inner_spot_angle` and `outer_spot_angle` (float, `angle_degrees`
+presentation, 0..pi, `visible_when` the light is a spot light) and
+`cast_shadow` (bool). `layer_id` stays a plain member: it is a resolver
+output, not authored state. No property carries a validate callback:
+`is_active()` already interprets non-positive range, intensity and spot
+angles as "inactive", so a file that stores them must still load.
+
+Every `Light` property registers with one shared `property_changed`
+callback (D19) that calls the light-set re-resolve; `Light::notify_changed()`
+becomes private and is only called from that callback. The manual
+`notify_changed()` calls in the Properties rows and the MCP light tools
+disappear with the rows and field writes that carried them.
+
+`Light` exposes `get_light_type()` ... `set_cast_shadow()` accessors on the store
+(the same shape as Material's) and the fields are removed, so every call
+site (glTF import / export, scene builder, light buffer, shadow renderer,
+light set, lightmap baker, light mesh, brush preview, MCP tools, debug
+visualizations, icon set, sky renderer, example, tests) changes from
+`light->color` to `light->get_color()` and nothing else. The photometric
+helpers (`get_solid_angle`, `get_luminous_flux`, `set_luminous_flux`,
+`get_effective_color`, `is_active`, `casts_shadow`) read the store.
+`Light(const Light&, for_clone)` keeps copying only `layer_id`; the entries
+copy through D10.
+
+`Properties::light_properties` keeps only the derived rows the generic
+section cannot draw: the flux (lumens) slider for point and spot lights,
+the blackbody swatch shown while temperature is positive, and the
+zero-range warning for point lights. The Light Type, Cast Shadow, spot
+angle, Range, Intensity, Color and Temperature rows come from the generic
+section.
+
+### 4.4 Camera
+
+`Camera` registers its `Projection` fields as bridged properties (D18) over
+`m_projection`, so `Camera::projection()` keeps returning the mutable
+`Projection*` that the fly camera, scene commands, previews, glTF import
+and tests write through today; a bridged property reads and writes the
+same member, so both paths agree, with the D18 caveat that a direct member
+write does not raise a changed notification (nothing observes camera
+properties yet). The properties, all in the `Projection` UI group:
+`projection_type` (`Projection::Type`, table `c_projection_type_enum_info`
+defined next to `Projection::c_type_strings` in `projection.cpp`),
+`fov_x`, `fov_y`, `fov_left`, `fov_right`, `fov_up`, `fov_down`
+(`angle_degrees`, each `visible_when` the current projection type uses it),
+`ortho_left`, `ortho_width`, `ortho_bottom`, `ortho_height`,
+`frustum_left`, `frustum_right`, `frustum_bottom`, `frustum_top`
+(logarithmic sliders 0..1000, `visible_when` per type as the hand-written
+rows switch today), `z_near`, `z_far` (logarithmic sliders 0..1000) and
+`infinite_z_far` (bool, `visible_when` perspective types). One
+`make_projection_bridge<T>(member pointer)` helper in `camera.cpp` produces
+each bridge.
+
+`exposure` and `shadow_range` are the camera's own scalars with no
+engineered representation, so they move into the entry store as ordinary
+properties (logarithmic sliders 0..800000 and 1..1000) and the existing
+`get_exposure()` / `set_exposure()` / `get_shadow_range()` /
+`set_shadow_range()` accessors read and write the store. The clone
+constructor keeps copying `m_projection`; the entries copy through D10.
+
+`Properties::camera_properties` is deleted: every row it drew is a generic
+row now.
 
 ## 5. Implementation phases
 
@@ -457,6 +552,28 @@ built and launched on the Metal build to verify the affected window.
   editor `notes.md` section for the generic property rows and MCP tools.
   This plan's "Status" line moves to "done" and section 7 keeps only what is
   still open.
+
+### Phase 6 - Light and Camera migrations
+
+- D20 in the library and the generic rows, then section 4.3 (`Light`
+  accessors, D19 callback, call-site migration, `light_properties` reduced
+  to derived rows) and section 4.4 (`Camera` bridged projection
+  properties, store-backed exposure and shadow range, `camera_properties`
+  deleted).
+- Tests: `src/erhe/scene/test/test_light_properties.cpp` (defaults match
+  the previous initializers, typed and untyped access with enumeration
+  labels, the changed callback fires once per effective change and not for
+  a same-value write, clone copies the values, `Property_set` round trip)
+  and `test_camera_properties.cpp` (bridged reads see `projection()`
+  writes and bridged writes are visible through `projection()`, enumeration
+  label round trip, `clear_value` restores the default, exposure / shadow
+  range through the store, clone).
+- Verify (section 8): `get_item_properties` / `set_item_property` on a
+  light and on `Camera A`'s camera attachment with undo, a light `type`
+  change re-resolving the light set (the light switches between the
+  directional and spot shadow passes), glTF export / import round trip of a
+  light and a camera, and `capture_screenshot` of the Properties window
+  for a selected light and camera.
 
 ## 6. Out of scope
 
@@ -542,10 +659,12 @@ with the first two.
 - Observer users (D15): the material preview redraw, `Shadow_render_node`
   on a light's `cast_shadow`, the geometry graph transform-from-node; today
   these still react through the message bus or by polling.
+  `Shadow_render_node` can now observe `Light::cast_shadow_property`
+  directly (phase 6 made it a property).
 - Further item migrations, in priority order and each reusing the phase 3
-  recipe: `Light` (color, intensity, temperature, spot angles, cast shadow),
-  `Camera` projection (near, far, fov), `Layout` (type, axis, volume),
-  `Grid`, physics settings (mass, friction, restitution), `Brush_placement`.
+  recipe (`Light` and `Camera` are done, phase 6): `Layout` (type, axis,
+  volume), `Grid`, physics settings (mass, friction, restitution),
+  `Brush_placement`.
 - Graph nodes (geometry, texture and shader graphs) as dependency objects:
   node parameters become properties, their editors reuse the generic rows
   (D12), and the value-provider item can drive them from scene items.
@@ -578,6 +697,18 @@ with the first two.
   `export_gltf` with `editor_state: true` followed by `import_gltf` giving
   identical property values on the imported copy, and
   `get_transform_update_stats` unchanged after node property writes.
+  The checks that passed at the end of phase 6 (`get_scene_lights` /
+  `get_scene_cameras` give the attachment ids; `list_scenes` gives the
+  scene name the light / camera queries need): `set_item_property` of
+  `light_type` to `Spot` on a directional light moving it to the spot
+  shadow slot in `get_scene_lights` and `undo` restoring the directional
+  slot order, `z_far` / `intensity` writes with `undo`, and `export_gltf`
+  with `editor_state: true` followed by `import_gltf` giving identical
+  camera properties and identical light properties except `temperature`,
+  which the exporter bakes into the exported color (KHR_lights_punctual
+  has no temperature). The imported lights appear in `get_scene_lights`
+  only after the import settles, a query in the same second lists the
+  originals only.
 - `capture_screenshot` works on the Metal swapchain (the same one-frame
   arm-then-collect protocol as the Vulkan windowed build), so the visual
   check of the Properties rows is `capture_screenshot` with a `path` in

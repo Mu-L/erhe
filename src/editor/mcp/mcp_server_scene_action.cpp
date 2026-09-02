@@ -2116,14 +2116,14 @@ auto Mcp_server::action_create_light(const json& args) -> std::string
         std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{sr->item_host_mutex};
         node  = std::make_shared<erhe::scene::Node>(name);
         light = std::make_shared<erhe::scene::Light>(name);
-        light->type        = type;
-        light->color       = color;
-        light->intensity   = intensity;
-        light->range       = range;
-        light->cast_shadow = cast_shadow;
+        light->set_light_type(type);
+        light->set_color(color);
+        light->set_intensity(intensity);
+        light->set_range(range);
+        light->set_cast_shadow(cast_shadow);
         light->layer_id    = sr->layers().light()->id;
-        if (args.contains("inner_spot_angle")) { light->inner_spot_angle = args.value("inner_spot_angle", light->inner_spot_angle); }
-        if (args.contains("outer_spot_angle")) { light->outer_spot_angle = args.value("outer_spot_angle", light->outer_spot_angle); }
+        if (args.contains("inner_spot_angle")) { light->set_inner_spot_angle(args.value("inner_spot_angle", light->get_inner_spot_angle())); }
+        if (args.contains("outer_spot_angle")) { light->set_outer_spot_angle(args.value("outer_spot_angle", light->get_outer_spot_angle())); }
         light->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui | erhe::Item_flags::show_debug_visualizations);
         node->attach(light);
         node->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::visible | erhe::Item_flags::show_in_ui);
@@ -2300,33 +2300,33 @@ auto Mcp_server::action_edit_light(const json& args) -> std::string
             // Assigning Light::type re-buckets the light for rendering (forward
             // variant + shadow technique). Other type-dependent fields (e.g.
             // range) are left exactly as provided by the caller.
-            light->type = parse_light_type(type_str, light->type);
+            light->set_light_type(parse_light_type(type_str, light->get_light_type()));
             changed["type"] = type_str;
         }
         glm::vec3 color{};
         if (read_vec3("color", color)) {
-            light->color = color;
+            light->set_color(color);
             changed["color"] = {color.x, color.y, color.z};
         }
         if (args.contains("intensity")) {
-            light->intensity = args.value("intensity", light->intensity);
-            changed["intensity"] = light->intensity;
+            light->set_intensity(args.value("intensity", light->get_intensity()));
+            changed["intensity"] = light->get_intensity();
         }
         if (args.contains("range")) {
-            light->range = args.value("range", light->range);
-            changed["range"] = light->range;
+            light->set_range(args.value("range", light->get_range()));
+            changed["range"] = light->get_range();
         }
         if (args.contains("cast_shadow")) {
-            light->cast_shadow = args.value("cast_shadow", light->cast_shadow);
-            changed["cast_shadow"] = light->cast_shadow;
+            light->set_cast_shadow(args.value("cast_shadow", light->get_cast_shadow()));
+            changed["cast_shadow"] = light->get_cast_shadow();
         }
         if (args.contains("inner_spot_angle")) {
-            light->inner_spot_angle = args.value("inner_spot_angle", light->inner_spot_angle);
-            changed["inner_spot_angle"] = light->inner_spot_angle;
+            light->set_inner_spot_angle(args.value("inner_spot_angle", light->get_inner_spot_angle()));
+            changed["inner_spot_angle"] = light->get_inner_spot_angle();
         }
         if (args.contains("outer_spot_angle")) {
-            light->outer_spot_angle = args.value("outer_spot_angle", light->outer_spot_angle);
-            changed["outer_spot_angle"] = light->outer_spot_angle;
+            light->set_outer_spot_angle(args.value("outer_spot_angle", light->get_outer_spot_angle()));
+            changed["outer_spot_angle"] = light->get_outer_spot_angle();
         }
         glm::vec3 position{};
         if (read_vec3("position", position)) {
@@ -2347,7 +2347,6 @@ auto Mcp_server::action_edit_light(const json& args) -> std::string
         changed.contains("type")  || changed.contains("cast_shadow") || changed.contains("range") ||
         changed.contains("color") || changed.contains("intensity")
     ) {
-        light->notify_changed();
     }
 
     return make_json_content({

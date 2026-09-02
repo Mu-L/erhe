@@ -40,8 +40,8 @@ public:
 
         light_node = std::make_shared<erhe::scene::Node>("light node");
         light      = std::make_shared<erhe::scene::Light>("light");
-        light->type  = light_type;
-        light->range = 30.0f;
+        light->set_light_type(light_type);
+        light->set_range(30.0f);
         light_node->attach(light);
         light_node->set_parent_from_node(world_from_light_node);
     }

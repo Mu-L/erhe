@@ -510,11 +510,11 @@ void Debug_visualizations::light_visualization(
         .render_context   = render_context,
         .selected_camera  = selected_camera,
         .light            = light,
-        .light_color      = glm::vec4{light->color, 1.0f},
-        .half_light_color = glm::vec4{0.5f * light->color, 0.5f}
+        .light_color      = glm::vec4{light->get_color(), 1.0f},
+        .half_light_color = glm::vec4{0.5f * light->get_color(), 0.5f}
     };
 
-    switch (light->type) {
+    switch (light->get_light_type()) {
         case erhe::scene::Light_type::directional: directional_light_visualization(light_context); break;
         case erhe::scene::Light_type::point:       point_light_visualization      (light_context); break;
         case erhe::scene::Light_type::spot:        spot_light_visualization       (light_context); break;
@@ -1062,9 +1062,9 @@ void Debug_visualizations::spot_light_visualization(const Light_visualization_co
 
     constexpr int   edge_count       = 200;
     constexpr float light_cone_sides = edge_count * 6;
-    const float outer_alpha   = light->outer_spot_angle;
-    const float inner_alpha   = light->inner_spot_angle;
-    const float length        = light->range;
+    const float outer_alpha   = light->get_outer_spot_angle();
+    const float inner_alpha   = light->get_inner_spot_angle();
+    const float length        = light->get_range();
     const float outer_apothem = length * std::tan(outer_alpha * 0.5f);
     const float inner_apothem = length * std::tan(inner_alpha * 0.5f);
     const float outer_radius  = outer_apothem / std::cos(glm::pi<float>() / static_cast<float>(light_cone_sides));

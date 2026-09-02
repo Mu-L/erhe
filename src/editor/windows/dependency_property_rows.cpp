@@ -241,6 +241,8 @@ auto Dependency_property_rows::draw_widget(
                 float d = glm::degrees(v);
                 changed = ImGui::DragFloat("##", &d, ui.step.value_or(0.5f), has_range ? glm::degrees(min) : 0.0f, has_range ? glm::degrees(max) : 0.0f, "%.2f°");
                 v = glm::radians(d);
+            } else if (slider && ui.logarithmic) {
+                changed = ImGui::SliderFloat("##", &v, min, max, "%.4f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
             } else if (slider) {
                 changed = ImGui::SliderFloat("##", &v, min, max);
             } else {

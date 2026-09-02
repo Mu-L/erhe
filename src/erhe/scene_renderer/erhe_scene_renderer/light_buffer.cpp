@@ -489,7 +489,7 @@ auto Light_buffer::update(
         ERHE_VERIFY(node != nullptr);
 
         const bool shadow_mapped = light_projection_transforms.is_shadow_mapped();
-        switch (light->type) {
+        switch (light->get_light_type()) {
             case erhe::scene::Light_type::directional:
                 ++directional_light_count;
                 if (shadow_mapped) {
@@ -522,9 +522,9 @@ auto Light_buffer::update(
         // with the frame the shadow projection was fitted in.
         const vec3 direction            = light->get_light_frame().direction;
         const vec3 position             = vec3{light_projection_transforms.world_from_light_camera.get_matrix() * vec4{0.0f, 0.0f, 0.0f, 1.0f}};
-        const vec4 radiance             = vec4{light->intensity * light->get_effective_color(), light->range};
-        const auto inner_spot_cos       = std::cos(light->inner_spot_angle * 0.5f);
-        const auto outer_spot_cos       = std::cos(light->outer_spot_angle * 0.5f);
+        const vec4 radiance             = vec4{light->get_intensity() * light->get_effective_color(), light->get_range()};
+        const auto inner_spot_cos       = std::cos(light->get_inner_spot_angle() * 0.5f);
+        const auto outer_spot_cos       = std::cos(light->get_outer_spot_angle() * 0.5f);
         const vec4 position_inner_spot  = vec4{position, inner_spot_cos};
         const vec4 direction_outer_spot = vec4{glm::normalize(vec3{direction}), outer_spot_cos};
         const auto light_offset         = light_array_offset + light_index * light_struct_size;

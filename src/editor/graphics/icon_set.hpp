@@ -13,6 +13,7 @@ namespace erhe::imgui { class Imgui_renderer; }
 namespace erhe::scene { enum class Light_type : unsigned int; }
 
 namespace erhe::primitive { class Material; }
+namespace erhe::scene { class Light; }
 
 namespace editor {
 
@@ -80,7 +81,7 @@ public:
         ImFont*          font      {nullptr}; // resolved icon font (never null when code is set)
         const char*      code      {nullptr}; // nullptr = no icon
         glm::vec4        color     {1.0f, 1.0f, 1.0f, 1.0f};
-        const glm::vec3* live_color{nullptr}; // when set, overrides color at draw time (light tint)
+        const erhe::scene::Light* live_color_light{nullptr}; // when set, overrides color at draw time with the light color property
         // When set, overrides color at draw time with the material's base
         // color property (read through the accessor: the value lives in the
         // material's property store, not at a stable address).

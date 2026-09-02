@@ -6,6 +6,25 @@
 
 namespace erhe::scene {
 
+namespace {
+
+constexpr erhe::property::Enum_entry c_projection_type_entries[] = {
+    { "Other",                  static_cast<int32_t>(Projection::Type::other)                  },
+    { "Perspective Horizontal", static_cast<int32_t>(Projection::Type::perspective_horizontal) },
+    { "Perspective Vertical",   static_cast<int32_t>(Projection::Type::perspective_vertical)   },
+    { "Perspective",            static_cast<int32_t>(Projection::Type::perspective)            },
+    { "Perspective XR",         static_cast<int32_t>(Projection::Type::perspective_xr)         },
+    { "Orthogonal Horizontal",  static_cast<int32_t>(Projection::Type::orthogonal_horizontal)  },
+    { "Orthogonal Vertical",    static_cast<int32_t>(Projection::Type::orthogonal_vertical)    },
+    { "Orthogonal",             static_cast<int32_t>(Projection::Type::orthogonal)             },
+    { "Orthogonal Rectangle",   static_cast<int32_t>(Projection::Type::orthogonal_rectangle)   },
+    { "Generic Frustum",        static_cast<int32_t>(Projection::Type::generic_frustum)        }
+};
+
+} // anonymous namespace
+
+const erhe::property::Enum_info c_projection_type_enum_info{"Projection_type", c_projection_type_entries};
+
 auto Projection::clip_from_node_transform(
     const erhe::math::Viewport                viewport,
     const bool                                reverse_depth,

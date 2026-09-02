@@ -70,7 +70,7 @@ Light_mesh::Light_mesh()
 
 auto Light_mesh::get_light_transform(const erhe::scene::Light& light) -> glm::mat4
 {
-    switch (light.type) {
+    switch (light.get_light_type()) {
         //using enum erhe::scene::Light_type;
         case erhe::scene::Light_type::directional: {
             return mat4{1.0f};
@@ -95,8 +95,8 @@ auto Light_mesh::get_light_transform(const erhe::scene::Light& light) -> glm::ma
             //   /         |         \         \______________/         .
             //  +----------+----------+                                 .
 
-            const float alpha   = light.outer_spot_angle;
-            const float length  = light.range;
+            const float alpha   = light.get_outer_spot_angle();
+            const float length  = light.get_range();
             const float apothem = length * std::tan(alpha * 0.5f);
             const float radius  = apothem / std::cos(glm::pi<float>() / static_cast<float>(m_light_cone_sides));
 
@@ -111,7 +111,7 @@ auto Light_mesh::get_light_transform(const erhe::scene::Light& light) -> glm::ma
 
 auto Light_mesh::point_in_light(const glm::vec3 point, const erhe::scene::Light& light) -> bool
 {
-    if (light.type != erhe::scene::Light::Type::spot) {
+    if (light.get_light_type() != erhe::scene::Light::Type::spot) {
         return true;
     }
 
@@ -120,10 +120,10 @@ auto Light_mesh::point_in_light(const glm::vec3 point, const erhe::scene::Light&
         return false;
     }
 
-    const float spot_angle         = light.outer_spot_angle * 0.5f;
+    const float spot_angle         = light.get_outer_spot_angle() * 0.5f;
     const float outer_angle        = spot_angle / std::cos(glm::pi<float>() / static_cast<float>(m_light_cone_sides));
     const float spot_cutoff        = std::cos(outer_angle);
-    const float range              = light.range;
+    const float range              = light.get_range();
     const mat4  light_from_world   = node->node_from_world();
     const vec3  view_in_light_     = vec3{light_from_world * vec4{point, 1.0f}};
     const float distance           = -view_in_light_.z;
@@ -140,7 +140,7 @@ auto Light_mesh::point_in_light(const glm::vec3 point, const erhe::scene::Light&
 
 auto Light_mesh::get_light_mesh(const erhe::scene::Light& light) -> erhe::primitive::Buffer_mesh*
 {
-    switch (light.type) {
+    switch (light.get_light_type()) {
         //using enum erhe::scene::Light_type;
         case erhe::scene::Light_type::directional: {
             return &m_quad_mesh;

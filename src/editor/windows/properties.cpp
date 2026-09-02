@@ -265,203 +265,43 @@ void Properties::scene_properties(erhe::scene::Scene& scene)
     pop_group();
 }
 
-void Properties::camera_properties(erhe::scene::Camera& camera)
-{
-    ERHE_PROFILE_FUNCTION();
-
-    auto* const projection = camera.projection();
-    if (projection != nullptr) {
-        push_group("Projection", ImGuiTreeNodeFlags_None | ImGuiTreeNodeFlags_DefaultOpen, m_indent);
-        //ImGui::TreeNodeEx("Projection", ImGuiTreeNodeFlags_DefaultOpen)
-
-        //ImGui::Indent(indent);
-        add_entry("Type", [=]() {
-            erhe::imgui::make_combo(
-                "##",
-                projection->projection_type,
-                erhe::scene::Projection::c_type_strings,
-                IM_ARRAYSIZE(erhe::scene::Projection::c_type_strings)
-            );
-        });
-        switch (projection->projection_type) {
-            //using enum erhe::scene::Projection::Type;
-            case erhe::scene::Projection::Type::perspective: {
-                add_entry("Fov X",  [=](){ImGui::SliderFloat("##", &projection->fov_x,  0.0f, glm::pi<float>());});
-                add_entry("Fov Y",  [=](){ImGui::SliderFloat("##", &projection->fov_y,  0.0f, glm::pi<float>());});
-                break;
-            }
-
-            case erhe::scene::Projection::Type::perspective_xr: {
-                add_entry("Fov Left",  [=](){ ImGui::SliderFloat("##", &projection->fov_left,  -glm::pi<float>() / 2.0f, glm::pi<float>() / 2.0f);});
-                add_entry("Fov Right", [=](){ ImGui::SliderFloat("##", &projection->fov_right, -glm::pi<float>() / 2.0f, glm::pi<float>() / 2.0f);});
-                add_entry("Fov Up",    [=](){ ImGui::SliderFloat("##", &projection->fov_up,    -glm::pi<float>() / 2.0f, glm::pi<float>() / 2.0f);});
-                add_entry("Fov Down",  [=](){ ImGui::SliderFloat("##", &projection->fov_down,  -glm::pi<float>() / 2.0f, glm::pi<float>() / 2.0f);});
-                break;
-            }
-
-            case erhe::scene::Projection::Type::perspective_horizontal: {
-                add_entry("Fov X",  [=](){ ImGui::SliderFloat("##", &projection->fov_x,  0.0f, glm::pi<float>()); });
-                break;
-            }
-
-            case erhe::scene::Projection::Type::perspective_vertical: {
-                add_entry("Fov Y",  [=](){ ImGui::SliderFloat("##", &projection->fov_y,  0.0f, glm::pi<float>()); });
-                break;
-            }
-
-            case erhe::scene::Projection::Type::orthogonal_horizontal: {
-                add_entry("Width",  [=](){ ImGui::SliderFloat("##", &projection->ortho_width, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                break;
-            }
-
-            case erhe::scene::Projection::Type::orthogonal_vertical: {
-                add_entry("Height", [=](){ ImGui::SliderFloat("##", &projection->ortho_height, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                break;
-            }
-
-            case erhe::scene::Projection::Type::orthogonal: {
-                add_entry("Width",  [=](){ ImGui::SliderFloat("##", &projection->ortho_width,  0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                add_entry("Height", [=](){ ImGui::SliderFloat("##", &projection->ortho_height, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                break;
-            }
-
-            case erhe::scene::Projection::Type::orthogonal_rectangle: {
-                add_entry("Left",   [=](){ ImGui::SliderFloat("##", &projection->ortho_left,   0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                add_entry("Width",  [=](){ ImGui::SliderFloat("##", &projection->ortho_width,  0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                add_entry("Bottom", [=](){ ImGui::SliderFloat("##", &projection->ortho_bottom, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                add_entry("Height", [=](){ ImGui::SliderFloat("##", &projection->ortho_height, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                break;
-            }
-
-            case erhe::scene::Projection::Type::generic_frustum: {
-                add_entry("Left",   [=](){ ImGui::SliderFloat("##", &projection->frustum_left,   0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                add_entry("Right",  [=](){ ImGui::SliderFloat("##", &projection->frustum_right,  0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                add_entry("Bottom", [=](){ ImGui::SliderFloat("##", &projection->frustum_bottom, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                add_entry("Top",    [=](){ ImGui::SliderFloat("##", &projection->frustum_top,    0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic); });
-                break;
-            }
-
-            case erhe::scene::Projection::Type::other: {
-                // TODO(tksuoran@gmail.com): Implement
-                break;
-            }
-        }
-        add_entry("Z Near", [=](){ImGui::SliderFloat("##", &projection->z_near, 0.0f, 1000.0f, "%.4f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);});
-        add_entry("Z Far",  [=](){ImGui::SliderFloat("##", &projection->z_far,  0.0f, 1000.0f, "%.4f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);});
-        // Perspective only: Z Far stays live as the depth hint the shadow and
-        // gizmo code reads even while the projection itself is unbounded.
-        const bool is_perspective =
-            (projection->projection_type == erhe::scene::Projection::Type::perspective)            ||
-            (projection->projection_type == erhe::scene::Projection::Type::perspective_xr)         ||
-            (projection->projection_type == erhe::scene::Projection::Type::perspective_horizontal) ||
-            (projection->projection_type == erhe::scene::Projection::Type::perspective_vertical);
-        if (is_perspective) {
-            add_entry("Infinite Z Far", [=](){ImGui::Checkbox("##", &projection->infinite_z_far);});
-        }
-
-        pop_group();
-    }
-
-    add_entry("Exposure", [&camera]() {
-        float exposure = camera.get_exposure();
-        if (ImGui::SliderFloat("##", &exposure, 0.0f, 800000.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
-            camera.set_exposure(exposure);
-        }
-    });
-
-    add_entry("Shadow Range", [&camera]() {
-        float shadow_range = camera.get_shadow_range();
-        if (ImGui::SliderFloat("##", &shadow_range, 1.00f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
-            camera.set_shadow_range(shadow_range);
-        }
-    });
-}
-
 void Properties::light_properties(erhe::scene::Light& light)
 {
     ERHE_PROFILE_FUNCTION();
 
-    // Edits must re-resolve the scene's light set (Light::notify_changed ->
-    // Scene_host::on_light_changed).
-    add_entry("Light Type", [&light]() {
-        // make_combo assigns the picked value unconditionally but reports
-        // IsItemDeactivatedAfterEdit(), which is not the same event as "the
-        // value changed"; compare the value itself instead.
-        const erhe::scene::Light::Type old_type = light.type;
-        erhe::imgui::make_combo(
-            "##",
-            light.type,
-            erhe::scene::Light::c_type_strings,
-            IM_ARRAYSIZE(erhe::scene::Light::c_type_strings)
-        );
-        if (light.type != old_type) {
-            light.notify_changed();
-        }
-    });
-    add_entry("Cast Shadow", [&light]() {
-        if (ImGui::Checkbox("##", &light.cast_shadow)) {
-            light.notify_changed();
-        }
-    });
-
-    if (light.type == erhe::scene::Light::Type::spot) {
-        add_entry("Inner Spot", [&](){ ImGui::SliderFloat("##", &light.inner_spot_angle, 0.0f, glm::pi<float>()); });
-        // outer_spot_angle <= 0 makes the spot inactive (Light::is_active), so
-        // it decides whether the light is in the resolved set at all.
-        add_entry("Outer Spot", [&light](){
-            if (ImGui::SliderFloat("##", &light.outer_spot_angle, 0.0f, glm::pi<float>())) {
-                light.notify_changed();
-            }
-        });
-    }
-    add_entry("Range", [&light](){
-        if (ImGui::SliderFloat("##", &light.range, 1.00f, 20000.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
-            light.notify_changed();
-        }
-    });
-    if ((light.type == erhe::scene::Light::Type::point) && (light.range <= 0.0f)) {
-        add_entry("Warning", [&](){
+    // The authored light state (type, cast shadow, spot angles, range,
+    // intensity, color, temperature) is drawn by the generic property rows
+    // (Dependency_property_rows); every write re-resolves the scene light
+    // set through the Light property callback (doc/property-system-plan.md
+    // D19). Only the derived rows remain here.
+    const erhe::scene::Light::Type type = light.get_light_type();
+    if ((type == erhe::scene::Light::Type::point) && (light.get_range() <= 0.0f)) {
+        add_entry("Warning", [](){
             ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 160, 32, 255));
             ImGui::TextWrapped("Point light range is 0: it reaches nowhere, so it emits no light and casts no shadow. Set a positive range.");
             ImGui::PopStyleColor();
         });
     }
-    // Intensity units follow KHR_lights_punctual: lux for directional lights,
-    // candela for point and spot lights (see erhe::scene::Light::intensity).
-    const bool is_directional = light.type == erhe::scene::Light::Type::directional;
-    add_entry(is_directional ? "Intensity (lx)" : "Intensity (cd)", [&light](){
-        if (ImGui::SliderFloat("##", &light.intensity, 0.01f, 20000.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
-            light.notify_changed();
-        }
-    });
-    if (!is_directional) {
+    // Flux is intensity times the emission solid angle (Light::get_luminous_flux),
+    // so the row edits the intensity property. Directional lights have no
+    // solid angle; their intensity (lux) row is the generic one.
+    if (type != erhe::scene::Light::Type::directional) {
         add_entry("Flux (lm)", [&light](){
             float lumens = light.get_luminous_flux();
             if (ImGui::SliderFloat("##", &lumens, 0.01f, 200000.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
                 light.set_luminous_flux(lumens);
-                light.notify_changed();
             }
         });
     }
-    add_entry("Color", [&light](){
-        if (ImGui::ColorEdit3("##", &light.color.x, ImGuiColorEditFlags_Float)) {
-            light.notify_changed();
-        }
-    });
-    add_entry("Temperature", [&light]() {
-        bool use_temperature = light.temperature > 0.0f;
-        if (ImGui::Checkbox("##use_temperature", &use_temperature)) {
-            light.temperature = use_temperature ? 6500.0f : 0.0f;
-        }
-        if (light.temperature > 0.0f) {
-            const glm::vec3 blackbody = erhe::scene::Light::blackbody_color(light.temperature);
-            ImGui::SameLine();
+    const float temperature = light.get_temperature();
+    if (temperature > 0.0f) {
+        add_entry("Blackbody", [temperature](){
+            const glm::vec3 blackbody = erhe::scene::Light::blackbody_color(temperature);
             ImGui::ColorButton("##blackbody_color", ImVec4{blackbody.r, blackbody.g, blackbody.b, 1.0f}, ImGuiColorEditFlags_NoTooltip);
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            ImGui::SliderFloat("##temperature", &light.temperature, 1000.0f, 12000.0f, "%.0f K");
-        }
-    });
+            ImGui::Text("%.0f K", temperature);
+        });
+    }
 
     // Ambient light color is a scene property now (issues #237 / #240); it is
     // shown in Scene properties (Properties::scene_properties), not per light.
@@ -1529,7 +1369,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
     const auto& node_joint      = std::dynamic_pointer_cast<Node_joint             >(item);
     const auto& rendertarget    = std::dynamic_pointer_cast<Rendertarget_mesh      >(item);
     const auto& scene           = std::dynamic_pointer_cast<erhe::scene::Scene     >(item);
-    const auto& camera          = std::dynamic_pointer_cast<erhe::scene::Camera    >(item);
     const auto& layout          = std::dynamic_pointer_cast<erhe::scene::Layout    >(item);
     const auto& layout_item     = std::dynamic_pointer_cast<erhe::scene::Layout_item>(item);
     const auto& light           = std::dynamic_pointer_cast<erhe::scene::Light     >(item);
@@ -1681,10 +1520,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
 
     if (scene) {
         scene_properties(*scene);
-    }
-
-    if (camera) {
-        camera_properties(*camera);
     }
 
     if (light) {

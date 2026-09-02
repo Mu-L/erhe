@@ -394,8 +394,8 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
         if (
             !light->casts_shadow() ||
             (
-                (light->type != erhe::scene::Light_type::directional) &&
-                (light->type != erhe::scene::Light_type::spot)
+                (light->get_light_type() != erhe::scene::Light_type::directional) &&
+                (light->get_light_type() != erhe::scene::Light_type::spot)
             )
         ) {
             continue;
@@ -580,7 +580,7 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
         erhe::graphics::Render_pass* previous_cube_render_pass = nullptr;
         for (const std::size_t light_slot : parameters.light_set.get_point_shadow_slots()) {
             const auto& light = parameters.light_set.get_lights()[light_slot];
-            if (!light->casts_shadow() || (light->type != erhe::scene::Light_type::point)) {
+            if (!light->casts_shadow() || (light->get_light_type() != erhe::scene::Light_type::point)) {
                 continue;
             }
             auto* lpt = parameters.light_projections.get_light_projection_transforms_for_light(light.get());
@@ -593,7 +593,7 @@ auto Shadow_renderer::render(const Render_parameters& parameters) -> bool
             }
             const std::size_t light_index = lpt->index;
             const glm::vec3   light_pos   = glm::vec3{lpt->world_from_light_camera.get_matrix() * glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}};
-            const float       far_plane   = light->range;
+            const float       far_plane   = light->get_range();
 
             for (int face = 0; face < 6; ++face) {
                 const std::size_t pass_index = (point_shadow_index * 6) + static_cast<std::size_t>(face);

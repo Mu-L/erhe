@@ -101,7 +101,6 @@ private:
 
     void animation_properties         (const std::shared_ptr<erhe::scene::Animation>& animation);
     void scene_properties             (erhe::scene::Scene& scene);
-    void camera_properties            (erhe::scene::Camera& camera);
     void light_properties             (erhe::scene::Light& light);
     void layout_properties            (erhe::scene::Layout& layout);
     void layout_item_properties       (erhe::scene::Layout_item& layout_item);

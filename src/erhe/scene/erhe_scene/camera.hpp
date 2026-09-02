@@ -4,6 +4,7 @@
 #include "erhe_scene/node_attachment.hpp"
 #include "erhe_scene/projection.hpp"
 #include "erhe_scene/transform.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <cstdint>
 #include <string>
@@ -47,17 +48,39 @@ public:
         erhe::math::Depth_range                   depth_range,
         const erhe::math::Coordinate_conventions& conventions = erhe::math::Coordinate_conventions{}
     ) const -> Camera_projection_transforms;
-    [[nodiscard]] auto get_exposure         () const -> float;
-    [[nodiscard]] auto get_shadow_range     () const -> float;
+    [[nodiscard]] auto get_exposure         () const -> float { return get_value(exposure_property); }
+    [[nodiscard]] auto get_shadow_range     () const -> float { return get_value(shadow_range_property); }
     [[nodiscard]] auto get_projection_scale () const -> float;
+    void set_exposure    (float value) { set_value(exposure_property, value); }
+    void set_shadow_range(float value) { set_value(shadow_range_property, value); }
 
-    void set_exposure    (float value);
-    void set_shadow_range(float value);
+    // Registered properties (erhe::property, doc/property-system-plan.md
+    // section 4.4). The projection properties are bridged (D18) over
+    // m_projection, so projection() writes and property writes reach the
+    // same state; exposure and shadow range live in the property store.
+    static const erhe::property::Property<Projection::Type> projection_type_property;
+    static const erhe::property::Property<float>            fov_x_property;
+    static const erhe::property::Property<float>            fov_y_property;
+    static const erhe::property::Property<float>            fov_left_property;
+    static const erhe::property::Property<float>            fov_right_property;
+    static const erhe::property::Property<float>            fov_up_property;
+    static const erhe::property::Property<float>            fov_down_property;
+    static const erhe::property::Property<float>            ortho_left_property;
+    static const erhe::property::Property<float>            ortho_width_property;
+    static const erhe::property::Property<float>            ortho_bottom_property;
+    static const erhe::property::Property<float>            ortho_height_property;
+    static const erhe::property::Property<float>            frustum_left_property;
+    static const erhe::property::Property<float>            frustum_right_property;
+    static const erhe::property::Property<float>            frustum_bottom_property;
+    static const erhe::property::Property<float>            frustum_top_property;
+    static const erhe::property::Property<float>            z_near_property;
+    static const erhe::property::Property<float>            z_far_property;
+    static const erhe::property::Property<bool>             infinite_z_far_property;
+    static const erhe::property::Property<float>            exposure_property;
+    static const erhe::property::Property<float>            shadow_range_property;
 
 private:
     Projection m_projection;
-    float      m_exposure    {1.0f};
-    float      m_shadow_range{22.0f};
 };
 
 } // namespace erhe::scene

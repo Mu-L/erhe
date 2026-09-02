@@ -524,14 +524,14 @@ auto Mcp_server::query_node_details(const json& args) -> std::string
 
         auto light = std::dynamic_pointer_cast<erhe::scene::Light>(att);
         if (light) {
-            const char* type_str = (light->type == erhe::scene::Light_type::directional) ? "directional"
-                                 : (light->type == erhe::scene::Light_type::point)       ? "point"
-                                 : (light->type == erhe::scene::Light_type::spot)         ? "spot"
+            const char* type_str = (light->get_light_type() == erhe::scene::Light_type::directional) ? "directional"
+                                 : (light->get_light_type() == erhe::scene::Light_type::point)       ? "point"
+                                 : (light->get_light_type() == erhe::scene::Light_type::spot)         ? "spot"
                                  : "unknown";
             att_json["light_type"] = type_str;
-            att_json["color"]      = {light->color.x, light->color.y, light->color.z};
-            att_json["intensity"]  = light->intensity;
-            att_json["range"]      = light->range;
+            att_json["color"]      = {light->get_color().x, light->get_color().y, light->get_color().z};
+            att_json["intensity"]  = light->get_intensity();
+            att_json["range"]      = light->get_range();
         }
 
         auto bp = std::dynamic_pointer_cast<Brush_placement>(att);
@@ -886,19 +886,19 @@ auto Mcp_server::query_scene_lights(const json& args) -> std::string
     for (const auto& ll : sr->get_scene().get_light_layers()) {
         for (const auto& light : ll->lights) {
             const auto* node = light->get_node();
-            const char* type_str = (light->type == erhe::scene::Light_type::directional) ? "directional"
-                                 : (light->type == erhe::scene::Light_type::point)       ? "point"
-                                 : (light->type == erhe::scene::Light_type::spot)         ? "spot"
+            const char* type_str = (light->get_light_type() == erhe::scene::Light_type::directional) ? "directional"
+                                 : (light->get_light_type() == erhe::scene::Light_type::point)       ? "point"
+                                 : (light->get_light_type() == erhe::scene::Light_type::spot)         ? "spot"
                                  : "unknown";
             json light_json{
                 {"name",        light->get_name()},
                 {"id",          light->get_id()},
                 {"node",        node ? node->get_name() : ""},
                 {"type",        type_str},
-                {"color",       {light->color.x, light->color.y, light->color.z}},
-                {"intensity",   light->intensity},
-                {"range",       light->range},
-                {"cast_shadow", light->cast_shadow}
+                {"color",       {light->get_color().x, light->get_color().y, light->get_color().z}},
+                {"intensity",   light->get_intensity()},
+                {"range",       light->get_range()},
+                {"cast_shadow", light->get_cast_shadow()}
             };
             const erhe::scene::Light_projection_transforms* transforms = (light_projections != nullptr)
                 ? light_projections->get_light_projection_transforms_for_light(light.get())

@@ -17,6 +17,69 @@
 
 namespace erhe::scene {
 
+namespace {
+
+using erhe::property::Dependency_object;
+using erhe::property::Property;
+using erhe::property::Property_changed_args;
+using erhe::property::Property_metadata;
+using erhe::property::Property_ui;
+
+constexpr uint64_t c_owner = erhe::Item_type::light;
+
+constexpr erhe::property::Enum_entry c_light_type_entries[] = {
+    { "Directional", static_cast<int32_t>(Light_type::directional) },
+    { "Point",       static_cast<int32_t>(Light_type::point)       },
+    { "Spot",        static_cast<int32_t>(Light_type::spot)        }
+};
+
+auto is_spot(const Dependency_object& object) -> bool
+{
+    return static_cast<const Light&>(object).get_light_type() == Light_type::spot;
+}
+
+auto log_slider(const float min, const float max, const std::string_view label, const std::string_view tooltip = {}) -> Property_ui
+{
+    return Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .tooltip = tooltip, .label = label};
+}
+
+} // anonymous namespace
+
+const erhe::property::Enum_info c_light_type_enum_info{"Light_type", c_light_type_entries};
+
+const Property<Light_type> Light::light_type_property = Property<Light_type>::register_property(
+    "light_type", c_owner, c_light_type_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Light_type::directional), .property_changed = Light::on_light_property_changed, .ui = Property_ui{.label = "Light Type"}}
+);
+const Property<glm::vec3> Light::color_property = Property<glm::vec3>::register_property(
+    "color", c_owner,
+    Property_metadata{.default_value = glm::vec3{1.0f, 1.0f, 1.0f}, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .tooltip = "Tint; modulated by the blackbody color while Temperature is positive", .label = "Color"}}
+);
+const Property<float> Light::intensity_property = Property<float>::register_property(
+    "intensity", c_owner,
+    Property_metadata{.default_value = 1.0f, .property_changed = Light::on_light_property_changed, .ui = log_slider(0.01f, 20000.0f, "Intensity", "KHR_lights_punctual units: lux for directional lights, candela for point and spot lights")}
+);
+const Property<float> Light::temperature_property = Property<float>::register_property(
+    "temperature", c_owner,
+    Property_metadata{.default_value = 0.0f, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.min = 0.0f, .max = 12000.0f, .presentation = Property_ui::Presentation::slider, .tooltip = "Correlated color temperature in Kelvin; 0 disables the temperature contribution", .label = "Temperature"}}
+);
+const Property<float> Light::range_property = Property<float>::register_property(
+    "range", c_owner,
+    Property_metadata{.default_value = 100.0f, .property_changed = Light::on_light_property_changed, .ui = log_slider(1.0f, 20000.0f, "Range", "Distance the light reaches; a point light with range 0 emits no light")}
+);
+const Property<float> Light::inner_spot_angle_property = Property<float>::register_property(
+    "inner_spot_angle", c_owner,
+    Property_metadata{.default_value = glm::pi<float>() * 0.4f, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.min = 0.0f, .max = glm::pi<float>(), .presentation = Property_ui::Presentation::angle_degrees, .label = "Inner Spot", .visible_when = is_spot}}
+);
+const Property<float> Light::outer_spot_angle_property = Property<float>::register_property(
+    "outer_spot_angle", c_owner,
+    Property_metadata{.default_value = glm::pi<float>() * 0.5f, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.min = 0.0f, .max = glm::pi<float>(), .presentation = Property_ui::Presentation::angle_degrees, .tooltip = "0 makes the spot light inactive", .label = "Outer Spot", .visible_when = is_spot}}
+);
+const Property<bool> Light::cast_shadow_property = Property<bool>::register_property(
+    "cast_shadow", c_owner,
+    Property_metadata{.default_value = true, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.label = "Cast Shadow"}}
+);
+
 auto Light::get_texture_from_clip(const erhe::math::Depth_range depth_range, const erhe::math::Coordinate_conventions& conventions) -> glm::mat4
 {
     // Metal (top-left origin): y needs to be flipped: y_tex = -0.5 * y_ndc + 0.5
@@ -76,21 +139,15 @@ Light::Light(const std::string_view name)
 }
 
 Light::Light(const Light& src, erhe::for_clone)
-    : Item            {src, erhe::for_clone{}}
-    , type            {src.type            }
-    , color           {src.color           }
-    , intensity       {src.intensity       }
-    , temperature     {src.temperature     }
-    , range           {src.range           }
-    , inner_spot_angle{src.inner_spot_angle}
-    , outer_spot_angle{src.outer_spot_angle}
-    , cast_shadow     {src.cast_shadow     }
-    , layer_id        {src.layer_id        }
+    : Item    {src, erhe::for_clone{}} // the property entries copy with the base (D10)
+    , layer_id{src.layer_id}
 {
 }
 
 auto Light::get_effective_color() const -> glm::vec3
 {
+    const float temperature = get_temperature();
+    const glm::vec3 color = get_color();
     return (temperature > 0.0f) ? color * blackbody_color(temperature) : color;
 }
 
@@ -123,9 +180,9 @@ auto Light::blackbody_color(const float temperature_kelvin) -> glm::vec3
 
 auto Light::get_solid_angle() const -> float
 {
-    switch (type) {
+    switch (get_light_type()) {
         case Type::point: return 4.0f * glm::pi<float>();
-        case Type::spot:  return 2.0f * glm::pi<float>() * (1.0f - std::cos(outer_spot_angle * 0.5f));
+        case Type::spot:  return 2.0f * glm::pi<float>() * (1.0f - std::cos(get_outer_spot_angle() * 0.5f));
         default:          return 0.0f;
     }
 }
@@ -133,13 +190,14 @@ auto Light::get_solid_angle() const -> float
 auto Light::get_luminous_flux() const -> float
 {
     const float solid_angle = get_solid_angle();
+    const float intensity = get_intensity();
     return (solid_angle > 0.0f) ? intensity * solid_angle : intensity;
 }
 
 void Light::set_luminous_flux(const float lumens)
 {
     const float solid_angle = get_solid_angle();
-    intensity = (solid_angle > 0.0f) ? lumens / solid_angle : lumens;
+    set_intensity((solid_angle > 0.0f) ? lumens / solid_angle : lumens);
 }
 
 auto Light::get_light_frame() const -> Light_frame
@@ -204,6 +262,12 @@ void Light::handle_item_host_update(erhe::Item_host* const old_item_host, erhe::
     }
 }
 
+// D19: every Light property re-resolves the scene light set on change.
+void Light::on_light_property_changed(Dependency_object& object, const Property_changed_args&)
+{
+    static_cast<Light&>(object).notify_changed();
+}
+
 void Light::notify_changed()
 {
     Scene_host* const scene_host = static_cast<Scene_host*>(get_item_host());
@@ -218,7 +282,7 @@ void Light::notify_changed()
 
 auto Light::projection(const Light_projection_parameters& parameters) const -> Projection
 {
-    switch (type) {
+    switch (get_light_type()) {
         case Light_type::directional: return stable_directional_light_projection(parameters);
         case Light_type::spot:        return spot_light_projection              (parameters);
         default: return {};
@@ -252,16 +316,16 @@ auto Light::spot_light_projection(const Light_projection_parameters& parameters)
     return Projection{
         .projection_type = Projection::Type::perspective,
         .z_near          = 0.04f, // TODO
-        .z_far           = range,
-        .fov_x           = outer_spot_angle,
-        .fov_y           = outer_spot_angle
+        .z_far           = get_range(),
+        .fov_x           = get_outer_spot_angle(),
+        .fov_y           = get_outer_spot_angle()
     };
 }
 
 auto Light::projection_transforms(const Light_projection_parameters& parameters) const -> Light_projection_transforms
 {
     ERHE_PROFILE_FUNCTION();
-    switch (type) {
+    switch (get_light_type()) {
         case Light_type::directional: {
             return directional_light_projection_transforms(parameters);
         }
@@ -470,7 +534,7 @@ auto Light::point_light_projection_transforms(const Light_projection_parameters&
     const Projection light_projection{
         .projection_type = Projection::Type::perspective,
         .z_near          = 0.05f,
-        .z_far           = range,
+        .z_far           = get_range(),
         .fov_x           = glm::half_pi<float>(),
         .fov_y           = glm::half_pi<float>()
     };

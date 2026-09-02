@@ -3985,9 +3985,9 @@ auto Lightmap_baker::collect_lights(Scene_root& scene_root) const -> std::vector
         // Light direction convention matches Light_buffer: node +Z axis.
         const glm::vec3 direction = glm::normalize(glm::vec3{world_from_node * glm::vec4{0.0f, 0.0f, 1.0f, 0.0f}});
         const glm::vec3 position  = glm::vec3{world_from_node * glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}};
-        const glm::vec3 radiance  = light->intensity * light->get_effective_color();
+        const glm::vec3 radiance  = light->get_intensity() * light->get_effective_color();
         float type_value = 0.0f;
-        switch (light->type) {
+        switch (light->get_light_type()) {
             case erhe::scene::Light_type::directional: type_value = 0.0f; break;
             case erhe::scene::Light_type::point:       type_value = 1.0f; break;
             case erhe::scene::Light_type::spot:        type_value = 2.0f; break;
@@ -3996,9 +3996,9 @@ auto Lightmap_baker::collect_lights(Scene_root& scene_root) const -> std::vector
         lights.push_back(
             Light_record{
                 .position_and_type       = glm::vec4{position, type_value},
-                .direction_and_outer_cos = glm::vec4{direction, std::cos(light->outer_spot_angle * 0.5f)},
-                .radiance_and_range      = glm::vec4{radiance, light->range},
-                .params                  = glm::vec4{std::cos(light->inner_spot_angle * 0.5f), 0.0f, 0.0f, 0.0f}
+                .direction_and_outer_cos = glm::vec4{direction, std::cos(light->get_outer_spot_angle() * 0.5f)},
+                .radiance_and_range      = glm::vec4{radiance, light->get_range()},
+                .params                  = glm::vec4{std::cos(light->get_inner_spot_angle() * 0.5f), 0.0f, 0.0f, 0.0f}
             }
         );
     }
@@ -5136,12 +5136,16 @@ auto Lightmap_baker::compute_scene_hashes(Scene_root& scene_root) const -> Scene
         }
         const glm::mat4 world_from_node = node->world_from_node();
         hash_lighting = fnv1a64(&world_from_node,           sizeof(world_from_node), hash_lighting);
-        const glm::vec3 color = light->intensity * light->get_effective_color();
+        const glm::vec3 color = light->get_intensity() * light->get_effective_color();
         hash_lighting = fnv1a64(&color,                     sizeof(color),           hash_lighting);
-        hash_lighting = fnv1a64(&light->type,               sizeof(light->type),     hash_lighting);
-        hash_lighting = fnv1a64(&light->range,              sizeof(light->range),    hash_lighting);
-        hash_lighting = fnv1a64(&light->inner_spot_angle,   sizeof(float),           hash_lighting);
-        hash_lighting = fnv1a64(&light->outer_spot_angle,   sizeof(float),           hash_lighting);
+        const erhe::scene::Light_type type             = light->get_light_type();
+        const float                   range            = light->get_range();
+        const float                   inner_spot_angle = light->get_inner_spot_angle();
+        const float                   outer_spot_angle = light->get_outer_spot_angle();
+        hash_lighting = fnv1a64(&type,                      sizeof(type),            hash_lighting);
+        hash_lighting = fnv1a64(&range,                     sizeof(range),           hash_lighting);
+        hash_lighting = fnv1a64(&inner_spot_angle,          sizeof(float),           hash_lighting);
+        hash_lighting = fnv1a64(&outer_spot_angle,          sizeof(float),           hash_lighting);
     }
     // Sky lighting (set_sky_lighting, called before tick): sun moves, sky
     // toggles or parameter edits invalidate accumulated samples like any
