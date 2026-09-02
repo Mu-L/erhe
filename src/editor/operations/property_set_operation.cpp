@@ -11,25 +11,40 @@
 namespace editor {
 
 void apply_item_property(
-    App_context&                                         context,
-    erhe::Item_base&                                     item,
-    const erhe::property::Dependency_property&           property,
-    const std::optional<erhe::property::Property_value>& value
+    App_context&                                       context,
+    erhe::Item_base&                                   item,
+    const erhe::property::Dependency_property&         property,
+    const std::optional<erhe::property::Local_state>&  state
 )
 {
-    if (value.has_value()) {
-        item.set_value(property, value.value());
-    } else {
-        item.clear_value(property);
-    }
+    item.apply_local_state(property, state);
     context.on_item_property_changed(item, property);
 }
 
+auto to_local_state(const std::optional<erhe::property::Property_value>& value) -> std::optional<erhe::property::Local_state>
+{
+    if (!value.has_value()) {
+        return std::nullopt;
+    }
+    return erhe::property::Local_state{value.value()};
+}
+
+auto describe_local_state(const erhe::property::Dependency_property& property, const std::optional<erhe::property::Local_state>& state) -> std::string
+{
+    if (!state.has_value()) {
+        return "<default>";
+    }
+    if (const erhe::property::Expression_text* text = std::get_if<erhe::property::Expression_text>(&state.value()); text != nullptr) {
+        return "expression '" + text->text + "'";
+    }
+    return erhe::property::to_string(property, std::get<erhe::property::Property_value>(state.value()));
+}
+
 Property_set_operation::Property_set_operation(
-    const std::shared_ptr<erhe::Item_base>&       item,
-    const erhe::property::Dependency_property&    property,
-    std::optional<erhe::property::Property_value> before,
-    std::optional<erhe::property::Property_value> after
+    const std::shared_ptr<erhe::Item_base>&      item,
+    const erhe::property::Dependency_property&   property,
+    std::optional<erhe::property::Local_state>   before,
+    std::optional<erhe::property::Local_state>   after
 )
     : m_item    {item}
     , m_property{property}
@@ -42,9 +57,19 @@ Property_set_operation::Property_set_operation(
             item->get_type_name(),
             item->get_name(),
             property.get_name(),
-            m_after.has_value() ? erhe::property::to_string(property, m_after.value()) : std::string{"<default>"}
+            describe_local_state(property, m_after)
         )
     );
+}
+
+Property_set_operation::Property_set_operation(
+    const std::shared_ptr<erhe::Item_base>&       item,
+    const erhe::property::Dependency_property&    property,
+    std::optional<erhe::property::Property_value> before,
+    std::optional<erhe::property::Property_value> after
+)
+    : Property_set_operation{item, property, to_local_state(before), to_local_state(after)}
+{
 }
 
 Property_set_operation::~Property_set_operation() noexcept = default;
@@ -61,12 +86,12 @@ void Property_set_operation::undo(App_context& context)
     apply(context, m_before);
 }
 
-void Property_set_operation::apply(App_context& context, const std::optional<erhe::property::Property_value>& value)
+void Property_set_operation::apply(App_context& context, const std::optional<erhe::property::Local_state>& state)
 {
     if (!m_item) {
         return;
     }
-    apply_item_property(context, *m_item, m_property, value);
+    apply_item_property(context, *m_item, m_property, state);
 }
 
 void Property_set_operation::collect_item_references(std::unordered_set<const erhe::Item_base*>& out_items) const
@@ -107,7 +132,7 @@ void Property_set_apply_operation::execute(App_context& context)
     for (const Target& target : m_targets) {
         const erhe::property::Dependency_object::Change_batch batch{*target.item};
         for (const erhe::property::Property_set::Entry& entry : m_values.entries()) {
-            apply_item_property(context, *target.item, *entry.property, entry.value);
+            apply_item_property(context, *target.item, *entry.property, erhe::property::Local_state{entry.value});
         }
     }
 }
@@ -119,7 +144,7 @@ void Property_set_apply_operation::undo(App_context& context)
         const erhe::property::Dependency_object::Change_batch batch{*target.item};
         const std::vector<erhe::property::Property_set::Entry>& entries = m_values.entries();
         for (std::size_t i = 0, end = entries.size(); i < end; ++i) {
-            apply_item_property(context, *target.item, *entries[i].property, target.before[i]);
+            apply_item_property(context, *target.item, *entries[i].property, to_local_state(target.before[i]));
         }
     }
 }

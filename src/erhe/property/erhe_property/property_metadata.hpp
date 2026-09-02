@@ -16,7 +16,8 @@ class Dependency_property;
 enum class Value_source : uint8_t {
     default_value = 0, // metadata default
     inherited     = 1, // closest ancestor's effective value (inherits flag)
-    local         = 2  // set_value on this object
+    local         = 2, // set_value on this object
+    expression    = 3  // a formula on this object (D22); the local layer
 };
 
 [[nodiscard]] constexpr auto c_str(const Value_source source) -> const char*
@@ -25,6 +26,7 @@ enum class Value_source : uint8_t {
         case Value_source::default_value: return "default";
         case Value_source::inherited:     return "inherited";
         case Value_source::local:         return "local";
+        case Value_source::expression:    return "expression";
     }
     return "?";
 }

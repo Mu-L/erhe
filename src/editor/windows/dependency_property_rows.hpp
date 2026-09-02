@@ -1,5 +1,6 @@
 #pragma once
 
+#include "erhe_property/expression.hpp"
 #include "erhe_property/property_value.hpp"
 
 #include <glm/glm.hpp>
@@ -7,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace erhe           { class Item_base; }
@@ -21,8 +23,11 @@ class Property_editor;
 // more items (doc/property-system-plan.md D12): one widget per
 // Property_type shaped by the property's Property_ui metadata, a value
 // source indicator, "Reset to default", Copy / Paste Properties, mixed-value
-// display for multi-selection, and undo through Property_set_operation /
-// Property_set_apply_operation (one operation per completed drag).
+// display for multi-selection, undo through Property_set_operation /
+// Property_set_apply_operation (one operation per completed drag), and the
+// formula text in place of the widget for a property driven by an
+// expression (D22), with "Edit as expression" / "Remove expression" in the
+// context menu.
 class Dependency_property_rows
 {
 public:
@@ -47,11 +52,16 @@ private:
         bool&                                      immediate
     ) -> bool;
 
+    // The formula row of a driven property; commits on Enter or deactivation.
+    void draw_expression(const erhe::property::Dependency_property& property, std::string_view text);
+
     void begin_edit (const erhe::property::Dependency_property& property);
     void end_edit   (const erhe::property::Dependency_property& property);
-    void queue_set  (const erhe::property::Dependency_property& property, const std::optional<erhe::property::Property_value>& after);
+    void queue_set  (const erhe::property::Dependency_property& property, const std::optional<erhe::property::Local_state>& after);
     void context_menu(const erhe::property::Dependency_property& property, const erhe::property::Property_metadata& metadata);
-    void reset_to_default(const erhe::property::Dependency_property& property);
+    void reset_to_default  (const erhe::property::Dependency_property& property);
+    void edit_as_expression(const erhe::property::Dependency_property& property);
+    void remove_expression (const erhe::property::Dependency_property& property);
     void copy_properties ();
     void paste_properties();
 
@@ -63,10 +73,11 @@ private:
 
     // Drag / type session: `before` captured at widget activation, one per
     // item, committed as an operation at deactivation.
-    const erhe::property::Dependency_property*                 m_edit_property{nullptr};
-    std::vector<std::optional<erhe::property::Property_value>> m_edit_before;
-    glm::vec3                                                  m_edit_euler_degrees{0.0f}; // quaternion rows edit in Euler space
-    std::string                                                m_text_scratch;
+    const erhe::property::Dependency_property*               m_edit_property{nullptr};
+    std::vector<std::optional<erhe::property::Local_state>>  m_edit_before;
+    glm::vec3                                                m_edit_euler_degrees{0.0f}; // quaternion rows edit in Euler space
+    std::string                                              m_text_scratch;
+    std::string                                              m_expression_scratch; // the formula being typed in the active expression row
 };
 
 }

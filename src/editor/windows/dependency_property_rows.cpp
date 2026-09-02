@@ -2,6 +2,7 @@
 #include "windows/property_editor.hpp"
 
 #include "app_context.hpp"
+#include "editor_log.hpp"
 #include "operations/compound_operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/property_set_operation.hpp"
@@ -119,10 +120,14 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     const Property_metadata& metadata = property.get_metadata(first.get_property_owner_type());
 
     // Label: Property_ui::label or the property name; "*" marks a local
-    // value that differs from the default.
+    // value that differs from the default, "=" a property driven by an
+    // expression (D22).
+    const std::optional<std::string_view> expression = first.get_expression(property);
     const bool             differs_from_default = first.has_local_value(property) && !(first.get_value(property) == metadata.default_value.value());
     const std::string_view label_text           = metadata.ui.label.empty() ? property.get_name() : metadata.ui.label;
-    std::string label = differs_from_default ? std::string{"* "} + std::string{label_text} : std::string{label_text};
+    std::string label = expression.has_value()
+        ? std::string{"= "} + std::string{label_text}
+        : differs_from_default ? std::string{"* "} + std::string{label_text} : std::string{label_text};
 
     std::string tooltip{metadata.ui.tooltip};
     if (!tooltip.empty()) {
@@ -132,6 +137,14 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     tooltip += erhe::property::c_str(first.get_value_source(property));
     if (first.is_coerced(property)) {
         tooltip += " (coerced)";
+    }
+    if (expression.has_value()) {
+        tooltip += "\nValue: ";
+        tooltip += erhe::property::to_string(property, first.get_value(property));
+        if (const std::string_view error = first.get_expression_error(property); !error.empty()) {
+            tooltip += "\nExpression error: ";
+            tooltip += error;
+        }
     }
     tooltip += "\nDefault: ";
     tooltip += erhe::property::to_string(property, metadata.default_value.value());
@@ -143,6 +156,11 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     editor.add_entry(
         std::move(label),
         [this, &property, &metadata]() {
+            if (const std::optional<std::string_view> text = m_items.front()->get_expression(property); text.has_value()) {
+                draw_expression(property, text.value());
+                context_menu(property, metadata);
+                return;
+            }
             Property_value value = m_items.front()->get_value(property);
             bool mixed = false;
             for (std::size_t i = 1; i < m_items.size(); ++i) {
@@ -339,12 +357,56 @@ auto Dependency_property_rows::draw_widget(
     return false;
 }
 
+void Dependency_property_rows::draw_expression(const Dependency_property& property, const std::string_view text)
+{
+    const std::string_view error   = m_items.front()->get_expression_error(property);
+    const bool             editing = (m_edit_property == &property);
+    // The row mirrors the item's formula until the field is activated;
+    // from then on the typed text lives in m_expression_scratch (rows of
+    // other driven properties keep mirroring their own text).
+    std::string  mirror{text};
+    std::string& buffer = editing ? m_expression_scratch : mirror;
+    if (!error.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4{0.55f, 0.15f, 0.15f, 0.6f});
+    }
+    ImGui::BeginDisabled(property.is_read_only());
+    const bool entered = ImGui::InputText("##", &buffer, ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::EndDisabled();
+    if (!error.empty()) {
+        ImGui::PopStyleColor();
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", error.empty() ? "Expression: {[object/]property[.x|.y|.z|.w]}, one formula per component separated by commas" : std::string{error}.c_str());
+    }
+    if (ImGui::IsItemActivated() && !editing) {
+        begin_edit(property);
+        m_expression_scratch = mirror;
+        return;
+    }
+    if (!editing) {
+        return;
+    }
+    if (entered || ImGui::IsItemDeactivatedAfterEdit()) {
+        std::string compile_error;
+        if (m_expression_scratch == text) {
+            // unchanged
+        } else if (!erhe::property::validate_expression_text(property, m_expression_scratch, compile_error)) {
+            log_operations->warn("expression '{}' for '{}' rejected: {}", m_expression_scratch, property.get_name(), compile_error);
+        } else {
+            queue_set(property, erhe::property::Local_state{erhe::property::Expression_text{m_expression_scratch}});
+        }
+        m_edit_property = nullptr;
+    } else if (ImGui::IsItemDeactivated()) {
+        m_edit_property = nullptr; // escaped
+    }
+}
+
 void Dependency_property_rows::begin_edit(const Dependency_property& property)
 {
     m_edit_property = &property;
     m_edit_before.clear();
     for (const std::shared_ptr<erhe::Item_base>& item : m_items) {
-        m_edit_before.push_back(item->read_local_value(property));
+        m_edit_before.push_back(item->read_local_state(property));
     }
 }
 
@@ -357,12 +419,12 @@ void Dependency_property_rows::end_edit(const Dependency_property& property)
     // session's before / after and re-applies after (idempotent) so the
     // consequence hook runs once per completed edit.
     if (m_items.size() == 1) {
-        queue_set(property, m_items.front()->read_local_value(property));
+        queue_set(property, m_items.front()->read_local_state(property));
     } else {
         Compound_operation::Parameters parameters;
         for (std::size_t i = 0; i < m_items.size(); ++i) {
             parameters.operations.push_back(
-                std::make_shared<Property_set_operation>(m_items[i], property, m_edit_before[i], m_items[i]->read_local_value(property))
+                std::make_shared<Property_set_operation>(m_items[i], property, m_edit_before[i], m_items[i]->read_local_state(property))
             );
         }
         m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
@@ -372,7 +434,7 @@ void Dependency_property_rows::end_edit(const Dependency_property& property)
 
 // Queues after = `after` for every item, with the before values captured by
 // begin_edit().
-void Dependency_property_rows::queue_set(const Dependency_property& property, const std::optional<Property_value>& after)
+void Dependency_property_rows::queue_set(const Dependency_property& property, const std::optional<erhe::property::Local_state>& after)
 {
     if ((m_context.operation_stack == nullptr) || (m_edit_before.size() != m_items.size())) {
         return;
@@ -401,6 +463,14 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
     if (ImGui::MenuItem("Reset to default", nullptr, false, any_local && !property.is_read_only())) {
         reset_to_default(property);
     }
+    const bool driven      = m_items.front()->get_expression(property).has_value();
+    const bool can_drive   = !driven && !property.is_read_only() && (property.get_type() != Property_type::string);
+    if (ImGui::MenuItem("Edit as expression", nullptr, false, can_drive)) {
+        edit_as_expression(property);
+    }
+    if (ImGui::MenuItem("Remove expression", nullptr, false, driven && !property.is_read_only())) {
+        remove_expression(property);
+    }
     ImGui::Separator();
     if (ImGui::MenuItem("Copy Properties", nullptr, false, (m_items.size() == 1) && (m_context.clipboard != nullptr))) {
         copy_properties();
@@ -416,6 +486,38 @@ void Dependency_property_rows::reset_to_default(const Dependency_property& prope
 {
     begin_edit(property);
     queue_set(property, std::nullopt);
+    m_edit_property = nullptr;
+}
+
+// Starts a formula from the current value in formula form (components
+// separated by commas, bool as 1 / 0, an enumeration as its integer), so the
+// row turns into an editable expression that evaluates to the same value.
+void Dependency_property_rows::edit_as_expression(const Dependency_property& property)
+{
+    const Property_value value = m_items.front()->get_value(property);
+    std::string text;
+    const auto number = [](const float f) { return erhe::property::to_string(Property_value{f}); };
+    switch (property.get_type()) {
+        case Property_type::boolean:     text = std::get<bool>(value) ? "1" : "0"; break;
+        case Property_type::integer:     text = std::to_string(std::get<int>(value)); break;
+        case Property_type::floating:    text = number(std::get<float>(value)); break;
+        case Property_type::vec2:        { const glm::vec2 v = std::get<glm::vec2>(value); text = number(v.x) + ", " + number(v.y); break; }
+        case Property_type::vec3:        { const glm::vec3 v = std::get<glm::vec3>(value); text = number(v.x) + ", " + number(v.y) + ", " + number(v.z); break; }
+        case Property_type::vec4:        { const glm::vec4 v = std::get<glm::vec4>(value); text = number(v.x) + ", " + number(v.y) + ", " + number(v.z) + ", " + number(v.w); break; }
+        case Property_type::quat:        { const glm::quat q = std::get<glm::quat>(value); text = number(q.x) + ", " + number(q.y) + ", " + number(q.z) + ", " + number(q.w); break; }
+        case Property_type::enumeration: text = std::to_string(std::get<erhe::property::Enum_value>(value).value); break;
+        case Property_type::string:      return;
+    }
+    begin_edit(property);
+    queue_set(property, erhe::property::Local_state{erhe::property::Expression_text{std::move(text)}});
+    m_edit_property = nullptr;
+}
+
+// Bakes the current result as the local value.
+void Dependency_property_rows::remove_expression(const Dependency_property& property)
+{
+    begin_edit(property);
+    queue_set(property, erhe::property::Local_state{m_items.front()->get_value(property)});
     m_edit_property = nullptr;
 }
 

@@ -1,4 +1,5 @@
 #include "scene/scene_root.hpp"
+#include "scene/item_lookup.hpp"
 
 #include "config/generated/physics_config.hpp"
 #include "editor_log.hpp"
@@ -1135,6 +1136,11 @@ void Scene_root::detach_from_editor_scenes(App_scenes& app_scenes)
     ERHE_VERIFY(m_app_scenes == &app_scenes);
     m_app_scenes    = nullptr;
     m_is_registered = false;
+}
+
+auto Scene_root::find_hosted_item(const std::string_view name) -> erhe::Item_base*
+{
+    return find_item_in_scene_by_name(*this, name).get();
 }
 
 auto Scene_root::get_host_name() const -> const char*

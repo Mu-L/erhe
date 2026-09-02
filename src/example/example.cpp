@@ -31,6 +31,7 @@
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_item/item_log.hpp"
+#include "erhe_property/property_log.hpp"
 #include "erhe_log/log.hpp"
 #include "erhe_math/math_util.hpp"
 #include "erhe_math/math_log.hpp"
@@ -692,6 +693,7 @@ void run_example()
     erhe::dataformat::initialize_logging();
     erhe::gltf::initialize_logging();
     erhe::graphics::initialize_logging();
+    erhe::property::initialize_logging();
     erhe::item::initialize_logging();
     erhe::math::initialize_logging();
     erhe::primitive::initialize_logging();

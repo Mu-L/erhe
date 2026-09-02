@@ -16,6 +16,7 @@
 #include "erhe_item/item.hpp"
 #include "erhe_property/dependency_property.hpp"
 #include "erhe_property/enum_info.hpp"
+#include "erhe_property/expression.hpp"
 #include "erhe_property/property_metadata.hpp"
 #include "erhe_property/property_string.hpp"
 
@@ -112,19 +113,24 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
         item->get_type(),
         [&](const erhe::property::Dependency_property& property) {
             const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
-            const std::optional<erhe::property::Property_value> local = item->read_local_value(property);
+            const std::optional<erhe::property::Property_value> local      = item->read_local_value(property);
+            const std::optional<std::string_view>               expression = item->get_expression(property);
             json entry = {
-                {"name",      std::string{property.get_name()}},
-                {"type",      erhe::property::c_str(property.get_type())},
-                {"value",     value_json(property, item->get_value(property))},
-                {"source",    erhe::property::c_str(item->get_value_source(property))},
-                {"local",     local.has_value() ? value_json(property, local.value()) : json(nullptr)},
-                {"default",   value_json(property, metadata.default_value.value())},
-                {"read_only", property.is_read_only()},
-                {"inherits",  metadata.inherits},
-                {"coerced",   item->is_coerced(property)},
-                {"flags",     metadata.flags}
+                {"name",       std::string{property.get_name()}},
+                {"type",       erhe::property::c_str(property.get_type())},
+                {"value",      value_json(property, item->get_value(property))},
+                {"source",     erhe::property::c_str(item->get_value_source(property))},
+                {"local",      local.has_value() ? value_json(property, local.value()) : json(nullptr)},
+                {"expression", expression.has_value() ? json(std::string{expression.value()}) : json(nullptr)},
+                {"default",    value_json(property, metadata.default_value.value())},
+                {"read_only",  property.is_read_only()},
+                {"inherits",   metadata.inherits},
+                {"coerced",    item->is_coerced(property)},
+                {"flags",      metadata.flags}
             };
+            if (const std::string_view error = item->get_expression_error(property); !error.empty()) {
+                entry["expression_error"] = std::string{error};
+            }
             if (const erhe::property::Enum_info* info = property.get_enum_info(); info != nullptr) {
                 json labels = json::array();
                 for (const erhe::property::Enum_entry& e : info->get_entries()) {
@@ -175,6 +181,31 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
         return make_error_content("Property '" + property_name + "' is read-only");
     }
 
+    // An expression (doc/property-system-plan.md D22) instead of a value.
+    const auto expression_it = args.find("expression");
+    if ((expression_it != args.end()) && !expression_it->is_null()) {
+        if (!expression_it->is_string()) {
+            return make_error_content("expression must be a string");
+        }
+        const std::string text = expression_it->get<std::string>();
+        std::string error;
+        if (!erhe::property::validate_expression_text(*property, text, error)) {
+            return make_error_content("expression '" + text + "' rejected for property '" + property_name + "': " + error);
+        }
+        const std::optional<erhe::property::Local_state> before = item->read_local_state(*property);
+        m_context.operation_stack->queue(
+            std::make_shared<Property_set_operation>(item, *property, before, erhe::property::Local_state{erhe::property::Expression_text{text}})
+        );
+        json result = {
+            {"item",       {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
+            {"property",   property_name},
+            {"before",     describe_local_state(*property, before)},
+            {"expression", text},
+            {"queued",     true}
+        };
+        return make_json_content(result).dump();
+    }
+
     std::optional<erhe::property::Property_value> after;
     const auto value_it = args.find("value");
     const bool clear = (value_it == args.end()) || value_it->is_null();
@@ -210,13 +241,13 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
         }
     }
 
-    const std::optional<erhe::property::Property_value> before = item->read_local_value(*property);
-    m_context.operation_stack->queue(std::make_shared<Property_set_operation>(item, *property, before, after));
+    const std::optional<erhe::property::Local_state> before = item->read_local_state(*property);
+    m_context.operation_stack->queue(std::make_shared<Property_set_operation>(item, *property, before, to_local_state(after)));
 
     json result = {
         {"item",     {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
         {"property", property_name},
-        {"before",   before.has_value() ? value_json(*property, before.value()) : json(nullptr)},
+        {"before",   before.has_value() ? json(describe_local_state(*property, before)) : json(nullptr)},
         {"after",    after.has_value() ? value_json(*property, after.value()) : json(nullptr)},
         {"queued",   true}
     };

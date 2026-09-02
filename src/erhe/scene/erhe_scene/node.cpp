@@ -418,6 +418,14 @@ void Node::handle_transform_update(const uint64_t serial) const
         attachment->handle_node_transform_update();
     }
 
+    // Expressions reading this node's transform properties (D22): the
+    // bridged storage changed without set_value, so announce it here, where
+    // every transform writer funnels. One null check when nothing depends on
+    // the node.
+    invalidate_dependents(translation_property);
+    invalidate_dependents(rotation_property);
+    invalidate_dependents(scale_property);
+
     // Descendants inherit this node's new world transform; queue the subtree
     // for propagation in the scene's next update_node_transforms() pass. Every
     // transform mutation path funnels through here, so no writer (animation,

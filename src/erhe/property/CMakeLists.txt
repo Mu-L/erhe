@@ -9,6 +9,8 @@ erhe_target_sources_grouped(
     erhe_property/dependency_property.hpp
     erhe_property/enum_info.cpp
     erhe_property/enum_info.hpp
+    erhe_property/expression.cpp
+    erhe_property/expression.hpp
     erhe_property/property_log.cpp
     erhe_property/property_log.hpp
     erhe_property/property_metadata.hpp
@@ -31,6 +33,7 @@ target_link_libraries(
         erhe::log
         erhe::verify
         fmt::fmt
+        tinyexpr
 )
 
 erhe_target_settings(${_target} "erhe")

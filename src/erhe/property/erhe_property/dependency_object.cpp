@@ -75,6 +75,33 @@ void Observer_token::release()
     m_id = 0;
 }
 
+// Effective_value_entry
+
+Dependency_object::Effective_value_entry::Effective_value_entry(const uint16_t index, Property_value local)
+    : index{index}
+    , local{std::move(local)}
+{
+}
+
+Dependency_object::Effective_value_entry::Effective_value_entry(const Effective_value_entry& other)
+    : index     {other.index}
+    , local     {other.local}
+    , coerced   {other.coerced}
+    , expression{other.expression ? other.expression->clone() : nullptr}
+{
+}
+
+Dependency_object::Effective_value_entry& Dependency_object::Effective_value_entry::operator=(const Effective_value_entry& other)
+{
+    if (this != &other) {
+        index      = other.index;
+        local      = other.local;
+        coerced    = other.coerced;
+        expression = other.expression ? other.expression->clone() : nullptr;
+    }
+    return *this;
+}
+
 // Dependency_object
 
 Dependency_object::Dependency_object() = default;
@@ -87,12 +114,29 @@ Dependency_object::Dependency_object(const Dependency_object& other)
 Dependency_object& Dependency_object::operator=(const Dependency_object& other)
 {
     if (this != &other) {
+        for (Effective_value_entry& entry : m_entries) {
+            detach_expression(entry);
+        }
         m_entries = other.m_entries;
     }
     return *this;
 }
 
-Dependency_object::~Dependency_object() noexcept = default;
+Dependency_object::~Dependency_object() noexcept
+{
+    // Expressions on this object stop reading their sources; expressions
+    // elsewhere that read this object lose the reference.
+    for (Effective_value_entry& entry : m_entries) {
+        detach_expression(entry);
+    }
+    if (m_dependents) {
+        const std::vector<Dependent> dependents = std::move(*m_dependents);
+        m_dependents.reset();
+        for (const Dependent& dependent : dependents) {
+            dependent.target->on_source_destroyed(*this);
+        }
+    }
+}
 
 auto Dependency_object::find_entry(const uint16_t index) const -> const Effective_value_entry*
 {
@@ -120,17 +164,27 @@ auto Dependency_object::find_or_create_entry(const uint16_t index) -> Effective_
     if ((i != m_entries.end()) && (i->index == index)) {
         return *i;
     }
-    return *m_entries.insert(i, Effective_value_entry{.index = index, .local = {}, .coerced = {}});
+    return *m_entries.insert(i, Effective_value_entry{index, Property_value{}});
 }
 
 void Dependency_object::remove_entry(const uint16_t index)
 {
+    if (Effective_value_entry* entry = find_entry(index); entry != nullptr) {
+        detach_expression(*entry);
+    }
     std::erase_if(m_entries, [index](const Effective_value_entry& entry) { return entry.index == index; });
 }
 
 auto Dependency_object::get_metadata(const Dependency_property& property) const -> const Property_metadata&
 {
     return property.get_metadata(get_property_owner_type());
+}
+
+// An entry on a bridged property exists only to carry an expression: the
+// value lives behind the bridge.
+auto Dependency_object::entry_is_bridged_expression(const Effective_value_entry& entry, const Property_metadata& metadata) const -> bool
+{
+    return (entry.expression != nullptr) && metadata.bridge.is_bound();
 }
 
 auto Dependency_object::get_inherited_value(const Dependency_property& property) const -> std::optional<Property_value>
@@ -146,11 +200,14 @@ auto Dependency_object::get_inherited_value(const Dependency_property& property)
 
 auto Dependency_object::get_base_value(const Dependency_property& property, Value_source& out_source) const -> Property_value
 {
+    const Property_metadata& metadata = get_metadata(property);
     if (const Effective_value_entry* entry = find_entry(property.get_index()); entry != nullptr) {
-        out_source = Value_source::local;
+        out_source = (entry->expression != nullptr) ? Value_source::expression : Value_source::local;
+        if (entry_is_bridged_expression(*entry, metadata)) {
+            return metadata.bridge.get(*this);
+        }
         return entry->local;
     }
-    const Property_metadata& metadata = get_metadata(property);
     if (metadata.bridge.is_bound()) {
         out_source = Value_source::local;
         return metadata.bridge.get(*this);
@@ -167,8 +224,21 @@ auto Dependency_object::get_base_value(const Dependency_property& property, Valu
 
 auto Dependency_object::get_effective_value(const Dependency_property& property, Value_source& out_source) const -> Property_value
 {
-    if (const Effective_value_entry* entry = find_entry(property.get_index()); entry != nullptr) {
-        out_source = Value_source::local;
+    const Effective_value_entry* entry = find_entry(property.get_index());
+    if ((entry != nullptr) && (entry->expression != nullptr) && entry->expression->has_unresolved_references()) {
+        // Pull: a reference that could not be resolved earlier (a source
+        // created later, a loaded scene, a clone) is retried on read.
+        Dependency_object* self = const_cast<Dependency_object*>(this);
+        self->evaluate_expression(*self->find_entry(property.get_index()), property);
+        entry = find_entry(property.get_index());
+    }
+    if (entry != nullptr) {
+        const Property_metadata& metadata = get_metadata(property);
+        out_source = (entry->expression != nullptr) ? Value_source::expression : Value_source::local;
+        if (entry_is_bridged_expression(*entry, metadata)) {
+            const Property_value base = metadata.bridge.get(*this);
+            return metadata.coerce ? metadata.coerce(*this, base) : base;
+        }
         return entry->coerced.has_value() ? entry->coerced.value() : entry->local;
     }
     Property_value base = get_base_value(property, out_source);
@@ -200,11 +270,11 @@ auto Dependency_object::is_coerced(const Dependency_property& property) const ->
 
 auto Dependency_object::read_local_value(const Dependency_property& property) const -> std::optional<Property_value>
 {
+    const Property_metadata& metadata = get_metadata(property);
     const Effective_value_entry* entry = find_entry(property.get_index());
-    if (entry != nullptr) {
+    if ((entry != nullptr) && !entry_is_bridged_expression(*entry, metadata)) {
         return entry->local;
     }
-    const Property_metadata& metadata = get_metadata(property);
     if (metadata.bridge.is_bound()) {
         return metadata.bridge.get(*this);
     }
@@ -231,10 +301,15 @@ void Dependency_object::store_coerced(const Dependency_property& property, Effec
 
 void Dependency_object::set_value(const Dependency_property& property, const Property_value& value)
 {
-    set_value_internal(property, value, false);
+    set_value_internal(property, value, false, false);
 }
 
-void Dependency_object::set_value_internal(const Dependency_property& property, const Property_value& value, const bool allow_read_only)
+void Dependency_object::set_current_value(const Dependency_property& property, const Property_value& value)
+{
+    set_value_internal(property, value, false, true);
+}
+
+void Dependency_object::set_value_internal(const Dependency_property& property, const Property_value& value, const bool allow_read_only, const bool keep_expression)
 {
     if (property.is_read_only() && !allow_read_only) {
         log->error("property '{}' is read-only", property.get_name());
@@ -248,12 +323,22 @@ void Dependency_object::set_value_internal(const Dependency_property& property, 
     Property_value old_value = get_effective_value(property, old_source);
 
     const Property_metadata& metadata = get_metadata(property);
+    Effective_value_entry* entry = find_entry(property.get_index());
+    if ((entry != nullptr) && (entry->expression != nullptr) && !keep_expression) {
+        // A value write replaces the expression (WPF semantics).
+        detach_expression(*entry);
+        entry->expression.reset();
+        if (metadata.bridge.is_bound()) {
+            remove_entry(property.get_index());
+            entry = nullptr;
+        }
+    }
     if (metadata.bridge.is_bound()) {
         metadata.bridge.set(*this, value);
     } else {
-        Effective_value_entry& entry = find_or_create_entry(property.get_index());
-        entry.local = value;
-        store_coerced(property, entry);
+        Effective_value_entry& stored = (entry != nullptr) ? *entry : find_or_create_entry(property.get_index());
+        stored.local = value;
+        store_coerced(property, stored);
     }
 
     Value_source   new_source{};
@@ -274,8 +359,9 @@ void Dependency_object::clear_value_internal(const Dependency_property& property
     }
     const Property_metadata& metadata = get_metadata(property);
     if (metadata.bridge.is_bound()) {
-        // A bridged property has no "unset" state: clearing writes the default.
-        set_value_internal(property, metadata.default_value.value(), allow_read_only);
+        // A bridged property has no "unset" state: clearing writes the
+        // default (and drops an expression, through set_value_internal).
+        set_value_internal(property, metadata.default_value.value(), allow_read_only, false);
         return;
     }
     if (find_entry(property.get_index()) == nullptr) {
@@ -295,7 +381,7 @@ void Dependency_object::clear_value_internal(const Dependency_property& property
 void Dependency_object::coerce_value(const Dependency_property& property)
 {
     Effective_value_entry* entry = find_entry(property.get_index());
-    if (entry == nullptr) {
+    if ((entry == nullptr) || entry_is_bridged_expression(*entry, get_metadata(property))) {
         return;
     }
     Value_source   old_source{};
@@ -309,7 +395,9 @@ void Dependency_object::coerce_value(const Dependency_property& property)
 void Dependency_object::for_each_local_value(const std::function<void(const Dependency_property&, const Property_value&)>& callback) const
 {
     const Property_registry& registry = Property_registry::get();
-    // Entries and bridged properties, merged in index order (both are sorted).
+    // Entries and bridged properties, merged in index order (both are
+    // sorted). A bridged property with an expression entry is emitted once,
+    // with the bridge value.
     std::vector<const Dependency_property*> bridged;
     const uint64_t owner_type = get_property_owner_type();
     registry.for_each_property_of_type(
@@ -325,6 +413,11 @@ void Dependency_object::for_each_local_value(const std::function<void(const Depe
         while ((b < bridged.size()) && (bridged[b]->get_index() < entry.index)) {
             callback(*bridged[b], bridged[b]->get_metadata(owner_type).bridge.get(*this));
             ++b;
+        }
+        if ((b < bridged.size()) && (bridged[b]->get_index() == entry.index)) {
+            callback(*bridged[b], bridged[b]->get_metadata(owner_type).bridge.get(*this));
+            ++b;
+            continue;
         }
         callback(registry.get(entry.index), entry.local);
     }
@@ -357,6 +450,273 @@ auto Dependency_object::add_observer_entry(const uint16_t index, Observer_callba
         }
     );
     return Observer_token{m_observers, id};
+}
+
+// Expressions (D22)
+
+auto Dependency_object::set_expression(const Dependency_property& property, const std::string_view text) -> bool
+{
+    if (property.is_read_only()) {
+        log->error("property '{}' is read-only", property.get_name());
+        return false;
+    }
+    std::string error;
+    if (!validate_expression_text(property, text, error)) {
+        log->error("expression '{}' for property '{}' rejected: {}", text, property.get_name(), error);
+        return false;
+    }
+    std::unique_ptr<Expression> expression = Expression::compile(text, property.get_type(), error);
+
+    Value_source   old_source{};
+    Property_value old_value = get_effective_value(property, old_source);
+
+    // Install: the previous local value (if any) becomes the initial cached
+    // result until the first evaluation replaces it. The previous
+    // expression (if any) is kept aside until the new one is accepted.
+    const bool had_entry = (find_entry(property.get_index()) != nullptr);
+    Effective_value_entry& entry = find_or_create_entry(property.get_index());
+    detach_expression(entry);
+    std::unique_ptr<Expression> previous = std::move(entry.expression);
+    entry.expression = std::move(expression);
+    const Property_metadata& metadata = get_metadata(property);
+    if (!metadata.bridge.is_bound() && !had_entry) {
+        entry.local = old_value;
+        entry.coerced.reset();
+    }
+
+    // Resolve what resolves now, and refuse a formula that reaches its own
+    // target through the resolved graph.
+    resolve_references(entry, property);
+    for (const Expression::Reference& reference : entry.expression->get_references()) {
+        if (reference.is_resolved() && expression_reaches(*reference.object, reference.property->get_index(), *this, property.get_index(), 0)) {
+            log->error("expression '{}' for property '{}' rejected: cycle through {{{}}}", text, property.get_name(), reference.describe());
+            detach_expression(entry);
+            entry.expression = std::move(previous); // unresolved; resolves again on the next read
+            if (!had_entry) {
+                remove_entry(property.get_index());
+            }
+            return false;
+        }
+    }
+
+    // The first evaluation, notified against the state before the install
+    // (a value that stays equal still changes source).
+    if (entry.expression->begin_evaluation()) {
+        static_cast<void>(evaluate_into(entry, property));
+        Value_source   new_source{};
+        Property_value new_value = get_effective_value(property, new_source);
+        notify(property, old_value, old_source, new_value, new_source);
+        entry.expression->end_evaluation();
+    }
+    return true;
+}
+
+auto Dependency_object::get_expression(const Dependency_property& property) const -> std::optional<std::string_view>
+{
+    const Effective_value_entry* entry = find_entry(property.get_index());
+    if ((entry == nullptr) || !entry->expression) {
+        return std::nullopt;
+    }
+    return entry->expression->get_text();
+}
+
+auto Dependency_object::get_expression_error(const Dependency_property& property) const -> std::string_view
+{
+    const Effective_value_entry* entry = find_entry(property.get_index());
+    if ((entry == nullptr) || !entry->expression) {
+        return {};
+    }
+    return entry->expression->get_error();
+}
+
+auto Dependency_object::read_local_state(const Dependency_property& property) const -> std::optional<Local_state>
+{
+    if (std::optional<std::string_view> text = get_expression(property); text.has_value()) {
+        return Local_state{Expression_text{std::string{text.value()}}};
+    }
+    if (std::optional<Property_value> value = read_local_value(property); value.has_value()) {
+        return Local_state{std::move(value.value())};
+    }
+    return std::nullopt;
+}
+
+void Dependency_object::apply_local_state(const Dependency_property& property, const std::optional<Local_state>& state)
+{
+    if (!state.has_value()) {
+        clear_value(property);
+    } else if (const Expression_text* text = std::get_if<Expression_text>(&state.value()); text != nullptr) {
+        static_cast<void>(set_expression(property, text->text));
+    } else {
+        set_value(property, std::get<Property_value>(state.value()));
+    }
+}
+
+// True when `object`'s `index` is driven by an expression that (through
+// resolved references, transitively) reads target's target_index.
+auto Dependency_object::expression_reaches(const Dependency_object& object, const uint16_t index, const Dependency_object& target, const uint16_t target_index, const int depth) const -> bool
+{
+    if ((&object == &target) && (index == target_index)) {
+        return true;
+    }
+    if (depth > 64) {
+        return true; // deeper than any sane graph: treat as a cycle
+    }
+    const Effective_value_entry* entry = object.find_entry(index);
+    if ((entry == nullptr) || !entry->expression) {
+        return false;
+    }
+    for (const Expression::Reference& reference : entry->expression->get_references()) {
+        if (reference.is_resolved() && expression_reaches(*reference.object, reference.property->get_index(), target, target_index, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Dependency_object::resolve_references(Effective_value_entry& entry, const Dependency_property& property)
+{
+    const Property_registry& registry = Property_registry::get();
+    for (Expression::Reference& reference : entry.expression->get_references()) {
+        if (reference.is_resolved()) {
+            continue;
+        }
+        Dependency_object* object = resolve_expression_object(reference.object_path);
+        if (object == nullptr) {
+            continue;
+        }
+        const Dependency_property* source_property = registry.find_for_type(object->get_property_owner_type(), reference.property_name);
+        if (source_property == nullptr) {
+            continue;
+        }
+        reference.object   = object;
+        reference.property = source_property;
+        object->add_dependent(
+            Dependent{
+                .target       = this,
+                .target_index = property.get_index(),
+                .source_index = source_property->get_index()
+            }
+        );
+    }
+}
+
+// Resolves, evaluates and stores the result without notifying. False when
+// nothing was stored (error recorded on the expression, the previous value
+// stays).
+auto Dependency_object::evaluate_into(Effective_value_entry& entry, const Dependency_property& property) -> bool
+{
+    if (entry.expression->has_unresolved_references()) {
+        resolve_references(entry, property);
+    }
+    std::optional<Property_value> result = entry.expression->evaluate(property.get_enum_info());
+    if (!result.has_value()) {
+        return false;
+    }
+    if (!property.validate(result.value())) {
+        entry.expression->set_error("the result was rejected by validation");
+        return false;
+    }
+    const Property_metadata& metadata = get_metadata(property);
+    if (metadata.bridge.is_bound()) {
+        metadata.bridge.set(*this, result.value());
+    } else {
+        entry.local = std::move(result.value());
+        store_coerced(property, entry);
+    }
+    return true;
+}
+
+void Dependency_object::evaluate_expression(Effective_value_entry& entry, const Dependency_property& property)
+{
+    if (!entry.expression->begin_evaluation()) {
+        return; // a cycle: the value from the evaluation up the stack stands
+    }
+    Value_source   old_source{};
+    Property_value old_value = get_effective_value(property, old_source);
+    if (evaluate_into(entry, property)) {
+        Value_source   new_source{};
+        Property_value new_value = get_effective_value(property, new_source);
+        notify(property, old_value, old_source, new_value, new_source);
+    }
+    entry.expression->end_evaluation();
+}
+
+void Dependency_object::detach_expression(Effective_value_entry& entry)
+{
+    if (!entry.expression) {
+        return;
+    }
+    for (Expression::Reference& reference : entry.expression->get_references()) {
+        if (reference.object != nullptr) {
+            reference.object->remove_dependents_of(*this);
+            reference.object   = nullptr;
+            reference.property = nullptr;
+        }
+    }
+}
+
+void Dependency_object::add_dependent(const Dependent& dependent)
+{
+    if (!m_dependents) {
+        m_dependents = std::make_unique<std::vector<Dependent>>();
+    }
+    for (const Dependent& existing : *m_dependents) {
+        if ((existing.target == dependent.target) && (existing.target_index == dependent.target_index) && (existing.source_index == dependent.source_index)) {
+            return;
+        }
+    }
+    m_dependents->push_back(dependent);
+}
+
+void Dependency_object::remove_dependents_of(const Dependency_object& target)
+{
+    if (!m_dependents) {
+        return;
+    }
+    std::erase_if(*m_dependents, [&target](const Dependent& dependent) { return dependent.target == &target; });
+    if (m_dependents->empty()) {
+        m_dependents.reset();
+    }
+}
+
+void Dependency_object::on_source_destroyed(const Dependency_object& source)
+{
+    for (Effective_value_entry& entry : m_entries) {
+        if (!entry.expression) {
+            continue;
+        }
+        for (Expression::Reference& reference : entry.expression->get_references()) {
+            if (reference.object == &source) {
+                reference.object   = nullptr;
+                reference.property = nullptr;
+                entry.expression->set_error("unresolved reference {" + reference.describe() + "}");
+            }
+        }
+    }
+}
+
+void Dependency_object::invalidate_dependents(const Dependency_property& property) const
+{
+    if (!m_dependents) {
+        return;
+    }
+    // Re-evaluation may resolve or drop dependents on this object; iterate
+    // over a copy of the matching entries.
+    const uint16_t index = property.get_index();
+    std::vector<Dependent> matching;
+    for (const Dependent& dependent : *m_dependents) {
+        if (dependent.source_index == index) {
+            matching.push_back(dependent);
+        }
+    }
+    const Property_registry& registry = Property_registry::get();
+    for (const Dependent& dependent : matching) {
+        Effective_value_entry* entry = dependent.target->find_entry(dependent.target_index);
+        if ((entry == nullptr) || !entry->expression) {
+            continue;
+        }
+        dependent.target->evaluate_expression(*entry, registry.get(dependent.target_index));
+    }
 }
 
 // Notification
@@ -433,6 +793,7 @@ void Dependency_object::deliver(const Property_changed_args& args)
             callback(*this, args);
         }
     }
+    invalidate_dependents(args.property);
 }
 
 void Dependency_object::propagate_to_descendants(

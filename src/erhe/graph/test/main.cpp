@@ -1,6 +1,7 @@
 #include "erhe_file/file_log.hpp"
 #include "erhe_graph/graph_log.hpp"
 #include "erhe_item/item_log.hpp"
+#include "erhe_property/property_log.hpp"
 #include "erhe_log/log.hpp"
 
 #include <spdlog/spdlog.h>
@@ -21,6 +22,7 @@ int main(int argc, char** argv)
 
     // 3. Now safe to initialize item and graph logging (make_logger reads
     //    logging config via erhe::file, which now has a valid logger)
+    erhe::property::initialize_logging();
     erhe::item::initialize_logging();
     erhe::graph::initialize_logging();
 

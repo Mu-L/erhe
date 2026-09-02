@@ -16,6 +16,7 @@ add_executable(${_target}
     test_camera_properties.cpp
     test_light_frame.cpp
     test_light_properties.cpp
+    test_node_expressions.cpp
     test_node_properties.cpp
     test_optimized_variant_invalidation.cpp
 )

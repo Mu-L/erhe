@@ -2,11 +2,13 @@
 
 #include "operations/operation.hpp"
 
+#include "erhe_property/expression.hpp"
 #include "erhe_property/property_set.hpp"
 #include "erhe_property/property_value.hpp"
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace erhe          { class Item_base; }
@@ -17,14 +19,21 @@ namespace editor {
 class App_context;
 
 // Undoable write of one property on one item (doc/property-system-plan.md
-// D11). `before` / `after` are the item's LOCAL value, nullopt meaning "no
-// local value" - so undo restores a cleared property, not merely the previous
+// D11). `before` / `after` are the item's LOCAL state - a stored value or an
+// expression (D22), nullopt meaning "no local value" - so undo restores a
+// cleared property or the formula a value replaced, not merely the previous
 // effective value. After each apply the operation runs
 // App_context::on_item_property_changed so the property's consequence flags
 // take effect.
 class Property_set_operation : public Operation
 {
 public:
+    Property_set_operation(
+        const std::shared_ptr<erhe::Item_base>&      item,
+        const erhe::property::Dependency_property&   property,
+        std::optional<erhe::property::Local_state>   before,
+        std::optional<erhe::property::Local_state>   after
+    );
     Property_set_operation(
         const std::shared_ptr<erhe::Item_base>&       item,
         const erhe::property::Dependency_property&    property,
@@ -42,12 +51,12 @@ public:
     [[nodiscard]] auto get_property() const -> const erhe::property::Dependency_property& { return m_property; }
 
 private:
-    void apply(App_context& context, const std::optional<erhe::property::Property_value>& value);
+    void apply(App_context& context, const std::optional<erhe::property::Local_state>& state);
 
-    std::shared_ptr<erhe::Item_base>              m_item;
-    const erhe::property::Dependency_property&    m_property;
-    std::optional<erhe::property::Property_value> m_before;
-    std::optional<erhe::property::Property_value> m_after;
+    std::shared_ptr<erhe::Item_base>            m_item;
+    const erhe::property::Dependency_property&  m_property;
+    std::optional<erhe::property::Local_state>  m_before;
+    std::optional<erhe::property::Local_state>  m_after;
 };
 
 // Applies a Property_set to several items (paste, multi-selection edit) as
@@ -78,14 +87,18 @@ private:
     erhe::property::Property_set m_values;
 };
 
-// Applies `value` (nullopt = clear) as the item's local value and runs the
-// editor consequence hook. Shared by the operations above and by direct
-// (non-undoable) callers such as the startup script.
+// Applies `state` (a value, an expression, or nullopt = clear) as the
+// item's local layer and runs the editor consequence hook. Shared by the
+// operations above and by direct (non-undoable) callers such as the startup
+// script.
 void apply_item_property(
-    App_context&                                         context,
-    erhe::Item_base&                                     item,
-    const erhe::property::Dependency_property&           property,
-    const std::optional<erhe::property::Property_value>& value
+    App_context&                                       context,
+    erhe::Item_base&                                   item,
+    const erhe::property::Dependency_property&         property,
+    const std::optional<erhe::property::Local_state>&  state
 );
+
+[[nodiscard]] auto to_local_state(const std::optional<erhe::property::Property_value>& value) -> std::optional<erhe::property::Local_state>;
+[[nodiscard]] auto describe_local_state(const erhe::property::Dependency_property& property, const std::optional<erhe::property::Local_state>& state) -> std::string;
 
 }

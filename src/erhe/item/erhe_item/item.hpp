@@ -396,8 +396,11 @@ public:
     [[nodiscard]] virtual auto get_item_host() const -> Item_host*       { return m_item_host; }
 
     // Implements erhe::property::Dependency_object: property metadata is
-    // resolved by the item's type bits.
-    [[nodiscard]] auto get_property_owner_type() const -> uint64_t override { return get_type(); }
+    // resolved by the item's type bits, and an expression reference path
+    // (D22) is this item (""), its inheritance parent ("..") or an item of
+    // the same host by name (Item_host::find_hosted_item).
+    [[nodiscard]] auto get_property_owner_type () const -> uint64_t override { return get_type(); }
+    [[nodiscard]] auto resolve_expression_object(std::string_view path) const -> erhe::property::Dependency_object* override;
 
     // For items whose host is tracked by an owning container (e.g. the
     // editor's content library): the container maintains this pointer on

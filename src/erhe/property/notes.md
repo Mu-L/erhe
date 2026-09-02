@@ -45,6 +45,20 @@ every scene item carries a property store. Plan and design record:
   when the coerce callback changed it.
 - **`Observer_token`** - RAII subscription to one property on one object,
   or to every property of it (`add_observer` without a property).
+- **`Expression`** (`expression.hpp`) - a compiled formula driving one
+  property (`doc/property-system-plan.md` D22): comma-separated tinyexpr
+  expressions, one per component, with `{[object/]property[.x|.y|.z|.w]}`
+  references; `set_expression` installs it as the local layer,
+  `Value_source::expression` reports it, `Local_state` (value or
+  `Expression_text`) is the exact local layer for undo. References resolve
+  lazily through `resolve_expression_object` (Item_base: `""` self, `..`
+  parent, a name via `Item_host::find_hosted_item`); a resolved source keeps
+  a dependent list and re-evaluates its targets from `deliver`, or from
+  `invalidate_dependents` when its storage changed outside `set_value`
+  (`Node::handle_transform_update`). Beyond tinyexpr's own functions:
+  `min`, `max`, `clamp`, `lerp`, `step`, `smoothstep`, `sign`, `round`,
+  `frac`, `deg`, `rad`, and the logic set `lt le gt ge eq ne not and or
+  select`. Depends on `tinyexpr` (private).
 - **`Property_set`** - sorted bag of (property, value): local values of an
   object, clipboard payload, diff.
 - **`property_string.hpp`** - `to_string` / `parse_value` for every type.

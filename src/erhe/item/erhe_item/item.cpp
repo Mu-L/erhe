@@ -1,4 +1,5 @@
 #include "erhe_item/item.hpp"
+#include "erhe_item/item_host.hpp"
 #include "erhe_utility/bit_helpers.hpp"
 #include "erhe_verify/verify.hpp"
 
@@ -308,6 +309,18 @@ auto Item_base::describe(int level) const -> std::string
         case 2:  return fmt::format("{} {}, id = {}", get_type_name(), get_name(), get_id());
         default: return fmt::format("{} {}, id = {}, flags = {}", get_type_name(), get_name(), get_id(), Item_flags::to_string(get_flag_bits()));
     }
+}
+
+auto Item_base::resolve_expression_object(const std::string_view path) const -> erhe::property::Dependency_object*
+{
+    if (path.empty()) {
+        return const_cast<Item_base*>(this);
+    }
+    if (path == "..") {
+        return const_cast<erhe::property::Dependency_object*>(get_inheritance_parent());
+    }
+    Item_host* const host = get_item_host();
+    return (host != nullptr) ? host->find_hosted_item(path) : nullptr;
 }
 
 auto Item_base::get_id() const -> std::size_t

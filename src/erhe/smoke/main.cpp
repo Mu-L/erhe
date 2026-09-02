@@ -1,5 +1,6 @@
 #include "erhe_file/file_log.hpp"
 #include "erhe_item/item_log.hpp"
+#include "erhe_property/property_log.hpp"
 #include "erhe_log/log.hpp"
 
 // Smoke tests
@@ -79,6 +80,7 @@ int main(int argc, char** argv)
     // Initialize logging
     erhe::log::initialize_log_sinks();
     erhe::file::log_file = spdlog::stdout_color_mt("erhe.file.bootstrap");
+    erhe::property::initialize_logging();
     erhe::item::initialize_logging();
 
     const bool run_forever = (duration <= 0.0);

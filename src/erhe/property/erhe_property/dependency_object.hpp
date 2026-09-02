@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_property/dependency_property.hpp"
+#include "erhe_property/expression.hpp"
 #include "erhe_property/property_metadata.hpp"
 #include "erhe_property/property_value.hpp"
 
@@ -8,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace erhe::property {
@@ -60,13 +62,15 @@ public:
 // WPF DependencyObject: a sparse store of per-property values with
 // precedence coerced > local > inherited > default, validate / coerce /
 // changed callbacks from the property metadata, a virtual changed hook,
-// per-object observers and change batching.
+// per-object observers, change batching, and expressions driving
+// properties from other properties (D22).
 class Dependency_object
 {
 public:
     Dependency_object();
-    // Copies local values (and their coerced values); observers and pending
-    // batches are not copied.
+    // Copies local values (and their coerced values) and expression texts
+    // (unresolved: the copy resolves them itself); observers, dependents
+    // and pending batches are not copied.
     Dependency_object(const Dependency_object& other);
     Dependency_object& operator=(const Dependency_object& other);
     virtual ~Dependency_object() noexcept;
@@ -79,6 +83,15 @@ public:
     [[nodiscard]] virtual auto get_inheritance_parent() const -> const Dependency_object* { return nullptr; }
     virtual void for_each_inheritance_child(const std::function<void(Dependency_object&)>& callback) { static_cast<void>(callback); }
 
+    // The object an expression reference path names (D22): "" is this
+    // object; Item_base adds ".." (the inheritance parent) and item names
+    // through its Item_host. nullptr = unresolved (retried on every read
+    // and evaluation).
+    [[nodiscard]] virtual auto resolve_expression_object(std::string_view path) const -> Dependency_object*
+    {
+        return path.empty() ? const_cast<Dependency_object*>(this) : nullptr;
+    }
+
     // Typed access
     template <Property_storable T>
     [[nodiscard]] auto get_value(const Property<T>& property) const -> T
@@ -89,13 +102,13 @@ public:
     template <Property_storable T>
     void set_value(const Property<T>& property, const T& value)
     {
-        set_value_internal(property.get(), make_value<T>(value), false);
+        set_value_internal(property.get(), make_value<T>(value), false, false);
     }
 
     template <Property_storable T>
     void set_value(const Property_key<T>& key, const T& value)
     {
-        set_value_internal(key.get(), make_value<T>(value), true);
+        set_value_internal(key.get(), make_value<T>(value), true, false);
     }
 
     template <Property_storable T>
@@ -122,7 +135,8 @@ public:
 
     // Untyped access (editor, undo, serialization, MCP). Writes to a
     // read-only property are rejected here; the typed key overloads are the
-    // only write path for those.
+    // only write path for those. set_value on a property driven by an
+    // expression replaces the expression with the value.
     [[nodiscard]] auto get_value       (const Dependency_property& property) const -> Property_value;
     void               set_value       (const Dependency_property& property, const Property_value& value);
     void               clear_value     (const Dependency_property& property);
@@ -130,6 +144,29 @@ public:
     [[nodiscard]] auto has_local_value (const Dependency_property& property) const -> bool;
     [[nodiscard]] auto get_value_source(const Dependency_property& property) const -> Value_source;
     [[nodiscard]] auto is_coerced      (const Dependency_property& property) const -> bool;
+
+    // Expressions (D22). set_expression compiles `text` and installs it as
+    // the property's local layer; false (and a logged error) on a syntax
+    // error, a string target, a read-only property, or a formula that
+    // reaches its own target through already-resolved references - nothing
+    // changes then. References resolve lazily; get_expression_error is
+    // empty after a successful evaluation. set_current_value writes the
+    // effective value and keeps the expression (WPF SetCurrentValue).
+    // read_local_state / apply_local_state carry the exact local layer
+    // (value, expression or nothing) for undo.
+    auto               set_expression      (const Dependency_property& property, std::string_view text) -> bool;
+    [[nodiscard]] auto get_expression      (const Dependency_property& property) const -> std::optional<std::string_view>;
+    [[nodiscard]] auto get_expression_error(const Dependency_property& property) const -> std::string_view;
+    void               set_current_value   (const Dependency_property& property, const Property_value& value);
+    [[nodiscard]] auto read_local_state    (const Dependency_property& property) const -> std::optional<Local_state>;
+    void               apply_local_state   (const Dependency_property& property, const std::optional<Local_state>& state);
+
+    // Re-evaluates every expression that reads `property` of this object.
+    // For storage that changed outside set_value (a bridged property
+    // written through its own member, e.g. Node::handle_transform_update);
+    // set_value paths call it themselves. One null check when nothing
+    // depends on the object.
+    void invalidate_dependents(const Dependency_property& property) const;
 
     // Re-runs the coerce callback against the current local value and
     // notifies if the effective value changed (WPF CoerceValue). A property
@@ -170,9 +207,27 @@ protected:
 private:
     struct Effective_value_entry
     {
-        uint16_t                      index;
-        Property_value                local;
+        Effective_value_entry() = default;
+        Effective_value_entry(uint16_t index, Property_value local);
+        Effective_value_entry(const Effective_value_entry& other);
+        Effective_value_entry& operator=(const Effective_value_entry& other);
+        Effective_value_entry(Effective_value_entry&& other) noexcept = default;
+        Effective_value_entry& operator=(Effective_value_entry&& other) noexcept = default;
+        ~Effective_value_entry() noexcept = default;
+
+        uint16_t                      index{0};
+        Property_value                local;      // the stored value, or the last evaluated result of `expression`
         std::optional<Property_value> coerced;
+        std::unique_ptr<Expression>   expression; // D22; on a bridged property the entry carries only this
+    };
+
+    // (target object, target property) reading `source_index` of this
+    // object through an expression (WPF DependentList).
+    struct Dependent
+    {
+        Dependency_object* target;
+        uint16_t           target_index;
+        uint16_t           source_index;
     };
 
     struct Pending_change
@@ -194,9 +249,20 @@ private:
     [[nodiscard]] auto get_effective_value(const Dependency_property& property, Value_source& out_source) const -> Property_value;
     [[nodiscard]] auto get_inherited_value(const Dependency_property& property) const -> std::optional<Property_value>;
 
-    void set_value_internal  (const Dependency_property& property, const Property_value& value, bool allow_read_only);
+    void set_value_internal  (const Dependency_property& property, const Property_value& value, bool allow_read_only, bool keep_expression);
     void clear_value_internal(const Dependency_property& property, bool allow_read_only);
     void store_coerced       (const Dependency_property& property, Effective_value_entry& entry);
+
+    // Expressions
+    [[nodiscard]] auto entry_is_bridged_expression(const Effective_value_entry& entry, const Property_metadata& metadata) const -> bool;
+    void               resolve_references          (Effective_value_entry& entry, const Dependency_property& property);
+    [[nodiscard]] auto evaluate_into               (Effective_value_entry& entry, const Dependency_property& property) -> bool;
+    void               evaluate_expression         (Effective_value_entry& entry, const Dependency_property& property);
+    void               detach_expression           (Effective_value_entry& entry);
+    [[nodiscard]] auto expression_reaches          (const Dependency_object& object, uint16_t index, const Dependency_object& target, uint16_t target_index, int depth) const -> bool;
+    void               add_dependent               (const Dependent& dependent);
+    void               remove_dependents_of        (const Dependency_object& target);
+    void               on_source_destroyed         (const Dependency_object& source);
 
     void notify(
         const Dependency_property& property,
@@ -217,6 +283,7 @@ private:
 
     std::vector<Effective_value_entry>              m_entries;     // sorted by index
     std::shared_ptr<Observer_token::Observer_list>  m_observers;   // allocated on first add_observer
+    std::unique_ptr<std::vector<Dependent>>         m_dependents;  // allocated when the first expression resolves to this object
     std::vector<Pending_change>                     m_pending;
     int                                             m_batch_depth{0};
 };

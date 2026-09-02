@@ -1,9 +1,9 @@
 # Property system (WPF dependency-property port) - plan
 
-Status: phases 0-4, 6 and 7 implemented and verified (library, item
+Status: phases 0-4 and 6-8 implemented and verified (library, item
 integration, editor operation / rows / MCP tools / startup command, Material
 migration, Node transform properties, Light and Camera migrations, observer
-users). Section 7 holds the remaining work.
+users, expressions and bindings). Section 7 holds the remaining work.
 
 Reference: the WPF property system in `~/git/tksuoran/wpf`, files under
 `src/Microsoft.DotNet.Wpf/src/WindowsBase/System/Windows/`:
@@ -386,6 +386,108 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
     rather than one value; same token, ordering and batch rules as D15.
     WPF has no equivalent (`DependencyPropertyDescriptor` is per
     property); it saves one token per registered property of the type.
+- D22 Expressions and bindings (WPF `Expression`, `DependentList`,
+  `SetCurrentValue`). A property of an object can be driven by a formula
+  instead of a stored value; the formula sits at the local level of R3
+  (WPF stores an expression as the local value) and its result goes
+  through validate and coerce like a stored value. A binding is a formula
+  that is one reference, so both share one implementation.
+  - Text form. The formula string is the only authored representation
+    (rows, MCP, `scene.set_property`, undo, future serialization). It is a
+    comma-separated list of tinyexpr expressions, one per component of
+    the target (`bool`, `int`, `float`, enumeration: one; `vec2` / `vec3`
+    / `vec4`: two to four; `quat`: four, `x y z w`); a single expression
+    on a vector target broadcasts. Top-level commas split components,
+    commas inside parentheses are function arguments. A reference is
+    written in braces: `{[object/]property[.component]}`, where `object`
+    absent means the target's own object, `..` its inheritance parent,
+    and anything else an item name resolved by the object
+    (`resolve_expression_object`, below); `component` is `x`, `y`, `z`
+    or `w`. A reference without a component in the formula of component
+    `k` reads component `k` of the source (a scalar source reads its
+    value), so `{../scale}` on a `vec3` target mirrors the parent's scale.
+    `bool` sources read as `0` / `1`, enumerations as their integer.
+    `string` properties are neither sources nor targets. Results convert
+    per target type: `bool` is `value != 0`, `int` and enumeration round
+    to nearest (an enumeration value outside its table is an error, the
+    previous value stays), `float` truncates from `double`.
+  - Store. `Effective_value_entry` gains `std::unique_ptr<Expression>`;
+    `local` holds the last evaluated value, so every existing read path
+    stays as it is. On a bridged property (D18) the entry carries only the
+    expression and the evaluated value goes through `bridge.set`, so a
+    node's `translation` can be driven the same way as any stored
+    property. `get_value_source` reports `Value_source::expression`.
+    `set_value` on a driven property replaces the formula with the value
+    (WPF semantics); `set_current_value` writes the value and keeps the
+    formula (WPF `SetCurrentValue`); `clear_value` drops both. A copy of
+    the object (D10) copies the formula text unresolved; the copy resolves
+    its references itself, lazily.
+  - API. `set_expression(property, text) -> bool` compiles the text and
+    installs it (a syntax error, a `string` target or a formula that
+    references its own target property on the same object is rejected the
+    way a failed validate is, D7: logged, nothing changes, `false`);
+    `get_expression(property) -> std::optional<std::string_view>`;
+    `get_expression_error(property) -> std::string_view` (empty when the
+    last evaluation succeeded; else the unresolved reference, the type
+    problem or the cycle); `set_current_value`; `read_local_state` /
+    `apply_local_state` over `Local_state = std::variant<Property_value,
+    Expression_text>`, the exact local layer for undo (D11).
+  - Resolution and evaluation. References resolve lazily: at compile
+    time only the syntax is checked, and each evaluation retries the
+    references still unresolved through
+    `virtual auto resolve_expression_object(std::string_view path) const
+    -> Dependency_object*` (the library default resolves the empty path to
+    the object itself). `Item_base` resolves `..` to
+    `get_inheritance_parent()` and a name through its `Item_host`
+    (`Item_host::find_hosted_item(name)`, implemented by `Scene_host`
+    over the scene's nodes and attachments and extended by the editor's
+    `Scene_root` with the content library's materials), so a source is
+    always hosted by the target's own host and evaluation runs under the
+    target's item-host lock without a cross-host read order. A property
+    named in a reference is looked up by `find_for_type` on the resolved
+    object. tinyexpr binds each reference to a slot in a per-expression
+    value array (variables `ref0`, `ref1`, ... substituted in parentheses
+    for the braces); the compiled tree is kept for the life of the
+    expression.
+  - Push and pull. Each resolved source object keeps a dependent list of
+    (target object, target property, source property), registered at
+    resolution and removed when the expression is replaced or dropped,
+    when the target is destroyed, or when the source is destroyed (which
+    also turns the reference unresolved again). A change delivered on a
+    source property (`deliver`, so batches collapse first) re-evaluates
+    every dependent target and notifies it with the value before and
+    after, through the target's own `notify` (batches, observers, D19
+    callbacks and the editor hook all see an expression result exactly as
+    a stored write). `invalidate_dependents(property)` is the public entry
+    for a source whose storage changed outside `set_value`:
+    `Node::handle_transform_update` calls it for `translation`, `rotation`
+    and `scale`, so the transform tool, physics and animation drive
+    expressions too; with no dependents it is one null check. A read of
+    a driven property whose references are still unresolved retries the
+    resolution first (pull), so a source that appears later, a loaded
+    scene or a clone converge without a frame hook.
+  - Cycles. `set_expression` rejects a direct self reference and walks the
+    resolved expression graph from each reference back to the target,
+    rejecting a formula that reaches it; a cycle closed later through lazy
+    resolution is caught at evaluation by a per-expression re-entry
+    guard, which reports `cycle` in the error and keeps the last value.
+  - Undo (D11). `Property_set_operation` `before` / `after` become
+    `std::optional<Local_state>`, so attaching, editing and removing a
+    formula are undoable and undo of a value write restores the formula
+    it replaced. `Property_set` (D17) and paste stay value bags: reading
+    the local values of a driven property bakes its current result.
+  - Rows (D12). A row whose first item is driven draws the formula text
+    in place of the widget (commit on Enter or deactivation, one
+    operation), a `=` label prefix, the error as a tooltip with a red
+    frame, and `Source: expression` in the tooltip. The context menu
+    gains `Edit as expression` (starts from the current value in formula
+    form) and `Remove expression` (bakes the current result as the local
+    value); `Reset to default` clears both.
+  - MCP and command (D13). `get_item_properties` adds `expression` (the
+    text or `null`) and `expression_error`; `set_item_property` and
+    `scene.set_property` accept `expression` instead of `value`.
+  - Serialization stays with D14: formulas are session state until the
+    extras work lands (section 7).
 
 ## 4. Migration design
 
@@ -631,6 +733,32 @@ built and launched on the Metal build to verify the affected window.
   the levels below the rendered one (`Brush_preview` did), so the slot
   sampled uninitialized memory. It now generates them after the render.
 
+### Phase 8 - expressions and bindings
+
+- D22 in the library (`expression.hpp/.cpp`, the entry store and
+  notification changes, `Item_host::find_hosted_item`,
+  `Item_base::resolve_expression_object`, `Scene_host` name lookup,
+  `Node::handle_transform_update` invalidation) with
+  `test_expressions.cpp`: syntax rejection, constant and reference
+  formulas, component selection and broadcast, every target type
+  conversion, push on source change and on `invalidate_dependents`, lazy
+  resolution, replace / keep / clear semantics, destruction in both
+  orders, self and two-object cycles, copy, bridged target, batches, and
+  the `Local_state` round trip.
+- Editor: `Property_set_operation` over `Local_state`, the formula row
+  and context menu entries, MCP and `scene.set_property` arguments.
+- Verify (section 8): `set_item_property` with `expression` on a light's
+  `intensity` referencing a node's `translation.y`, `set_node_transform`
+  on that node changing the light's value in `get_item_properties`, a
+  driven node `translation` following another node, `undo` restoring the
+  previous local state, and a `capture_screenshot` of the formula row.
+- Found during verification, fixed alongside: the editor (and the example,
+  smoke and the graph / assets test mains) never called
+  `erhe::property::initialize_logging()`, so the first error the library
+  logged in a live session (a rejected formula) dereferenced a null
+  logger. Every binary that initializes `erhe::item` logging now
+  initializes the property logger first.
+
 ## 6. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -638,9 +766,8 @@ than a scene model: templates and triggers, `UncommonField`, dispatcher
 thread affinity, the attached-property browsable attributes, and two-way
 bindings (they exist for UI controls writing back to
 a model; erhe's ImGui windows are immediate-mode and read the item
-directly). Expressions, one-way bindings, the style layer and sealing are
-future work (section 7), and `SetCurrentValue` / `DependentList` arrive
-with the first two.
+directly). Expressions and one-way bindings are D22; the style layer and
+sealing are future work (section 7).
 
 ## 7. Future work
 
@@ -650,43 +777,9 @@ with the first two.
   animation stop so playback never overwrites the authored local value and
   keying (`doc/animation-keyframing-plan.md`) reads the local value as the
   authored pose.
-- Value providers: expressions and one-way bindings (WPF `Expression`,
-  `DependentList`, `SetCurrentValue`). A provider is a base-value source that
-  sits at the local level of R3 (WPF stores an expression AS the local
-  value): an entry whose `base_source` is `expression` holds a
-  `std::unique_ptr<Value_provider>` instead of a stored value, and
-  `set_value` on such a property replaces the provider (WPF semantics) while
-  `set_current_value` writes the effective value without removing it.
-  Two provider kinds cover the erhe use cases:
-  - Binding: mirrors one property of one source object (the same item, an
-    ancestor through `Hierarchy`, or any item held by weak pointer) into the
-    target, optionally through a component selector (`.x`, `.y`, ...) so a
-    `float` can follow one component of a `vec3`. This is the mechanism
-    `doc/geometry-graph-transform-from-node.md` hand-writes today (a graph
-    node parameter following a scene node's transform), and the general
-    form of "driver / constraint" relations between items (a light
-    following a node's color, a layout item following a parent's size).
-  - Expression: a tinyexpr (`src/tinyexpr`, already used by
-    `src/editor/experiments/sheet_window.cpp`) formula whose variables are
-    bindings; the formula evaluates to a `double` per target component, so a
-    `vec3` target takes one formula per component and `bool`, `int` and
-    enumeration targets convert from the evaluated double. A binding is an
-    expression whose formula is the single variable, so both kinds share
-    variable resolution, dependency registration and invalidation.
-  Mechanics to settle in that plan: dependents are registered on each source
-  property (WPF `DependentList`, held as weak references so a deleted source
-  detaches its dependents) and a source change invalidates the target
-  through `invalidate_property` (push), with the value recomputed lazily on
-  the next read (pull), which bounds the work of a frame to one evaluation
-  per dirty target; cycle detection at provider attach time with rejection
-  of a formula that reaches its own target; evaluation under the target's
-  item-host lock, which rules out sources hosted in another scene until a
-  cross-host read order exists; `Property_set_operation` recording a
-  provider as the `before` / `after` state so attaching, editing and
-  detaching a formula is undoable; the Properties window showing the formula
-  string in place of the widget with an `expression` source indicator; and
-  serialization of formula strings and binding paths to glTF extras, which
-  depends on the D14 extras work.
+- Expression serialization: the formula text of a driven property (D22)
+  written to glTF extras and restored on import, with the D14 extras work;
+  until then formulas are session state.
 - Style layer (WPF `Style` setters without triggers): a named `Property_set`
   (D17) applied as a layer between local and inherited in R3, so a material,
   light or render preset can be swapped while the object's local overrides
@@ -765,6 +858,20 @@ with the first two.
   ids; the window must be open and showing that material) changes its
   thumbnail in a `capture_screenshot` taken two frames later without the
   mouse over it, and `undo` changes it back.
+  The checks that passed at the end of phase 8 (`get_scene_lights` /
+  `get_scene_nodes` give the ids and names): `set_item_property` with
+  `expression` `{cube/translation.y} * 10` on `Directional light 0`'s
+  `intensity` reporting `source` `expression` and the evaluated value in
+  `get_item_properties`; `set_node_transform` on `cube` changing that
+  value; `{cube/translation} + 1` on the `cuboctahedron` node's
+  `translation` following the next `set_node_transform` of `cube`; a
+  reference to a missing item reporting `expression_error` and keeping the
+  last value; the self reference `{intensity} + 1`, the syntax error
+  `1 +` and a string target rejected with a message and nothing queued;
+  `undo` restoring the previous local state in order (the node's stored
+  translation, the light's stored intensity) and `redo` reinstalling the
+  formula; and `capture_screenshot` with the light selected showing the
+  `= Intensity` row with the formula text.
 - `capture_screenshot` works on the Metal swapchain (the same one-frame
   arm-then-collect protocol as the Vulkan windowed build), so the visual
   check of the Properties rows is `capture_screenshot` with a `path` in
