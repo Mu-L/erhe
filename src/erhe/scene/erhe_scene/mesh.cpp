@@ -23,8 +23,42 @@ auto Mesh::get_scene_host() const -> Scene_host*
     return static_cast<Scene_host*>(get_item_host());
 }
 
+namespace {
+
+auto world_bounds_corner(const erhe::property::Dependency_object& object, const bool max_corner) -> erhe::property::Property_value
+{
+    const erhe::math::Aabb aabb = static_cast<const Mesh&>(object).get_aabb_world();
+    if (!aabb.is_valid()) {
+        return glm::vec3{0.0f};
+    }
+    return max_corner ? aabb.max : aabb.min;
+}
+
+} // anonymous namespace
+
+// Computed world bounds (D26)
+const erhe::property::Property<glm::vec3> Mesh::world_bounds_min_property = erhe::property::Property<glm::vec3>::register_computed(
+    "world_bounds_min", erhe::Item_type::mesh,
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return world_bounds_corner(object, false); },
+    erhe::property::Property_metadata{
+        .flags = erhe::property::Property_flags::none,
+        .ui    = erhe::property::Property_ui{.group = "World", .tooltip = "Minimum corner of the world-space bounding box (computed)", .label = "Bounds Min"}
+    }
+);
+const erhe::property::Property<glm::vec3> Mesh::world_bounds_max_property = erhe::property::Property<glm::vec3>::register_computed(
+    "world_bounds_max", erhe::Item_type::mesh,
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return world_bounds_corner(object, true); },
+    erhe::property::Property_metadata{
+        .flags = erhe::property::Property_flags::none,
+        .ui    = erhe::property::Property_ui{.group = "World", .tooltip = "Maximum corner of the world-space bounding box (computed)", .label = "Bounds Max"}
+    }
+);
+
 void Mesh::notify_primitives_changed()
 {
+    // The computed world bounds (D26) follow the primitives.
+    invalidate_dependents(world_bounds_min_property);
+    invalidate_dependents(world_bounds_max_property);
     // Constructors reach here through add_primitive() before shared_from_this
     // is usable (lock() yields null); a mesh under construction is not
     // attached to any host anyway.
@@ -332,6 +366,10 @@ void Mesh::handle_node_transform_update()
         rt_primitive->rt_instance->set_transform(world_from_node);
         rt_primitive->rt_instance->commit();
     }
+    // The computed world bounds (D26) moved with the node; one null check
+    // each when nothing depends on them.
+    invalidate_dependents(world_bounds_min_property);
+    invalidate_dependents(world_bounds_max_property);
     // Draw list primitive records (doc/draw_list_performance_improvements.md):
     // the host only enqueues; the records are rewritten once per frame.
     {

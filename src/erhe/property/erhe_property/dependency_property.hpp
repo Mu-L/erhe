@@ -214,6 +214,58 @@ public:
         };
     }
 
+    // A computed property (D26): read-only, its effective value is
+    // `compute(object)` on every read, no local / style / inherited layer,
+    // not listed among local values. The owner calls
+    // Dependency_object::invalidate_dependents where the inputs change.
+    template <Property_storable U = T>
+        requires (!Property_enum_type<U>)
+    static auto register_computed(
+        std::string_view  name,
+        uint64_t          owner_type,
+        Compute_callback  compute,
+        Property_metadata metadata = {}
+    ) -> Property<T>
+    {
+        metadata.compute = std::move(compute);
+        return Property<T>{
+            &Property_registry::get().register_property(
+                Dependency_property::Registration{
+                    .name       = name,
+                    .type       = property_type_of<T>(),
+                    .owner_type = owner_type,
+                    .metadata   = std::move(metadata),
+                    .read_only  = true,
+                }
+            )
+        };
+    }
+
+    template <Property_storable U = T>
+        requires Property_enum_type<U>
+    static auto register_computed(
+        std::string_view  name,
+        uint64_t          owner_type,
+        const Enum_info&  enum_info,
+        Compute_callback  compute,
+        Property_metadata metadata = {}
+    ) -> Property<T>
+    {
+        metadata.compute = std::move(compute);
+        return Property<T>{
+            &Property_registry::get().register_property(
+                Dependency_property::Registration{
+                    .name       = name,
+                    .type       = Property_type::enumeration,
+                    .owner_type = owner_type,
+                    .metadata   = std::move(metadata),
+                    .enum_info  = &enum_info,
+                    .read_only  = true,
+                }
+            )
+        };
+    }
+
 private:
     const Dependency_property* m_property{nullptr};
 };

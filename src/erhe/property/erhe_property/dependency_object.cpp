@@ -216,6 +216,13 @@ auto Dependency_object::get_inherited_value(const Dependency_property& property)
 auto Dependency_object::get_base_value(const Dependency_property& property, Value_source& out_source) const -> Property_value
 {
     const Property_metadata& metadata = get_metadata(property);
+    if (metadata.is_computed()) {
+        // D26: the provider's value is the effective value; no layer applies
+        // and the object never has an entry (every write is rejected as
+        // read-only).
+        out_source = Value_source::computed;
+        return metadata.compute(*this);
+    }
     if (const Effective_value_entry* entry = find_entry(property.get_index()); entry != nullptr) {
         out_source = (entry->expression != nullptr) ? Value_source::expression : Value_source::local;
         if (entry_is_bridged_expression(*entry, metadata)) {
@@ -262,7 +269,7 @@ auto Dependency_object::get_effective_value(const Dependency_property& property,
     }
     Property_value base = get_base_value(property, out_source);
     const Property_metadata& metadata = get_metadata(property);
-    if (metadata.coerce) {
+    if (metadata.coerce && (out_source != Value_source::computed)) {
         return metadata.coerce(*this, base);
     }
     return base;

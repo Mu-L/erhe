@@ -22,6 +22,7 @@ add_executable(${_target}
     test_property_string.cpp
     test_property_set.cpp
     test_bridge.cpp
+    test_computed.cpp
     test_expressions.cpp
 )
 

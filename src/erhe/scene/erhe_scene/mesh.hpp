@@ -126,6 +126,11 @@ public:
     // from the joint transforms and the primitives' per-joint rest boxes; the
     // mesh node's own transform is not applied, because skinning ignores it.
     [[nodiscard]] auto get_aabb_world        () const -> erhe::math::Aabb;
+    // Computed (doc/property-system-plan.md D26): the corners of
+    // get_aabb_world(), 0 0 0 for an invalid box; pushed to expressions from
+    // handle_node_transform_update and the primitive changes.
+    static const erhe::property::Property<glm::vec3> world_bounds_min_property;
+    static const erhe::property::Property<glm::vec3> world_bounds_max_property;
     // Posed bounds from the skin alone. Returns an invalid Aabb when the mesh is
     // not skinned, or when the primitives carry no per-joint rest bounds.
     [[nodiscard]] auto get_skinned_aabb_world() const -> erhe::math::Aabb;

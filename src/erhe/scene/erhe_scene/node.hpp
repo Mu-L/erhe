@@ -151,6 +151,13 @@ public:
     static const erhe::property::Property<glm::vec3> translation_property;
     static const erhe::property::Property<glm::quat> rotation_property;
     static const erhe::property::Property<glm::vec3> scale_property;
+    // Computed (doc/property-system-plan.md D26): the components of
+    // world_from_node_transform(), pushed to expressions from
+    // handle_transform_update (which the propagation pass runs on every
+    // descendant whose world transform it recomputes).
+    static const erhe::property::Property<glm::vec3> world_translation_property;
+    static const erhe::property::Property<glm::quat> world_rotation_property;
+    static const erhe::property::Property<glm::vec3> world_scale_property;
 
     // Optional developer sanity check: when enabled, every transform write to
     // a node carrying Item_flags::no_transform_update logs a warning with the

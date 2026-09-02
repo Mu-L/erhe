@@ -102,6 +102,38 @@ const Property<glm::vec3> Node::scale_property = Property<glm::vec3>::register_p
     }
 );
 
+// Computed world transform components (D26)
+const Property<glm::vec3> Node::world_translation_property = Property<glm::vec3>::register_computed(
+    "world_translation", erhe::Item_type::node,
+    [](const Dependency_object& object) -> Property_value {
+        return static_cast<const Node&>(object).world_from_node_transform().get_translation();
+    },
+    Property_metadata{
+        .flags = Property_flags::none,
+        .ui    = Property_ui{.group = "World", .tooltip = "Position in world space (computed)", .label = "Translation"}
+    }
+);
+const Property<glm::quat> Node::world_rotation_property = Property<glm::quat>::register_computed(
+    "world_rotation", erhe::Item_type::node,
+    [](const Dependency_object& object) -> Property_value {
+        return static_cast<const Node&>(object).world_from_node_transform().get_rotation();
+    },
+    Property_metadata{
+        .flags = Property_flags::none,
+        .ui    = Property_ui{.group = "World", .tooltip = "Rotation in world space (computed, shown as Euler degrees)", .label = "Rotation"}
+    }
+);
+const Property<glm::vec3> Node::world_scale_property = Property<glm::vec3>::register_computed(
+    "world_scale", erhe::Item_type::node,
+    [](const Dependency_object& object) -> Property_value {
+        return static_cast<const Node&>(object).world_from_node_transform().get_scale();
+    },
+    Property_metadata{
+        .flags = Property_flags::none,
+        .ui    = Property_ui{.group = "World", .tooltip = "Scale in world space (computed)", .label = "Scale"}
+    }
+);
+
 uint64_t Node_transforms::s_global_update_serial = 0;
 
 auto Node_transforms::get_current_serial() -> uint64_t
@@ -435,6 +467,12 @@ void Node::handle_transform_update(const uint64_t serial) const
     invalidate_dependents(translation_property);
     invalidate_dependents(rotation_property);
     invalidate_dependents(scale_property);
+    // The computed world components (D26) changed too: this runs on the
+    // written node and, from update_transform, on every descendant the
+    // propagation pass recomputes.
+    invalidate_dependents(world_translation_property);
+    invalidate_dependents(world_rotation_property);
+    invalidate_dependents(world_scale_property);
 
     // Descendants inherit this node's new world transform; queue the subtree
     // for propagation in the scene's next update_node_transforms() pass. Every

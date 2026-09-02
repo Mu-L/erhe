@@ -18,7 +18,8 @@ enum class Value_source : uint8_t {
     inherited     = 1, // closest ancestor's effective value (inherits flag)
     local         = 2, // set_value on this object
     expression    = 3, // a formula on this object (D22); the local layer
-    style         = 4  // the object's Property_style (D25); between local and inherited
+    style         = 4, // the object's Property_style (D25); between local and inherited
+    computed      = 5  // the owner's value provider (D26); read-only, no layers
 };
 
 [[nodiscard]] constexpr auto c_str(const Value_source source) -> const char*
@@ -29,6 +30,7 @@ enum class Value_source : uint8_t {
         case Value_source::local:         return "local";
         case Value_source::expression:    return "expression";
         case Value_source::style:         return "style";
+        case Value_source::computed:      return "computed";
     }
     return "?";
 }
@@ -46,6 +48,9 @@ public:
 using Property_changed_callback = std::function<void(Dependency_object&, const Property_changed_args&)>;
 using Coerce_callback           = std::function<Property_value(const Dependency_object&, const Property_value&)>;
 using Validate_callback         = std::function<bool(const Property_value&)>;
+// Value provider of a computed property (doc/property-system-plan.md D26):
+// the effective value is whatever it returns, read on every get_value.
+using Compute_callback          = std::function<Property_value(const Dependency_object&)>;
 
 // What a change of the property affects. Data only: the library never acts
 // on these, the editor reads them (App_context::on_item_property_changed).
@@ -115,6 +120,13 @@ public:
     uint32_t                      flags           {Property_flags::serialize};
     Property_ui                   ui              {};
     Property_bridge               bridge          {};
+    // D26: bound only on a computed property (registered read-only through
+    // Property<T>::register_computed). The object has no entry for it, no
+    // layer applies, and the owner pushes changes to expressions with
+    // invalidate_dependents.
+    Compute_callback              compute         {};
+
+    [[nodiscard]] auto is_computed() const -> bool { return static_cast<bool>(compute); }
 };
 
 } // namespace erhe::property

@@ -10,6 +10,17 @@ namespace erhe {
 
 using namespace erhe::item;
 
+const erhe::property::Property<int> Hierarchy::child_count_property = erhe::property::Property<int>::register_computed(
+    "child_count", Item_type::node | Item_type::content_library_node,
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+        return static_cast<int>(static_cast<const Hierarchy&>(object).get_child_count());
+    },
+    erhe::property::Property_metadata{
+        .flags = erhe::property::Property_flags::none,
+        .ui    = erhe::property::Property_ui{.tooltip = "Number of direct children (computed)", .label = "Child Count"}
+    }
+);
+
 Hierarchy::Hierarchy()           = default;
 Hierarchy::~Hierarchy() noexcept = default;
 
@@ -269,6 +280,7 @@ void Hierarchy::handle_add_child(const std::shared_ptr<Hierarchy>& child, std::s
     position = std::min(m_children.size(), position);
     m_children.insert(m_children.begin() + position, child);
     bump_item_mutation_serial();
+    invalidate_dependents(child_count_property.get()); // D26
 }
 
 void Hierarchy::handle_remove_child(Hierarchy* const child)
@@ -286,6 +298,7 @@ void Hierarchy::handle_remove_child(Hierarchy* const child)
         log->trace("Removing child '{}' from '{}'", child->describe(), describe());
         m_children.erase(i, m_children.end());
         bump_item_mutation_serial();
+        invalidate_dependents(child_count_property.get()); // D26
     } else {
         log->error("child '{}' cannot be removed from parent '{}': child not found", child->describe(), describe());
     }

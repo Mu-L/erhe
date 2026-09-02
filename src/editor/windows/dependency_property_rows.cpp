@@ -155,8 +155,10 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
             tooltip += error;
         }
     }
-    tooltip += "\nDefault: ";
-    tooltip += erhe::property::to_string(property, metadata.default_value.value());
+    if (!metadata.is_computed()) { // D26: a computed property has no default layer
+        tooltip += "\nDefault: ";
+        tooltip += erhe::property::to_string(property, metadata.default_value.value());
+    }
     if (property.get_type() == Property_type::quat) {
         tooltip += "\nx y z w: ";
         tooltip += erhe::property::to_string(property, first.get_value(property));

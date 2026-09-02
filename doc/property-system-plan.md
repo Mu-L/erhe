@@ -1,10 +1,10 @@
 # Property system (WPF dependency-property port) - plan
 
-Status: phases 0-4 and 6-8 implemented and verified (library, item
+Status: phases 0-4 and 6-12 implemented and verified (library, item
 integration, editor operation / rows / MCP tools / startup command, Material
 migration, Node transform properties, Light and Camera migrations, observer
-users, expressions and bindings, inherited flags, sealing, style layer).
-Section 7 holds the remaining work.
+users, expressions and bindings, inherited flags, sealing, style layer,
+computed properties). Section 7 holds the remaining work.
 
 Reference: the WPF property system in `~/git/tksuoran/wpf`, files under
 `src/Microsoft.DotNet.Wpf/src/WindowsBase/System/Windows/`:
@@ -380,8 +380,8 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
     raise no property notification, and an ancestor move changes the
     driver's world transform with no property change on the driver at all.
     `update_live` keeps polling (the transform serial is the cheap compare).
-    Revisit when the world transform is a computed read-only property
-    (section 7).
+    The world transform is a computed property since D26, and a computed
+    property raises no observer notification, so the poll stays.
   - Library: `Dependency_object::add_observer(callback)` without a
     property subscribes to every property of the object, for a consumer
     that mirrors the whole object (a thumbnail, a preview, a serializer)
@@ -706,6 +706,84 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
     `src/erhe/primitive/test/test_material_style.cpp` (a styled material
     reads the traits, a local override wins, `get_values` bakes them,
     `operator==` sees the style).
+
+- D26 Computed properties (WPF read-only dependency property whose value
+  the owner provides; R6).
+  - What exists today. `Property_key<T>` (D3) is the write permission for a
+    stored read-only property, and nothing registers one: every read-only
+    candidate of section 7 (world transform, world bounds, child count) is
+    derived state that its owner already keeps or can compute on demand
+    (`Node_transforms::world_from_node`, `Mesh::get_aabb_world`,
+    `Hierarchy::get_child_count`). Storing it through a key would keep a
+    second copy in the entry store and cost a validate / store / notify
+    write on every transform update of every node in a moving subtree (R14).
+    `Property_key<T>` stays for a read-only property whose value is authored
+    state with no other home; computed properties use a value provider.
+  - Library. `Property_metadata::compute` (`Compute_callback =
+    std::function<Property_value(const Dependency_object&)>`), registered
+    through `Property<T>::register_computed(name, owner_type, compute,
+    metadata)`, which sets `read_only`. A computed property reads
+    `compute(*this)` on every `get_value` with `Value_source::computed`
+    (new enumerator, `c_str` `computed`); it has no entry, so
+    `has_local_value` is `false`, `read_local_value` is `nullopt`,
+    `for_each_local_value` skips it, and with that `Property_set`, copy
+    and paste, `operator==` of items, the glTF `properties` extras and a
+    copy of the object (D10) never see it. The style layer, inheritance,
+    validate and coerce do not apply: the provider's value is the effective
+    value. Every write path (`set_value`, `set_current_value`,
+    `clear_value`, `set_expression`, `apply_local_state`) is rejected by
+    the read-only check that already exists (D7 style: one logged error,
+    `false`, nothing changes). `default_value` stays the type's zero value
+    and is not shown.
+  - Push. The owner calls `invalidate_dependents(property)` where the
+    provider's inputs change, exactly as bridged storage does (D22), so an
+    expression reading a computed property re-evaluates on the change;
+    with no dependents that is one null check. Changed callbacks and
+    observers do not fire for a computed property: the store never holds
+    its previous value, so `Property_changed_args` could not be filled. A
+    consumer that needs to react to one reads it through an expression on a
+    stored property of its own, or keeps polling its serial (the geometry
+    graph `transform_from_node` of D21 stays a poll for this reason).
+  - Node. `world_translation` (vec3), `world_rotation` (quat) and
+    `world_scale` (vec3) read the components of `world_from_node_transform()`
+    (group `World`, tooltips naming the world space); `child_count` (int)
+    reads `get_child_count()`. `Node::handle_transform_update` invalidates
+    the three world properties next to the three bridged ones: it runs on
+    the node that was written and, through `Scene::update_node_transforms`
+    and `Node::update_transform`, on every descendant whose world transform
+    the pass recomputes, so a child's `world_translation` follows a parent
+    move one propagation pass later, which is when the value itself
+    changes. `Hierarchy::handle_add_child` / `handle_remove_child`
+    invalidate `child_count`; the property is registered by `Hierarchy`
+    with owner type `Item_type::node | Item_type::content_library_node`
+    (the two `Hierarchy` item types), so both list it.
+  - Mesh. `world_bounds_min` and `world_bounds_max` (vec3, group `World`)
+    read `get_aabb_world()`; a mesh whose box is invalid (no primitives)
+    reports `0 0 0` for both. `Mesh::handle_node_transform_update` and
+    the primitive mutation paths (`clear_primitives`, `add_primitive`,
+    `set_primitives`, the primitive-data change notification) invalidate
+    both. A skinned mesh's posed bounds move with its joints without any of
+    these running; reading the property gives the current box, an
+    expression on it follows only the pushes above.
+  - Editor (D12). A computed row draws its widget disabled like any
+    read-only row, with no `*` prefix (no local value), `Source: computed`
+    in the tooltip, no `Default:` line, and the context menu's per-property
+    entries (`Reset to default`, `Edit as expression`, `Remove expression`)
+    disabled through the existing read-only test; the bag entries (copy,
+    paste, style) act on the item and stay. MCP `get_item_properties` reports `source`
+    `computed`, `local` `null` and `read_only` `true`; `set_item_property`
+    refuses it as read-only, as today. Expression references (D22) reach a
+    computed property through `find_for_type` and `get_value` with no
+    change: `{cube/world_translation.y}` is a valid source.
+  - Tests. `src/erhe/property/test/test_computed.cpp` (value and source
+    from the provider, no local value and skipped by `for_each_local_value`
+    / `Property_set` / copy, every write rejected with no notification, a
+    style entry ignored, an expression reading a computed source updated
+    by `invalidate_dependents`, an expression targeting a computed property
+    rejected) and `src/erhe/scene/test/test_node_computed.cpp` (world
+    properties after a parent move and the propagation pass, `child_count`
+    across `set_parent`, mesh bounds after a node move, a light `intensity`
+    expression on `{<node>/world_translation.y}` following the pass).
 
 ## 4. Migration design
 
@@ -1046,6 +1124,21 @@ built and launched on the Metal build to verify the affected window.
   iterated the `entries()` of a temporary `Property_set` (destroyed before
   the loop ran) and reported no usable values; the bag is a local now.
 
+### Phase 12 - computed properties
+
+- D26 in the library (`Property_metadata::compute`, `register_computed`,
+  `Value_source::computed`, the read paths) with `test_computed.cpp`, then
+  the `Node`, `Hierarchy` and `Mesh` properties with their invalidation
+  calls and `test_node_computed.cpp`, then the row and tooltip changes.
+- Verify (section 8): `get_item_properties` on a child node reporting
+  `world_translation` as `computed` and equal to the parent's translation
+  plus its own, `set_node_transform` on the parent changing it on the next
+  query, `child_count` on the parent, `world_bounds_min` / `max` on a mesh
+  moving with its node, an `intensity` expression on
+  `{<node>/world_translation.y}` following a parent move,
+  `set_item_property` on `world_translation` refused as read-only, and
+  `capture_screenshot` of the disabled `World` rows.
+
 ## 6. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -1072,9 +1165,8 @@ style layer is D25.
   prefab overrides once `doc/gltf-prefabs-plan.md` phase 6 takes them on,
   and a preset library that owns style names so a style can be written to
   glTF by name.
-- Read-only computed properties through `Property_key<T>` (R6): world
-  transform, world bounds, child count, exposed for MCP, the Properties
-  window and the expression variables of the value-provider item.
+- Further computed properties (D26) as their consumers appear: a node's
+  world bounds over its subtree, a scene's item counts.
 - Layout per-child hints as attached properties (WPF `DockPanel.Dock`,
   `Grid.Row`): `Layout` registers alignment and margin as attached
   properties and reads them from each child node, so a child carries its
@@ -1191,6 +1283,24 @@ style layer is D25.
   undo a third time); the rendered metals identical to the phase 9
   screenshot; and `capture_screenshot` with `Titanium` selected showing
   `* Base Color` as the only starred row.
+  The checks that passed at the end of phase 12 (`reparent_node` builds
+  the subtree; a light attachment is addressed by the `item_id` from
+  `get_scene_lights`, its name resolves to the node): `get_item_properties`
+  on `icosahedron` reporting `world_translation`, `world_rotation`,
+  `world_scale` and `child_count` with source `computed` and `read_only`
+  `true`; after `reparent_node` under `dodecahedron` the parent's
+  `child_count` `1` and the child's `world_translation` unchanged while
+  its `translation` became parent-relative; `set_node_transform` on the
+  parent moving the child's `world_translation` by the same offset on the
+  next query; the mesh's (`get_node_details` lists the attachment id)
+  `world_bounds_min` / `world_bounds_max` equal to the node's `world_aabb`
+  and following the move; `set_item_property` with `expression`
+  `{icosahedron/world_translation.y}` on `Directional light 0`'s
+  `intensity` reporting the world y and following the next parent move,
+  with `undo` restoring the value and then the stored intensity;
+  `set_item_property` on `world_translation` refused as read-only; and
+  `capture_screenshot` with a `create_node` node selected showing the
+  disabled `Child Count` row and the `World` group's greyed-out rows.
 - `capture_screenshot` works on the Metal swapchain (the same one-frame
   arm-then-collect protocol as the Vulkan windowed build), so the visual
   check of the Properties rows is `capture_screenshot` with a `path` in
