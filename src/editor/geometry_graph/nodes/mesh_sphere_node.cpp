@@ -1,4 +1,5 @@
 #include "geometry_graph/nodes/mesh_sphere_node.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_geometry/shapes/sphere.hpp"
@@ -9,6 +10,51 @@
 #include <algorithm>
 
 namespace editor {
+
+using erhe::property::Property;
+using erhe::property::Property_metadata;
+using erhe::property::Property_ui;
+
+auto Mesh_sphere_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Mesh_sphere_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<float> Mesh_sphere_node::radius_property = Property<float>::register_property(
+    "radius", erhe::Item_type::graph_node, Mesh_sphere_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 1.0f,
+        .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
+        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Radius"},
+        .bridge        = make_node_member_bridge<Mesh_sphere_node>(&Mesh_sphere_node::m_radius)
+    }
+);
+
+const Property<int> Mesh_sphere_node::slices_property = Property<int>::register_property(
+    "slices", erhe::Item_type::graph_node, Mesh_sphere_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 32,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 3.0f, .max = 128.0f, .group = "Parameters", .label = "Slices"},
+        .bridge        = make_node_member_bridge<Mesh_sphere_node>(&Mesh_sphere_node::m_slice_count)
+    }
+);
+
+const Property<int> Mesh_sphere_node::stacks_property = Property<int>::register_property(
+    "stacks", erhe::Item_type::graph_node, Mesh_sphere_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 16,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 1.0f, .max = 128.0f, .group = "Parameters", .label = "Stacks"},
+        .bridge        = make_node_member_bridge<Mesh_sphere_node>(&Mesh_sphere_node::m_stack_division)
+    }
+);
 
 Mesh_sphere_node::Mesh_sphere_node()
     : Geometry_graph_node{"Sphere"}

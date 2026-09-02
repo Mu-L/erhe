@@ -1,4 +1,5 @@
 #include "geometry_graph/nodes/mesh_disc_node.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_geometry/shapes/disc.hpp"
@@ -9,6 +10,61 @@
 #include <algorithm>
 
 namespace editor {
+
+using erhe::property::Property;
+using erhe::property::Property_metadata;
+using erhe::property::Property_ui;
+
+auto Mesh_disc_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Mesh_disc_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<float> Mesh_disc_node::outer_radius_property = Property<float>::register_property(
+    "outer_radius", erhe::Item_type::graph_node, Mesh_disc_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 1.0f,
+        .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
+        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Outer radius"},
+        .bridge        = make_node_member_bridge<Mesh_disc_node>(&Mesh_disc_node::m_outer_radius)
+    }
+);
+
+const Property<float> Mesh_disc_node::inner_radius_property = Property<float>::register_property(
+    "inner_radius", erhe::Item_type::graph_node, Mesh_disc_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 0.0f,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 0.0f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Inner radius"},
+        .bridge        = make_node_member_bridge<Mesh_disc_node>(&Mesh_disc_node::m_inner_radius)
+    }
+);
+
+const Property<int> Mesh_disc_node::slices_property = Property<int>::register_property(
+    "slices", erhe::Item_type::graph_node, Mesh_disc_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 32,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 3.0f, .max = 128.0f, .group = "Parameters", .label = "Slices"},
+        .bridge        = make_node_member_bridge<Mesh_disc_node>(&Mesh_disc_node::m_slice_count)
+    }
+);
+
+const Property<int> Mesh_disc_node::stacks_property = Property<int>::register_property(
+    "stacks", erhe::Item_type::graph_node, Mesh_disc_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 1,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 1.0f, .max = 128.0f, .group = "Parameters", .label = "Stacks"},
+        .bridge        = make_node_member_bridge<Mesh_disc_node>(&Mesh_disc_node::m_stack_count)
+    }
+);
 
 Mesh_disc_node::Mesh_disc_node()
     : Geometry_graph_node{"Disc"}

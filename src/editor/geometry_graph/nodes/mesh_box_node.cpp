@@ -1,4 +1,5 @@
 #include "geometry_graph/nodes/mesh_box_node.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_geometry/shapes/box.hpp"
@@ -7,6 +8,57 @@
 #include <nlohmann/json.hpp>
 
 namespace editor {
+
+using erhe::property::Property;
+using erhe::property::Property_metadata;
+using erhe::property::Property_ui;
+
+auto Mesh_box_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Mesh_box_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const Property<glm::vec3> Mesh_box_node::size_property = Property<glm::vec3>::register_property(
+    "size", erhe::Item_type::graph_node, Mesh_box_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
+        .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
+        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Size"},
+        .bridge        = make_node_member_bridge<Mesh_box_node>(&Mesh_box_node::m_size)
+    }
+);
+
+const Property<glm::ivec3> Mesh_box_node::subdivisions_property = Property<glm::ivec3>::register_property(
+    "subdivisions", erhe::Item_type::graph_node, Mesh_box_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = glm::ivec3{1, 1, 1},
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{
+            .min     = 0.0f,
+            .max     = 16.0f,
+            .group   = "Parameters",
+            .tooltip = "Interior subdivision planes per axis; 0 = vertices only at the min/max corners of that axis",
+            .label   = "Subdivisions"
+        },
+        .bridge        = make_node_member_bridge<Mesh_box_node>(&Mesh_box_node::m_subdivisions)
+    }
+);
+
+const Property<float> Mesh_box_node::power_property = Property<float>::register_property(
+    "power", erhe::Item_type::graph_node, Mesh_box_node::property_owner_subtype(),
+    Property_metadata{
+        .default_value = 1.0f,
+        .flags         = erhe::property::Property_flags::none,
+        .ui            = Property_ui{.min = 0.1f, .max = 10.0f, .step = 0.01f, .group = "Parameters", .label = "Power"},
+        .bridge        = make_node_member_bridge<Mesh_box_node>(&Mesh_box_node::m_power)
+    }
+);
 
 Mesh_box_node::Mesh_box_node()
     : Geometry_graph_node{"Box"}
