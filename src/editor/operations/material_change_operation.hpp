@@ -8,6 +8,10 @@ namespace editor {
 
 class App_context;
 
+// Undoable edit of the Material state that is not a registered property:
+// the texture slots (Material_data). Property edits go through
+// Property_set_operation / Property_set_apply_operation
+// (doc/property-system-plan.md D11).
 class Material_change_operation : public Operation
 {
 public:

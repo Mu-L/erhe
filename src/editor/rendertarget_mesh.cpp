@@ -144,7 +144,7 @@ void Rendertarget_mesh::resize_rendertarget(
         m_material = std::make_shared<erhe::primitive::Material>(
             erhe::primitive::Material_create_info{
                 .name = "Rendertarget Node",
-                .data = {
+                .values = {
                     .base_color = glm::vec3{1.0f, 1.0f, 1.0f},
                     .bxdf_model = erhe::primitive::Bxdf_model::unlit,
                     .blending_mode = erhe::primitive::Material_blending_mode::alpha_blend

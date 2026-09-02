@@ -426,7 +426,7 @@ void append_content_library_attach_operations(
             if (
                 exclude_unlit &&
                 (material != nullptr) &&
-                (material->data.bxdf_model == erhe::primitive::Bxdf_model::unlit)
+                (material->get_bxdf_model() == erhe::primitive::Bxdf_model::unlit)
             ) {
                 continue;
             }

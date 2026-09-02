@@ -1,5 +1,7 @@
 #pragma once
 
+#include "erhe_property/enum_info.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -145,6 +147,14 @@ static constexpr const char* c_normal_style_strings[] = {
     "Point Normals"
 };
 
+static const char* const c_bxdf_model_names[] = {
+    "Unlit",
+    "Isotropic BRDF",
+    "Anisotropic BRDF",
+    "Anisotropic Slope",
+    "Anisotropic Engine-Ready"
+};
+
 static const char* const c_material_blending_mode_names[] = {
     "Opaque",
     "Alpha Blend",
@@ -176,6 +186,13 @@ static const char* const c_normalmap_encoding_names[] = {
     "Right Handed X+Y (RG)",
     "Left Handed X+Y (RG)"
 };
+
+// Enumerator tables for the erhe::property enumeration properties of
+// Material (labels are the c_*_names entries above, values the enumerators).
+extern const erhe::property::Enum_info c_bxdf_model_enum_info;
+extern const erhe::property::Enum_info c_material_blending_mode_enum_info;
+extern const erhe::property::Enum_info c_texgen_mode_enum_info;
+extern const erhe::property::Enum_info c_normalmap_encoding_enum_info;
 
 [[nodiscard]] auto supports_anisotropy(Bxdf_model bxdf_model) -> bool;
 [[nodiscard]] auto c_str(Primitive_mode primitive_mode) -> const char*;

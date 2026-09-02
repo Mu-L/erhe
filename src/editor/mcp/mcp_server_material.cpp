@@ -8,7 +8,9 @@
 #include "app_scenes.hpp"
 #include "assets/asset_manager.hpp"
 #include "content_library/content_library.hpp"
+#include "operations/compound_operation.hpp"
 #include "operations/material_change_operation.hpp"
+#include "operations/property_set_operation.hpp"
 #include "operations/mesh_material_assign_operation.hpp"
 #include "operations/operation.hpp"
 #include "operations/operation_stack.hpp"
@@ -428,6 +430,7 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
     const json&                             args,
     const std::shared_ptr<Content_library>& library,
     erhe::graphics::Device*                 device,
+    erhe::primitive::Material_values&       after_values,
     erhe::primitive::Material_data&         after,
     json&                                   applied
 ) -> std::optional<std::string>
@@ -445,7 +448,7 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
     switch (try_read_vec3(args, "base_color", v3, field_err)) {
         case Field_status::Ok: {
             const glm::vec3 clamped = clamp01_vec3(v3);
-            after.base_color = clamped;
+            after_values.base_color = clamped;
             applied["base_color"] = {clamped.x, clamped.y, clamped.z};
             break;
         }
@@ -453,14 +456,14 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
         case Field_status::NotPresent: break;
     }
     switch (try_read_float(args, "opacity", f, field_err)) {
-        case Field_status::Ok:         after.opacity = clamp01(f); applied["opacity"] = after.opacity; break;
+        case Field_status::Ok:         after_values.opacity = clamp01(f); applied["opacity"] = after_values.opacity; break;
         case Field_status::Invalid:    return field_err;
         case Field_status::NotPresent: break;
     }
     switch (try_read_vec2(args, "roughness", v2, field_err)) {
         case Field_status::Ok: {
             const glm::vec2 clamped = clamp01_vec2(v2);
-            after.roughness = clamped;
+            after_values.roughness = clamped;
             applied["roughness"] = {clamped.x, clamped.y};
             break;
         }
@@ -468,12 +471,12 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
         case Field_status::NotPresent: break;
     }
     switch (try_read_float(args, "metallic", f, field_err)) {
-        case Field_status::Ok:         after.metallic = clamp01(f); applied["metallic"] = after.metallic; break;
+        case Field_status::Ok:         after_values.metallic = clamp01(f); applied["metallic"] = after_values.metallic; break;
         case Field_status::Invalid:    return field_err;
         case Field_status::NotPresent: break;
     }
     switch (try_read_float(args, "reflectance", f, field_err)) {
-        case Field_status::Ok:         after.reflectance = clamp01(f); applied["reflectance"] = after.reflectance; break;
+        case Field_status::Ok:         after_values.reflectance = clamp01(f); applied["reflectance"] = after_values.reflectance; break;
         case Field_status::Invalid:    return field_err;
         case Field_status::NotPresent: break;
     }
@@ -481,7 +484,7 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
         case Field_status::Ok: {
             // Emissive is HDR; floor at 0 but no upper clamp.
             const glm::vec3 clamped{std::max(0.0f, v3.x), std::max(0.0f, v3.y), std::max(0.0f, v3.z)};
-            after.emissive = clamped;
+            after_values.emissive = clamped;
             applied["emissive"] = {clamped.x, clamped.y, clamped.z};
             break;
         }
@@ -491,22 +494,22 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
     switch (try_read_float(args, "ior", f, field_err)) {
         // Physically meaningful IORs sit in [1, 3] (vacuum .. diamond-ish);
         // clamp to that range, matching the Properties window slider.
-        case Field_status::Ok:         after.ior = std::clamp(f, 1.0f, 3.0f); applied["ior"] = after.ior; break;
+        case Field_status::Ok:         after_values.ior = std::clamp(f, 1.0f, 3.0f); applied["ior"] = after_values.ior; break;
         case Field_status::Invalid:    return field_err;
         case Field_status::NotPresent: break;
     }
     switch (try_read_float(args, "transmission", f, field_err)) {
-        case Field_status::Ok:         after.transmission = clamp01(f); applied["transmission"] = after.transmission; break;
+        case Field_status::Ok:         after_values.transmission = clamp01(f); applied["transmission"] = after_values.transmission; break;
         case Field_status::Invalid:    return field_err;
         case Field_status::NotPresent: break;
     }
     switch (try_read_float(args, "normal_texture_scale", f, field_err)) {
-        case Field_status::Ok:         after.normal_texture_scale = f; applied["normal_texture_scale"] = f; break;
+        case Field_status::Ok:         after_values.normal_texture_scale = f; applied["normal_texture_scale"] = f; break;
         case Field_status::Invalid:    return field_err;
         case Field_status::NotPresent: break;
     }
     switch (try_read_float(args, "occlusion_texture_strength", f, field_err)) {
-        case Field_status::Ok:         after.occlusion_texture_strength = clamp01(f); applied["occlusion_texture_strength"] = after.occlusion_texture_strength; break;
+        case Field_status::Ok:         after_values.occlusion_texture_strength = clamp01(f); applied["occlusion_texture_strength"] = after_values.occlusion_texture_strength; break;
         case Field_status::Invalid:    return field_err;
         case Field_status::NotPresent: break;
     }
@@ -518,15 +521,15 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
             }
             const std::string s = bxdf_it->get<std::string>();
             if (s == "unlit") {
-                after.bxdf_model = erhe::primitive::Bxdf_model::unlit;
+                after_values.bxdf_model = erhe::primitive::Bxdf_model::unlit;
             } else if (s == "isotropic_brdf") {
-                after.bxdf_model = erhe::primitive::Bxdf_model::isotropic_brdf;
+                after_values.bxdf_model = erhe::primitive::Bxdf_model::isotropic_brdf;
             } else if (s == "anisotropic_brdf") {
-                after.bxdf_model = erhe::primitive::Bxdf_model::anisotropic_brdf;
+                after_values.bxdf_model = erhe::primitive::Bxdf_model::anisotropic_brdf;
             } else if (s == "anisotropic_slope") {
-                after.bxdf_model = erhe::primitive::Bxdf_model::anisotropic_slope;
+                after_values.bxdf_model = erhe::primitive::Bxdf_model::anisotropic_slope;
             } else if (s == "anisotropic_engine_ready") {
-                after.bxdf_model = erhe::primitive::Bxdf_model::anisotropic_engine_ready;
+                after_values.bxdf_model = erhe::primitive::Bxdf_model::anisotropic_engine_ready;
             } else {
                 return "bxdf_model must be one of 'unlit', 'isotropic_brdf', 'anisotropic_brdf', 'anisotropic_slope', 'anisotropic_engine_ready'";
             }
@@ -541,19 +544,19 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
             }
             const std::string s = blending_it->get<std::string>();
             if (s == "opaque") {
-                after.blending_mode = erhe::primitive::Material_blending_mode::opaque;
+                after_values.blending_mode = erhe::primitive::Material_blending_mode::opaque;
             } else if (s == "alpha_blend") {
-                after.blending_mode = erhe::primitive::Material_blending_mode::alpha_blend;
+                after_values.blending_mode = erhe::primitive::Material_blending_mode::alpha_blend;
             } else if (s == "multiply") {
-                after.blending_mode = erhe::primitive::Material_blending_mode::multiply;
+                after_values.blending_mode = erhe::primitive::Material_blending_mode::multiply;
             } else if (s == "add") {
-                after.blending_mode = erhe::primitive::Material_blending_mode::add;
+                after_values.blending_mode = erhe::primitive::Material_blending_mode::add;
             } else if (s == "subtract") {
-                after.blending_mode = erhe::primitive::Material_blending_mode::subtract;
+                after_values.blending_mode = erhe::primitive::Material_blending_mode::subtract;
             } else if (s == "screen_door") {
-                after.blending_mode = erhe::primitive::Material_blending_mode::screen_door;
+                after_values.blending_mode = erhe::primitive::Material_blending_mode::screen_door;
             } else if (s == "alpha_test") {
-                after.blending_mode = erhe::primitive::Material_blending_mode::alpha_test;
+                after_values.blending_mode = erhe::primitive::Material_blending_mode::alpha_test;
             } else {
                 return "blending_mode must be one of 'opaque', 'alpha_blend', 'multiply', 'add', 'subtract', 'screen_door', 'alpha_test'";
             }
@@ -561,16 +564,16 @@ void apply_slot_edit(const Slot_edit& edit, erhe::graphics::Device* device, erhe
         }
     }
     switch (try_read_float(args, "alpha_cutoff", f, field_err)) {
-        case Field_status::Ok:         after.alpha_cutoff = clamp01(f); applied["alpha_cutoff"] = after.alpha_cutoff; break;
+        case Field_status::Ok:         after_values.alpha_cutoff = clamp01(f); applied["alpha_cutoff"] = after_values.alpha_cutoff; break;
         case Field_status::Invalid:    return field_err;
         case Field_status::NotPresent: break;
     }
     if (try_read_bool(args, "use_circular_brushed_metal", b)) {
-        after.use_circular_brushed_metal = b;
+        after_values.use_circular_brushed_metal = b;
         applied["use_circular_brushed_metal"] = b;
     }
     if (try_read_bool(args, "use_aniso_control", b)) {
-        after.use_aniso_control = b;
+        after_values.use_aniso_control = b;
         applied["use_aniso_control"] = b;
     }
 
@@ -737,11 +740,13 @@ auto Mcp_server::action_edit_material(const json& args) -> std::string
         return r.dump();
     }
 
-    const erhe::primitive::Material_data before = material->data;
-    erhe::primitive::Material_data       after  = before;
+    const erhe::primitive::Material_values before_values = material->get_values();
+    erhe::primitive::Material_values       after_values  = before_values;
+    const erhe::primitive::Material_data   before        = material->data;
+    erhe::primitive::Material_data         after         = before;
 
     json applied = json::object();
-    const std::optional<std::string> field_error = apply_material_fields(args, library, m_context.graphics_device, after, applied);
+    const std::optional<std::string> field_error = apply_material_fields(args, library, m_context.graphics_device, after_values, after, applied);
     if (field_error.has_value()) {
         json r = make_text_content(field_error.value());
         r["isError"] = true;
@@ -754,7 +759,9 @@ auto Mcp_server::action_edit_material(const json& args) -> std::string
         return r.dump();
     }
 
-    if (after == before) {
+    const bool values_changed   = !(after_values == before_values);
+    const bool samplers_changed = !(after == before);
+    if (!values_changed && !samplers_changed) {
         return make_json_content({
             {"name",     material->get_name()},
             {"id",       material->get_id()},
@@ -763,9 +770,29 @@ auto Mcp_server::action_edit_material(const json& args) -> std::string
         }).dump();
     }
 
-    m_context.operation_stack->queue(
-        std::make_shared<Material_change_operation>(material, before, after)
-    );
+    // Property fields as one Property_set_apply_operation (only the entries
+    // that changed), texture slots as a Material_change_operation; both in
+    // one undo step when both changed.
+    Compound_operation::Parameters parameters;
+    if (values_changed) {
+        parameters.operations.push_back(
+            std::make_shared<Property_set_apply_operation>(
+                std::vector<std::shared_ptr<erhe::Item_base>>{material},
+                erhe::property::Property_set::diff(
+                    erhe::primitive::Material::to_property_set(before_values),
+                    erhe::primitive::Material::to_property_set(after_values)
+                )
+            )
+        );
+    }
+    if (samplers_changed) {
+        parameters.operations.push_back(std::make_shared<Material_change_operation>(material, before, after));
+    }
+    if (parameters.operations.size() == 1) {
+        m_context.operation_stack->queue(parameters.operations.front());
+    } else {
+        m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
+    }
 
     return make_json_content({
         {"name",    material->get_name()},
@@ -811,9 +838,10 @@ auto Mcp_server::action_create_material(const json& args) -> std::string
         }
     }
 
-    erhe::primitive::Material_data data{};
+    erhe::primitive::Material_values values{};
+    erhe::primitive::Material_data   data{};
     json applied = json::object();
-    const std::optional<std::string> field_error = apply_material_fields(args, library, m_context.graphics_device, data, applied);
+    const std::optional<std::string> field_error = apply_material_fields(args, library, m_context.graphics_device, values, data, applied);
     if (field_error.has_value()) {
         json r = make_text_content(field_error.value());
         r["isError"] = true;
@@ -825,8 +853,9 @@ auto Mcp_server::action_create_material(const json& args) -> std::string
         std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{library->mutex};
         material = library->materials->make<erhe::primitive::Material>(
             erhe::primitive::Material_create_info{
-                .name = name,
-                .data = data
+                .name   = name,
+                .values = values,
+                .data   = data
             }
         );
     }

@@ -186,8 +186,8 @@ auto Shader_key::derive(
     }
 
     if (material != nullptr) {
-        const erhe::primitive::Material_data&             data     = material->data;
-        const erhe::primitive::Material_texture_samplers& samplers = data.texture_samplers;
+        const erhe::primitive::Material_values            data     = material->get_values();
+        const erhe::primitive::Material_texture_samplers& samplers = material->data.texture_samplers;
 
         key.blending_mode = data.blending_mode;
 

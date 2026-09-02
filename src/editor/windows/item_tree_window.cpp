@@ -1518,7 +1518,10 @@ void Item_tree::imgui_row(const Flat_row& row)
         }
         if (!thumbnail_drawn && (row.primary_icon.code != nullptr)) {
             const Row_icon& icon  = row.primary_icon;
-            const glm::vec4 color = (icon.live_color != nullptr) ? glm::vec4{*icon.live_color, 1.0f} : icon.color;
+            const glm::vec4 color =
+                (icon.live_color_material != nullptr) ? glm::vec4{icon.live_color_material->get_base_color(), 1.0f} :
+                (icon.live_color          != nullptr) ? glm::vec4{*icon.live_color, 1.0f} :
+                icon.color;
             draw_list->AddText(
                 icon.font,
                 m_cached_icon_font_size,
@@ -1565,7 +1568,10 @@ void Item_tree::imgui_row(const Flat_row& row)
 
         for (std::size_t i = 0; i < row.right_icon_count; ++i) {
             const Row_icon& icon  = row.right_icons[i];
-            const glm::vec4 color = (icon.live_color != nullptr) ? glm::vec4{*icon.live_color, 1.0f} : icon.color;
+            const glm::vec4 color =
+                (icon.live_color_material != nullptr) ? glm::vec4{icon.live_color_material->get_base_color(), 1.0f} :
+                (icon.live_color          != nullptr) ? glm::vec4{*icon.live_color, 1.0f} :
+                icon.color;
             draw_list->AddText(
                 icon.font,
                 m_cached_icon_font_size,
@@ -1717,7 +1723,7 @@ void Item_tree::flatten_visible_rows(const std::shared_ptr<erhe::Item_base>& ite
         float primary_width = m_cached_icon_font_size; // thumbnails are square
         if (!row.brush) {
             const Icon_set::Item_icon icon = icon_set.get_item_icon(item);
-            row.primary_icon = Row_icon{.font = icon.font, .code = icon.code, .color = icon.color, .live_color = icon.live_color};
+            row.primary_icon = Row_icon{.font = icon.font, .code = icon.code, .color = icon.color, .live_color = icon.live_color, .live_color_material = icon.live_color_material};
             primary_width = icon_set.get_icon_width(icon);
         }
         row.label_x_offset = m_icon_x_offset + primary_width + style.ItemInnerSpacing.x;
@@ -1769,7 +1775,7 @@ void Item_tree::flatten_visible_rows(const std::shared_ptr<erhe::Item_base>& ite
                 }
                 const float width = icon_set.get_icon_width(icon);
                 row.right_icons[row.right_icon_count] = Row_icon{
-                    .font = icon.font, .code = icon.code, .color = icon.color, .live_color = icon.live_color, .x_offset = x
+                    .font = icon.font, .code = icon.code, .color = icon.color, .live_color = icon.live_color, .live_color_material = icon.live_color_material, .x_offset = x
                 };
                 ++row.right_icon_count;
                 row.right_icons_width = x + width;

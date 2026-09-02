@@ -244,8 +244,8 @@ auto Icon_set::get_item_icon(const std::shared_ptr<erhe::Item_base>& item) const
     }
     if (test_bit_set(type_mask, erhe::Item_type::material)) {
         const auto material = std::static_pointer_cast<erhe::primitive::Material>(item);
-        icon.color      = glm::vec4{material->data.base_color, 1.0f};
-        icon.live_color = &material->data.base_color;
+        icon.color      = glm::vec4{material->get_base_color(), 1.0f};
+        icon.live_color_material = material.get();
         icon.code       = icons.material;
     }
     if (test_bit_set(type_mask, erhe::Item_type::light)) {
@@ -268,7 +268,10 @@ void Icon_set::item_icon(const std::shared_ptr<erhe::Item_base>& item, const flo
 {
     static_cast<void>(scale);
     const Item_icon icon = get_item_icon(item);
-    const glm::vec4 color = (icon.live_color != nullptr) ? glm::vec4{*icon.live_color, 1.0f} : icon.color;
+    const glm::vec4 color =
+        (icon.live_color_material != nullptr) ? glm::vec4{icon.live_color_material->get_base_color(), 1.0f} :
+        (icon.live_color          != nullptr) ? glm::vec4{*icon.live_color, 1.0f} :
+        icon.color;
     draw_icon(icon.code, color, icon.font);
 }
 

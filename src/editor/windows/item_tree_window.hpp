@@ -26,6 +26,8 @@ namespace erhe {
 namespace erhe::imgui {
     class Imgui_windows;
 }
+namespace erhe::primitive { class Material; }
+
 namespace editor {
 
 class App_scenes;
@@ -131,7 +133,8 @@ private:
         ImFont*          font      {nullptr};
         const char*      code      {nullptr}; // nullptr = no icon
         glm::vec4        color     {1.0f, 1.0f, 1.0f, 1.0f};
-        const glm::vec3* live_color{nullptr}; // overrides color at draw time (light / material tint)
+        const glm::vec3* live_color{nullptr}; // overrides color at draw time (light tint)
+        const erhe::primitive::Material* live_color_material{nullptr}; // overrides color with the material base color property
         float            x_offset  {0.0f};    // from the right-icons block start
     };
 

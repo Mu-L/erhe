@@ -3358,7 +3358,7 @@ auto Lightmap_baker::bake_gbuffer(const int tile) -> bool
                             const erhe::primitive::Material& material = *mesh_primitive.material;
                             // Diffuse albedo: metals have no diffuse lobe, so
                             // they bounce (and later receive) almost nothing.
-                            base_color = glm::vec4{material.data.base_color * (1.0f - material.data.metallic), 1.0f};
+                            base_color = glm::vec4{material.get_base_color() * (1.0f - material.get_metallic()), 1.0f};
                         }
                         const erhe::primitive::Primitive* const primitive = mesh_primitive.primitive.get();
                         const erhe::primitive::Buffer_mesh* const buffer_mesh =

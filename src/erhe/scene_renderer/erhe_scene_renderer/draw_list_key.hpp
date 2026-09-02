@@ -53,7 +53,7 @@ public:
     Draw_mobility                   mobility            {Draw_mobility::dynamic};
     Draw_blending                   blending            {Draw_blending::opaque};
     bool                            negative_determinant{false};
-    // Material_data::double_sided (glTF material.doubleSided): selects a
+    // the Material double_sided property (glTF material.doubleSided): selects a
     // face-culling-disabled pipeline variant, so it has to partition lists.
     bool                            double_sided        {false};
     erhe::primitive::Primitive_mode primitive_mode      {erhe::primitive::Primitive_mode::polygon_fill};

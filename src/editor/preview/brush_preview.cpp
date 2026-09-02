@@ -82,7 +82,7 @@ void Brush_preview::make_preview_scene()
     m_material = std::make_shared<erhe::primitive::Material>(
         erhe::primitive::Material_create_info{
             .name = "Brush preview material",
-            .data = {
+            .values = {
                 .base_color = glm::vec3{1.0f, 0.2f, 0.1f},
                 .roughness  = glm::vec2{0.5f, 0.4f},
                 .metallic   = 0.5f
@@ -96,7 +96,7 @@ void Brush_preview::make_preview_scene()
     m_headlight_material = std::make_shared<erhe::primitive::Material>(
         erhe::primitive::Material_create_info{
             .name = "Headlight preview material",
-            .data = {
+            .values = {
                 .base_color = glm::vec3{0.85f, 0.85f, 0.85f},
                 .roughness  = glm::vec2{0.9f, 0.9f},
                 .metallic   = 0.0f

@@ -204,9 +204,9 @@ void Texture_material_output_node::on_removed_from_graph()
         samplers.metallic_roughness.sampler.reset();
         samplers.occlusion.texture_reference.reset();
         samplers.occlusion.sampler.reset();
-        material->data.metallic  = 0.0f;
-        material->data.roughness = glm::vec2{0.5f, 0.5f};
-        material->data.emissive  = glm::vec3{0.0f, 0.0f, 0.0f};
+        material->set_metallic(0.0f);
+        material->set_roughness(glm::vec2{0.5f, 0.5f});
+        material->set_emissive(glm::vec3{0.0f, 0.0f, 0.0f});
     }
 }
 
@@ -382,7 +382,7 @@ void Texture_material_output_node::render_separate_channel(
             sampler_slot->texture_reference.reset();
             sampler_slot->sampler.reset();
             if (channel == Separate_channel::emissive) {
-                material->data.emissive = glm::vec3{0.0f, 0.0f, 0.0f};
+                material->set_emissive(glm::vec3{0.0f, 0.0f, 0.0f});
             }
         }
         return;
@@ -401,11 +401,11 @@ void Texture_material_output_node::render_separate_channel(
         sampler_slot->texture_reference = slot.target;
         sampler_slot->sampler = ensure_sampler();
         if (channel == Separate_channel::albedo) {
-            material->data.base_color = glm::vec3{1.0f, 1.0f, 1.0f};
+            material->set_base_color(glm::vec3{1.0f, 1.0f, 1.0f});
         } else if (channel == Separate_channel::normal) {
-            material->data.normal_texture_scale = 1.0f;
+            material->set_normal_texture_scale(1.0f);
         } else if (channel == Separate_channel::emissive) {
-            material->data.emissive = glm::vec3{1.0f, 1.0f, 1.0f};
+            material->set_emissive(glm::vec3{1.0f, 1.0f, 1.0f});
         }
     }
 
@@ -436,8 +436,8 @@ void Texture_material_output_node::render_orm(
             samplers.metallic_roughness.sampler.reset();
             samplers.occlusion.texture_reference.reset();
             samplers.occlusion.sampler.reset();
-            material->data.metallic  = 0.0f;
-            material->data.roughness = glm::vec2{0.5f, 0.5f};
+            material->set_metallic(0.0f);
+            material->set_roughness(glm::vec2{0.5f, 0.5f});
         }
         return;
     }
@@ -470,8 +470,8 @@ void Texture_material_output_node::render_orm(
         // multipliers pass the baked values through unchanged.
         samplers.metallic_roughness.texture_reference = m_orm_target;
         samplers.metallic_roughness.sampler = ensure_sampler();
-        material->data.metallic  = 1.0f;
-        material->data.roughness = glm::vec2{1.0f, 1.0f};
+        material->set_metallic(1.0f);
+        material->set_roughness(glm::vec2{1.0f, 1.0f});
 
         // erhe samples occlusion from a separate slot (.r); assign the same
         // packed texture there only when occlusion is actually connected, else
@@ -479,7 +479,7 @@ void Texture_material_output_node::render_orm(
         if (occlusion.source_node != nullptr) {
             samplers.occlusion.texture_reference = m_orm_target;
             samplers.occlusion.sampler = ensure_sampler();
-            material->data.occlusion_texture_strength = 1.0f;
+            material->set_occlusion_texture_strength(1.0f);
         } else {
             samplers.occlusion.texture_reference.reset();
             samplers.occlusion.sampler.reset();

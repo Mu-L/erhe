@@ -509,7 +509,7 @@ void Hotbar::init_radial_menu(erhe::scene_renderer::Mesh_memory& mesh_memory, Sc
     auto disc_material = std::make_shared<erhe::primitive::Material>(
         erhe::primitive::Material_create_info{
             .name = "Circular Menu Disc",
-            .data = {
+            .values = {
                 .base_color = glm::vec3{0.1f, 0.2f, 0.3f},
                 .opacity    = 0.5f
             }

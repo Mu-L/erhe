@@ -76,6 +76,52 @@ auto c_str(const Mesh_variant variant) -> const char*
     }
 }
 
+namespace {
+
+constexpr erhe::property::Enum_entry c_bxdf_model_entries[] = {
+    {"Unlit",                    static_cast<int32_t>(Bxdf_model::unlit)},
+    {"Isotropic BRDF",           static_cast<int32_t>(Bxdf_model::isotropic_brdf)},
+    {"Anisotropic BRDF",         static_cast<int32_t>(Bxdf_model::anisotropic_brdf)},
+    {"Anisotropic Slope",        static_cast<int32_t>(Bxdf_model::anisotropic_slope)},
+    {"Anisotropic Engine-Ready", static_cast<int32_t>(Bxdf_model::anisotropic_engine_ready)},
+};
+constexpr erhe::property::Enum_entry c_material_blending_mode_entries[] = {
+    {"Opaque",      static_cast<int32_t>(Material_blending_mode::opaque)},
+    {"Alpha Blend", static_cast<int32_t>(Material_blending_mode::alpha_blend)},
+    {"Multiply",    static_cast<int32_t>(Material_blending_mode::multiply)},
+    {"Add",         static_cast<int32_t>(Material_blending_mode::add)},
+    {"Subtract",    static_cast<int32_t>(Material_blending_mode::subtract)},
+    {"Screen Door", static_cast<int32_t>(Material_blending_mode::screen_door)},
+    {"Alpha Test",  static_cast<int32_t>(Material_blending_mode::alpha_test)},
+};
+constexpr erhe::property::Enum_entry c_texgen_mode_entries[] = {
+    {"Uv 0",     static_cast<int32_t>(Texgen_mode::uv0)},
+    {"Uv 1",     static_cast<int32_t>(Texgen_mode::uv1)},
+    {"Uv 2",     static_cast<int32_t>(Texgen_mode::uv2)},
+    {"World XY", static_cast<int32_t>(Texgen_mode::world_xy)},
+    {"World XZ", static_cast<int32_t>(Texgen_mode::world_xz)},
+    {"World YZ", static_cast<int32_t>(Texgen_mode::world_yz)},
+    {"Node XY",  static_cast<int32_t>(Texgen_mode::node_xy)},
+    {"Node XZ",  static_cast<int32_t>(Texgen_mode::node_xz)},
+    {"Node YZ",  static_cast<int32_t>(Texgen_mode::node_yz)},
+    {"Tangent",  static_cast<int32_t>(Texgen_mode::tangent)},
+};
+constexpr erhe::property::Enum_entry c_normalmap_encoding_entries[] = {
+    {"Right Handed RGB",      static_cast<int32_t>(Normalmap_encoding::right_handed_three_channel)},
+    {"Right Handed X+Y (GA)", static_cast<int32_t>(Normalmap_encoding::right_handed_two_channel_ga)},
+    {"Left Handed RGB",       static_cast<int32_t>(Normalmap_encoding::left_handed_three_channel)},
+    {"Left Handed X+Y (GA)",  static_cast<int32_t>(Normalmap_encoding::left_handed_two_channel_ga)},
+    {"Right Handed X+Y (RG)", static_cast<int32_t>(Normalmap_encoding::right_handed_two_channel_rg)},
+    {"Left Handed X+Y (RG)",  static_cast<int32_t>(Normalmap_encoding::left_handed_two_channel_rg)},
+};
+
+} // anonymous namespace
+
+const erhe::property::Enum_info c_bxdf_model_enum_info            {"Bxdf_model",             c_bxdf_model_entries};
+const erhe::property::Enum_info c_material_blending_mode_enum_info{"Material_blending_mode", c_material_blending_mode_entries};
+const erhe::property::Enum_info c_texgen_mode_enum_info           {"Texgen_mode",            c_texgen_mode_entries};
+const erhe::property::Enum_info c_normalmap_encoding_enum_info    {"Normalmap_encoding",     c_normalmap_encoding_entries};
+
 auto c_str(const Bxdf_model bxdf_model) -> const char*
 {
     switch (bxdf_model) {

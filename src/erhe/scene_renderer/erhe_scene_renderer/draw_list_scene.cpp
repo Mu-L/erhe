@@ -91,12 +91,12 @@ public:
     // of Blending_mode_policy in bucket_primitives().
     const bool is_opaque =
         (material != nullptr) &&
-        (material->data.blending_mode == erhe::primitive::Material_blending_mode::opaque);
+        (material->get_blending_mode() == erhe::primitive::Material_blending_mode::opaque);
     result.blending = is_opaque ? Draw_blending::opaque : Draw_blending::translucent;
 
     // glTF material.doubleSided. No material means erhe's own default
     // material behavior, which is single sided like the glTF default.
-    result.double_sided = (material != nullptr) && material->data.double_sided;
+    result.double_sided = (material != nullptr) && material->get_double_sided();
 
     // Shadow lists take opaque casters only (Shadow_renderer uses
     // opaque_primitives_only today).
@@ -112,7 +112,7 @@ public:
         (purpose == Draw_purpose::shadow) &&
         exclude_unlit_from_shadows &&
         (material != nullptr) &&
-        (material->data.bxdf_model == erhe::primitive::Bxdf_model::unlit)
+        (material->get_bxdf_model() == erhe::primitive::Bxdf_model::unlit)
     ) {
         return result;
     }
@@ -179,7 +179,7 @@ public:
     // which hides use_aniso_control (only visible together with the aniso
     // vertex attribute) - fold it in explicitly.
     uint64_t hash = Shader_key{}.derive(material, nullptr, false).get_hash();
-    if ((material != nullptr) && material->data.use_aniso_control) {
+    if ((material != nullptr) && material->get_use_aniso_control()) {
         hash = erhe::hash::hash(static_cast<uint8_t>(1u), hash);
     }
     return hash;

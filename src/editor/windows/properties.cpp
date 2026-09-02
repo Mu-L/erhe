@@ -103,6 +103,7 @@ Properties::Properties(
 )
     : Imgui_window{imgui_renderer, imgui_windows, title, ini_label}
     , m_context   {app_context}
+    , m_dependency_rows{app_context}
 {
     m_close_scene_subscription = app_message_bus.close_scene.subscribe(
         [this](Close_scene_message& message) {
@@ -1762,7 +1763,16 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
         });
     }
 
+    if (m_item_count == 1) {
+        dependency_properties(item);
+    }
+
     pop_group();
+}
+
+void Properties::dependency_properties(const std::shared_ptr<erhe::Item_base>& item)
+{
+    m_dependency_rows.add_rows(*this, std::vector<std::shared_ptr<erhe::Item_base>>{item});
 }
 
 void Properties::end_material_inspect()
@@ -1848,66 +1858,9 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
         //pop_group();
     }
 
-    add_entry("BxDF Model", [&]() {
-        static const char* const c_bxdf_model_names[] = {
-            "Unlit",
-            "Isotropic BRDF",
-            "Anisotropic BRDF",
-            "Anisotropic Slope",
-            "Anisotropic Engine-Ready"
-        };
-        int current = static_cast<int>(data.bxdf_model);
-        if (ImGui::Combo("##", &current, c_bxdf_model_names, IM_ARRAYSIZE(c_bxdf_model_names))) {
-            data.bxdf_model = static_cast<erhe::primitive::Bxdf_model>(current);
-        }
-    });
-    add_entry("Blending Mode", [&]() {
-        int current = static_cast<int>(data.blending_mode);
-        if (ImGui::Combo("##", &current, erhe::primitive::c_material_blending_mode_names, IM_ARRAYSIZE(erhe::primitive::c_material_blending_mode_names))) {
-            data.blending_mode = static_cast<erhe::primitive::Material_blending_mode>(current);
-        }
-    });
-    if (data.blending_mode == erhe::primitive::Material_blending_mode::alpha_test) {
-        add_entry("Alpha Cutoff", [&](){
-            ImGui::SliderFloat("##", &data.alpha_cutoff, 0.0f, 1.0f);
-        });
-    }
-    add_entry("Double Sided", [&](){
-        ImGui::Checkbox("##", &data.double_sided);
-    });
-    if (erhe::primitive::supports_anisotropy(data.bxdf_model)) {
-        add_entry("Circular Brushed Metal", [&](){
-            ImGui::Checkbox("##", &data.use_circular_brushed_metal);
-        });
-        if (data.use_circular_brushed_metal) {
-            add_entry("Brushed Metal Texgen", [&](){
-                int current = static_cast<int>(data.circular_brushed_metal_texgen_mode);
-                if (ImGui::Combo("##", &current, erhe::primitive::c_texgen_mode_names, IM_ARRAYSIZE(erhe::primitive::c_texgen_mode_names))) {
-                    data.circular_brushed_metal_texgen_mode = static_cast<erhe::primitive::Texgen_mode>(current);
-                }
-            });
-        }
-        add_entry("Aniso Control", [&](){
-            ImGui::Checkbox("##", &data.use_aniso_control);
-        });
-    }
-    if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
-        add_entry("Metallic",    [&](){ ImGui::SliderFloat("##", &data.metallic,     0.0f,  1.0f); });
-        add_entry("Reflectance", [&](){ ImGui::SliderFloat("##", &data.reflectance,  0.35f, 1.0f); });
-        if (erhe::primitive::supports_anisotropy(data.bxdf_model)) {
-            add_entry("Roughness X", [&](){ ImGui::SliderFloat("##", &data.roughness.x,  0.1f,  0.8f); });
-            add_entry("Roughness Y", [&](){ ImGui::SliderFloat("##", &data.roughness.y,  0.1f,  0.8f); });
-        } else {
-            add_entry("Roughness",   [&](){ ImGui::SliderFloat("##", &data.roughness.x,  0.1f,  0.8f); });
-        }
-    }
-    add_entry("Base Color",  [&](){ ImGui::ColorEdit4 ("##", &data.base_color.x, ImGuiColorEditFlags_Float); });
-    add_entry("Emissive",    [&](){ ImGui::ColorEdit4 ("##", &data.emissive.x,   ImGuiColorEditFlags_Float); });
-    add_entry("Opacity",     [&](){ ImGui::SliderFloat("##", &data.opacity,      0.0f,  1.0f); });
-    if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
-        add_entry("IOR",          [&](){ ImGui::SliderFloat("##", &data.ior,          1.0f,  3.0f); });
-        add_entry("Transmission", [&](){ ImGui::SliderFloat("##", &data.transmission, 0.0f,  1.0f); });
-    }
+    // Registered material properties (doc/property-system-plan.md 4.1):
+    // generic rows, undo through Property_set_operation.
+    m_dependency_rows.add_rows(*this, std::vector<std::shared_ptr<erhe::Item_base>>{selected_material_shared});
 
     Scene_root* scene_root = m_context.scene_commands->get_scene_root(selected_material);
     if (scene_root != nullptr) {
@@ -2005,23 +1958,11 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                 }
             };
             add_texture_slot_entries("Base Color",         "##base_color_texture",         &samplers.base_color);
-            if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
+            if (selected_material->get_bxdf_model() != erhe::primitive::Bxdf_model::unlit) {
                 add_texture_slot_entries("Metallic Roughness", "##metallic_roughness_texture", &samplers.metallic_roughness);
             }
             add_texture_slot_entries("Normal",             "##normal_texture",             &samplers.normal);
-            if (samplers.normal.texture_reference) {
-                add_entry("Normal Map Scale", [&](){ ImGui::SliderFloat("##", &data.normal_texture_scale, 0.0f, 1.0f); });
-                // A KTX2 normal-mode texture overrides the channel layout
-                // half of the encoding at shader variant derivation; the
-                // handedness half is always honored.
-                add_entry("Normal Map Encoding", [&](){
-                    int current = static_cast<int>(data.normalmap_encoding);
-                    if (ImGui::Combo("##", &current, erhe::primitive::c_normalmap_encoding_names, IM_ARRAYSIZE(erhe::primitive::c_normalmap_encoding_names))) {
-                        data.normalmap_encoding = static_cast<erhe::primitive::Normalmap_encoding>(current);
-                    }
-                });
-            }
-            if (data.bxdf_model != erhe::primitive::Bxdf_model::unlit) {
+            if (selected_material->get_bxdf_model() != erhe::primitive::Bxdf_model::unlit) {
                 add_texture_slot_entries("Occlusion",          "##occlusion_texture",          &samplers.occlusion);
             }
             add_texture_slot_entries("Emissive",           "##emissive_texture",           &samplers.emissive);
@@ -2086,12 +2027,20 @@ void Properties::imgui()
 
     const std::vector<std::shared_ptr<erhe::Item_base>>& items = effective_items();
 
+    m_item_count = items.size();
     int id = 0;
     for (const auto& item : items) {
         ImGui::PushID(id++);
         ERHE_DEFER( ImGui::PopID(); );
         ERHE_VERIFY(item);
         item_properties(item);
+    }
+    if (items.size() > 1) {
+        // Multi-selection: one row set for the properties every selected
+        // type has, with mixed-value display and one operation per edit.
+        push_group(fmt::format("Properties ({} items)", items.size()), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed, m_indent);
+        m_dependency_rows.add_rows(*this, items);
+        pop_group();
     }
 
     const auto selected_animation = get<erhe::scene::Animation>(items);

@@ -1260,10 +1260,10 @@ auto Mcp_server::query_scene_materials(const json& args) -> std::string
         materials.push_back({
             {"name",       mat->get_name()},
             {"id",         mat->get_id()},
-            {"base_color", {mat->data.base_color.x, mat->data.base_color.y, mat->data.base_color.z}},
-            {"metallic",   mat->data.metallic},
-            {"roughness",  mat->data.roughness.x},
-            {"emissive",   {mat->data.emissive.x, mat->data.emissive.y, mat->data.emissive.z}}
+            {"base_color", {mat->get_base_color().x, mat->get_base_color().y, mat->get_base_color().z}},
+            {"metallic",   mat->get_metallic()},
+            {"roughness",  mat->get_roughness().x},
+            {"emissive",   {mat->get_emissive().x, mat->get_emissive().y, mat->get_emissive().z}}
         });
     }
 
@@ -1352,7 +1352,8 @@ auto Mcp_server::query_material_details(const json& args) -> std::string
     const auto& mat_list = library->materials->get_all<erhe::primitive::Material>();
     for (const auto& mat : mat_list) {
         if (mat->get_name() == material_name) {
-            const auto& d = mat->data;
+            const erhe::primitive::Material_values d = mat->get_values();
+            const erhe::primitive::Material_data&  samplers_data = mat->data;
             auto sampler_to_json = [](const erhe::primitive::Material_texture_sampler& s) -> json {
                 json entry = {
                     {"texgen_mode", s.texgen_mode},
@@ -1413,11 +1414,11 @@ auto Mcp_server::query_material_details(const json& args) -> std::string
                                                                                                 "opaque"},
                 {"alpha_cutoff",               d.alpha_cutoff},
                 {"texture_samplers", {
-                    {"base_color",         sampler_to_json(d.texture_samplers.base_color)},
-                    {"metallic_roughness", sampler_to_json(d.texture_samplers.metallic_roughness)},
-                    {"normal",             sampler_to_json(d.texture_samplers.normal)},
-                    {"occlusion",          sampler_to_json(d.texture_samplers.occlusion)},
-                    {"emissive",           sampler_to_json(d.texture_samplers.emissive)}
+                    {"base_color",         sampler_to_json(samplers_data.texture_samplers.base_color)},
+                    {"metallic_roughness", sampler_to_json(samplers_data.texture_samplers.metallic_roughness)},
+                    {"normal",             sampler_to_json(samplers_data.texture_samplers.normal)},
+                    {"occlusion",          sampler_to_json(samplers_data.texture_samplers.occlusion)},
+                    {"emissive",           sampler_to_json(samplers_data.texture_samplers.emissive)}
                 }}
             };
             return make_json_content(result).dump();

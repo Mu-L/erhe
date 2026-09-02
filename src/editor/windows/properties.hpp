@@ -2,6 +2,7 @@
 
 #include "app_message.hpp"
 #include "windows/property_editor.hpp"
+#include "windows/dependency_property_rows.hpp"
 
 #include "erhe_message_bus/message_bus.hpp"
 #include "erhe_primitive/material.hpp"
@@ -118,6 +119,9 @@ private:
     void geometry_graph_mesh_properties(Geometry_graph_mesh& geometry_graph_mesh);
     void node_physics_properties      (Node_physics& node_physics);
     void node_joint_properties        (Node_joint& node_joint);
+    // Generic rows for the item's registered properties
+    // (doc/property-system-plan.md D12), inside the item's group.
+    void dependency_properties        (const std::shared_ptr<erhe::Item_base>& item);
     void physics_material_properties  (const std::shared_ptr<erhe::physics::Physics_material>& physics_material);
     void collision_filter_properties  (const std::shared_ptr<erhe::physics::Collision_filter>& collision_filter);
     void physics_joint_settings_properties(const std::shared_ptr<erhe::physics::Physics_joint_settings>& settings);
@@ -136,6 +140,10 @@ private:
     void on_items_removed(const Removed_items& removed);
 
     App_context& m_context;
+
+    Dependency_property_rows m_dependency_rows;
+
+    std::size_t                        m_item_count{0};
 
     erhe::message_bus::Subscription<Close_scene_message>   m_close_scene_subscription;
     erhe::message_bus::Subscription<Items_removed_message> m_items_removed_subscription;

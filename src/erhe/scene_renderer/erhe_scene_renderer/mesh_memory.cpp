@@ -1189,7 +1189,7 @@ void bucket_primitives(
             if (
                 exclude_unlit_primitives &&
                 (material != nullptr) &&
-                (material->data.bxdf_model == erhe::primitive::Bxdf_model::unlit)
+                (material->get_bxdf_model() == erhe::primitive::Bxdf_model::unlit)
             ) {
                 continue;
             }
@@ -1259,7 +1259,7 @@ void bucket_primitives(
 
             // glTF material.doubleSided: no material means erhe's own default
             // material behavior, which is single sided like the glTF default.
-            const bool primitive_double_sided = (material != nullptr) && material->data.double_sided;
+            const bool primitive_double_sided = (material != nullptr) && material->get_double_sided();
 
             bool done = false;
             for (Render_bucket& b : buckets) {

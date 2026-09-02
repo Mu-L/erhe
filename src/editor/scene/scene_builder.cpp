@@ -836,7 +836,7 @@ auto Scene_builder::add_room(const Add_room_args& args) -> bool
         std::make_shared<erhe::primitive::Material>(
             erhe::primitive::Material_create_info{
                 .name = "Floor",
-                .data = {
+                .values = {
                     .base_color = glm::vec3{0.07f, 0.07f, 0.07f},
                     //.base_color = glm::vec3{0.27f, 0.27f, 0.27f}, // temp for shadow debug with single directional light source
                     .roughness  = glm::vec2{0.9f, 0.9f},
@@ -1224,7 +1224,7 @@ auto Scene_builder::add_cubes(glm::ivec3 shape, float scale, float gap) -> bool
         *m_scene_root,
         erhe::primitive::Material_create_info{
             .name = "cube",
-            .data = {
+            .values = {
                 .base_color = glm::vec3{1.0, 1.0f, 1.0f},
                 .roughness  = glm::vec2{0.3f, 0.4f},
                 .metallic   = 0.0f

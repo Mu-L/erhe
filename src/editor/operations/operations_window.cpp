@@ -2748,7 +2748,7 @@ void Operations::create_material()
         *scene_root,
         erhe::primitive::Material_create_info{
             .name = "New Material",
-            .data = {
+            .values = {
                 .base_color = glm::vec3{0.5f, 0.5f, 0.5f},
                 .roughness  = glm::vec2{0.5f, 0.5f},
                 .metallic   = 1.0f

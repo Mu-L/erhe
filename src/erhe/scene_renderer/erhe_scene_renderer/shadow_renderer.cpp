@@ -55,7 +55,7 @@ namespace {
     }
     for (const erhe::scene::Mesh_primitive& mesh_primitive : primitives) {
         const erhe::primitive::Material* material = mesh_primitive.material.get();
-        if ((material == nullptr) || (material->data.bxdf_model != erhe::primitive::Bxdf_model::unlit)) {
+        if ((material == nullptr) || (material->get_bxdf_model() != erhe::primitive::Bxdf_model::unlit)) {
             return false;
         }
     }

@@ -68,7 +68,7 @@ using erhe::geometry::get_mesh_info;
 
 namespace erhe::gltf {
 
-// glTF extras carriers for erhe-specific Material_data fields that do not
+// glTF extras carriers for erhe-specific Material property fields that do not
 // have a standard glTF representation: bxdf_model (when not isotropic and
 // not unlit -- unlit rides on KHR_materials_unlit), use_circular_brushed
 // _metal, circular_brushed_metal_texgen_mode, use_aniso_control, and the
@@ -1739,10 +1739,10 @@ private:
             }
         };
 
-        erhe::primitive::Material_data&             create_data     = create_info.data;
-        erhe::primitive::Material_texture_samplers& create_samplers = create_data.texture_samplers;
+        erhe::primitive::Material_values&           create_data     = create_info.values;
+        erhe::primitive::Material_texture_samplers& create_samplers = create_info.data.texture_samplers;
 
-        // KHR_materials_unlit: import the unlit flag into Material_data::bxdf_model
+        // KHR_materials_unlit: import the unlit flag into the bxdf_model property
         // so the editor renders the material exactly as the source glTF intended.
         // The specular-glossiness fallback below also flips bxdf_model to unlit;
         // honoring KHR_materials_unlit first means we do not need that path's
@@ -1772,7 +1772,7 @@ private:
         create_data.double_sided = material.doubleSided;
 
         if (material.normalTexture.has_value()) {
-            apply_texture(material.normalTexture.value(), create_data.texture_samplers.normal, Gltf_material_texture_slot::normal, true);
+            apply_texture(material.normalTexture.value(), create_samplers.normal, Gltf_material_texture_slot::normal, true);
             create_data.normal_texture_scale = material.normalTexture.value().scale;
         }
         if (material.occlusionTexture.has_value()) {
@@ -3736,22 +3736,22 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
             continue;
         }
         if (extras.roughness_y.has_value()) {
-            material->data.roughness.y = extras.roughness_y.value();
+            material->set_roughness(glm::vec2{material->get_roughness().x, extras.roughness_y.value()});
         }
         if (extras.bxdf_model.has_value()) {
-            material->data.bxdf_model = extras.bxdf_model.value();
+            material->set_bxdf_model(extras.bxdf_model.value());
         }
         if (extras.blending_mode.has_value()) {
-            material->data.blending_mode = extras.blending_mode.value();
+            material->set_blending_mode(extras.blending_mode.value());
         }
         if (extras.use_circular_brushed_metal.has_value()) {
-            material->data.use_circular_brushed_metal = extras.use_circular_brushed_metal.value();
+            material->set_use_circular_brushed_metal(extras.use_circular_brushed_metal.value());
         }
         if (extras.circular_brushed_metal_texgen_mode.has_value()) {
-            material->data.circular_brushed_metal_texgen_mode = extras.circular_brushed_metal_texgen_mode.value();
+            material->set_circular_brushed_metal_texgen_mode(extras.circular_brushed_metal_texgen_mode.value());
         }
         if (extras.use_aniso_control.has_value()) {
-            material->data.use_aniso_control = extras.use_aniso_control.value();
+            material->set_use_aniso_control(extras.use_aniso_control.value());
         }
     }
 
@@ -3894,42 +3894,42 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                 }
                 float float_value{0.0f};
                 if (read_float(extension_object, "roughness_y", float_value)) {
-                    material->data.roughness.y = float_value;
+                    material->set_roughness(glm::vec2{material->get_roughness().x, float_value});
                 }
                 std::string_view string_value;
                 if (extension_object.at_key("bxdf_model").get_string().get(string_value) == simdjson::SUCCESS) {
                     if (const auto parsed = bxdf_model_from_string(string_value); parsed.has_value()) {
-                        material->data.bxdf_model = parsed.value();
+                        material->set_bxdf_model(parsed.value());
                     }
                 }
                 if (extension_object.at_key("blending_mode").get_string().get(string_value) == simdjson::SUCCESS) {
                     if (const auto parsed = blending_mode_from_string(string_value); parsed.has_value()) {
-                        material->data.blending_mode = parsed.value();
+                        material->set_blending_mode(parsed.value());
                     }
                 }
                 bool bool_value{false};
                 if (extension_object.at_key("normalmap_encoding").get_string().get(string_value) == simdjson::SUCCESS) {
                     if (const auto parsed = normalmap_encoding_from_string(string_value); parsed.has_value()) {
-                        material->data.normalmap_encoding = parsed.value();
+                        material->set_normalmap_encoding(parsed.value());
                     }
                 }
                 if (extension_object.at_key("use_circular_brushed_metal").get_bool().get(bool_value) == simdjson::SUCCESS) {
-                    material->data.use_circular_brushed_metal = bool_value;
+                    material->set_use_circular_brushed_metal(bool_value);
                 }
                 // Legacy integer key from before texgen modes; 0..2 map to uv0..uv2.
                 std::uint64_t uint_value{0};
                 if (extension_object.at_key("circular_brushed_metal_tex_coord").get_uint64().get(uint_value) == simdjson::SUCCESS) {
                     if (uint_value <= 2) {
-                        material->data.circular_brushed_metal_texgen_mode = static_cast<erhe::primitive::Texgen_mode>(uint_value);
+                        material->set_circular_brushed_metal_texgen_mode(static_cast<erhe::primitive::Texgen_mode>(uint_value));
                     }
                 }
                 if (extension_object.at_key("circular_brushed_metal_texgen_mode").get_string().get(string_value) == simdjson::SUCCESS) {
                     if (const auto parsed = texgen_mode_from_string(string_value); parsed.has_value()) {
-                        material->data.circular_brushed_metal_texgen_mode = parsed.value();
+                        material->set_circular_brushed_metal_texgen_mode(parsed.value());
                     }
                 }
                 if (extension_object.at_key("use_aniso_control").get_bool().get(bool_value) == simdjson::SUCCESS) {
-                    material->data.use_aniso_control = bool_value;
+                    material->set_use_aniso_control(bool_value);
                 }
                 // Per-slot texgen modes. uv0..uv2 ride the core texCoord
                 // index (already applied when the samplers were parsed);
@@ -4675,7 +4675,7 @@ private:
             return stub_material_index;
         }
 
-        const erhe::primitive::Material_data& data = material->data;
+        const erhe::primitive::Material_values data = material->get_values();
         const size_t gltf_material_index = m_gltf_asset.materials.size();
         {
             fastgltf::Material gltf_material{
@@ -4760,7 +4760,7 @@ private:
             // source image stream; slots whose texture has no exportable
             // source (e.g. graph-texture bakes) stay empty.
             {
-                const erhe::primitive::Material_texture_samplers& slots = data.texture_samplers;
+                const erhe::primitive::Material_texture_samplers& slots = material->data.texture_samplers;
                 fastgltf::TextureInfo base_color_texture{};
                 if (fill_texture_info(slots.base_color, base_color_texture)) {
                     gltf_material.pbrData.baseColorTexture = std::move(base_color_texture);
@@ -4793,13 +4793,13 @@ private:
 
     // ERHE_material extension per emitted glTF material
     // (doc/gltf-scene-roundtrip-plan.md phase 3): the erhe-specific
-    // Material_data fields that have no standard glTF representation.
+    // Material property fields that have no standard glTF representation.
     // Migrates the legacy material extras writer (same conditional field
     // set); the extras remain parsed for older files.
     std::unordered_map<std::size_t, std::string> m_internal_material_extensions;
     void record_material_extensions(const erhe::primitive::Material& material, const std::size_t gltf_material_index)
     {
-        const erhe::primitive::Material_data& data = material.data;
+        const erhe::primitive::Material_values data = material.get_values();
 
         // Skip fields at their round-trip defaults; unlit rides on
         // KHR_materials_unlit and OPAQUE/BLEND/MASK on alphaMode.
@@ -4822,11 +4822,11 @@ private:
                 (sampler.texgen_mode != erhe::primitive::Texgen_mode::uv2);
         };
         const bool emit_sampler_texgen =
-            sampler_emits_texgen(data.texture_samplers.base_color) ||
-            sampler_emits_texgen(data.texture_samplers.metallic_roughness) ||
-            sampler_emits_texgen(data.texture_samplers.normal) ||
-            sampler_emits_texgen(data.texture_samplers.occlusion) ||
-            sampler_emits_texgen(data.texture_samplers.emissive);
+            sampler_emits_texgen(material.data.texture_samplers.base_color) ||
+            sampler_emits_texgen(material.data.texture_samplers.metallic_roughness) ||
+            sampler_emits_texgen(material.data.texture_samplers.normal) ||
+            sampler_emits_texgen(material.data.texture_samplers.occlusion) ||
+            sampler_emits_texgen(material.data.texture_samplers.emissive);
         const bool emit_normalmap_encoding =
             data.normalmap_encoding != erhe::primitive::Normalmap_encoding::right_handed_three_channel;
 
@@ -4858,11 +4858,11 @@ private:
             separator = ",";
         };
 
-        process_sampler("base_color",         data.texture_samplers.base_color);
-        process_sampler("metallic_roughness", data.texture_samplers.metallic_roughness);
-        process_sampler("normal",             data.texture_samplers.normal);
-        process_sampler("occlusion",          data.texture_samplers.occlusion);
-        process_sampler("emissive",           data.texture_samplers.emissive);
+        process_sampler("base_color",         material.data.texture_samplers.base_color);
+        process_sampler("metallic_roughness", material.data.texture_samplers.metallic_roughness);
+        process_sampler("normal",             material.data.texture_samplers.normal);
+        process_sampler("occlusion",          material.data.texture_samplers.occlusion);
+        process_sampler("emissive",           material.data.texture_samplers.emissive);
 
         if (emit_roughness_y) {
             fields += fmt::format("{}\"roughness_y\":{}", separator, data.roughness.y);

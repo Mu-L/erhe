@@ -301,7 +301,7 @@ auto Scene_tlas::update(
             const uint32_t                   material_index = (material_source != nullptr)
                 ? material_source->get_slot(material).value_or(0u)
                 : 0u;
-            const bool                       transmissive   = (material != nullptr) && (material->data.transmission > 0.0f);
+            const bool                       transmissive   = (material != nullptr) && (material->get_transmission() > 0.0f);
 
             m_instance_records.push_back(
                 Instance_record_data{

@@ -52,7 +52,7 @@ class Scene_root;
 // are shaded with real materials (base color / metallic-roughness textures
 // via the texture heap, interpolated smooth normals from the mesh memory
 // stream-1 pool reached through buffer device addresses) against the scene
-// lights with ray traced shadows; transmissive materials (Material_data::
+// lights with ray traced shadows; transmissive materials (the Material property
 // transmission > 0) refract with Fresnel-weighted traced reflections.
 // Requires Device_info::use_ray_query; is_supported() is false otherwise and
 // render() does nothing. When use_ray_tracing_position_fetch is additionally

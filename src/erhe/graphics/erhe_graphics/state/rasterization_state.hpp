@@ -39,7 +39,7 @@ public:
     [[nodiscard]] auto with_winding_flip() const -> Rasterization_state;
 
     // Returns a copy with face culling turned off, keeping every other piece
-    // of state. Used for glTF's material.doubleSided (Material_data::
+    // of state. Used for glTF's material.doubleSided (the Material property
     // double_sided), where both faces of a surface must be rendered.
     [[nodiscard]] auto with_face_culling_disabled() const -> Rasterization_state;
 

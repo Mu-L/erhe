@@ -135,7 +135,7 @@ Controller_visualization::Controller_visualization(
     auto controller_material = m_material_library->make<erhe::primitive::Material>(
         erhe::primitive::Material_create_info{
             .name = "Controller",
-            .data = {
+            .values = {
                 .base_color = glm::vec3{0.1f, 0.1f, 0.2f}
             }
         }

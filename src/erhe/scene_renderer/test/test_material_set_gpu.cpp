@@ -66,7 +66,7 @@ void main()
 {
     Material_create_info create_info{};
     create_info.name            = name;
-    create_info.data.base_color = base_color;
+    create_info.values.base_color = base_color;
     return std::make_shared<Material>(create_info);
 }
 
@@ -337,7 +337,7 @@ TEST_F(Material_set_gpu_test, material_data_edit_dirties_the_set)
     update(set);
     const std::size_t after_first = set.get_write_count();
 
-    material->data.base_color = glm::vec3{0.0f, 0.0f, 1.0f};
+    material->set_base_color(glm::vec3{0.0f, 0.0f, 1.0f});
 
     update(set);
     EXPECT_GT(set.get_write_count(), after_first);

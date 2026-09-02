@@ -80,7 +80,7 @@ auto gather_material_record_inputs(
     const erhe::graphics::Sampler&   fallback_sampler
 ) -> Material_record_inputs
 {
-    const erhe::primitive::Material_data& data = material.data;
+    const erhe::primitive::Material_values data = material.get_values();
 
     Material_record_inputs inputs{};
     inputs.roughness                  = data.roughness;
@@ -123,7 +123,7 @@ auto gather_material_record_inputs(
         };
     };
 
-    const erhe::primitive::Material_texture_samplers& texture_samplers = data.texture_samplers;
+    const erhe::primitive::Material_texture_samplers& texture_samplers = material.data.texture_samplers;
     inputs.base_color_texture         = gather_texture(texture_samplers.base_color);
     inputs.metallic_roughness_texture = gather_texture(texture_samplers.metallic_roughness);
     inputs.normal_texture             = gather_texture(texture_samplers.normal);
