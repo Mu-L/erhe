@@ -12,6 +12,7 @@ include(codegen/erhe_codegen_generate.cmake)
 
 add_subdirectory(log)
 add_subdirectory(utility)
+add_subdirectory(property)
 add_subdirectory(item)
 
 add_subdirectory(buffer)
