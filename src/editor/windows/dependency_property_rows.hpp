@@ -69,9 +69,12 @@ private:
 
     App_context& m_context;
 
-    // Items of the current add_rows() call; row lambdas run in the same
-    // frame from show_entries().
-    std::vector<std::shared_ptr<erhe::Item_base>> m_items;
+    // Items the currently executing code operates on. add_rows() can be
+    // called more than once per frame (the node and each of its
+    // attachments); every row lambda captures its own call's snapshot and
+    // re-binds m_items before touching it, so a later add_rows() call
+    // cannot redirect earlier rows to the wrong item.
+    std::shared_ptr<const std::vector<std::shared_ptr<erhe::Item_base>>> m_items;
 
     // Drag / type session: `before` captured at widget activation, one per
     // item, committed as an operation at deactivation.
