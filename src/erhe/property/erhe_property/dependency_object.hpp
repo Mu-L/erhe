@@ -298,7 +298,7 @@ private:
     void               detach_expression           (Effective_value_entry& entry);
     [[nodiscard]] auto expression_reaches          (const Dependency_object& object, uint16_t index, const Dependency_object& target, uint16_t target_index, int depth) const -> bool;
     void               add_dependent               (const Dependent& dependent);
-    void               remove_dependents_of        (const Dependency_object& target);
+    void               remove_dependents_of        (const Dependency_object& target, uint16_t target_index);
     void               on_source_destroyed         (const Dependency_object& source);
 
     void notify(

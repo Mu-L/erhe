@@ -694,7 +694,9 @@ void Dependency_object::detach_expression(Effective_value_entry& entry)
     }
     for (Expression::Reference& reference : entry.expression->get_references()) {
         if (reference.object != nullptr) {
-            reference.object->remove_dependents_of(*this);
+            // Scoped to this entry's property: the object's other
+            // expressions reading the same source keep their push links.
+            reference.object->remove_dependents_of(*this, entry.index);
             reference.object   = nullptr;
             reference.property = nullptr;
         }
@@ -714,12 +716,17 @@ void Dependency_object::add_dependent(const Dependent& dependent)
     m_dependents->push_back(dependent);
 }
 
-void Dependency_object::remove_dependents_of(const Dependency_object& target)
+void Dependency_object::remove_dependents_of(const Dependency_object& target, const uint16_t target_index)
 {
     if (!m_dependents) {
         return;
     }
-    std::erase_if(*m_dependents, [&target](const Dependent& dependent) { return dependent.target == &target; });
+    std::erase_if(
+        *m_dependents,
+        [&target, target_index](const Dependent& dependent) {
+            return (dependent.target == &target) && (dependent.target_index == target_index);
+        }
+    );
     if (m_dependents->empty()) {
         m_dependents.reset();
     }
