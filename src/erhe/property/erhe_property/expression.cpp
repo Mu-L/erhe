@@ -121,6 +121,9 @@ auto component_of(const Property_value& value, const int component, double& out)
         case Property_type::quat:        if (component > 3) { return false; } out = static_cast<double>(std::get<glm::quat>(value)[component]); return true; // glm quat operator[] is x y z w
         case Property_type::string:      return false;
         case Property_type::enumeration: if (component != 0) { return false; } out = static_cast<double>(std::get<Enum_value>(value).value); return true;
+        case Property_type::ivec2:       if (component > 1) { return false; } out = static_cast<double>(std::get<glm::ivec2>(value)[component]); return true;
+        case Property_type::ivec3:       if (component > 2) { return false; } out = static_cast<double>(std::get<glm::ivec3>(value)[component]); return true;
+        case Property_type::ivec4:       if (component > 3) { return false; } out = static_cast<double>(std::get<glm::ivec4>(value)[component]); return true;
     }
     return false;
 }
@@ -203,6 +206,9 @@ auto Expression::component_count(const Property_type type) -> int
         case Property_type::quat:        return 4;
         case Property_type::string:      return 0;
         case Property_type::enumeration: return 1;
+        case Property_type::ivec2:       return 2;
+        case Property_type::ivec3:       return 3;
+        case Property_type::ivec4:       return 4;
     }
     return 0;
 }
@@ -386,6 +392,9 @@ auto Expression::evaluate(const Enum_info* enum_info) -> std::optional<Property_
             break;
         }
         case Property_type::string: return std::nullopt;
+        case Property_type::ivec2: value = glm::ivec2{static_cast<int>(std::lround(result[0])), static_cast<int>(std::lround(result[1]))}; break;
+        case Property_type::ivec3: value = glm::ivec3{static_cast<int>(std::lround(result[0])), static_cast<int>(std::lround(result[1])), static_cast<int>(std::lround(result[2]))}; break;
+        case Property_type::ivec4: value = glm::ivec4{static_cast<int>(std::lround(result[0])), static_cast<int>(std::lround(result[1])), static_cast<int>(std::lround(result[2])), static_cast<int>(std::lround(result[3]))}; break;
     }
     m_error.clear();
     return value;

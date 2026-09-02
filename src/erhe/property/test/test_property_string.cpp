@@ -68,6 +68,20 @@ TEST(Property_string, vectors_and_quaternion)
     EXPECT_TRUE(round_trips(Property_value{q}));
 }
 
+TEST(Property_string, integer_vectors)
+{
+    EXPECT_EQ(to_string(Property_value{glm::ivec2{1, -2}}), "1 -2");
+    EXPECT_EQ(to_string(Property_value{glm::ivec3{1, 2, 3}}), "1 2 3");
+    EXPECT_EQ(to_string(Property_value{glm::ivec4{-1, 2, -3, 4}}), "-1 2 -3 4");
+    EXPECT_TRUE(round_trips(Property_value{glm::ivec2{-10, 20}}));
+    EXPECT_TRUE(round_trips(Property_value{glm::ivec3{1, 2, 3}}));
+    EXPECT_TRUE(round_trips(Property_value{glm::ivec4{1, -2, 3, -4}}));
+    EXPECT_EQ(parse_value(Property_type::ivec3, "1, 2, 3").value(), (Property_value{glm::ivec3{1, 2, 3}}));
+    EXPECT_FALSE(parse_value(Property_type::ivec3, "1 2").has_value());
+    EXPECT_FALSE(parse_value(Property_type::ivec3, "1 2 3 4").has_value());
+    EXPECT_FALSE(parse_value(Property_type::ivec3, "1 2.5 3").has_value());
+}
+
 TEST(Property_string, string_is_verbatim)
 {
     EXPECT_EQ(to_string(Property_value{std::string{"  spaced  "}}), "  spaced  ");

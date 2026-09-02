@@ -29,7 +29,10 @@ using Property_value = std::variant<
     glm::vec4,
     glm::quat,
     std::string,
-    Enum_value
+    Enum_value,
+    glm::ivec2,
+    glm::ivec3,
+    glm::ivec4
 >;
 
 // Enumerators are the Property_value variant indices.
@@ -42,7 +45,10 @@ enum class Property_type : uint8_t {
     vec4        = 5,
     quat        = 6,
     string      = 7,
-    enumeration = 8
+    enumeration = 8,
+    ivec2       = 9,
+    ivec3       = 10,
+    ivec4       = 11
 };
 
 [[nodiscard]] constexpr auto c_str(const Property_type type) -> const char*
@@ -57,6 +63,9 @@ enum class Property_type : uint8_t {
         case Property_type::quat:        return "quat";
         case Property_type::string:      return "string";
         case Property_type::enumeration: return "enum";
+        case Property_type::ivec2:       return "ivec2";
+        case Property_type::ivec3:       return "ivec3";
+        case Property_type::ivec4:       return "ivec4";
     }
     return "?";
 }
@@ -76,7 +85,10 @@ concept Property_value_type =
     std::is_same_v<T, glm::vec4> ||
     std::is_same_v<T, glm::quat> ||
     std::is_same_v<T, std::string> ||
-    std::is_same_v<T, Enum_value>;
+    std::is_same_v<T, Enum_value>  ||
+    std::is_same_v<T, glm::ivec2>  ||
+    std::is_same_v<T, glm::ivec3>  ||
+    std::is_same_v<T, glm::ivec4>;
 
 template <typename T>
 concept Property_enum_type = std::is_enum_v<T>;
@@ -108,6 +120,9 @@ template <Property_storable T>
     if constexpr (std::is_same_v<S, glm::quat>)   { return Property_type::quat;        }
     if constexpr (std::is_same_v<S, std::string>) { return Property_type::string;      }
     if constexpr (std::is_same_v<S, Enum_value>)  { return Property_type::enumeration; }
+    if constexpr (std::is_same_v<S, glm::ivec2>)  { return Property_type::ivec2;       }
+    if constexpr (std::is_same_v<S, glm::ivec3>)  { return Property_type::ivec3;       }
+    if constexpr (std::is_same_v<S, glm::ivec4>)  { return Property_type::ivec4;       }
 }
 
 // C++ value -> stored variant
@@ -155,6 +170,9 @@ template <Property_storable T>
         case Property_type::quat:        return glm::quat{1.0f, 0.0f, 0.0f, 0.0f};
         case Property_type::string:      return std::string{};
         case Property_type::enumeration: return Enum_value{0};
+        case Property_type::ivec2:       return glm::ivec2{0};
+        case Property_type::ivec3:       return glm::ivec3{0};
+        case Property_type::ivec4:       return glm::ivec4{0};
     }
     return false;
 }

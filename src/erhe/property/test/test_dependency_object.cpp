@@ -16,6 +16,7 @@ const Property<glm::vec2> obj_vec2  = Property<glm::vec2>::register_property("ob
 const Property<glm::vec4> obj_vec4  = Property<glm::vec4>::register_property("obj_vec4", type_a);
 const Property<glm::quat> obj_quat  = Property<glm::quat>::register_property("obj_quat", type_a);
 const Property<std::string> obj_string = Property<std::string>::register_property("obj_string", type_a);
+const Property<glm::ivec3> obj_ivec3 = Property<glm::ivec3>::register_property("obj_ivec3", type_a);
 
 const Property<float> obj_validated = Property<float>::register_property(
     "obj_validated", type_a, Property_metadata{.default_value = 0.5f},
@@ -53,6 +54,7 @@ TEST(Dependency_object, defaults_without_entries)
     EXPECT_EQ(o.get_value(obj_vec4), glm::vec4{0.0f});
     EXPECT_EQ(o.get_value(obj_quat), (glm::quat{1.0f, 0.0f, 0.0f, 0.0f}));
     EXPECT_EQ(o.get_value(obj_string), "");
+    EXPECT_EQ(o.get_value(obj_ivec3), glm::ivec3{0});
     EXPECT_FALSE(o.has_local_value(obj_int.get()));
     EXPECT_EQ(o.get_value_source(obj_int.get()), Value_source::default_value);
     EXPECT_FALSE(o.read_local_value(obj_int).has_value());
@@ -68,6 +70,7 @@ TEST(Dependency_object, set_get_clear_every_type)
     o.set_value(obj_vec4, glm::vec4{1.0f, 2.0f, 3.0f, 4.0f});
     o.set_value(obj_quat, glm::quat{0.0f, 1.0f, 0.0f, 0.0f});
     o.set_value(obj_string, std::string{"text"});
+    o.set_value(obj_ivec3, glm::ivec3{4, 5, 6});
 
     EXPECT_EQ(o.get_value(obj_bool), true);
     EXPECT_EQ(o.get_value(obj_int), 42);
@@ -76,6 +79,7 @@ TEST(Dependency_object, set_get_clear_every_type)
     EXPECT_EQ(o.get_value(obj_vec4), (glm::vec4{1.0f, 2.0f, 3.0f, 4.0f}));
     EXPECT_EQ(o.get_value(obj_quat), (glm::quat{0.0f, 1.0f, 0.0f, 0.0f}));
     EXPECT_EQ(o.get_value(obj_string), "text");
+    EXPECT_EQ(o.get_value(obj_ivec3), (glm::ivec3{4, 5, 6}));
     EXPECT_EQ(o.get_value_source(obj_int.get()), Value_source::local);
     EXPECT_EQ(o.read_local_value(obj_int).value(), 42);
 

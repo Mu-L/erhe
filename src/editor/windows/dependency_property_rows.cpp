@@ -344,6 +344,30 @@ auto Dependency_property_rows::draw_widget(
             }
             return changed;
         }
+        case Property_type::ivec2: {
+            glm::ivec2 v = std::get<glm::ivec2>(value);
+            const bool changed = ImGui::DragInt2("##", &v.x, std::max(speed, 1.0f), has_range ? static_cast<int>(min) : 0, has_range ? static_cast<int>(max) : 0);
+            if (changed) {
+                value = v;
+            }
+            return changed;
+        }
+        case Property_type::ivec3: {
+            glm::ivec3 v = std::get<glm::ivec3>(value);
+            const bool changed = ImGui::DragInt3("##", &v.x, std::max(speed, 1.0f), has_range ? static_cast<int>(min) : 0, has_range ? static_cast<int>(max) : 0);
+            if (changed) {
+                value = v;
+            }
+            return changed;
+        }
+        case Property_type::ivec4: {
+            glm::ivec4 v = std::get<glm::ivec4>(value);
+            const bool changed = ImGui::DragInt4("##", &v.x, std::max(speed, 1.0f), has_range ? static_cast<int>(min) : 0, has_range ? static_cast<int>(max) : 0);
+            if (changed) {
+                value = v;
+            }
+            return changed;
+        }
         case Property_type::enumeration: {
             immediate = true;
             const erhe::property::Enum_info* info = property.get_enum_info();
@@ -533,6 +557,9 @@ void Dependency_property_rows::edit_as_expression(const Dependency_property& pro
         case Property_type::vec4:        { const glm::vec4 v = std::get<glm::vec4>(value); text = number(v.x) + ", " + number(v.y) + ", " + number(v.z) + ", " + number(v.w); break; }
         case Property_type::quat:        { const glm::quat q = std::get<glm::quat>(value); text = number(q.x) + ", " + number(q.y) + ", " + number(q.z) + ", " + number(q.w); break; }
         case Property_type::enumeration: text = std::to_string(std::get<erhe::property::Enum_value>(value).value); break;
+        case Property_type::ivec2:       { const glm::ivec2 v = std::get<glm::ivec2>(value); text = std::to_string(v.x) + ", " + std::to_string(v.y); break; }
+        case Property_type::ivec3:       { const glm::ivec3 v = std::get<glm::ivec3>(value); text = std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z); break; }
+        case Property_type::ivec4:       { const glm::ivec4 v = std::get<glm::ivec4>(value); text = std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z) + ", " + std::to_string(v.w); break; }
         case Property_type::string:      return;
     }
     begin_edit(property);

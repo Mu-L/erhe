@@ -90,6 +90,24 @@ auto parse_floats(const std::string_view text, const std::size_t count) -> std::
     return values;
 }
 
+auto parse_ints(const std::string_view text, const std::size_t count) -> std::optional<std::vector<int>>
+{
+    const std::vector<std::string_view> parts = split_components(text);
+    if (parts.size() != count) {
+        return std::nullopt;
+    }
+    std::vector<int> values;
+    values.reserve(count);
+    for (const std::string_view part : parts) {
+        const std::optional<int> value = parse_int(part);
+        if (!value.has_value()) {
+            return std::nullopt;
+        }
+        values.push_back(value.value());
+    }
+    return values;
+}
+
 } // anonymous namespace
 
 auto to_string(const Property_value& value, const Enum_info* enum_info) -> std::string
@@ -124,6 +142,18 @@ auto to_string(const Property_value& value, const Enum_info* enum_info) -> std::
                 }
             }
             return std::to_string(raw);
+        }
+        case Property_type::ivec2: {
+            const glm::ivec2 v = std::get<glm::ivec2>(value);
+            return std::to_string(v.x) + " " + std::to_string(v.y);
+        }
+        case Property_type::ivec3: {
+            const glm::ivec3 v = std::get<glm::ivec3>(value);
+            return std::to_string(v.x) + " " + std::to_string(v.y) + " " + std::to_string(v.z);
+        }
+        case Property_type::ivec4: {
+            const glm::ivec4 v = std::get<glm::ivec4>(value);
+            return std::to_string(v.x) + " " + std::to_string(v.y) + " " + std::to_string(v.z) + " " + std::to_string(v.w);
         }
     }
     return {};
@@ -207,6 +237,27 @@ auto parse_value(const Property_type type, const std::string_view text_in, const
                 return std::nullopt;
             }
             return Enum_value{raw.value()};
+        }
+        case Property_type::ivec2: {
+            const std::optional<std::vector<int>> v = parse_ints(text, 2);
+            if (!v.has_value()) {
+                return std::nullopt;
+            }
+            return glm::ivec2{v->at(0), v->at(1)};
+        }
+        case Property_type::ivec3: {
+            const std::optional<std::vector<int>> v = parse_ints(text, 3);
+            if (!v.has_value()) {
+                return std::nullopt;
+            }
+            return glm::ivec3{v->at(0), v->at(1), v->at(2)};
+        }
+        case Property_type::ivec4: {
+            const std::optional<std::vector<int>> v = parse_ints(text, 4);
+            if (!v.has_value()) {
+                return std::nullopt;
+            }
+            return glm::ivec4{v->at(0), v->at(1), v->at(2), v->at(3)};
         }
     }
     return std::nullopt;

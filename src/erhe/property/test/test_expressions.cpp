@@ -85,6 +85,7 @@ const Property<glm::vec3>   ex_vec3   = Property<glm::vec3>::register_property("
 const Property<glm::vec3>   ex_other  = Property<glm::vec3>::register_property("ex_other", type_e);
 const Property<glm::quat>   ex_quat   = Property<glm::quat>::register_property("ex_quat", type_e);
 const Property<std::string> ex_string = Property<std::string>::register_property("ex_string", type_e);
+const Property<glm::ivec3>  ex_ivec3  = Property<glm::ivec3>::register_property("ex_ivec3", type_e);
 const Property<Mode>        ex_mode   = Property<Mode>::register_property("ex_mode", type_e, c_mode_info);
 const Property<float>       ex_clamped = Property<float>::register_property(
     "ex_clamped", type_e,
@@ -268,6 +269,20 @@ TEST(Expressions, target_type_conversions)
     // Quaternion target takes x y z w.
     ASSERT_TRUE(o.set_expression(ex_quat.get(), "0, 0, 0, 1"));
     EXPECT_EQ(o.get_value(ex_quat), (glm::quat{1.0f, 0.0f, 0.0f, 0.0f}));
+
+    // Integer-vector target: per-component, rounded to nearest; a scalar
+    // formula broadcasts, and an ivec3 source reads per component.
+    o.set_value(ex_source, 2.6f);
+    ASSERT_TRUE(o.set_expression(ex_ivec3.get(), "{ex_source}, 1.4, 0 - 1.6"));
+    EXPECT_EQ(o.get_value(ex_ivec3), (glm::ivec3{3, 1, -2}));
+    ASSERT_TRUE(o.set_expression(ex_ivec3.get(), "{ex_source}"));
+    EXPECT_EQ(o.get_value(ex_ivec3), (glm::ivec3{3, 3, 3}));
+    o.clear_value(ex_ivec3);
+    o.set_value(ex_ivec3, glm::ivec3{10, 20, 30});
+    ASSERT_TRUE(o.set_expression(ex_float.get(), "{ex_ivec3.y}"));
+    EXPECT_EQ(o.get_value(ex_float), 20.0f);
+    ASSERT_TRUE(o.set_expression(ex_float.get(), "{ex_bool} + {ex_mode}"));
+    o.set_value(ex_source, 4.0f);
 
     // NaN is an error, the previous value stays (ex_bool is 1 now, so 5).
     EXPECT_EQ(o.get_value(ex_float), 5.0f);
