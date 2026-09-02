@@ -3,9 +3,10 @@
 Status: implemented. The library (`erhe::property`), the `Item_base`
 integration, the editor operation / generic rows / MCP tools / startup
 command, the `Material`, `Node`, `Light` and `Camera` migrations, observer
-users, expressions and bindings, inherited flags, sealing, the style layer
-and computed properties are all in and verified. This is a live document;
-section 6 holds the remaining work.
+users, expressions and bindings, inherited flags, sealing, the style layer,
+computed properties, the owner-subtype dimension and the geometry graph
+node migration are all in and verified. This is a live document; section 6
+holds the remaining work.
 
 Document roles. This document is the design record: goal, requirements,
 the design decisions with their WPF mapping and rationale, the item
@@ -913,7 +914,61 @@ constructor keeps copying `m_projection`; the entries copy through D10.
 `Properties::camera_properties` is gone: every row it drew is a generic
 row now.
 
-### 4.5 Usage
+### 4.5 Geometry graph nodes
+
+Every geometry graph node kind registers its parameters as subtype-keyed
+properties (D27) bridged over its existing members (D18), with
+`editor::make_node_member_bridge`
+(`src/editor/graph_editor/graph_node_property_bridge.hpp`) as the bridge
+factory and `Mesh_torus_node` as the recipe: a `property_owner_subtype()`
+function-local static, a `get_property_owner_subtype()` override, one
+static `Property<T>` member per parameter whose `Property_ui` carries the
+canvas widget's ranges, and `flags = Property_flags::none` because the
+graph asset's JSON (`write_parameters` / `read_parameters`) stays the
+only serializer - the members are the storage, so evaluation (including
+the off-main-thread shadow-clone snapshot) and serialization are
+untouched by the migration. Enumeration parameters carry `Enum_info`
+tables built from the canvas combo labels; per-mode rows use
+`visible_when` (the Conway operator floats, the transform node's
+rotation representations, the lattice cage bounds). A parameter whose
+canvas edit has a side effect keeps it in a hand-written bridge `set`
+(the lattice `auto_fit` cage freeze and `divisions` offset resample).
+
+Hosting and reachability: graph nodes share their owning asset's
+`Item_host` (the `Scene_root` that hosts the asset through the content
+library; `Graph_asset::set_item_host` forwards it, the owning-setter
+covers nodes added later, and `erase_node` clears it so a node held only
+by the undo stack cannot dangle). A D22 expression on a node parameter
+therefore resolves scene items as same-host sources under one item-host
+lock - `{cube/world_translation.x}` on a torus radius re-bakes the mesh
+when the cube moves, pushed through `Node::handle_transform_update`,
+with no polling - and `find_item_in_scene` also walks the library's
+graph assets and their nodes, so `Scene_root::find_hosted_item` and the
+MCP property tools reach graph nodes by name or id.
+
+Writers and undo: canvas `imgui()` widgets keep writing the members
+directly plus `mark_dirty()`, and their undo stays the whole-node JSON
+`Graph_parameter_operation` (one per edit gesture); the generic rows in
+the Node Properties window, MCP `set_item_property` and expression
+deliveries write through the bridge (one `Property_set_operation` per
+edit, reset-to-default and formulas included). The two undo owners do
+not interact: `Graph_editor_node::on_property_changed` refreshes the
+committed JSON baseline when a parameter property changes outside a
+canvas gesture, and `Graph_editor_node::mark_dirty` re-runs expressions
+reading the node (`invalidate_dependents` behind a `has_dependents`
+check; shadow clones never have dependents, so the worker path stays one
+null check). A canvas drag on an expression-driven parameter is
+overwritten at the next delivery, the same way the gizmo behaves on a
+driven translation (D22).
+
+The Node Properties window draws the generic rows (D12) for any node
+whose subtype is non-zero; what cannot be a property - `Asset_reference`
+pickers, the lattice control point editing - draws through the node's
+`unregistered_parameters_imgui` override in an `Extra` row, and nodes
+with no registered properties (transform_from_node, passthrough, join,
+unary-op, groups, brush source) keep the hand-rolled `Parameters` entry.
+
+### 4.6 Usage
 
 - Editor. The Properties window draws the generic rows for every selected
   item (D12): source and default in the tooltip, `*` prefix on a local
@@ -934,13 +989,15 @@ row now.
   (section 4.1, stored) and `Camera` (section 4.4, bridged) are the
   recipes. An enumeration needs its `Enum_info` table next to the `c_str`.
 
-### 4.6 Tests
+### 4.7 Tests
 
-- `src/erhe/property/test/` (gtest): registry and overrides, every value
-  type, validate, coerce, change notifications and batching, inheritance
-  through a `Test_object` tree, observers, enumerations, string
-  conversion, property sets, bridged storage, expressions, sealing,
-  styles, computed properties.
+- `src/erhe/property/test/` (gtest): registry and overrides (owner
+  subtypes included: listing, exclusion, exact-subtype shadowing), every
+  value type (the integer vectors included), validate, coerce, change
+  notifications and batching, inheritance through a `Test_object` tree,
+  observers, enumerations, string conversion, property sets, bridged
+  storage, expressions (integer-vector targets and component sources
+  included), sealing, styles, computed properties.
 - `src/erhe/item/test/`: `test_properties.cpp` (inheritance through
   `Hierarchy`, reparent, clone), `test_item_visibility.cpp` (derived
   bits), `test_item_sealing.cpp` (`lock_edit` seal sync).
@@ -951,7 +1008,7 @@ row now.
 - `src/erhe/primitive/test/test_material_style.cpp` (the `Brushed metal`
   style).
 
-### 4.7 Notes and gotchas
+### 4.8 Notes and gotchas
 
 - Every binary that initializes `erhe::item` logging must call
   `erhe::property::initialize_logging()` first; the first library log
@@ -1022,13 +1079,27 @@ style layer is D25.
 - Further item migrations, in priority order and each reusing the Material
   recipe (section 4.1): `Layout` (type, axis, volume), `Grid`, physics
   settings (mass, friction, restitution), `Brush_placement`.
-- Graph nodes (geometry, texture and shader graphs) as dependency objects:
-  node parameters become properties, their editors reuse the generic rows
-  (D12), and the value-provider item can drive them from scene items.
-  Driving a graph node parameter from a scene item depends on extending
-  D22 reference resolution across item hosts: a graph asset and a scene
-  are different hosts, and an expression source is currently required to
-  share the target's host so evaluation runs under one item-host lock.
+- Texture graph node parameters as properties (the geometry graph
+  migration is section 4.5; the infrastructure - D27 subtypes, shared
+  host, undo interplay - is in and shared). The texture graph's
+  parameters are per *descriptor*, not per C++ type
+  (`Texture_descriptor_node` holds a `Parameter_value` vector parallel to
+  its `erhe::texgen::Node_descriptor`), and descriptors are function-local
+  statics built on first use, so registration cannot ride C++ static
+  initialization: a `register_texture_graph_properties()` called once
+  from `run_editor()` before worker threads exist allocates one subtype
+  per descriptor and registers one property per parameter (float, color
+  as vec4, bool, enum with tables built from the descriptor labels, size
+  as the int exponent; gradient and curve parameters have no
+  `Property_value` form and stay in `imgui()`), with bridges capturing
+  the parameter index into `m_parameter_values`. Registering there also
+  needs the D3 / R12 wording amended to "registry writes end with
+  single-threaded early startup".
+- Shader graph (`src/editor/graph/`) node parameters as properties. The
+  oldest graph editor has no parameter serialization and no undo
+  operations at all; migrating it starts with adopting the
+  `Graph_editor_node` base (or retiring the prototype), not with
+  registrations.
 - Editor per-item state as attached properties registered by the editor:
   item tree expansion, sheet-window formulas. Shares the attached-property
   enumeration need with the `Layout` item above (whichever lands first

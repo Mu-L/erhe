@@ -38,7 +38,10 @@ integration, future work and the verification workflow - is
   the object's own member instead of the entry store. A bridged property is
   always `Value_source::local`, never inherits, is coerced on every read,
   and clearing it writes the default. `Node`'s translation / rotation /
-  scale are bridged onto its `Trs_transform`.
+  scale are bridged onto its `Trs_transform`; the editor's geometry graph
+  node parameters are bridged onto the node members (subtype-keyed, with
+  `set` ending in the node's `mark_dirty`,
+  `doc/property-system.md` section 4.5).
 - **`Property_registry`** - function-local static registry; registration
   happens from static members of owning classes, lookups by index, by
   (owner type, subtype, name) or by (type bits, subtype, name)
