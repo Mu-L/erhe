@@ -24,6 +24,15 @@ auto Graph_editor_node::is_dirty() const -> bool
 void Graph_editor_node::mark_dirty()
 {
     m_dirty = true;
+    // The storage-change funnel for the node's bridged parameter properties
+    // (canvas widget edits, read_parameters on undo / MCP / graph load):
+    // re-evaluate expressions reading this node, the way
+    // Node::handle_transform_update does for the transform (D22).
+    // Shadow evaluation clones never have dependents, so the worker-thread
+    // path stays one null check.
+    if (has_dependents()) {
+        invalidate_dependents();
+    }
 }
 
 void Graph_editor_node::clear_dirty()
@@ -33,6 +42,26 @@ void Graph_editor_node::clear_dirty()
 
 void Graph_editor_node::imgui()
 {
+}
+
+auto Graph_editor_node::has_unregistered_parameters() const -> bool
+{
+    return false;
+}
+
+void Graph_editor_node::unregistered_parameters_imgui(App_context&)
+{
+}
+
+void Graph_editor_node::on_property_changed(const erhe::property::Property_changed_args& args)
+{
+    // Only the node's own parameter properties (subtype-keyed, D27) feed
+    // the JSON parameter dump; a write during a canvas gesture is the
+    // gesture itself and commits through commit_parameter_edit().
+    const uint32_t owner_subtype = args.property.get_owner_subtype();
+    if ((owner_subtype != 0) && (owner_subtype == get_property_owner_subtype()) && !m_parameter_edit_in_progress) {
+        m_committed_parameters = dump_parameters();
+    }
 }
 
 void Graph_editor_node::properties_imgui(App_context& app_context)

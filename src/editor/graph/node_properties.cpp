@@ -37,8 +37,9 @@ Node_properties_window::Node_properties_window(
     erhe::imgui::Imgui_windows&  imgui_windows,
     App_context&                 app_context
 )
-    : Imgui_window{imgui_renderer, imgui_windows, "Node Properties", "node_pproperties", true}
-    , m_context   {app_context}
+    : Imgui_window      {imgui_renderer, imgui_windows, "Node Properties", "node_pproperties", true}
+    , m_context         {app_context}
+    , m_dependency_rows {app_context}
 {
 }
 
@@ -314,9 +315,22 @@ void Node_properties_window::graph_editor_node_properties(Graph_editor_window_ba
             ImGui::EndCombo();
         }
     });
-    m_property_editor.add_entry("Parameters", [this, node]() {
-        node->properties_imgui(m_context);
-    });
+    if (node->get_property_owner_subtype() != 0) {
+        // Registered parameter properties (D27) draw as generic rows: value
+        // source, reset to default, expressions, Property_set_operation
+        // undo. What is not a property (Asset_reference combos, stats)
+        // draws through unregistered_parameters_imgui().
+        m_dependency_rows.add_rows(m_property_editor, std::vector<std::shared_ptr<erhe::Item_base>>{node});
+        if (node->has_unregistered_parameters()) {
+            m_property_editor.add_entry("Extra", [this, node]() {
+                node->unregistered_parameters_imgui(m_context);
+            });
+        }
+    } else {
+        m_property_editor.add_entry("Parameters", [this, node]() {
+            node->properties_imgui(m_context);
+        });
+    }
 
     m_property_editor.pop_group();
 }

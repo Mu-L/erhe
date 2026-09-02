@@ -118,7 +118,7 @@ void Texture_graph_node::make_output_pin(const std::size_t key, const std::strin
 
 void Texture_graph_node::mark_dirty()
 {
-    m_dirty                = true;
+    Graph_editor_node::mark_dirty();
     m_preview_needs_render = true;
 }
 

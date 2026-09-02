@@ -52,6 +52,14 @@ public:
     // Node content widgets. Concrete nodes override; the base is empty.
     virtual void imgui();
 
+    // Node Properties window content for the parameters that are NOT
+    // registered properties (Asset_reference combos, stats text) on a node
+    // whose registered parameters draw as generic rows (property-system
+    // D12). Nodes with no registered properties keep drawing everything
+    // through imgui(); the base is empty and reports none.
+    [[nodiscard]] virtual auto has_unregistered_parameters() const -> bool;
+    virtual void unregistered_parameters_imgui(App_context& context);
+
     // Draws the node's parameter widgets (imgui()) outside the canvas - the
     // Node Properties window - with the same edit-gesture -> undoable
     // parameter operation commit node_editor() applies on the canvas.
@@ -146,6 +154,12 @@ protected:
     // dump the parameters and push one undoable operation against the
     // committed baseline. Called by node_editor() and properties_imgui().
     void commit_parameter_edit(App_context& context);
+
+    // A parameter property changed outside a canvas gesture (generic row,
+    // MCP set_item_property, Property_set_operation undo / redo, an
+    // expression delivery): refresh the committed baseline so the next
+    // canvas gesture's "before" side does not silently absorb the change.
+    void on_property_changed(const erhe::property::Property_changed_args& args) override;
 
     std::string m_type_name;
     std::string m_committed_parameters;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "windows/dependency_property_rows.hpp"
 #include "windows/property_editor.hpp"
 
 #include "erhe_imgui/imgui_window.hpp"
@@ -46,8 +47,11 @@ private:
     void graph_editor_node_properties(Graph_editor_window_base& window, const std::shared_ptr<Graph_editor_node>& node);
     void graph_editor_link_properties(Graph_editor_window_base& window, erhe::graph::Link* link);
 
-    App_context&       m_context;
-    Property_editor    m_property_editor;
+    App_context&             m_context;
+    Property_editor          m_property_editor;
+    // Generic rows (property-system D12) for a graph node's registered
+    // parameter properties (D27 subtype registrations).
+    Dependency_property_rows m_dependency_rows;
     // Scratch, cleared + refilled every frame (capacity persists): the canvas
     // selection of every graph editor window, with the owning window. Links
     // are kept per window (no cross-window dedup): curve routing is canvas
