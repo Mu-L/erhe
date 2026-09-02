@@ -3,6 +3,9 @@
 #include "assets/asset_reference.hpp"
 #include "geometry_graph/geometry_graph_node.hpp"
 
+#include "erhe_geometry/operation/lattice_deform.hpp"
+#include "erhe_property/dependency_property.hpp"
+
 #include <glm/glm.hpp>
 
 #include <vector>
@@ -61,10 +64,31 @@ public:
     // The resolved driver (graph-hover -> scene highlight).
     [[nodiscard]] auto get_referenced_scene_node() const -> std::shared_ptr<erhe::scene::Node> override;
 
+    // Registered parameter properties (D18 / D27; Mesh_torus_node is the
+    // recipe). auto_fit and divisions carry their side effects in the
+    // bridge (cage freeze, offset resample); the transform-driver reference
+    // and the control point editing stay in
+    // unregistered_parameters_imgui().
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] auto has_unregistered_parameters() const -> bool override { return true; }
+    void unregistered_parameters_imgui(App_context& context) override;
+    static const erhe::property::Property<bool>       auto_fit_property;
+    static const erhe::property::Property<glm::vec3>  cage_min_property;
+    static const erhe::property::Property<glm::vec3>  cage_max_property;
+    static const erhe::property::Property<glm::ivec3> divisions_property;
+    static const erhe::property::Property<erhe::geometry::operation::Lattice_interpolation> interpolation_property;
+    static const erhe::property::Property<bool>       regenerate_attributes_property;
+    static const erhe::property::Property<bool>       show_cage_property;
+
 private:
     // Main-thread lazy resolution of the stored driver key (scene_local
     // misses do not latch; update_live doubles as the per-frame retry).
     void resolve_transform_reference();
+    // The transform-driver drop target and the control point editing,
+    // shared by the canvas imgui() and unregistered_parameters_imgui().
+    void transform_driver_imgui();
+    void control_points_imgui  ();
     // Re-captures the driver's world transform; true when it changed.
     auto capture_transform() -> bool;
     [[nodiscard]] auto has_deformation() const -> bool;

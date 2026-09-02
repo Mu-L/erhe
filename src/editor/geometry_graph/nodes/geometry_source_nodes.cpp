@@ -1,6 +1,7 @@
 #include "geometry_graph/nodes/geometry_source_nodes.hpp"
 
 #include "graph_editor/graph_editor_widgets.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "app_context.hpp"
 #include "app_scenes.hpp"
@@ -296,6 +297,70 @@ void Scene_mesh_geometry_node::evaluate(Geometry_graph&)
         return;
     }
     set_output(0, Geometry_payload{.value = make_output_geometry(source)});
+}
+
+auto Scene_mesh_geometry_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Scene_mesh_geometry_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const erhe::property::Property<int> Scene_mesh_geometry_node::primitive_property =
+    erhe::property::Property<int>::register_property(
+        "primitive", erhe::Item_type::graph_node, Scene_mesh_geometry_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
+            .ui     = erhe::property::Property_ui{
+                .group   = "Parameters",
+                .tooltip = "Fallback primitive index; a linked \"primitive\" input overrides it at evaluation time",
+                .label   = "Primitive"
+            },
+            .bridge = make_node_member_bridge<Scene_mesh_geometry_node>(&Scene_mesh_geometry_node::m_primitive_index)
+        }
+    );
+
+void Scene_mesh_geometry_node::unregistered_parameters_imgui(App_context&)
+{
+    // The mesh reference picker of the canvas UI, without the primitive
+    // stepper (the generic "Primitive" row edits it).
+    resolve_reference();
+    const std::shared_ptr<erhe::scene::Mesh> current_mesh = m_mesh_reference.get_as<erhe::scene::Mesh>();
+    std::shared_ptr<Scene_root> scene_root = get_hosting_scene_root(get_owning_graph_mesh().get());
+    if (!scene_root) {
+        scene_root = m_context.app_scenes->get_single_scene_root();
+    }
+    if (scene_root) {
+        const erhe::scene::Mesh_layer* content_layer = scene_root->layers().content();
+        if ((content_layer != nullptr) && !content_layer->meshes.empty()) {
+            const std::vector<std::shared_ptr<erhe::scene::Mesh>>& meshes = content_layer->meshes;
+            int mesh_index = 0;
+            for (std::size_t i = 0, end = meshes.size(); i < end; ++i) {
+                if (meshes[i] == current_mesh) {
+                    mesh_index = static_cast<int>(i);
+                    break;
+                }
+            }
+            if (imgui_index_stepper("mesh", mesh_index, static_cast<int>(meshes.size()))) {
+                set_mesh(meshes.at(static_cast<std::size_t>(mesh_index)));
+            }
+            ImGui::SameLine();
+            if (current_mesh) {
+                ImGui::TextUnformatted(current_mesh->get_name().c_str());
+            } else if (!m_mesh_reference.get_key().name.empty()) {
+                ImGui::Text("(unresolved: %s)", m_mesh_reference.get_key().name.c_str());
+            } else {
+                ImGui::TextUnformatted("(no mesh)");
+            }
+        }
+    }
+    if (current_mesh && ImGui::Button("Refresh")) {
+        set_mesh(current_mesh);
+    }
 }
 
 void Scene_mesh_geometry_node::imgui()

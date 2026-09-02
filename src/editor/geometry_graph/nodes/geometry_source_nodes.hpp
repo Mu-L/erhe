@@ -3,6 +3,8 @@
 #include "assets/asset_reference.hpp"
 #include "geometry_graph/geometry_graph_node.hpp"
 
+#include "erhe_property/dependency_property.hpp"
+
 #include <vector>
 
 namespace erhe::scene { class Mesh; }
@@ -73,6 +75,15 @@ public:
     // The geometry is the mesh's local-space shape; the scene node's
     // transform is not applied.
     void set_mesh(const std::shared_ptr<erhe::scene::Mesh>& mesh);
+
+    // Registered parameter property (D18 / D27; Mesh_torus_node is the
+    // recipe); the mesh Asset_reference is not a property and draws
+    // through unregistered_parameters_imgui().
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] auto has_unregistered_parameters() const -> bool override { return true; }
+    void unregistered_parameters_imgui(App_context& context) override;
+    static const erhe::property::Property<int> primitive_property;
 
 private:
     // See Brush_geometry_node::resolve_reference().

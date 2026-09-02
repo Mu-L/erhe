@@ -1,6 +1,7 @@
 #include "geometry_graph/nodes/geometry_output_node.hpp"
 
 #include "graph_editor/graph_editor_widgets.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "app_context.hpp"
 #include "app_scenes.hpp"
@@ -52,7 +53,64 @@ constexpr const char* c_physics_motion_names[] = { "Static", "Kinematic", "Dynam
     return fallback;
 }
 
+constexpr erhe::property::Enum_entry c_physics_motion_entries[] = {
+    {"Static",    static_cast<int32_t>(erhe::physics::Motion_mode::e_static)},
+    {"Kinematic", static_cast<int32_t>(erhe::physics::Motion_mode::e_kinematic_physical)},
+    {"Dynamic",   static_cast<int32_t>(erhe::physics::Motion_mode::e_dynamic)},
+};
+const erhe::property::Enum_info c_physics_motion_enum_info{"Motion_mode", c_physics_motion_entries};
+
 }
+
+auto Geometry_output_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Geometry_output_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const erhe::property::Property<std::string> Geometry_output_node::name_property =
+    erhe::property::Property<std::string>::register_property(
+        "name", erhe::Item_type::graph_node, Geometry_output_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = std::string{"Geometry Graph"},
+            .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Name"},
+            .bridge        = make_node_member_bridge<Geometry_output_node>(&Geometry_output_node::m_name)
+        }
+    );
+
+const erhe::property::Property<bool> Geometry_output_node::physics_property =
+    erhe::property::Property<bool>::register_property(
+        "physics", erhe::Item_type::graph_node, Geometry_output_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none,
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Physics"},
+            .bridge = make_node_member_bridge<Geometry_output_node>(&Geometry_output_node::m_physics_enabled)
+        }
+    );
+
+const erhe::property::Property<erhe::physics::Motion_mode> Geometry_output_node::physics_motion_property =
+    erhe::property::Property<erhe::physics::Motion_mode>::register_property(
+        "physics_motion", erhe::Item_type::graph_node, Geometry_output_node::property_owner_subtype(),
+        c_physics_motion_enum_info,
+        erhe::property::Property_metadata{
+            // default: the first table entry (Static)
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{
+                .group        = "Parameters",
+                .label        = "Motion",
+                .visible_when = [](const erhe::property::Dependency_object& object) -> bool {
+                    return static_cast<const Geometry_output_node&>(object).m_physics_enabled;
+                }
+            },
+            .bridge        = make_node_member_bridge<Geometry_output_node>(&Geometry_output_node::m_physics_motion_mode)
+        }
+    );
 
 Geometry_output_node::Geometry_output_node(App_context& context)
     : Geometry_graph_node{"Output"}
@@ -296,16 +354,8 @@ void Geometry_output_node::apply_evaluated_to_scene()
     m_evaluated_ghost_primitive.reset();
 }
 
-void Geometry_output_node::imgui()
+void Geometry_output_node::material_imgui()
 {
-    // Product name; committed (and made undoable via the parameter edit
-    // gesture) when the input defocuses, not on every keystroke.
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    ImGui::InputText("##output_name", &m_name);
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
-        mark_dirty();
-    }
-
     // Per-frame retry of a deferred / broken reference while the node is
     // visible (the R2 slot-resolve cadence; scene_local misses do not latch).
     const bool was_unresolved = (m_material_reference.get() == nullptr) && !m_material_reference.get_key().name.empty();
@@ -349,6 +399,24 @@ void Geometry_output_node::imgui()
             }
         }
     }
+}
+
+void Geometry_output_node::unregistered_parameters_imgui(App_context&)
+{
+    material_imgui();
+}
+
+void Geometry_output_node::imgui()
+{
+    // Product name; committed (and made undoable via the parameter edit
+    // gesture) when the input defocuses, not on every keystroke.
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputText("##output_name", &m_name);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        mark_dirty();
+    }
+
+    material_imgui();
 
     // Optional physics: convex hull collision shape + rigid body
     if (ImGui::Checkbox("Physics", &m_physics_enabled)) {

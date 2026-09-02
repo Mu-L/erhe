@@ -1,4 +1,5 @@
 #include "geometry_graph/nodes/lattice_node.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "app_context.hpp"
 #include "graph_editor/graph_editor_widgets.hpp"
@@ -246,7 +247,167 @@ void Lattice_node::evaluate(Geometry_graph&)
     set_output(0, Geometry_payload{.value = destination});
 }
 
-void Lattice_node::imgui()
+auto Lattice_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Lattice_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+namespace {
+constexpr erhe::property::Enum_entry c_lattice_interpolation_entries[] = {
+    {"Trilinear", static_cast<int32_t>(erhe::geometry::operation::Lattice_interpolation::trilinear)},
+    {"Bezier",    static_cast<int32_t>(erhe::geometry::operation::Lattice_interpolation::bezier)},
+};
+const erhe::property::Enum_info c_lattice_interpolation_enum_info{"Lattice_interpolation", c_lattice_interpolation_entries};
+} // anonymous namespace
+
+const erhe::property::Property<bool> Lattice_node::auto_fit_property =
+    erhe::property::Property<bool>::register_property(
+        "auto_fit", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = true,
+            .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Auto fit cage"},
+            .bridge        = erhe::property::Property_bridge{
+                .get = [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+                    return static_cast<const Lattice_node&>(object).m_auto_fit;
+                },
+                .set = [](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
+                    Lattice_node& node = static_cast<Lattice_node&>(object);
+                    const bool new_value = std::get<bool>(value);
+                    if (node.m_auto_fit && !new_value) {
+                        // Freeze the fitted cage (same as the canvas toggle):
+                        // keep deforming from the bounds the lattice was
+                        // authored against instead of tracking the input.
+                        const std::shared_ptr<erhe::geometry::Geometry> source = node.get_input(0).get_geometry();
+                        if (source) {
+                            const erhe::math::Aabb aabb = source->get_aabb();
+                            node.m_cage_min = aabb.min;
+                            node.m_cage_max = aabb.max;
+                        }
+                    }
+                    node.m_auto_fit = new_value;
+                    node.mark_dirty();
+                }
+            }
+        }
+    );
+
+const erhe::property::Property<glm::vec3> Lattice_node::cage_min_property =
+    erhe::property::Property<glm::vec3>::register_property(
+        "cage_min", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = glm::vec3{-1.0f, -1.0f, -1.0f},
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{
+                .step         = 0.01f,
+                .group        = "Parameters",
+                .label        = "Cage min",
+                .visible_when = [](const erhe::property::Dependency_object& object) -> bool {
+                    return !static_cast<const Lattice_node&>(object).m_auto_fit;
+                }
+            },
+            .bridge        = make_node_member_bridge<Lattice_node>(&Lattice_node::m_cage_min)
+        }
+    );
+
+const erhe::property::Property<glm::vec3> Lattice_node::cage_max_property =
+    erhe::property::Property<glm::vec3>::register_property(
+        "cage_max", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{
+                .step         = 0.01f,
+                .group        = "Parameters",
+                .label        = "Cage max",
+                .visible_when = [](const erhe::property::Dependency_object& object) -> bool {
+                    return !static_cast<const Lattice_node&>(object).m_auto_fit;
+                }
+            },
+            .bridge        = make_node_member_bridge<Lattice_node>(&Lattice_node::m_cage_max)
+        }
+    );
+
+const erhe::property::Property<glm::ivec3> Lattice_node::divisions_property =
+    erhe::property::Property<glm::ivec3>::register_property(
+        "divisions", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = glm::ivec3{2, 2, 2},
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{.min = 1.0f, .max = static_cast<float>(Lattice_node::max_divisions), .group = "Parameters", .label = "Divisions"},
+            .bridge        = erhe::property::Property_bridge{
+                .get = [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+                    return static_cast<const Lattice_node&>(object).m_divisions;
+                },
+                .set = [](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
+                    Lattice_node& node = static_cast<Lattice_node&>(object);
+                    const glm::ivec3 new_divisions = glm::clamp(std::get<glm::ivec3>(value), glm::ivec3{1}, glm::ivec3{Lattice_node::max_divisions});
+                    if (new_divisions == node.m_divisions) {
+                        return;
+                    }
+                    // Resample the offset field so an authored deformation
+                    // survives the resolution change (the canvas drag path).
+                    const glm::ivec3             old_divisions = node.m_divisions;
+                    const std::vector<glm::vec3> old_offsets   = std::move(node.m_offsets);
+                    node.m_divisions = new_divisions;
+                    node.resample_offsets(old_divisions, old_offsets);
+                    node.mark_dirty();
+                }
+            }
+        }
+    );
+
+const erhe::property::Property<erhe::geometry::operation::Lattice_interpolation> Lattice_node::interpolation_property =
+    erhe::property::Property<erhe::geometry::operation::Lattice_interpolation>::register_property(
+        "interpolation", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        c_lattice_interpolation_enum_info,
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none,
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Interpolation"},
+            .bridge = erhe::property::Property_bridge{
+                // m_interpolation is an int member holding a
+                // Lattice_interpolation value.
+                .get = [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+                    return erhe::property::Enum_value{static_cast<const Lattice_node&>(object).m_interpolation};
+                },
+                .set = [](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
+                    Lattice_node& node = static_cast<Lattice_node&>(object);
+                    node.m_interpolation = std::get<erhe::property::Enum_value>(value).value;
+                    node.mark_dirty();
+                }
+            }
+        }
+    );
+
+const erhe::property::Property<bool> Lattice_node::regenerate_attributes_property =
+    erhe::property::Property<bool>::register_property(
+        "regenerate_attributes", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = true,
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Regenerate normals"},
+            .bridge        = make_node_member_bridge<Lattice_node>(&Lattice_node::m_regenerate_attributes)
+        }
+    );
+
+const erhe::property::Property<bool> Lattice_node::show_cage_property =
+    erhe::property::Property<bool>::register_property(
+        "show_cage", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = true,
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Show cage"},
+            .bridge        = make_node_member_bridge<Lattice_node>(&Lattice_node::m_show_cage)
+        }
+    );
+
+void Lattice_node::transform_driver_imgui()
 {
     // Transform-driver row: a drop target for a scene node dragged from the
     // item tree (payload type = the item's leaf class name carrying an
@@ -281,6 +442,36 @@ void Lattice_node::imgui()
             }
         }
     }
+}
+
+void Lattice_node::control_points_imgui()
+{
+    ImGui::TextUnformatted("Control point");
+    ImGui::SetNextItemWidth(140.0f * content_scale());
+    if (ImGui::DragInt3("##selected_point", &m_selected_point.x, 0.1f, 0, max_divisions)) {
+        m_selected_point = glm::clamp(m_selected_point, glm::ivec3{0}, m_divisions);
+        // Selection is a UI affair - the output is unchanged, no mark_dirty()
+    }
+    m_selected_point = glm::clamp(m_selected_point, glm::ivec3{0}, m_divisions);
+    glm::vec3& selected_offset = m_offsets[offset_index(m_divisions, m_selected_point.x, m_selected_point.y, m_selected_point.z)];
+    ImGui::TextUnformatted("Offset");
+    ImGui::SetNextItemWidth(140.0f * content_scale());
+    if (ImGui::DragFloat3("##offset", &selected_offset.x, 0.01f)) { mark_dirty(); }
+    if (ImGui::Button("Reset all offsets")) {
+        std::fill(m_offsets.begin(), m_offsets.end(), glm::vec3{0.0f});
+        mark_dirty();
+    }
+}
+
+void Lattice_node::unregistered_parameters_imgui(App_context&)
+{
+    transform_driver_imgui();
+    control_points_imgui();
+}
+
+void Lattice_node::imgui()
+{
+    transform_driver_imgui();
 
     if (ImGui::Checkbox("Auto fit cage", &m_auto_fit)) {
         if (!m_auto_fit) {
@@ -323,21 +514,7 @@ void Lattice_node::imgui()
     if (ImGui::Checkbox("Show cage",         &m_show_cage))             { mark_dirty(); }
     if (ImGui::Checkbox("Regenerate normals", &m_regenerate_attributes)) { mark_dirty(); }
 
-    ImGui::TextUnformatted("Control point");
-    ImGui::SetNextItemWidth(140.0f * content_scale());
-    if (ImGui::DragInt3("##selected_point", &m_selected_point.x, 0.1f, 0, max_divisions)) {
-        m_selected_point = glm::clamp(m_selected_point, glm::ivec3{0}, m_divisions);
-        // Selection is a UI affair - the output is unchanged, no mark_dirty()
-    }
-    m_selected_point = glm::clamp(m_selected_point, glm::ivec3{0}, m_divisions);
-    glm::vec3& selected_offset = m_offsets[offset_index(m_divisions, m_selected_point.x, m_selected_point.y, m_selected_point.z)];
-    ImGui::TextUnformatted("Offset");
-    ImGui::SetNextItemWidth(140.0f * content_scale());
-    if (ImGui::DragFloat3("##offset", &selected_offset.x, 0.01f)) { mark_dirty(); }
-    if (ImGui::Button("Reset all offsets")) {
-        std::fill(m_offsets.begin(), m_offsets.end(), glm::vec3{0.0f});
-        mark_dirty();
-    }
+    control_points_imgui();
 
     const std::shared_ptr<erhe::geometry::Geometry> geometry = get_output(0).get_geometry();
     if (geometry) {

@@ -4,6 +4,7 @@
 #include "geometry_graph/geometry_graph_node.hpp"
 
 #include "erhe_physics/irigid_body.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <memory>
 #include <string>
@@ -51,6 +52,17 @@ public:
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
 
+    // Registered parameter properties (D18 / D27; Mesh_torus_node is the
+    // recipe). The material Asset_reference is not a property and draws
+    // through unregistered_parameters_imgui().
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] auto has_unregistered_parameters() const -> bool override { return true; }
+    void unregistered_parameters_imgui(App_context& context) override;
+    static const erhe::property::Property<std::string>                name_property;
+    static const erhe::property::Property<bool>                       physics_property;
+    static const erhe::property::Property<erhe::physics::Motion_mode> physics_motion_property;
+
     // Publishes the products of the latest evaluate() to the owning
     // Graph_mesh asset. No-op when evaluate() has not run since the last
     // apply. Main thread only.
@@ -65,6 +77,9 @@ private:
     // Main-thread lazy resolution of the stored material key through the
     // asset manager (R4: read_parameters only stores the key).
     void resolve_reference();
+    // The material picker (reference retry + index stepper), shared by the
+    // canvas imgui() and unregistered_parameters_imgui().
+    void material_imgui();
 
     App_context&                               m_context;
     Asset_reference                            m_material_reference;
