@@ -112,6 +112,11 @@ public:
     void create_per_context_resources() {}
 
     [[nodiscard]] auto get_surface                        () -> Surface*;
+    // Windowed screenshot capture (Device::capture_last_frame /
+    // request_frame_capture): arm-then-collect through the swapchain, see
+    // Swapchain_impl::record_capture.
+    [[nodiscard]] auto capture_last_frame                 (int& out_width, int& out_height, erhe::dataformat::Format& out_format, std::vector<std::byte>& out_pixels) -> bool;
+    [[nodiscard]] auto request_frame_capture              () -> bool;
     [[nodiscard]] auto get_native_handles                 () const -> Native_device_handles;
     [[nodiscard]] auto get_handle                         (const Texture& texture, const Sampler& sampler) const -> uint64_t;
     [[nodiscard]] auto create_dummy_texture               (Command_buffer& init_command_buffer, erhe::dataformat::Format format) -> std::shared_ptr<Texture>;

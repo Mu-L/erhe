@@ -337,6 +337,13 @@ void Render_pass_impl::end_render_pass(Command_buffer& command_buffer, Render_pa
         m_mtl_encoder = nullptr;
     }
 
+    if ((m_swapchain != nullptr) && (m_command_buffer != nullptr)) {
+        // Armed screenshot capture (Device::request_frame_capture): blit
+        // the freshly composited drawable into the capture buffer while
+        // this frame still owns it (before presentDrawable at submit).
+        m_swapchain->get_impl().record_capture(m_command_buffer);
+    }
+
     // The MTL::CommandBuffer is owned by the user's Command_buffer; we
     // never commit it here. submit_command_buffers handles commit.
     m_command_buffer      = nullptr;

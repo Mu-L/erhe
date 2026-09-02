@@ -561,7 +561,7 @@ public:
 
     // Reads the most recently composited frame back to host memory as tightly
     // packed 8-bit RGBA (out_format = format_8_vec4_srgb). Returns false if the
-    // backend / configuration does not support it, Vulkan only. Headless
+    // backend / configuration does not support it (Vulkan and Metal). Headless
     // (emulated swapchain): synchronous readback. Windowed (real WSI
     // swapchain): collects a capture previously armed with
     // request_frame_capture() once a frame has recorded it - arm, render a
@@ -577,7 +577,7 @@ public:
     // Arms a one-shot capture of the next composited frame on the real WSI
     // swapchain; the copy is recorded by that frame's swapchain render pass
     // and collected with capture_last_frame() afterwards. Returns false when
-    // no capture path exists (non-Vulkan backend, no surface, or the surface
+    // no capture path exists (GL / null backend, no surface, or the surface
     // does not support reading its images back); returns true and is a no-op
     // when headless (capture_last_frame is already synchronous there).
     [[nodiscard]] auto request_frame_capture() -> bool;

@@ -28,6 +28,11 @@ Surface_impl::Surface_impl(Device_impl& device_impl, const Surface_create_info& 
                 if (m_metal_layer != nullptr) {
                     m_metal_layer->setDevice(device_impl.get_mtl_device());
                     m_metal_layer->setPixelFormat(MTL::PixelFormatBGRA8Unorm_sRGB);
+                    // Readable drawables, so the swapchain can blit a
+                    // frame into a buffer for Device::capture_last_frame
+                    // (Swapchain_impl::record_capture). Framebuffer-only
+                    // drawables reject every read.
+                    m_metal_layer->setFramebufferOnly(false);
                     if (device_impl.get_graphics_config().force_disable_vsync) {
                         ((CAMetalLayer*)m_metal_layer).displaySyncEnabled = NO;
                         log_startup->info("Disabled vsync (force_disable_vsync)");
