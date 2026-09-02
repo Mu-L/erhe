@@ -9,7 +9,7 @@
 namespace erhe::property {
 
 // A named bag of values applied to an object as the style layer (D25 in
-// doc/property-system-plan.md; WPF Style setters): coerced > local > style
+// doc/property-system.md; WPF Style setters): coerced > local > style
 // > inherited > default. Immutable after construction and shared between
 // objects through std::shared_ptr<const Property_style>; a changed preset
 // is a new style re-applied to its users.

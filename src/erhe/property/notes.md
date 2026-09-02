@@ -6,8 +6,14 @@ A port of the WPF dependency-property system (`DependencyProperty`,
 `PropertyMetadata`, `DependencyObject`, `EffectiveValueEntry`,
 `DependencyPropertyKey`, the `Inherits` metadata flag) restricted to the value
 types erhe items need. `erhe::Item_base` derives from `Dependency_object`, so
-every scene item carries a property store. Plan and design record:
-`doc/property-system-plan.md`.
+every scene item carries a property store.
+
+This file is the library reference: the current types and semantics of
+`erhe::property`, kept in sync with the code. The design record - goal,
+requirements, the decisions (the D-numbers cited below) with their WPF
+mapping and rationale, the item migrations, the editor / MCP / glTF
+integration, future work and the verification workflow - is
+`doc/property-system.md`.
 
 ## Key types
 
@@ -58,7 +64,7 @@ every scene item carries a property store. Plan and design record:
 - **`Observer_token`** - RAII subscription to one property on one object,
   or to every property of it (`add_observer` without a property).
 - **`Expression`** (`expression.hpp`) - a compiled formula driving one
-  property (`doc/property-system-plan.md` D22): comma-separated tinyexpr
+  property (`doc/property-system.md` D22): comma-separated tinyexpr
   expressions, one per component, with `{[object/]property[.x|.y|.z|.w]}`
   references; `set_expression` installs it as the local layer,
   `Value_source::expression` reports it, `Local_state` (value or

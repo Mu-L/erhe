@@ -41,7 +41,7 @@ public:
     [[nodiscard]] auto get_inheritance_parent() const -> const erhe::property::Dependency_object* override;
     void for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback) override;
 
-    // Computed (doc/property-system-plan.md D26): get_child_count(), pushed
+    // Computed (doc/property-system.md D26): get_child_count(), pushed
     // to expressions from handle_add_child / handle_remove_child.
     static const erhe::property::Property<int> child_count_property;
 

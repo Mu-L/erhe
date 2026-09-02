@@ -1,5 +1,5 @@
 // Mcp_server item property tools (get_item_properties, set_item_property):
-// the generic erhe::property view of any item (doc/property-system-plan.md
+// the generic erhe::property view of any item (doc/property-system.md
 // D13). Values travel as strings through erhe_property/property_string.hpp,
 // so enumerations travel as their labels.
 
@@ -188,7 +188,7 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
         return make_error_content("Item '" + item->get_name() + "' is sealed (lock_edit): unlock_items first, or edit the prefab's source scene");
     }
 
-    // An expression (doc/property-system-plan.md D22) instead of a value.
+    // An expression (doc/property-system.md D22) instead of a value.
     const auto expression_it = args.find("expression");
     if ((expression_it != args.end()) && !expression_it->is_null()) {
         if (!expression_it->is_string()) {

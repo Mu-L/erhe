@@ -19,7 +19,7 @@ public:
     [[nodiscard]] virtual auto get_host_name() const -> const char* = 0;
 
     // The hosted item named `name`, for expression references
-    // (doc/property-system-plan.md D22); nullptr when the host has no item
+    // (doc/property-system.md D22); nullptr when the host has no item
     // of that name or does no lookup. Scene_host walks the scene's nodes
     // and attachments; the editor's Scene_root adds the content library.
     [[nodiscard]] virtual auto find_hosted_item(std::string_view name) -> Item_base* { static_cast<void>(name); return nullptr; }

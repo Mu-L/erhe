@@ -119,7 +119,7 @@ private:
     void node_physics_properties      (Node_physics& node_physics);
     void node_joint_properties        (Node_joint& node_joint);
     // Generic rows for the item's registered properties
-    // (doc/property-system-plan.md D12), inside the item's group.
+    // (doc/property-system.md D12), inside the item's group.
     void dependency_properties        (const std::shared_ptr<erhe::Item_base>& item);
     void physics_material_properties  (const std::shared_ptr<erhe::physics::Physics_material>& physics_material);
     void collision_filter_properties  (const std::shared_ptr<erhe::physics::Collision_filter>& collision_filter);

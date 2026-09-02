@@ -1,4 +1,4 @@
-// Style layer (D25 in doc/property-system-plan.md): coerced > local >
+// Style layer (D25 in doc/property-system.md): coerced > local >
 // style > inherited > default; set_style notifies the changed non-local
 // properties; a style value is inherited by descendants.
 

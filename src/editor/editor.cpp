@@ -3727,7 +3727,7 @@ public:
                 // Sets one registered property of an item in the default
                 // scene through Property_set_operation (undoable); value is
                 // the erhe_property/property_string.hpp form, omitted to
-                // reset to default (doc/property-system-plan.md D13).
+                // reset to default (doc/property-system.md D13).
                 run_set_property_command(has_args ? &args_obj : nullptr);
                 continue;
             }

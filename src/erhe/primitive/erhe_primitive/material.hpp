@@ -137,7 +137,7 @@ public:
     static constexpr std::string_view static_type_name{"Material"};
     [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return erhe::Item_type::material; }
 
-    // Registered properties (erhe::property, doc/property-system-plan.md
+    // Registered properties (erhe::property, doc/property-system.md
     // section 4.1). The typed accessors below read and write these on the
     // item's property store.
     static const erhe::property::Property<glm::vec3>              base_color_property;

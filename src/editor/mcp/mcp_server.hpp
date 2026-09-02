@@ -318,7 +318,7 @@ private:
     auto query_editor_references              (const nlohmann::json& args) -> std::string;
     auto query_memory_usage                   (const nlohmann::json& args) -> std::string;
 
-    // doc/property-system-plan.md D13
+    // doc/property-system.md D13
     auto query_item_properties                (const nlohmann::json& args) -> std::string;
     auto action_set_item_property             (const nlohmann::json& args) -> std::string;
     auto action_set_item_style                (const nlohmann::json& args) -> std::string;

@@ -20,7 +20,7 @@ class App_context;
 class Property_editor;
 
 // Generic Properties-window rows for the registered properties of one or
-// more items (doc/property-system-plan.md D12): one widget per
+// more items (doc/property-system.md D12): one widget per
 // Property_type shaped by the property's Property_ui metadata, a value
 // source indicator, "Reset to default", Copy / Paste Properties, mixed-value
 // display for multi-selection, undo through Property_set_operation /

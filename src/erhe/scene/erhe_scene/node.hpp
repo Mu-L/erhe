@@ -143,7 +143,7 @@ public:
     void set_node_from_world   (glm::mat4 node_from_world);
     void set_node_from_world   (const Transform& node_from_world);
 
-    // Registered properties (doc/property-system-plan.md section 4.2, D18):
+    // Registered properties (doc/property-system.md section 4.2, D18):
     // bridged onto node_data.transforms.parent_from_node, so the transform
     // keeps its deferred matrix decomposition and its per-frame write paths,
     // and the editor / undo / MCP reach it through the property store. Writes
@@ -151,7 +151,7 @@ public:
     static const erhe::property::Property<glm::vec3> translation_property;
     static const erhe::property::Property<glm::quat> rotation_property;
     static const erhe::property::Property<glm::vec3> scale_property;
-    // Computed (doc/property-system-plan.md D26): the components of
+    // Computed (doc/property-system.md D26): the components of
     // world_from_node_transform(), pushed to expressions from
     // handle_transform_update (which the propagation pass runs on every
     // descendant whose world transform it recomputes).

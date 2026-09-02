@@ -1,5 +1,5 @@
 // Node translation / rotation / scale as bridged erhe::property properties
-// (doc/property-system-plan.md section 4.2): reads see the transform,
+// (doc/property-system.md section 4.2): reads see the transform,
 // writes update the world transform and the node's transform serial.
 
 #include "erhe_scene/node.hpp"

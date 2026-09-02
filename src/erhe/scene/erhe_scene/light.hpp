@@ -238,7 +238,7 @@ public:
     // Requires an attached node.
     [[nodiscard]] auto get_light_frame() const -> Light_frame;
 
-    // Registered properties (erhe::property, doc/property-system-plan.md
+    // Registered properties (erhe::property, doc/property-system.md
     // section 4.3). The authored light state lives in the item's property
     // store; every property shares one changed callback that re-resolves
     // the scene's light set (D19), so no writer has to notify by hand.

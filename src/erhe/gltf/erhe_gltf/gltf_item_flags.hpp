@@ -30,7 +30,7 @@ namespace erhe::gltf {
 // left untouched.
 void apply_persistent_item_flags(erhe::Item_base& item, uint64_t listed_bits);
 
-// Local property values (doc/property-system-plan.md D23 / D14): the
+// Local property values (doc/property-system.md D23 / D14): the
 // "properties" object next to "flags" holds every local value of the item's
 // registered properties that is stored (not bridged, not an expression)
 // and flagged serialize, as name -> D16 text, e.g. {"visible":"false"}.

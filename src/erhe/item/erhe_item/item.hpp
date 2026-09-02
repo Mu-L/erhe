@@ -122,7 +122,7 @@ public:
         hovered_in_graph | child_hovered_in_graph | ancestor_hovered_in_graph |
         negative_determinant | affects_shadow;
 
-    // Derived bits (D23 in doc/property-system-plan.md): the effective value
+    // Derived bits (D23 in doc/property-system.md): the effective value
     // of the visible / shadow_cast / lightmapped properties, written only by
     // the property changed callback. set_flag_bits rejects them; write the
     // property instead (set_visible, set_value(shadow_cast_property, ...)).

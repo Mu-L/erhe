@@ -8,7 +8,7 @@ namespace editor {
 
 class Content_library;
 
-// The style the default metals share (doc/property-system-plan.md D25):
+// The style the default metals share (doc/property-system.md D25):
 // roughness, metallic, BxDF model and the brushed metal flags.
 [[nodiscard]] auto make_brushed_metal_style() -> std::shared_ptr<const erhe::property::Property_style>;
 

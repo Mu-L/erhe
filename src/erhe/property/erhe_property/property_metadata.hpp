@@ -48,7 +48,7 @@ public:
 using Property_changed_callback = std::function<void(Dependency_object&, const Property_changed_args&)>;
 using Coerce_callback           = std::function<Property_value(const Dependency_object&, const Property_value&)>;
 using Validate_callback         = std::function<bool(const Property_value&)>;
-// Value provider of a computed property (doc/property-system-plan.md D26):
+// Value provider of a computed property (doc/property-system.md D26):
 // the effective value is whatever it returns, read on every get_value.
 using Compute_callback          = std::function<Property_value(const Dependency_object&)>;
 
@@ -92,7 +92,7 @@ public:
     Visible_when         visible_when  {};
 };
 
-// Storage outside the object's entry store (doc/property-system-plan.md
+// Storage outside the object's entry store (doc/property-system.md
 // D18): when `get` is bound, the property's local value is whatever `get`
 // returns and set_value / clear_value go through `set`. The object never
 // gets an entry for the property, it always reports Value_source::local,

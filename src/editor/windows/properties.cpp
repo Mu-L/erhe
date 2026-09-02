@@ -272,7 +272,7 @@ void Properties::light_properties(erhe::scene::Light& light)
     // The authored light state (type, cast shadow, spot angles, range,
     // intensity, color, temperature) is drawn by the generic property rows
     // (Dependency_property_rows); every write re-resolves the scene light
-    // set through the Light property callback (doc/property-system-plan.md
+    // set through the Light property callback (doc/property-system.md
     // D19). Only the derived rows remain here.
     const erhe::scene::Light::Type type = light.get_light_type();
     if ((type == erhe::scene::Light::Type::point) && (light.get_range() <= 0.0f)) {
@@ -1696,7 +1696,7 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
         //pop_group();
     }
 
-    // Registered material properties (doc/property-system-plan.md 4.1):
+    // Registered material properties (doc/property-system.md 4.1):
     // generic rows, undo through Property_set_operation.
     m_dependency_rows.add_rows(*this, std::vector<std::shared_ptr<erhe::Item_base>>{selected_material_shared});
 

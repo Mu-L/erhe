@@ -10,7 +10,7 @@ namespace erhe { class Item_base; }
 
 namespace editor {
 
-// Undoable swap of one item's style (doc/property-system-plan.md D25):
+// Undoable swap of one item's style (doc/property-system.md D25):
 // `after` replaces the item's style on execute, `before` on undo; nullptr
 // is "no style". Local values are untouched by either direction.
 class Style_set_operation : public Operation

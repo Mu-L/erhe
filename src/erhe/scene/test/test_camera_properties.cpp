@@ -1,5 +1,5 @@
 // Camera projection fields as bridged erhe::property properties
-// (doc/property-system-plan.md section 4.4): the properties and
+// (doc/property-system.md section 4.4): the properties and
 // Camera::projection() read and write the same Projection; exposure and
 // shadow range live in the property store.
 

@@ -126,7 +126,7 @@ public:
     // from the joint transforms and the primitives' per-joint rest boxes; the
     // mesh node's own transform is not applied, because skinning ignores it.
     [[nodiscard]] auto get_aabb_world        () const -> erhe::math::Aabb;
-    // Computed (doc/property-system-plan.md D26): the corners of
+    // Computed (doc/property-system.md D26): the corners of
     // get_aabb_world(), 0 0 0 for an invalid box; pushed to expressions from
     // handle_node_transform_update and the primitive changes.
     static const erhe::property::Property<glm::vec3> world_bounds_min_property;

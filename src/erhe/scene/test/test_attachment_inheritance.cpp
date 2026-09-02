@@ -1,5 +1,5 @@
 // Node attachments inherit visible / shadow_cast / lightmapped from their
-// node (D23 in doc/property-system-plan.md): Node_attachment's inheritance
+// node (D23 in doc/property-system.md): Node_attachment's inheritance
 // parent is its node, Node lists attachments as inheritance children, and
 // set_node brackets a move with the inheritance snapshot.
 

@@ -54,7 +54,7 @@ public:
     void set_exposure    (float value) { set_value(exposure_property, value); }
     void set_shadow_range(float value) { set_value(shadow_range_property, value); }
 
-    // Registered properties (erhe::property, doc/property-system-plan.md
+    // Registered properties (erhe::property, doc/property-system.md
     // section 4.4). The projection properties are bridged (D18) over
     // m_projection, so projection() writes and property writes reach the
     // same state; exposure and shadow range live in the property store.
