@@ -1,6 +1,9 @@
 #pragma once
 
 #include "geometry_graph/geometry_graph.hpp"
+// Complete type needed: Graph_asset::set_item_host (a virtual, instantiated
+// with the class) forwards the host to the nodes.
+#include "geometry_graph/geometry_graph_node.hpp"
 #include "graph_editor/graph_asset.hpp"
 
 #include "erhe_item/item.hpp"
@@ -18,8 +21,6 @@ namespace erhe::primitive {
 }
 
 namespace editor {
-
-class Geometry_graph_node;
 
 // The products of the most recent evaluation of a Graph_mesh's output
 // node: everything a bound Geometry_graph_mesh attachment needs to

@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <vector>
 
 namespace {
 
@@ -100,6 +101,45 @@ TEST(ItemHost, SetItemHost_DefaultGetterReturnsIt)
 
     a->set_item_host(nullptr);
     EXPECT_EQ(a->get_item_host(), nullptr);
+}
+
+// An item that owns further items outside its container's view forwards
+// the host to them (Graph_asset forwards to its graph nodes).
+class Forwarding_item : public erhe::Item<erhe::Item_base, erhe::Item_base, Forwarding_item>
+{
+public:
+    using Item::Item;
+    static constexpr std::string_view static_type_name{"Forwarding_item"};
+    [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return erhe::Item_type::light; }
+
+    void set_item_host(erhe::Item_host* item_host) override
+    {
+        erhe::Item_base::set_item_host(item_host);
+        for (const std::shared_ptr<Plain_item>& child : children) {
+            child->set_item_host(item_host);
+        }
+    }
+
+    std::vector<std::shared_ptr<Plain_item>> children;
+};
+
+TEST(ItemHost, SetItemHost_VirtualForwarding)
+{
+    Concrete_item_host host;
+    auto parent = std::make_shared<Forwarding_item>("parent");
+    auto child  = std::make_shared<Plain_item>("child");
+    parent->children.push_back(child);
+
+    // Through the base pointer: the container calls set_item_host on an
+    // Item_base and the override must run (Content_library does this).
+    erhe::Item_base* base = parent.get();
+    base->set_item_host(&host);
+    EXPECT_EQ(parent->get_item_host(), &host);
+    EXPECT_EQ(child->get_item_host(), &host);
+
+    base->set_item_host(nullptr);
+    EXPECT_EQ(parent->get_item_host(), nullptr);
+    EXPECT_EQ(child->get_item_host(), nullptr);
 }
 
 TEST(ItemHost, SetItemHost_NotCopied)

@@ -32,6 +32,19 @@ public:
         this->enable_flag_bits(erhe::Item_flags::show_in_ui | erhe::Item_flags::content);
     }
 
+    // The nodes share the asset's host (the Scene_root that hosts the asset
+    // through the content library), so a D22 expression on a node resolves
+    // scene items as same-host sources under one item-host lock.
+    // Nodes added later get the host in set_owning_* (the two add paths,
+    // editor insert and serialization load, both call it).
+    void set_item_host(erhe::Item_host* item_host) override
+    {
+        erhe::Item_base::set_item_host(item_host);
+        for (const std::shared_ptr<NodeT>& node : m_nodes) {
+            node->set_item_host(item_host);
+        }
+    }
+
     [[nodiscard]] auto graph()       -> GraphT&       { return m_graph; }
     [[nodiscard]] auto graph() const -> const GraphT& { return m_graph; }
     [[nodiscard]] auto nodes()       -> std::vector<std::shared_ptr<NodeT>>&       { return m_nodes; }

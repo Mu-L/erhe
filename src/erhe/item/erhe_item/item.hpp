@@ -412,8 +412,10 @@ public:
     // editor's content library): the container maintains this pointer on
     // add / remove / owner change. Types that derive their host from scene
     // structure (Node, Node_attachment, Scene) override get_item_host()
-    // and do not use this member.
-    void set_item_host(Item_host* item_host);
+    // and do not use this member. Virtual so an item that owns further
+    // items outside the container's view forwards the host to them (a
+    // graph asset to its nodes).
+    virtual void set_item_host(Item_host* item_host);
 
     virtual void handle_flag_bits_update(const uint64_t old_flag_bits, const uint64_t new_flag_bits) {
         static_cast<void>(old_flag_bits);

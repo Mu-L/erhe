@@ -1,6 +1,9 @@
 #pragma once
 
 #include "texture_graph/texture_graph.hpp"
+// Complete type needed: Graph_asset::set_item_host (a virtual, instantiated
+// with the class) forwards the host to the nodes.
+#include "texture_graph/texture_graph_node.hpp"
 #include "graph_editor/graph_asset.hpp"
 
 #include "erhe_item/item.hpp"
@@ -9,8 +12,6 @@
 #include <string_view>
 
 namespace editor {
-
-class Texture_graph_node;
 
 // A procedural texture asset backed by a node graph.
 //

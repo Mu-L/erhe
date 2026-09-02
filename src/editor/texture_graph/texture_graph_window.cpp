@@ -228,6 +228,10 @@ void Texture_graph_window::erase_node(Graph_texture& graph_texture, const std::s
     graph_texture.graph().unregister_node(node.get());
     nodes.erase(i);
     node->on_removed_from_graph();
+    // The node lives on in the undo stack; drop the host so it cannot
+    // dangle after the scene closes. Undo of the erase re-inserts through
+    // insert_node -> set_owning_graph_texture, which restores the host.
+    node->set_item_host(nullptr);
 }
 
 auto Texture_graph_window::connect_pins(Graph_texture& graph_texture, erhe::graph::Pin* source_pin, erhe::graph::Pin* sink_pin) -> bool

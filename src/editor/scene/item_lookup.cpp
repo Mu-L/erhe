@@ -1,6 +1,10 @@
 #include "scene/item_lookup.hpp"
 #include "content_library/content_library.hpp"
+#include "geometry_graph/graph_mesh.hpp"
+#include "geometry_graph/geometry_graph_node.hpp"
 #include "scene/scene_root.hpp"
+#include "texture_graph/graph_texture.hpp"
+#include "texture_graph/texture_graph_node.hpp"
 
 #include "erhe_item/item.hpp"
 #include "erhe_primitive/material.hpp"
@@ -54,6 +58,39 @@ auto find_item_in_scene(Scene_root& scene_root, Predicate&& matches) -> std::sha
         for (const std::shared_ptr<erhe::primitive::Material>& material : library->materials->get_all<erhe::primitive::Material>()) {
             if (material && matches(*material)) {
                 return material;
+            }
+        }
+    }
+    // Graph assets and their nodes: the nodes share the asset's host
+    // (Graph_asset::set_item_host), so a D22 expression or an MCP property
+    // call reaches a graph node the way it reaches a scene item.
+    if (library && library->graph_meshes) {
+        for (const std::shared_ptr<Graph_mesh>& graph_mesh : library->graph_meshes->get_all<Graph_mesh>()) {
+            if (!graph_mesh) {
+                continue;
+            }
+            if (matches(*graph_mesh)) {
+                return graph_mesh;
+            }
+            for (const std::shared_ptr<Geometry_graph_node>& node : graph_mesh->nodes()) {
+                if (node && matches(*node)) {
+                    return node;
+                }
+            }
+        }
+    }
+    if (library && library->graph_textures) {
+        for (const std::shared_ptr<Graph_texture>& graph_texture : library->graph_textures->get_all<Graph_texture>()) {
+            if (!graph_texture) {
+                continue;
+            }
+            if (matches(*graph_texture)) {
+                return graph_texture;
+            }
+            for (const std::shared_ptr<Texture_graph_node>& node : graph_texture->nodes()) {
+                if (node && matches(*node)) {
+                    return node;
+                }
             }
         }
     }

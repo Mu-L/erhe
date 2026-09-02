@@ -1,4 +1,5 @@
 #include "texture_graph/texture_graph_node.hpp"
+#include "texture_graph/graph_texture.hpp"
 #include "texture_graph/texture_graph_compose.hpp"
 #include "texture_graph/texture_graph_operations.hpp"
 #include "texture_graph/texture_graph_window.hpp"
@@ -265,6 +266,10 @@ void Texture_graph_node::on_removed_from_graph()
 void Texture_graph_node::set_owning_graph_texture(const std::weak_ptr<Graph_texture>& graph_texture)
 {
     m_owning_graph_texture = graph_texture;
+    // The node shares the asset's host (see Graph_asset::set_item_host);
+    // this covers a node added after the asset was hosted.
+    const std::shared_ptr<Graph_texture> locked = graph_texture.lock();
+    set_item_host(locked ? locked->get_item_host() : nullptr);
 }
 
 auto Texture_graph_node::get_owning_graph_texture() const -> std::shared_ptr<Graph_texture>

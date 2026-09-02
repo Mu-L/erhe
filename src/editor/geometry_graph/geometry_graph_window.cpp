@@ -210,6 +210,10 @@ void Geometry_graph_window::erase_node(Graph_mesh& graph_mesh, const std::shared
     graph_mesh.graph().unregister_node(node.get());
     nodes.erase(i);
     node->on_removed_from_graph();
+    // The node lives on in the undo stack; drop the host so it cannot
+    // dangle after the scene closes. Undo of the erase re-inserts through
+    // insert_node -> set_owning_graph_mesh, which restores the host.
+    node->set_item_host(nullptr);
     // A designated (display / ghost) node leaving the graph re-bakes so the
     // scene falls back to the wired input; the designation id is kept so an
     // undo of this erase (same node object, same id) self-heals it.
