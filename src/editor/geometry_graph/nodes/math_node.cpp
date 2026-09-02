@@ -1,6 +1,7 @@
 #include "geometry_graph/nodes/math_node.hpp"
 
 #include "graph_editor/graph_editor_widgets.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include <imgui/imgui.h>
 #include <nlohmann/json.hpp>
@@ -8,6 +9,65 @@
 #include <cmath>
 
 namespace editor {
+
+namespace {
+constexpr erhe::property::Enum_entry c_math_operation_entries[] = {
+    {"Add",      static_cast<int32_t>(Math_node::Math_operation::add)},
+    {"Subtract", static_cast<int32_t>(Math_node::Math_operation::subtract)},
+    {"Multiply", static_cast<int32_t>(Math_node::Math_operation::multiply)},
+    {"Divide",   static_cast<int32_t>(Math_node::Math_operation::divide)},
+    {"Power",    static_cast<int32_t>(Math_node::Math_operation::power)},
+    {"Min",      static_cast<int32_t>(Math_node::Math_operation::minimum)},
+    {"Max",      static_cast<int32_t>(Math_node::Math_operation::maximum)},
+    {"Abs",      static_cast<int32_t>(Math_node::Math_operation::absolute)},
+    {"Sqrt",     static_cast<int32_t>(Math_node::Math_operation::square_root)},
+    {"Sin",      static_cast<int32_t>(Math_node::Math_operation::sine)},
+    {"Cos",      static_cast<int32_t>(Math_node::Math_operation::cosine)},
+};
+const erhe::property::Enum_info c_math_operation_enum_info{"Math_operation", c_math_operation_entries};
+} // anonymous namespace
+
+auto Math_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Math_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const erhe::property::Property<Math_node::Math_operation> Math_node::operation_property =
+    erhe::property::Property<Math_node::Math_operation>::register_property(
+        "operation", erhe::Item_type::graph_node, Math_node::property_owner_subtype(),
+        c_math_operation_enum_info,
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Operation"},
+            .bridge = make_node_member_bridge<Math_node>(&Math_node::m_operation)
+        }
+    );
+
+const erhe::property::Property<float> Math_node::a_property =
+    erhe::property::Property<float>::register_property(
+        "a", erhe::Item_type::graph_node, Math_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none,
+            .ui     = erhe::property::Property_ui{.step = 0.01f, .group = "Parameters", .label = "A"},
+            .bridge = make_node_member_bridge<Math_node>(&Math_node::m_a)
+        }
+    );
+
+const erhe::property::Property<float> Math_node::b_property =
+    erhe::property::Property<float>::register_property(
+        "b", erhe::Item_type::graph_node, Math_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none,
+            .ui     = erhe::property::Property_ui{.step = 0.01f, .group = "Parameters", .label = "B"},
+            .bridge = make_node_member_bridge<Math_node>(&Math_node::m_b)
+        }
+    );
 
 Math_node::Math_node()
     : Geometry_graph_node{"Math"}

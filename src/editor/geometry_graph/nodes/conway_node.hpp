@@ -2,6 +2,8 @@
 
 #include "geometry_graph/geometry_graph_node.hpp"
 
+#include "erhe_property/dependency_property.hpp"
+
 #include <array>
 
 namespace editor {
@@ -56,10 +58,23 @@ public:
 
     explicit Conway_node(Conway_operation operation = Conway_operation::dual);
 
+    [[nodiscard]] auto get_operation() const -> Conway_operation { return m_operation; }
+
     void evaluate(Geometry_graph&) override;
     void imgui   () override;
     void write_parameters(nlohmann::json& out) const override;
     void read_parameters (const nlohmann::json& in) override;
+
+    // Parameter properties bridged over the members below (D18 / D27);
+    // Mesh_torus_node is the recipe. The operation itself is type identity
+    // (one node type per operator) and is not a property; each operator
+    // parameter row shows only for its operator (Property_ui::visible_when).
+    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
+    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    static const erhe::property::Property<float> kis_height_property;
+    static const erhe::property::Property<float> truncate_ratio_property;
+    static const erhe::property::Property<float> chamfer_ratio_property;
+    static const erhe::property::Property<float> gyro_ratio_property;
 
 private:
     // Adopts an operation arriving through parameters (legacy "conway" files,

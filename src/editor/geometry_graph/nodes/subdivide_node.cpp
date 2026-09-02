@@ -1,6 +1,7 @@
 #include "geometry_graph/nodes/subdivide_node.hpp"
 
 #include "graph_editor/graph_editor_widgets.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_geometry/operation/subdivision/catmull_clark_subdivision.hpp"
@@ -12,6 +13,47 @@
 #include <algorithm>
 
 namespace editor {
+
+namespace {
+constexpr erhe::property::Enum_entry c_subdivide_mode_entries[] = {
+    {"Catmull-Clark", static_cast<int32_t>(Subdivide_node::Mode::catmull_clark)},
+    {"Sqrt3",         static_cast<int32_t>(Subdivide_node::Mode::sqrt3)},
+};
+const erhe::property::Enum_info c_subdivide_mode_enum_info{"Subdivide_mode", c_subdivide_mode_entries};
+} // anonymous namespace
+
+auto Subdivide_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Subdivide_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const erhe::property::Property<Subdivide_node::Mode> Subdivide_node::mode_property =
+    erhe::property::Property<Subdivide_node::Mode>::register_property(
+        "mode", erhe::Item_type::graph_node, Subdivide_node::property_owner_subtype(),
+        c_subdivide_mode_enum_info,
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Mode"},
+            .bridge = make_node_member_bridge<Subdivide_node>(&Subdivide_node::m_mode)
+        }
+    );
+
+const erhe::property::Property<int> Subdivide_node::iterations_property =
+    erhe::property::Property<int>::register_property(
+        "iterations", erhe::Item_type::graph_node, Subdivide_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = 1,
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 6.0f, .group = "Parameters", .label = "Iterations"},
+            .bridge        = make_node_member_bridge<Subdivide_node>(&Subdivide_node::m_iterations)
+        }
+    );
 
 Subdivide_node::Subdivide_node()
     : Geometry_graph_node{"Subdivide"}

@@ -1,4 +1,5 @@
 #include "geometry_graph/nodes/conway_node.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_geometry/operation/conway/ambo.hpp"
@@ -25,6 +26,97 @@ namespace {
 }
 
 } // anonymous namespace
+
+auto Conway_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Conway_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+namespace {
+[[nodiscard]] auto visible_for_operation(const Conway_node::Conway_operation operation) -> erhe::property::Property_ui::Visible_when
+{
+    return [operation](const erhe::property::Dependency_object& object) -> bool {
+        return static_cast<const Conway_node&>(object).get_operation() == operation;
+    };
+}
+} // anonymous namespace
+
+const erhe::property::Property<float> Conway_node::kis_height_property =
+    erhe::property::Property<float>::register_property(
+        "kis_height", erhe::Item_type::graph_node, Conway_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
+            .ui     = erhe::property::Property_ui{
+                .min          = -10.0f,
+                .max          = 10.0f,
+                .step         = 0.01f,
+                .group        = "Parameters",
+                .label        = "Height",
+                .visible_when = visible_for_operation(Conway_operation::kis)
+            },
+            .bridge = make_node_member_bridge<Conway_node>(&Conway_node::m_kis_height)
+        }
+    );
+
+const erhe::property::Property<float> Conway_node::truncate_ratio_property =
+    erhe::property::Property<float>::register_property(
+        "truncate_ratio", erhe::Item_type::graph_node, Conway_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = 1.0f / 3.0f,
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{
+                .min          = 0.0f,
+                .max          = 0.5f,
+                .step         = 0.005f,
+                .group        = "Parameters",
+                .label        = "Ratio",
+                .visible_when = visible_for_operation(Conway_operation::truncate)
+            },
+            .bridge        = make_node_member_bridge<Conway_node>(&Conway_node::m_truncate_ratio)
+        }
+    );
+
+const erhe::property::Property<float> Conway_node::chamfer_ratio_property =
+    erhe::property::Property<float>::register_property(
+        "chamfer_ratio", erhe::Item_type::graph_node, Conway_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = 0.25f,
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{
+                .min          = 0.0f,
+                .max          = 1.0f,
+                .step         = 0.005f,
+                .group        = "Parameters",
+                .label        = "Bevel ratio",
+                .visible_when = visible_for_operation(Conway_operation::chamfer)
+            },
+            .bridge        = make_node_member_bridge<Conway_node>(&Conway_node::m_chamfer_ratio)
+        }
+    );
+
+const erhe::property::Property<float> Conway_node::gyro_ratio_property =
+    erhe::property::Property<float>::register_property(
+        "gyro_ratio", erhe::Item_type::graph_node, Conway_node::property_owner_subtype(),
+        erhe::property::Property_metadata{
+            .default_value = 1.0f / 3.0f,
+            .flags         = erhe::property::Property_flags::none,
+            .ui            = erhe::property::Property_ui{
+                .min          = 0.0f,
+                .max          = 1.0f,
+                .step         = 0.005f,
+                .group        = "Parameters",
+                .label        = "Ratio",
+                .visible_when = visible_for_operation(Conway_operation::gyro)
+            },
+            .bridge        = make_node_member_bridge<Conway_node>(&Conway_node::m_gyro_ratio)
+        }
+    );
 
 auto Conway_node::find_operation_info(const Conway_operation operation) -> const Operation_info*
 {

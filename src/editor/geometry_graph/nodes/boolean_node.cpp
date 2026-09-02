@@ -1,6 +1,7 @@
 #include "geometry_graph/nodes/boolean_node.hpp"
 
 #include "graph_editor/graph_editor_widgets.hpp"
+#include "graph_editor/graph_node_property_bridge.hpp"
 
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_geometry/operation/csg/difference.hpp"
@@ -11,6 +12,37 @@
 #include <nlohmann/json.hpp>
 
 namespace editor {
+
+namespace {
+constexpr erhe::property::Enum_entry c_boolean_operation_entries[] = {
+    {"Union",        static_cast<int32_t>(Boolean_node::Boolean_operation::union_operation)},
+    {"Intersection", static_cast<int32_t>(Boolean_node::Boolean_operation::intersection)},
+    {"Difference",   static_cast<int32_t>(Boolean_node::Boolean_operation::difference)},
+};
+const erhe::property::Enum_info c_boolean_operation_enum_info{"Boolean_operation", c_boolean_operation_entries};
+} // anonymous namespace
+
+auto Boolean_node::property_owner_subtype() -> uint32_t
+{
+    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
+    return s_subtype;
+}
+
+auto Boolean_node::get_property_owner_subtype() const -> uint32_t
+{
+    return property_owner_subtype();
+}
+
+const erhe::property::Property<Boolean_node::Boolean_operation> Boolean_node::operation_property =
+    erhe::property::Property<Boolean_node::Boolean_operation>::register_property(
+        "operation", erhe::Item_type::graph_node, Boolean_node::property_owner_subtype(),
+        c_boolean_operation_enum_info,
+        erhe::property::Property_metadata{
+            .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Operation"},
+            .bridge = make_node_member_bridge<Boolean_node>(&Boolean_node::m_operation)
+        }
+    );
 
 Boolean_node::Boolean_node()
     : Geometry_graph_node{"Boolean"}
