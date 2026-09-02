@@ -1,9 +1,9 @@
 # Property system (WPF dependency-property port) - plan
 
-Status: phases 0-4 and 6 implemented and verified (library, item
+Status: phases 0-4, 6 and 7 implemented and verified (library, item
 integration, editor operation / rows / MCP tools / startup command, Material
-migration, Node transform properties, Light and Camera migrations). Section 7
-holds the remaining work.
+migration, Node transform properties, Light and Camera migrations, observer
+users). Section 7 holds the remaining work.
 
 Reference: the WPF property system in `~/git/tksuoran/wpf`, files under
 `src/Microsoft.DotNet.Wpf/src/WindowsBase/System/Windows/`:
@@ -295,9 +295,9 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
   Observers are stored in a per-object vector allocated on first
   subscription, and are invoked after the metadata callback and the virtual
   hook, with the same `Property_changed_args`, under the same batch rules as
-  D9. Candidate users (section 7): the material preview (redraw when the
-  inspected material's properties change), `Shadow_render_node` (a light's
-  `cast_shadow`), and the geometry graph transform-from-node.
+  D9. The candidate users (the material preview, `Shadow_render_node` on
+  a light's `cast_shadow`, the geometry graph transform-from-node) are
+  settled in D21.
 - D16 String conversion (R18). `to_string(const Property_value&) ->
   std::string` and `parse_value(Property_type, std::string_view, const
   Enum_info*) -> std::optional<Property_value>` in
@@ -346,6 +346,46 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
   with `ImGuiSliderFlags_Logarithmic` and a `%.4f` no-rounding format when
   it is set. The light range / intensity and camera near / far rows are
   logarithmic today and lose usability as linear sliders over 0..20000.
+- D21 Observer users. Of the three D15 candidates, one is an observer
+  user; the other two are settled without observers:
+  - `Thumbnails` (the material and brush thumbnails of the Hotbar and the
+    Inventory window). A slot was rendered once when claimed and again
+    only while hovered, so editing a material left its thumbnails stale
+    until the next hover or eviction. Now a slot subscribes to the item
+    it shows when it is claimed, with an any-property observer (below),
+    and the callback only marks the slot stale. `Thumbnails::draw` of a
+    stale slot re-queues the render callback through the same deferred
+    path the hover re-render uses (stored in the slot, run from
+    `Thumbnails::update` at the start of the next frame), so only
+    thumbnails that are drawn re-render, at most once per frame, and a
+    hidden one re-renders when it is next drawn. The token lives in the
+    slot and is replaced when the slot is reclaimed for another item; a
+    destroyed item deactivates it (D15). Material texture sampler edits
+    (texture, offset, scale, wrap) are not properties and do not refresh a
+    thumbnail, as before. The Properties window material preview keeps its
+    per-frame render: it must also follow those sampler edits and the
+    window size.
+  - `Shadow_render_node`. The `cast_shadow` consequence already arrives
+    through the D19 changed callback: `Scene_host::on_light_changed`
+    invalidates the scene's `Light_set` and `Light_set::resolve` recomputes
+    lazily. The node has no per-light state of its own; a direct observer
+    would have to follow light registration to know which lights to
+    subscribe to, which is what the `Scene_host` register / unregister
+    hooks and the light set already do. No change.
+  - Geometry graph `transform_from_node`. The driver's world transform is
+    a derived cache, not a property (section 4.2); the direct
+    `Trs_transform` writers (transform tool, physics writeback, animation)
+    raise no property notification, and an ancestor move changes the
+    driver's world transform with no property change on the driver at all.
+    `update_live` keeps polling (the transform serial is the cheap compare).
+    Revisit when the world transform is a computed read-only property
+    (section 7).
+  - Library: `Dependency_object::add_observer(callback)` without a
+    property subscribes to every property of the object, for a consumer
+    that mirrors the whole object (a thumbnail, a preview, a serializer)
+    rather than one value; same token, ordering and batch rules as D15.
+    WPF has no equivalent (`DependencyPropertyDescriptor` is per
+    property); it saves one token per registered property of the type.
 
 ## 4. Migration design
 
@@ -575,6 +615,22 @@ built and launched on the Metal build to verify the affected window.
   light and a camera, and `capture_screenshot` of the Properties window
   for a selected light and camera.
 
+### Phase 7 - observer users
+
+- D21: the any-property `add_observer` overload with a test in
+  `test_observers.cpp`, then `Thumbnails` slot subscription and stale
+  re-render.
+- Verify (section 8): `edit_material` on a material shown in the Hotbar or
+  Inventory refreshes its thumbnail without hovering (`capture_screenshot`
+  before and after), `undo` refreshes it back, and the existing
+  `erhe_property` tests pass.
+- Found during verification, fixed alongside: material thumbnails were
+  solid magenta on the Metal build. The thumbnail texture is mipmapped and
+  sampled with mipmap filtering at a fraction of its size, and
+  `Material_preview::render_preview(texture, material)` never generated
+  the levels below the rendered one (`Brush_preview` did), so the slot
+  sampled uninitialized memory. It now generates them after the render.
+
 ## 6. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -656,11 +712,6 @@ with the first two.
   properties and reads them from each child node, so a child carries its
   hint without `Node` knowing about layouts. First attached-property user
   (R7).
-- Observer users (D15): the material preview redraw, `Shadow_render_node`
-  on a light's `cast_shadow`, the geometry graph transform-from-node; today
-  these still react through the message bus or by polling.
-  `Shadow_render_node` can now observe `Light::cast_shadow_property`
-  directly (phase 6 made it a property).
 - Further item migrations, in priority order and each reusing the phase 3
   recipe (`Light` and `Camera` are done, phase 6): `Layout` (type, axis,
   volume), `Grid`, physics settings (mass, friction, restitution),
@@ -709,6 +760,11 @@ with the first two.
   has no temperature). The imported lights appear in `get_scene_lights`
   only after the import settles, a query in the same second lists the
   originals only.
+  The check that passed at the end of phase 7: `edit_material` on a
+  material listed in the Inventory window (`get_scene_materials` gives the
+  ids; the window must be open and showing that material) changes its
+  thumbnail in a `capture_screenshot` taken two frames later without the
+  mouse over it, and `undo` changes it back.
 - `capture_screenshot` works on the Metal swapchain (the same one-frame
   arm-then-collect protocol as the Vulkan windowed build), so the visual
   check of the Properties rows is `capture_screenshot` with a `path` in

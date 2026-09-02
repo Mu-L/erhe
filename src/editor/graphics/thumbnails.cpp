@@ -123,6 +123,13 @@ auto Thumbnails::draw(
             !thumbnail.callback.has_value()
         ) {
             thumbnail.last_use_frame_number = m_context.graphics_device->get_frame_index();
+            if (thumbnail.stale) {
+                // A property of the item changed since the last render:
+                // re-render through the same deferred path as the hover
+                // refresh below, keeping the old image up until then.
+                thumbnail.callback = callback;
+                thumbnail.stale    = false;
+            }
             const float height = (display_size > 0.0f) ? display_size : ImGui::GetTextLineHeightWithSpacing();
             const int array_layer = m_graphics_device.get_info().use_texture_view
                 ? -1
@@ -169,8 +176,19 @@ auto Thumbnails::draw(
     }
 
     oldest_thumbnail->last_use_frame_number = m_context.graphics_device->get_frame_index();
-    oldest_thumbnail->item_id = item_id;
+    oldest_thumbnail->item_id  = item_id;
     oldest_thumbnail->callback = callback;
+    oldest_thumbnail->stale    = false;
+    // Follow the item's properties while the slot shows it; the token
+    // unsubscribes when the slot is reclaimed, and a destroyed item
+    // deactivates it. The slot vector never resizes after construction,
+    // so the index stays valid.
+    const std::size_t slot_index = static_cast<std::size_t>(oldest_thumbnail - m_thumbnails.data());
+    oldest_thumbnail->observer = item->add_observer(
+        [this, slot_index](erhe::property::Dependency_object&, const erhe::property::Property_changed_args&) {
+            m_thumbnails[slot_index].stale = true;
+        }
+    );
     return false;
 }
 

@@ -3,6 +3,7 @@
 #include "erhe_verify/verify.hpp"
 
 #include <algorithm>
+#include <limits>
 
 namespace erhe::property {
 
@@ -11,6 +12,9 @@ namespace erhe::property {
 class Observer_token::Observer_list
 {
 public:
+    // index == any_property matches every property (D21)
+    static constexpr uint16_t any_property = std::numeric_limits<uint16_t>::max();
+
     struct Entry
     {
         uint16_t          index;
@@ -331,13 +335,23 @@ void Dependency_object::for_each_local_value(const std::function<void(const Depe
 
 auto Dependency_object::add_observer(const Dependency_property& property, Observer_callback callback) -> Observer_token
 {
+    return add_observer_entry(property.get_index(), std::move(callback));
+}
+
+auto Dependency_object::add_observer(Observer_callback callback) -> Observer_token
+{
+    return add_observer_entry(Observer_token::Observer_list::any_property, std::move(callback));
+}
+
+auto Dependency_object::add_observer_entry(const uint16_t index, Observer_callback callback) -> Observer_token
+{
     if (!m_observers) {
         m_observers = std::make_shared<Observer_token::Observer_list>();
     }
     const uint64_t id = m_observers->next_id++;
     m_observers->entries.push_back(
         Observer_token::Observer_list::Entry{
-            .index    = property.get_index(),
+            .index    = index,
             .id       = id,
             .callback = std::move(callback)
         }
@@ -411,7 +425,7 @@ void Dependency_object::deliver(const Property_changed_args& args)
         const uint16_t index = args.property.get_index();
         std::vector<Observer_callback> callbacks;
         for (const Observer_token::Observer_list::Entry& entry : m_observers->entries) {
-            if (entry.index == index) {
+            if ((entry.index == index) || (entry.index == Observer_token::Observer_list::any_property)) {
                 callbacks.push_back(entry.callback);
             }
         }

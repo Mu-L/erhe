@@ -17,6 +17,7 @@
 #include "erhe_graphics/device.hpp"
 #include "erhe_imgui/imgui_renderer.hpp"
 #include "erhe_geometry/shapes/sphere.hpp"
+#include "erhe_graphics/blit_command_encoder.hpp"
 #include "erhe_graphics/render_command_encoder.hpp"
 #include "erhe_graphics/render_pass.hpp"
 #include "erhe_verify/verify.hpp"
@@ -175,6 +176,14 @@ void Material_preview::render_preview(
     set_clear_color(glm::vec4{0.0f, 0.0f, 0.0f, 0.0f});
     update_rendertarget(*m_context.graphics_device);
     render_preview(material);
+
+    // The thumbnail texture is mipmapped and sampled with mipmap filtering
+    // at a fraction of its size; fill the levels below the rendered one
+    // (as Brush_preview does), or the slot samples uninitialized memory.
+    {
+        erhe::graphics::Blit_command_encoder blit_encoder = m_context.graphics_device->make_blit_command_encoder(*m_context.current_command_buffer);
+        blit_encoder.generate_mipmaps(texture.get());
+    }
 }
 
 auto Material_preview::get_last_material() const -> const std::shared_ptr<erhe::primitive::Material>&

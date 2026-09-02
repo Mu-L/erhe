@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <vector>
 
 using namespace erhe::property;
 using namespace erhe::property::test;
@@ -109,4 +110,33 @@ TEST(Observers, observers_run_after_virtual_hook_and_under_batches)
         EXPECT_EQ(calls, 1);
     }
     EXPECT_EQ(calls, 2);
+}
+
+TEST(Observers, any_property_observer_receives_every_property)
+{
+    Test_object o;
+    int count = 0;
+    std::vector<const Dependency_property*> seen;
+    Observer_token token = o.add_observer([&](Dependency_object&, const Property_changed_args& args) {
+        ++count;
+        seen.push_back(&args.property);
+    });
+    o.set_value(obs_int, 1);
+    o.set_value(obs_other, 2);
+    o.set_value(obs_int, 1); // same value: no change, no callback
+    EXPECT_EQ(count, 2);
+    ASSERT_EQ(seen.size(), std::size_t{2});
+    EXPECT_EQ(seen[0], &obs_int.get());
+    EXPECT_EQ(seen[1], &obs_other.get());
+
+    // Coexists with a per-property observer, and its token unsubscribes
+    int only_int = 0;
+    Observer_token int_token = o.add_observer(obs_int.get(), [&](Dependency_object&, const Property_changed_args&) { ++only_int; });
+    o.set_value(obs_other, 3);
+    EXPECT_EQ(count, 3);
+    EXPECT_EQ(only_int, 0);
+    token.release();
+    o.set_value(obs_int, 4);
+    EXPECT_EQ(count, 3);
+    EXPECT_EQ(only_int, 1);
 }

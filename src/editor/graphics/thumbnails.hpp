@@ -2,6 +2,7 @@
 
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_item/item.hpp"
+#include "erhe_property/dependency_object.hpp"
 
 #include <functional>
 #include <memory>
@@ -40,6 +41,11 @@ public:
     std::optional<
         std::function<void(const std::shared_ptr<erhe::graphics::Texture>&, unsigned int, int64_t)>
     >                                        callback{};
+
+    // Property observer on the item this slot shows (D21): a change marks
+    // the slot stale, and the next draw() of it re-queues the render.
+    erhe::property::Observer_token           observer{};
+    bool                                     stale{false};
 };
 
 class Thumbnails
@@ -53,7 +59,9 @@ public:
 
     // The callback is NOT invoked from inside draw(): it is stored in a
     // thumbnail slot and invoked later from update() -- typically on the
-    // next frame, after the message bus pump has run. Anything destroyed
+    // next frame, after the message bus pump has run. It is stored when the
+    // slot is claimed, while the thumbnail is hovered, and when a property
+    // of the item changed since the slot was last rendered. Anything destroyed
     // by then (an ImGui window torn down by scene close, any per-scene
     // part) must not be captured. Capture only whole-app-lifetime state
     // (App_context&) and shared ownership of the item being rendered.

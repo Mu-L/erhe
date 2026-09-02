@@ -123,7 +123,7 @@ Per-library configuration structs are loaded from individual JSON files in `conf
 - `create/` -- `Create` tool and shape generators (box, cone, torus, UV sphere)
 - `parsers/` -- glTF, Wavefront OBJ, Geogram, and JSON polyhedra importers
 - `assets/` -- `Asset_manager` (identity, ownership, registry: `doc/asset_manager.md`) and the asynchronous load tasks (`doc/async-asset-loading.md`)
-- `graphics/` -- `Icon_set` (icon atlas), `Thumbnails` (material/brush previews), gradients
+- `graphics/` -- `Icon_set` (icon atlas), `Thumbnails` (material/brush previews; a slot observes the item's properties and re-renders when one changes, `doc/property-system-plan.md` D21), gradients
 - `transform/` -- Transform gizmo system (`Transform_tool` + `Move_tool`, `Rotate_tool`, `Scale_tool`)
 - `xr/` -- OpenXR headset view, hand tracking, controller visualization
 - `grid/` -- Grid display and snapping

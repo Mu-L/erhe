@@ -139,8 +139,10 @@ public:
 
     void for_each_local_value(const std::function<void(const Dependency_property&, const Property_value&)>& callback) const;
 
-    // Observers (R16)
+    // Observers (R16). The overload without a property observes every
+    // property of the object (D21).
     [[nodiscard]] auto add_observer(const Dependency_property& property, Observer_callback callback) -> Observer_token;
+    [[nodiscard]] auto add_observer(Observer_callback callback) -> Observer_token;
 
     // Inheritance support for tree changes: capture on the subtree root
     // before the tree changes, apply after. apply notifies every object in
@@ -204,6 +206,7 @@ private:
         Value_source               new_source
     );
     void deliver(const Property_changed_args& args);
+    [[nodiscard]] auto add_observer_entry(uint16_t index, Observer_callback callback) -> Observer_token;
     void flush_batch();
     void propagate_to_descendants(
         const Dependency_property& property,

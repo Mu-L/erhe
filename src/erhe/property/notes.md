@@ -43,7 +43,8 @@ every scene item carries a property store. Plan and design record:
   sorted by property index, binary-searched; an entry exists only for a
   property with a local value and holds that value plus its coerced value
   when the coerce callback changed it.
-- **`Observer_token`** - RAII subscription to one property on one object.
+- **`Observer_token`** - RAII subscription to one property on one object,
+  or to every property of it (`add_observer` without a property).
 - **`Property_set`** - sorted bag of (property, value): local values of an
   object, clipboard payload, diff.
 - **`property_string.hpp`** - `to_string` / `parse_value` for every type.
