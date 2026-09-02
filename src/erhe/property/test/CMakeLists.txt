@@ -13,6 +13,7 @@ add_executable(${_target}
     main.cpp
     test_object.hpp
     test_registry.cpp
+    test_sealing.cpp
     test_dependency_object.cpp
     test_inheritance.cpp
     test_observers.cpp

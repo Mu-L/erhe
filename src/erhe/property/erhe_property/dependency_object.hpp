@@ -133,13 +133,24 @@ public:
         return get_as<T>(value.value());
     }
 
+    // Sealing (D24, WPF Freeze): while sealed, every write of the local
+    // layer (set_value, set_current_value, clear_value, set_expression,
+    // apply_local_state) is rejected the way a read-only write is - one
+    // logged error, nothing changes. Reads, inherited values and their
+    // notifications, observers and installed expressions keep working. A
+    // copy is not sealed.
+    void               seal     ()       { m_sealed = true; }
+    void               unseal   ()       { m_sealed = false; }
+    [[nodiscard]] auto is_sealed() const -> bool { return m_sealed; }
+
     // Untyped access (editor, undo, serialization, MCP). Writes to a
-    // read-only property are rejected here; the typed key overloads are the
-    // only write path for those. set_value on a property driven by an
-    // expression replaces the expression with the value.
+    // read-only property or a sealed object are rejected here (false);
+    // the typed key overloads are the only write path for read-only
+    // properties. set_value on a property driven by an expression replaces
+    // the expression with the value.
     [[nodiscard]] auto get_value       (const Dependency_property& property) const -> Property_value;
-    void               set_value       (const Dependency_property& property, const Property_value& value);
-    void               clear_value     (const Dependency_property& property);
+    auto               set_value       (const Dependency_property& property, const Property_value& value) -> bool;
+    auto               clear_value     (const Dependency_property& property) -> bool;
     [[nodiscard]] auto read_local_value(const Dependency_property& property) const -> std::optional<Property_value>;
     [[nodiscard]] auto has_local_value (const Dependency_property& property) const -> bool;
     [[nodiscard]] auto get_value_source(const Dependency_property& property) const -> Value_source;
@@ -157,9 +168,9 @@ public:
     auto               set_expression      (const Dependency_property& property, std::string_view text) -> bool;
     [[nodiscard]] auto get_expression      (const Dependency_property& property) const -> std::optional<std::string_view>;
     [[nodiscard]] auto get_expression_error(const Dependency_property& property) const -> std::string_view;
-    void               set_current_value   (const Dependency_property& property, const Property_value& value);
+    auto               set_current_value   (const Dependency_property& property, const Property_value& value) -> bool;
     [[nodiscard]] auto read_local_state    (const Dependency_property& property) const -> std::optional<Local_state>;
-    void               apply_local_state   (const Dependency_property& property, const std::optional<Local_state>& state);
+    auto               apply_local_state   (const Dependency_property& property, const std::optional<Local_state>& state) -> bool;
 
     // Re-evaluates every expression that reads `property` of this object.
     // For storage that changed outside set_value (a bridged property
@@ -249,8 +260,9 @@ private:
     [[nodiscard]] auto get_effective_value(const Dependency_property& property, Value_source& out_source) const -> Property_value;
     [[nodiscard]] auto get_inherited_value(const Dependency_property& property) const -> std::optional<Property_value>;
 
-    void set_value_internal  (const Dependency_property& property, const Property_value& value, bool allow_read_only, bool keep_expression);
-    void clear_value_internal(const Dependency_property& property, bool allow_read_only);
+    [[nodiscard]] auto reject_if_sealed   (const Dependency_property& property) const -> bool;
+    auto               set_value_internal  (const Dependency_property& property, const Property_value& value, bool allow_read_only, bool keep_expression) -> bool;
+    auto               clear_value_internal(const Dependency_property& property, bool allow_read_only) -> bool;
     void store_coerced       (const Dependency_property& property, Effective_value_entry& entry);
 
     // Expressions
@@ -286,6 +298,7 @@ private:
     std::unique_ptr<std::vector<Dependent>>         m_dependents;  // allocated when the first expression resolves to this object
     std::vector<Pending_change>                     m_pending;
     int                                             m_batch_depth{0};
+    bool                                            m_sealed{false};
 };
 
 } // namespace erhe::property

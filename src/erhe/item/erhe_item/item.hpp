@@ -447,7 +447,9 @@ public:
     static const erhe::property::Property<bool> shadow_cast_property;
     static const erhe::property::Property<bool> lightmapped_property;
 
-    // Rejects Item_flags::derived bits in mask (logged, dropped).
+    // Rejects Item_flags::derived bits in mask (logged, dropped). A change
+    // of Item_flags::lock_edit seals / unseals the property store (D24):
+    // is_lock_edit() and is_sealed() agree.
     void set_flag_bits    (uint64_t mask, bool value);
     void enable_flag_bits (uint64_t mask);
     void disable_flag_bits(uint64_t mask);
@@ -467,6 +469,7 @@ private:
     static void on_flag_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args);
     void        set_derived_flag_bit    (uint64_t bit, bool value);
     void        rederive_flag_bits      ();
+    void        sync_seal_with_lock_edit();
 
 protected:
     // Not copied: a copy / clone starts outside any owning container.

@@ -17,7 +17,11 @@ void apply_item_property(
     const std::optional<erhe::property::Local_state>&  state
 )
 {
-    item.apply_local_state(property, state);
+    if (!item.apply_local_state(property, state)) {
+        // Sealed item (D24) or a rejected value: the store logged why.
+        log_operations->warn("property '{}' on '{}' not applied", property.get_name(), item.get_name());
+        return;
+    }
     context.on_item_property_changed(item, property);
 }
 

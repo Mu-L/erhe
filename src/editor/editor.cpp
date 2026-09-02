@@ -3515,6 +3515,10 @@ public:
             log_startup->warn("commands.json: scene.set_property: {} '{}' has no property '{}'", item->get_type_name(), item->get_name(), property_sv);
             return;
         }
+        if (item->is_sealed()) {
+            log_startup->warn("commands.json: scene.set_property: '{}' is sealed (lock_edit)", item->get_name());
+            return;
+        }
         std::optional<erhe::property::Local_state> after;
         if (has_expression) {
             std::string error;

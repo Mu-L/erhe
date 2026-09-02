@@ -299,24 +299,36 @@ void Dependency_object::store_coerced(const Dependency_property& property, Effec
     }
 }
 
-void Dependency_object::set_value(const Dependency_property& property, const Property_value& value)
+auto Dependency_object::reject_if_sealed(const Dependency_property& property) const -> bool
 {
-    set_value_internal(property, value, false, false);
+    if (m_sealed) {
+        log->error("property '{}': object is sealed", property.get_name());
+        return true;
+    }
+    return false;
 }
 
-void Dependency_object::set_current_value(const Dependency_property& property, const Property_value& value)
+auto Dependency_object::set_value(const Dependency_property& property, const Property_value& value) -> bool
 {
-    set_value_internal(property, value, false, true);
+    return set_value_internal(property, value, false, false);
 }
 
-void Dependency_object::set_value_internal(const Dependency_property& property, const Property_value& value, const bool allow_read_only, const bool keep_expression)
+auto Dependency_object::set_current_value(const Dependency_property& property, const Property_value& value) -> bool
+{
+    return set_value_internal(property, value, false, true);
+}
+
+auto Dependency_object::set_value_internal(const Dependency_property& property, const Property_value& value, const bool allow_read_only, const bool keep_expression) -> bool
 {
     if (property.is_read_only() && !allow_read_only) {
         log->error("property '{}' is read-only", property.get_name());
-        return;
+        return false;
+    }
+    if (reject_if_sealed(property)) {
+        return false;
     }
     if (!property.validate(value)) {
-        return;
+        return false;
     }
 
     Value_source   old_source{};
@@ -344,28 +356,31 @@ void Dependency_object::set_value_internal(const Dependency_property& property, 
     Value_source   new_source{};
     Property_value new_value = get_effective_value(property, new_source);
     notify(property, old_value, old_source, new_value, new_source);
+    return true;
 }
 
-void Dependency_object::clear_value(const Dependency_property& property)
+auto Dependency_object::clear_value(const Dependency_property& property) -> bool
 {
-    clear_value_internal(property, false);
+    return clear_value_internal(property, false);
 }
 
-void Dependency_object::clear_value_internal(const Dependency_property& property, const bool allow_read_only)
+auto Dependency_object::clear_value_internal(const Dependency_property& property, const bool allow_read_only) -> bool
 {
     if (property.is_read_only() && !allow_read_only) {
         log->error("property '{}' is read-only", property.get_name());
-        return;
+        return false;
+    }
+    if (reject_if_sealed(property)) {
+        return false;
     }
     const Property_metadata& metadata = get_metadata(property);
     if (metadata.bridge.is_bound()) {
         // A bridged property has no "unset" state: clearing writes the
         // default (and drops an expression, through set_value_internal).
-        set_value_internal(property, metadata.default_value.value(), allow_read_only, false);
-        return;
+        return set_value_internal(property, metadata.default_value.value(), allow_read_only, false);
     }
     if (find_entry(property.get_index()) == nullptr) {
-        return;
+        return true;
     }
 
     Value_source   old_source{};
@@ -376,6 +391,7 @@ void Dependency_object::clear_value_internal(const Dependency_property& property
     Value_source   new_source{};
     Property_value new_value = get_effective_value(property, new_source);
     notify(property, old_value, old_source, new_value, new_source);
+    return true;
 }
 
 void Dependency_object::coerce_value(const Dependency_property& property)
@@ -460,6 +476,9 @@ auto Dependency_object::set_expression(const Dependency_property& property, cons
         log->error("property '{}' is read-only", property.get_name());
         return false;
     }
+    if (reject_if_sealed(property)) {
+        return false;
+    }
     std::string error;
     if (!validate_expression_text(property, text, error)) {
         log->error("expression '{}' for property '{}' rejected: {}", text, property.get_name(), error);
@@ -540,15 +559,15 @@ auto Dependency_object::read_local_state(const Dependency_property& property) co
     return std::nullopt;
 }
 
-void Dependency_object::apply_local_state(const Dependency_property& property, const std::optional<Local_state>& state)
+auto Dependency_object::apply_local_state(const Dependency_property& property, const std::optional<Local_state>& state) -> bool
 {
     if (!state.has_value()) {
-        clear_value(property);
-    } else if (const Expression_text* text = std::get_if<Expression_text>(&state.value()); text != nullptr) {
-        static_cast<void>(set_expression(property, text->text));
-    } else {
-        set_value(property, std::get<Property_value>(state.value()));
+        return clear_value(property);
     }
+    if (const Expression_text* text = std::get_if<Expression_text>(&state.value()); text != nullptr) {
+        return set_expression(property, text->text);
+    }
+    return set_value(property, std::get<Property_value>(state.value()));
 }
 
 // True when `object`'s `index` is driven by an expression that (through

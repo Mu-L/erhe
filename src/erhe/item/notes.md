@@ -22,6 +22,7 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 - `get_flag_bits()`, `set_flag_bits()`, `enable_flag_bits()`, `disable_flag_bits()`
 - `is_visible()`, `is_selected()`, `is_hovered()`, `show()`, `hide()`, `set_visible()`, `set_selected()` - `show` / `hide` / `set_visible` write a local `visible_property` value; `clear_value(visible_property)` returns to the inherited / default value
 - `visible_property`, `shadow_cast_property`, `lightmapped_property` - owner type 0 (listed for every item type), default true / false / false, `inherits`
+- `is_lock_edit()` / `set_lock_edit()` - the `lock_edit` flag is the property-store seal (`Dependency_object::seal`, D24): while set, every local property write is refused (`set_value` returns false, logged); `is_sealed()` agrees with the flag, including after a copy
 - `add_tag()`, `remove_tag()`, `has_tag()`, `get_tags()`, `clear_tags()`
 - `set_source_path()`, `get_source_path()`
 - `set_gltf_uid()`, `get_gltf_uid()` - glTF 2.1 unique ID (persistent file-scoped identity; assigned once at import or first export by `erhe::gltf`, never changed afterwards, NOT copied by copy/clone)
@@ -76,5 +77,6 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 | `test_item_host.cpp` | 6 | Host resolution, lock guard with/without host |
 | `test_properties.cpp` | 4 | Metadata by item type, inheritance through `Hierarchy`, reparent / remove re-reads, clone keeps local values |
 | `test_item_visibility.cpp` | 6 | Derived flag bits follow local, inherited and tree-change values of the visible / shadow_cast / lightmapped properties; `set_flag_bits` drops derived bits; copy re-derives |
+| `test_item_sealing.cpp` | 3 | `lock_edit` seals / unseals through every flag writer; inherited values still reach a sealed child; copies follow the copied flag |
 
 Test harness (`main.cpp`) bootstraps `erhe::file::log_file` before `erhe::item::initialize_logging()` to break a circular dependency.

@@ -23,6 +23,7 @@ add_executable(${_target}
     test_item_host.cpp
     test_properties.cpp
     test_item_visibility.cpp
+    test_item_sealing.cpp
 )
 
 target_link_libraries(${_target}

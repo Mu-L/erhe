@@ -103,9 +103,10 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
 
     json result;
     result["item"] = {
-        {"id",   item->get_id()},
-        {"name", item->get_name()},
-        {"type", std::string{item->get_type_name()}}
+        {"id",     item->get_id()},
+        {"name",   item->get_name()},
+        {"type",   std::string{item->get_type_name()}},
+        {"sealed", item->is_sealed()} // lock_edit (D24): writes are refused
     };
     json properties = json::array();
     const uint64_t owner_type = item->get_property_owner_type();
@@ -179,6 +180,9 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
     }
     if (property->is_read_only()) {
         return make_error_content("Property '" + property_name + "' is read-only");
+    }
+    if (item->is_sealed()) {
+        return make_error_content("Item '" + item->get_name() + "' is sealed (lock_edit): unlock_items first, or edit the prefab's source scene");
     }
 
     // An expression (doc/property-system-plan.md D22) instead of a value.

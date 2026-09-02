@@ -3,8 +3,8 @@
 Status: phases 0-4 and 6-8 implemented and verified (library, item
 integration, editor operation / rows / MCP tools / startup command, Material
 migration, Node transform properties, Light and Camera migrations, observer
-users, expressions and bindings, inherited flags). Section 7 holds the
-remaining work.
+users, expressions and bindings, inherited flags, sealing). Section 7 holds
+the remaining work.
 
 Reference: the WPF property system in `~/git/tksuoran/wpf`, files under
 `src/Microsoft.DotNet.Wpf/src/WindowsBase/System/Windows/`:
@@ -586,6 +586,60 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
     `shadow_cast` set on a group node reaches meshes without a local
     value).
 
+- D24 Sealing (WPF `Freezable.Freeze`, reversible).
+  - What exists today. `Item_flags::lock_edit` is the user's edit lock
+    (toggled in the Properties window Locks row, MCP `lock_items` /
+    `unlock_items`, persisted by name in glTF) and the prefab editing model
+    seals an instance subtree with it (`seal_instance_subtree`, together
+    with the two viewport locks, never unsealed: a refresh re-clones). It
+    is honored by hand-written checks: the Properties window disables its
+    typed blocks and the name field, MCP `edit_material` refuses a locked
+    material, delete skips locked items, and the transform and selection
+    tools read the viewport locks. The generic property rows (D12),
+    `Property_set_operation` (D11), MCP `set_item_property` and
+    `scene.set_property` do not read it, so every registered property of a
+    locked item, prefab interiors included, is editable through them.
+  - Library. `Dependency_object::seal()` / `unseal()` / `is_sealed()`.
+    While sealed, the local layer is frozen: `set_value`,
+    `set_current_value`, `clear_value`, `set_expression` and
+    `apply_local_state` are rejected the way a read-only write is (D7: one
+    logged error naming the property, nothing changes). Reads, inherited
+    values and their notifications, coerce, observers and the evaluation
+    of an expression already installed keep working: a sealed prefab
+    interior still follows its instance root's `visible`, and a formula
+    on a sealed object still tracks its sources; only authoring the local
+    layer is closed. `apply_local_state` and the untyped `set_value` /
+    `clear_value` return `bool` so undo and MCP can report a rejected
+    write instead of recording a no-op. A copy (D10) is not sealed (WPF
+    `Clone` of a frozen object is unfrozen); `Item_base` re-derives the
+    seal from its copied flags (next point). Unlike WPF, `unseal` exists
+    because the editor's lock is a user toggle; the prefab code simply
+    never calls it.
+  - Item integration. The seal is the `lock_edit` flag: `Item_base::
+    set_flag_bits` calls `seal()` / `unseal()` when the bit changes and
+    the copy paths re-sync, so every existing writer of the flag (the
+    Locks row, `lock_items`, `set_item_flags`, `seal_instance_subtree`,
+    the scene builder's floor, glTF import) seals through the one path and
+    `is_lock_edit()` and `is_sealed()` agree. `set_name`, the flag word
+    and the tags are not properties and keep their own checks.
+  - Editor. The generic rows draw disabled for a sealed first item, queue
+    nothing, and disable Reset to default, Edit as expression, Remove
+    expression and Paste Properties (Copy stays); the row tooltip says
+    `Sealed (lock_edit)`. `Property_set_operation` and
+    `Property_set_apply_operation` log a warning when the write was
+    rejected. MCP `set_item_property` and `scene.set_property` refuse a
+    sealed item with a message naming `lock_edit` / `unlock_items`, and
+    `get_item_properties` reports `sealed` on the item. The typed blocks'
+    `edit_disabled` and the delete / transform / selection checks stay:
+    they guard state that is not a property.
+  - Tests. `src/erhe/property/test/test_sealing.cpp` (every write entry
+    rejected with the value unchanged and no notification, reads and
+    inherited notifications through a sealed child, an installed
+    expression still evaluating, `unseal` restoring writes, copy
+    unsealed) and `src/erhe/item/test/test_item_sealing.cpp` (`set_lock_edit`
+    / `enable_flag_bits` / `set_flag_bits` seal and unseal, a copy of a
+    locked item is sealed, a copy of an unlocked one is not).
+
 ## 4. Migration design
 
 ### 4.1 Material
@@ -888,6 +942,24 @@ built and launched on the Metal build to verify the affected window.
   `properties` object repeats `exposure` / `shadow_range` next to the
   native `ERHE_camera` fields (both import to the same value).
 
+### Phase 10 - sealing
+
+- D24 in the library (`seal` / `unseal` / `is_sealed`, the rejections,
+  `bool` returns) with `test_sealing.cpp`, then `Item_base` flag sync with
+  `test_item_sealing.cpp`, then the rows, the operations' warning, MCP and
+  the command.
+- Verify (section 8): `lock_items` on a node followed by
+  `set_item_property` refused and the value unchanged, `unlock_items`
+  followed by the same write succeeding, `get_item_properties` reporting
+  `sealed`, a prefab instance interior node refusing the write while
+  `visible` `false` on the instance root still hides it, and
+  `capture_screenshot` of the disabled rows for a locked node.
+- Found during the design: the generic rows, `Property_set_operation`, MCP
+  `set_item_property` and `scene.set_property` never read `lock_edit`, so
+  every registered property of a locked item (prefab interiors included)
+  was editable through them; the seal at the write funnel closes that for
+  every writer at once.
+
 ## 6. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -895,8 +967,8 @@ than a scene model: templates and triggers, `UncommonField`, dispatcher
 thread affinity, the attached-property browsable attributes, and two-way
 bindings (they exist for UI controls writing back to
 a model; erhe's ImGui windows are immediate-mode and read the item
-directly). Expressions and one-way bindings are D22; the style layer and
-sealing are future work (section 7).
+directly). Expressions and one-way bindings are D22, sealing is D24; the
+style layer is future work (section 7).
 
 ## 7. Future work
 
@@ -916,11 +988,6 @@ sealing are future work (section 7).
   `config/editor/graphics_presets.json`, material presets in the content
   library, and per-instance prefab overrides once
   `doc/gltf-prefabs-plan.md` phase 6 takes them on.
-- Sealing (the useful part of WPF `Freezable`): `Dependency_object::seal()`
-  after which `set_value` / `clear_value` are rejected the way a failed
-  validate is (D7). Prefab instance subtrees are sealed today by the
-  editing model in `doc/gltf-prefabs-plan.md` and `Item_flags::lock_edit`
-  exists; sealing at the property level replaces the per-UI-site checks.
 - Read-only computed properties through `Property_key<T>` (R6): world
   transform, world bounds, child count, exposed for MCP, the Properties
   window and the expression variables of the value-provider item.
@@ -1017,6 +1084,16 @@ sealing are future work (section 7).
   node selected showing the `* Visible` row unchecked under its transform
   rows. The generic rows sit below the Mesh section for a mesh-carrying
   node, so select an empty node for the screenshot.
+  The checks that passed at the end of phase 10: `lock_items` on `cube`
+  followed by `set_item_property` `visible` refused with the `unlock_items`
+  hint and `get_item_properties` reporting `sealed: true` and the value
+  unchanged, `unlock_items` followed by the same write queued and applied,
+  `instantiate_prefab` of `res/example/models/Box.gltf` (poll
+  `get_scene_nodes` until the instance nodes appear) with a write to an
+  interior node refused while `visible` `false` on the instance root is
+  reported `inherited` on the interior nodes and mesh, and
+  `capture_screenshot` with a locked node selected showing its property
+  rows greyed out.
 - `capture_screenshot` works on the Metal swapchain (the same one-frame
   arm-then-collect protocol as the Vulkan windowed build), so the visual
   check of the Properties rows is `capture_screenshot` with a `path` in

@@ -138,6 +138,9 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     if (first.is_coerced(property)) {
         tooltip += " (coerced)";
     }
+    if (first.is_sealed()) {
+        tooltip += "\nSealed (lock_edit)";
+    }
     if (expression.has_value()) {
         tooltip += "\nValue: ";
         tooltip += erhe::property::to_string(property, first.get_value(property));
@@ -153,9 +156,10 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
         tooltip += erhe::property::to_string(property, first.get_value(property));
     }
 
+    const bool sealed = first.is_sealed(); // D24: a sealed item's rows are read-only
     editor.add_entry(
         std::move(label),
-        [this, &property, &metadata]() {
+        [this, &property, &metadata, sealed]() {
             if (const std::optional<std::string_view> text = m_items.front()->get_expression(property); text.has_value()) {
                 draw_expression(property, text.value());
                 context_menu(property, metadata);
@@ -172,7 +176,7 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
             if (mixed) {
                 ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4{0.45f, 0.35f, 0.15f, 0.6f});
             }
-            const bool read_only = property.is_read_only();
+            const bool read_only = property.is_read_only() || sealed;
             ImGui::BeginDisabled(read_only);
             bool immediate = false;
             const bool changed = draw_widget(property, metadata, value, immediate);
@@ -460,22 +464,23 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
     for (const std::shared_ptr<erhe::Item_base>& item : m_items) {
         any_local = any_local || item->has_local_value(property);
     }
-    if (ImGui::MenuItem("Reset to default", nullptr, false, any_local && !property.is_read_only())) {
+    const bool writable = !property.is_read_only() && !m_items.front()->is_sealed(); // D24
+    if (ImGui::MenuItem("Reset to default", nullptr, false, any_local && writable)) {
         reset_to_default(property);
     }
     const bool driven      = m_items.front()->get_expression(property).has_value();
-    const bool can_drive   = !driven && !property.is_read_only() && (property.get_type() != Property_type::string);
+    const bool can_drive   = !driven && writable && (property.get_type() != Property_type::string);
     if (ImGui::MenuItem("Edit as expression", nullptr, false, can_drive)) {
         edit_as_expression(property);
     }
-    if (ImGui::MenuItem("Remove expression", nullptr, false, driven && !property.is_read_only())) {
+    if (ImGui::MenuItem("Remove expression", nullptr, false, driven && writable)) {
         remove_expression(property);
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Copy Properties", nullptr, false, (m_items.size() == 1) && (m_context.clipboard != nullptr))) {
         copy_properties();
     }
-    const bool can_paste = (m_context.clipboard != nullptr) && m_context.clipboard->has_property_contents();
+    const bool can_paste = (m_context.clipboard != nullptr) && m_context.clipboard->has_property_contents() && !m_items.front()->is_sealed();
     if (ImGui::MenuItem("Paste Properties", nullptr, false, can_paste)) {
         paste_properties();
     }
@@ -538,6 +543,9 @@ void Dependency_property_rows::paste_properties()
     const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
     Compound_operation::Parameters parameters;
     for (const std::shared_ptr<erhe::Item_base>& item : m_items) {
+        if (item->is_sealed()) {
+            continue; // D24
+        }
         // Only the properties this item's type has (by identity, not name).
         erhe::property::Property_set filtered;
         for (const erhe::property::Property_set::Entry& entry : source.entries()) {

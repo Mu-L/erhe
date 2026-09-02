@@ -137,12 +137,24 @@ void Item_base::set_derived_flag_bit(const uint64_t bit, const bool value)
 
 // After a copy: the copy has no parent, so an inherited value of the source
 // does not survive; the derived bits must agree with the copied entries.
+// The copied lock_edit flag re-seals the copy (Dependency_object's copy is
+// unsealed).
 void Item_base::rederive_flag_bits()
 {
     m_flag_bits = (m_flag_bits & ~Item_flags::derived)
         | (get_value(visible_property)     ? Item_flags::visible     : 0u)
         | (get_value(shadow_cast_property) ? Item_flags::shadow_cast : 0u)
         | (get_value(lightmapped_property) ? Item_flags::lightmapped : 0u);
+    sync_seal_with_lock_edit();
+}
+
+void Item_base::sync_seal_with_lock_edit()
+{
+    if (erhe::utility::test_bit_set(m_flag_bits, Item_flags::lock_edit)) {
+        seal();
+    } else {
+        unseal();
+    }
 }
 
 Item_base::Item_base() = default;
@@ -214,6 +226,9 @@ void Item_base::set_flag_bits(const uint64_t requested_mask, const bool value)
     }
 
     if (m_flag_bits != old_flag_bits) {
+        if (((old_flag_bits ^ m_flag_bits) & Item_flags::lock_edit) != 0u) {
+            sync_seal_with_lock_edit();
+        }
         if (((old_flag_bits ^ m_flag_bits) & ~Item_flags::transient) != 0u) {
             bump_item_mutation_serial();
         }

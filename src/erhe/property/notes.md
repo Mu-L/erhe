@@ -75,6 +75,16 @@ source changed: metadata `property_changed`, the virtual
 an object and delivers one per property when the outermost batch ends, with
 the value before the batch and after it.
 
+## Sealing
+
+`seal()` / `unseal()` / `is_sealed()` (D24, WPF `Freeze`): while sealed
+every write of the local layer (`set_value`, `set_current_value`,
+`clear_value`, `set_expression`, `apply_local_state`) is rejected like a
+read-only write - one logged error, `false`, nothing changes. Reads,
+inherited values and their notifications, observers and an installed
+expression keep working. A copy is not sealed. `erhe::Item_base` ties the
+seal to `Item_flags::lock_edit`.
+
 ## Inheritance
 
 `inherits` metadata makes a property without a local value read the closest
