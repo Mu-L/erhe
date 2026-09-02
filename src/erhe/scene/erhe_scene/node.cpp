@@ -40,6 +40,68 @@ namespace {
 
 using namespace erhe;
 
+namespace {
+
+using erhe::property::Dependency_object;
+using erhe::property::Property;
+using erhe::property::Property_bridge;
+using erhe::property::Property_flags;
+using erhe::property::Property_metadata;
+using erhe::property::Property_ui;
+using erhe::property::Property_value;
+
+constexpr uint32_t c_transform_flags = Property_flags::serialize | Property_flags::affects_transform;
+
+template <typename T>
+auto make_transform_bridge(
+    T (Trs_transform::*getter)() const,
+    void (Trs_transform::*setter)(T)
+) -> Property_bridge
+{
+    return Property_bridge{
+        .get = [getter](const Dependency_object& object) -> Property_value {
+            const Node& node = static_cast<const Node&>(object);
+            return (node.node_data.transforms.parent_from_node.*getter)();
+        },
+        .set = [setter](Dependency_object& object, const Property_value& value) {
+            Node& node = static_cast<Node&>(object);
+            (node.node_data.transforms.parent_from_node.*setter)(std::get<T>(value));
+            node.update_world_from_node();
+            node.handle_transform_update(Node_transforms::get_next_serial());
+        }
+    };
+}
+
+} // anonymous namespace
+
+const Property<glm::vec3> Node::translation_property = Property<glm::vec3>::register_property(
+    "translation", erhe::Item_type::node,
+    Property_metadata{
+        .default_value = glm::vec3{0.0f, 0.0f, 0.0f},
+        .flags         = c_transform_flags,
+        .ui            = Property_ui{.step = 0.01f, .tooltip = "Position relative to the parent node"},
+        .bridge        = make_transform_bridge<glm::vec3>(&Trs_transform::get_translation, &Trs_transform::set_translation)
+    }
+);
+const Property<glm::quat> Node::rotation_property = Property<glm::quat>::register_property(
+    "rotation", erhe::Item_type::node,
+    Property_metadata{
+        .default_value = glm::quat{1.0f, 0.0f, 0.0f, 0.0f},
+        .flags         = c_transform_flags,
+        .ui            = Property_ui{.step = 0.5f, .tooltip = "Rotation relative to the parent node (edited as Euler degrees)"},
+        .bridge        = make_transform_bridge<glm::quat>(&Trs_transform::get_rotation, &Trs_transform::set_rotation)
+    }
+);
+const Property<glm::vec3> Node::scale_property = Property<glm::vec3>::register_property(
+    "scale", erhe::Item_type::node,
+    Property_metadata{
+        .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
+        .flags         = c_transform_flags,
+        .ui            = Property_ui{.step = 0.01f, .tooltip = "Scale relative to the parent node"},
+        .bridge        = make_transform_bridge<glm::vec3>(&Trs_transform::get_scale, &Trs_transform::set_scale)
+    }
+);
+
 uint64_t Node_transforms::s_global_update_serial = 0;
 
 auto Node_transforms::get_current_serial() -> uint64_t

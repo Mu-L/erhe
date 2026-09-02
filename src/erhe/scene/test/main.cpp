@@ -1,4 +1,5 @@
 #include "erhe_item/item_log.hpp"
+#include "erhe_property/property_log.hpp"
 #include "erhe_scene/scene_log.hpp"
 
 #include <gtest/gtest.h>
@@ -10,6 +11,7 @@ void initialize_test_logging()
     // sanity checks); without this the loggers are null and any node parenting
     // in a test dereferences null.
     erhe::item::log                = spdlog::default_logger();
+    erhe::property::log            = spdlog::default_logger();
     erhe::item::log_frame          = spdlog::default_logger();
     erhe::scene::log               = spdlog::default_logger();
     erhe::scene::log_frame         = spdlog::default_logger();

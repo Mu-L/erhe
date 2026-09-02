@@ -14,6 +14,7 @@ add_executable(${_target}
     test_animation_apply.cpp
     test_animation_sampler.cpp
     test_light_frame.cpp
+    test_node_properties.cpp
     test_optimized_variant_invalidation.cpp
 )
 

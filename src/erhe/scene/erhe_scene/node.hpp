@@ -2,6 +2,7 @@
 
 #include "erhe_item/hierarchy.hpp"
 #include "erhe_scene/trs_transform.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <cstdint>
 #include <string>
@@ -138,6 +139,15 @@ public:
     void set_world_from_node   (const Trs_transform& world_from_node);
     void set_node_from_world   (glm::mat4 node_from_world);
     void set_node_from_world   (const Transform& node_from_world);
+
+    // Registered properties (doc/property-system-plan.md section 4.2, D18):
+    // bridged onto node_data.transforms.parent_from_node, so the transform
+    // keeps its deferred matrix decomposition and its per-frame write paths,
+    // and the editor / undo / MCP reach it through the property store. Writes
+    // through them run the same update as set_parent_from_node.
+    static const erhe::property::Property<glm::vec3> translation_property;
+    static const erhe::property::Property<glm::quat> rotation_property;
+    static const erhe::property::Property<glm::vec3> scale_property;
 
     // Optional developer sanity check: when enabled, every transform write to
     // a node carrying Item_flags::no_transform_update logs a warning with the
