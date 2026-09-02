@@ -135,6 +135,12 @@ Material::Material(const Material_create_info& create_info)
     enable_flag_bits(erhe::Item_flags::show_in_ui);
 }
 
+Material::Material(const std::string_view name)
+    : Item{name}
+{
+    enable_flag_bits(erhe::Item_flags::show_in_ui);
+}
+
 auto Material::get_values() const -> Material_values
 {
     return Material_values{
@@ -281,6 +287,7 @@ auto Material::to_property_set(const Material_values& values) -> erhe::property:
     return
         (lhs.get_name() == rhs.get_name()) &&
         (lhs.data       == rhs.data      ) &&
+        (lhs.get_style() == rhs.get_style()) && // D25: the same shared style, or none
         (erhe::property::Property_set::read_local_values(lhs) == erhe::property::Property_set::read_local_values(rhs));
 }
 

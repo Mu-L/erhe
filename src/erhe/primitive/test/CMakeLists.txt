@@ -12,6 +12,7 @@ set(_target "erhe_primitive_tests")
 add_executable(${_target}
     main.cpp
     test_attribute_encodings.cpp
+    test_material_style.cpp
     test_mesh_optimizer.cpp
     test_optimized_variant_build.cpp
 )

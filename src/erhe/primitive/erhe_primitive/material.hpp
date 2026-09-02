@@ -128,7 +128,10 @@ public:
     Material& operator=(const Material&);
     ~Material() noexcept override;
 
+    // Every Material_values field becomes a local value (a full snapshot).
     explicit Material(const Material_create_info& create_info);
+    // No local values: the defaults, or a style (D25), supply every field.
+    explicit Material(std::string_view name);
 
     // Implements Item_base
     static constexpr std::string_view static_type_name{"Material"};

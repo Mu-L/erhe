@@ -108,6 +108,7 @@ Dependency_object::Dependency_object() = default;
 
 Dependency_object::Dependency_object(const Dependency_object& other)
     : m_entries{other.m_entries}
+    , m_style  {other.m_style}
 {
 }
 
@@ -118,6 +119,7 @@ Dependency_object& Dependency_object::operator=(const Dependency_object& other)
             detach_expression(entry);
         }
         m_entries = other.m_entries;
+        m_style   = other.m_style;
     }
     return *this;
 }
@@ -187,10 +189,23 @@ auto Dependency_object::entry_is_bridged_expression(const Effective_value_entry&
     return (entry.expression != nullptr) && metadata.bridge.is_bound();
 }
 
+auto Dependency_object::get_style_value(const Dependency_property& property) const -> std::optional<Property_value>
+{
+    if (!m_style) {
+        return std::nullopt;
+    }
+    return m_style->get_values().find(property);
+}
+
+auto Dependency_object::has_own_value(const Dependency_property& property) const -> bool
+{
+    return has_local_value(property) || (m_style && m_style->get_values().contains(property));
+}
+
 auto Dependency_object::get_inherited_value(const Dependency_property& property) const -> std::optional<Property_value>
 {
     for (const Dependency_object* ancestor = get_inheritance_parent(); ancestor != nullptr; ancestor = ancestor->get_inheritance_parent()) {
-        if (ancestor->has_local_value(property)) {
+        if (ancestor->has_own_value(property)) {
             Value_source source{};
             return ancestor->get_effective_value(property, source);
         }
@@ -211,6 +226,10 @@ auto Dependency_object::get_base_value(const Dependency_property& property, Valu
     if (metadata.bridge.is_bound()) {
         out_source = Value_source::local;
         return metadata.bridge.get(*this);
+    }
+    if (std::optional<Property_value> styled = get_style_value(property); styled.has_value()) {
+        out_source = Value_source::style;
+        return std::move(styled.value());
     }
     if (metadata.inherits) {
         if (std::optional<Property_value> inherited = get_inherited_value(property); inherited.has_value()) {
@@ -824,8 +843,8 @@ void Dependency_object::propagate_to_descendants(
     const uint16_t index = property.get_index();
     for_each_inheritance_child(
         [&](Dependency_object& child) {
-            if (child.has_local_value(property)) {
-                return; // a local value shadows the subtree
+            if (child.has_own_value(property)) {
+                return; // a local or style value shadows the subtree
             }
             const Property_metadata& child_metadata = child.get_metadata(property);
             Property_value child_old = old_value;
@@ -878,6 +897,55 @@ void Dependency_object::flush_batch()
     }
 }
 
+// Style (D25)
+
+auto Dependency_object::set_style(std::shared_ptr<const Property_style> style) -> bool
+{
+    if (m_sealed) {
+        log->error("set_style: object is sealed");
+        return false;
+    }
+    if (style == m_style) {
+        return true;
+    }
+    // Effective values before the switch for every property either style
+    // names; locals shadow both styles and are left alone.
+    struct Before
+    {
+        const Dependency_property* property;
+        Property_value             value;
+        Value_source               source;
+    };
+    std::vector<Before> before;
+    const auto collect = [&](const std::shared_ptr<const Property_style>& from) {
+        if (!from) {
+            return;
+        }
+        for (const Property_set::Entry& entry : from->get_values().entries()) {
+            const Dependency_property& property = *entry.property;
+            if (has_local_value(property)) {
+                continue;
+            }
+            const bool seen = std::any_of(before.begin(), before.end(), [&property](const Before& b) { return b.property == &property; });
+            if (seen) {
+                continue;
+            }
+            Value_source source{};
+            Property_value value = get_effective_value(property, source);
+            before.push_back(Before{.property = &property, .value = std::move(value), .source = source});
+        }
+    };
+    collect(m_style);
+    collect(style);
+    m_style = std::move(style);
+    for (const Before& b : before) {
+        Value_source   new_source{};
+        Property_value new_value = get_effective_value(*b.property, new_source);
+        notify(*b.property, b.value, b.source, new_value, new_source);
+    }
+    return true;
+}
+
 // Inheritance snapshots
 
 void Dependency_object::capture_inheritance_snapshot_recursive(Inheritance_snapshot& snapshot)
@@ -890,8 +958,8 @@ void Dependency_object::capture_inheritance_snapshot_recursive(Inheritance_snaps
         if (!property.get_metadata(owner_type).inherits) {
             continue;
         }
-        if (has_local_value(property)) {
-            continue; // local value: unaffected by the tree
+        if (has_own_value(property)) {
+            continue; // local or style value: unaffected by the tree
         }
         Value_source source{};
         Property_value value = get_effective_value(property, source);

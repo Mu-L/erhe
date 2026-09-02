@@ -3,6 +3,7 @@
 #include "erhe_property/dependency_property.hpp"
 #include "erhe_property/expression.hpp"
 #include "erhe_property/property_metadata.hpp"
+#include "erhe_property/property_style.hpp"
 #include "erhe_property/property_value.hpp"
 
 #include <cstdint>
@@ -60,7 +61,7 @@ public:
 };
 
 // WPF DependencyObject: a sparse store of per-property values with
-// precedence coerced > local > inherited > default, validate / coerce /
+// precedence coerced > local > style > inherited > default, validate / coerce /
 // changed callbacks from the property metadata, a virtual changed hook,
 // per-object observers, change batching, and expressions driving
 // properties from other properties (D22).
@@ -68,9 +69,9 @@ class Dependency_object
 {
 public:
     Dependency_object();
-    // Copies local values (and their coerced values) and expression texts
-    // (unresolved: the copy resolves them itself); observers, dependents
-    // and pending batches are not copied.
+    // Copies local values (and their coerced values), expression texts
+    // (unresolved: the copy resolves them itself) and the style pointer;
+    // observers, dependents, the seal and pending batches are not copied.
     Dependency_object(const Dependency_object& other);
     Dependency_object& operator=(const Dependency_object& other);
     virtual ~Dependency_object() noexcept;
@@ -142,6 +143,14 @@ public:
     void               seal     ()       { m_sealed = true; }
     void               unseal   ()       { m_sealed = false; }
     [[nodiscard]] auto is_sealed() const -> bool { return m_sealed; }
+
+    // Style (D25): one shared Property_style per object, read between the
+    // local and inherited layers; a bridged property ignores it. set_style
+    // notifies every property whose effective value or source changes
+    // (locals shadow the style and are untouched); nullptr clears. False
+    // (logged) on a sealed object.
+    auto               set_style(std::shared_ptr<const Property_style> style) -> bool;
+    [[nodiscard]] auto get_style() const -> const std::shared_ptr<const Property_style>& { return m_style; }
 
     // Untyped access (editor, undo, serialization, MCP). Writes to a
     // read-only property or a sealed object are rejected here (false);
@@ -259,6 +268,10 @@ private:
     [[nodiscard]] auto get_base_value     (const Dependency_property& property, Value_source& out_source) const -> Property_value;
     [[nodiscard]] auto get_effective_value(const Dependency_property& property, Value_source& out_source) const -> Property_value;
     [[nodiscard]] auto get_inherited_value(const Dependency_property& property) const -> std::optional<Property_value>;
+    // Local (entry or bridge) or style value: the object is the origin of
+    // the value its descendants inherit.
+    [[nodiscard]] auto has_own_value      (const Dependency_property& property) const -> bool;
+    [[nodiscard]] auto get_style_value    (const Dependency_property& property) const -> std::optional<Property_value>;
 
     [[nodiscard]] auto reject_if_sealed   (const Dependency_property& property) const -> bool;
     auto               set_value_internal  (const Dependency_property& property, const Property_value& value, bool allow_read_only, bool keep_expression) -> bool;
@@ -297,6 +310,7 @@ private:
     std::shared_ptr<Observer_token::Observer_list>  m_observers;   // allocated on first add_observer
     std::unique_ptr<std::vector<Dependent>>         m_dependents;  // allocated when the first expression resolves to this object
     std::vector<Pending_change>                     m_pending;
+    std::shared_ptr<const Property_style>           m_style;
     int                                             m_batch_depth{0};
     bool                                            m_sealed{false};
 };

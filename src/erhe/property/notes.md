@@ -61,11 +61,14 @@ every scene item carries a property store. Plan and design record:
   select`. Depends on `tinyexpr` (private).
 - **`Property_set`** - sorted bag of (property, value): local values of an
   object, clipboard payload, diff.
+- **`Property_style`** - a named, immutable `Property_set` shared through
+  `std::shared_ptr<const Property_style>`; an object's style layer (D25).
 - **`property_string.hpp`** - `to_string` / `parse_value` for every type.
 
 ## Value precedence and callbacks
 
-Effective value = coerced(base), base = local > inherited > default. The
+Effective value = coerced(base), base = local > style > inherited > default.
+The
 coerced value of a local value is stored in the entry and refreshed by
 `set_value` and `coerce_value`; a property without a local value is coerced
 on every read. `set_value` runs validate (type check, enumeration table,
@@ -74,6 +77,20 @@ source changed: metadata `property_changed`, the virtual
 `on_property_changed`, then observers. `Change_batch` queues notifications on
 an object and delivers one per property when the outermost batch ends, with
 the value before the batch and after it.
+
+## Style
+
+`set_style(std::shared_ptr<const Property_style>)` / `get_style()` (D25, WPF
+Style setters): the style's values sit between the local and inherited
+layers (`Value_source::style`); a local value or an expression shadows
+them, a bridged property ignores them. `set_style` notifies every property
+either the old or the new style names whose effective value or source
+changes, through the normal path, and leaves locals alone. A style value of
+an inherits-flagged property is what descendants inherit, and it stops an
+ancestor's propagation like a local value. A copy carries the style
+pointer; a sealed object rejects `set_style`. Styles are session state: the
+glTF writers export effective values, and the `properties` extras carry
+locals only.
 
 ## Sealing
 

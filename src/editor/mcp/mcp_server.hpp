@@ -321,6 +321,8 @@ private:
     // doc/property-system-plan.md D13
     auto query_item_properties                (const nlohmann::json& args) -> std::string;
     auto action_set_item_property             (const nlohmann::json& args) -> std::string;
+    auto action_set_item_style                (const nlohmann::json& args) -> std::string;
+    auto action_clear_item_style              (const nlohmann::json& args) -> std::string;
     auto action_free_undone_loads             (const nlohmann::json& args) -> std::string;
     auto action_move_library_item             (const nlohmann::json& args) -> std::string;
     auto action_debug_set_item_tree_hover     (const nlohmann::json& args) -> std::string;

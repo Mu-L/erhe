@@ -62,8 +62,9 @@ public:
     // (property, value) read from one item's local values, applied to the
     // selection by Property_set_apply_operation. Independent of the item
     // contents above.
-    void set_property_contents(const erhe::property::Property_set& properties);
-    [[nodiscard]] auto get_property_contents() const -> const erhe::property::Property_set&;
+    void set_property_contents(const erhe::property::Property_set& properties, std::string_view source_name);
+    [[nodiscard]] auto get_property_contents     () const -> const erhe::property::Property_set&;
+    [[nodiscard]] auto get_property_contents_name() const -> const std::string&; // the item they were copied from (a style's name, D25)
     [[nodiscard]] auto has_property_contents() const -> bool;
 
     // Scene-close leak watchdog support: the items the clipboard contents
@@ -91,6 +92,7 @@ private:
     App_context&                                  m_context;
     std::vector<std::shared_ptr<erhe::Item_base>> m_contents;
     erhe::property::Property_set                  m_property_contents;
+    std::string                                   m_property_contents_name;
     std::vector<Asset_reference>                  m_asset_userships;
 
     Scene_view*                                   m_hover_scene_view          {nullptr};

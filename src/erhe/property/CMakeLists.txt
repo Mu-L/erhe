@@ -17,6 +17,7 @@ erhe_target_sources_grouped(
     erhe_property/property_set.cpp
     erhe_property/property_set.hpp
     erhe_property/property_string.cpp
+    erhe_property/property_style.hpp
     erhe_property/property_string.hpp
     erhe_property/property_value.hpp
 )

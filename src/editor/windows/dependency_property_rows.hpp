@@ -64,6 +64,8 @@ private:
     void remove_expression (const erhe::property::Dependency_property& property);
     void copy_properties ();
     void paste_properties();
+    void paste_properties_as_style(); // D25
+    void clear_style              ();
 
     App_context& m_context;
 

@@ -425,9 +425,15 @@ void Clipboard::update_asset_userships()
     }
 }
 
-void Clipboard::set_property_contents(const erhe::property::Property_set& properties)
+void Clipboard::set_property_contents(const erhe::property::Property_set& properties, const std::string_view source_name)
 {
-    m_property_contents = properties;
+    m_property_contents      = properties;
+    m_property_contents_name = std::string{source_name};
+}
+
+auto Clipboard::get_property_contents_name() const -> const std::string&
+{
+    return m_property_contents_name;
 }
 
 auto Clipboard::get_property_contents() const -> const erhe::property::Property_set&

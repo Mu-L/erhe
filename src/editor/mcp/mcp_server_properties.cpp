@@ -10,6 +10,7 @@
 #include "app_scenes.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/property_set_operation.hpp"
+#include "operations/style_set_operation.hpp"
 #include "scene/item_lookup.hpp"
 #include "scene/scene_root.hpp"
 
@@ -19,6 +20,7 @@
 #include "erhe_property/expression.hpp"
 #include "erhe_property/property_metadata.hpp"
 #include "erhe_property/property_string.hpp"
+#include "erhe_property/property_style.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -106,7 +108,8 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
         {"id",     item->get_id()},
         {"name",   item->get_name()},
         {"type",   std::string{item->get_type_name()}},
-        {"sealed", item->is_sealed()} // lock_edit (D24): writes are refused
+        {"sealed", item->is_sealed()}, // lock_edit (D24): writes are refused
+        {"style",  item->get_style() ? json(std::string{item->get_style()->get_name()}) : json(nullptr)} // D25
     };
     json properties = json::array();
     const uint64_t owner_type = item->get_property_owner_type();
@@ -258,4 +261,86 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
     return make_json_content(result).dump();
 }
 
+// Style layer (D25): the source item's local values become the target's
+// style, named after the source. Local values of the target stay on top.
+auto Mcp_server::action_set_item_style(const json& args) -> std::string
+{
+    std::string error;
+    const std::shared_ptr<erhe::Item_base> item = resolve_item(m_context, args, error);
+    if (!item) {
+        return make_error_content(error);
+    }
+    json source_args = json::object();
+    if (args.contains("source_item_id")) {
+        source_args["item_id"] = args["source_item_id"];
+    }
+    if (args.contains("source_item_name")) {
+        source_args["item_name"] = args["source_item_name"];
+    }
+    if (args.contains("scene_name")) {
+        source_args["scene_name"] = args["scene_name"];
+    }
+    const std::shared_ptr<erhe::Item_base> source = resolve_item(m_context, source_args, error);
+    if (!source) {
+        return make_error_content("source: " + error);
+    }
+    if (item->is_sealed()) {
+        return make_error_content("Item '" + item->get_name() + "' is sealed (lock_edit): unlock_items first");
+    }
+    // Only the properties the target's type has (by identity), as paste.
+    const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
+    erhe::property::Property_set values;
+    const erhe::property::Property_set source_values = erhe::property::Property_set::read_local_values(*source);
+    for (const erhe::property::Property_set::Entry& entry : source_values.entries()) {
+        if (entry.property->is_read_only()) {
+            continue;
+        }
+        if (registry.find_for_type(item->get_type(), entry.property->get_name()) == entry.property) {
+            values.set(*entry.property, entry.value);
+        }
+    }
+    if (values.empty()) {
+        return make_error_content("Item '" + source->get_name() + "' has no local values that '" + item->get_name() + "' (" + std::string{item->get_type_name()} + ") could use");
+    }
+    json names = json::array();
+    for (const erhe::property::Property_set::Entry& entry : values.entries()) {
+        names.push_back(std::string{entry.property->get_name()});
+    }
+    const std::shared_ptr<const erhe::property::Property_style> style = std::make_shared<const erhe::property::Property_style>(source->get_name(), std::move(values));
+    m_context.operation_stack->queue(std::make_shared<Style_set_operation>(item, item->get_style(), style));
+    return make_json_content(
+        json{
+            {"item",       {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
+            {"style",      std::string{style->get_name()}},
+            {"properties", names},
+            {"before",     item->get_style() ? json(std::string{item->get_style()->get_name()}) : json(nullptr)},
+            {"queued",     true}
+        }
+    ).dump();
 }
+
+auto Mcp_server::action_clear_item_style(const json& args) -> std::string
+{
+    std::string error;
+    const std::shared_ptr<erhe::Item_base> item = resolve_item(m_context, args, error);
+    if (!item) {
+        return make_error_content(error);
+    }
+    if (item->is_sealed()) {
+        return make_error_content("Item '" + item->get_name() + "' is sealed (lock_edit): unlock_items first");
+    }
+    if (!item->get_style()) {
+        return make_error_content("Item '" + item->get_name() + "' has no style");
+    }
+    const std::string before{item->get_style()->get_name()};
+    m_context.operation_stack->queue(std::make_shared<Style_set_operation>(item, item->get_style(), nullptr));
+    return make_json_content(
+        json{
+            {"item",   {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
+            {"before", before},
+            {"queued", true}
+        }
+    ).dump();
+}
+
+} // namespace editor

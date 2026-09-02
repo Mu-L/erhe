@@ -6,6 +6,7 @@
 #include "operations/compound_operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/property_set_operation.hpp"
+#include "operations/style_set_operation.hpp"
 #include "tools/clipboard.hpp"
 
 #include "erhe_item/item.hpp"
@@ -137,6 +138,11 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     tooltip += erhe::property::c_str(first.get_value_source(property));
     if (first.is_coerced(property)) {
         tooltip += " (coerced)";
+    }
+    if (first.get_value_source(property) == Value_source::style) {
+        tooltip += " (";
+        tooltip += first.get_style()->get_name();
+        tooltip += ")";
     }
     if (first.is_sealed()) {
         tooltip += "\nSealed (lock_edit)";
@@ -484,6 +490,18 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
     if (ImGui::MenuItem("Paste Properties", nullptr, false, can_paste)) {
         paste_properties();
     }
+    // Style layer (D25): the clipboard bag as the selection's style, named
+    // after the item it was copied from; local values stay on top of it.
+    if (ImGui::MenuItem("Paste Properties as Style", nullptr, false, can_paste)) {
+        paste_properties_as_style();
+    }
+    bool any_style = false;
+    for (const std::shared_ptr<erhe::Item_base>& item : m_items) {
+        any_style = any_style || static_cast<bool>(item->get_style());
+    }
+    if (ImGui::MenuItem("Clear Style", nullptr, false, any_style && !m_items.front()->is_sealed())) {
+        clear_style();
+    }
     ImGui::EndPopup();
 }
 
@@ -531,7 +549,61 @@ void Dependency_property_rows::copy_properties()
     if ((m_context.clipboard == nullptr) || (m_items.size() != 1)) {
         return;
     }
-    m_context.clipboard->set_property_contents(erhe::property::Property_set::read_local_values(*m_items.front()));
+    m_context.clipboard->set_property_contents(erhe::property::Property_set::read_local_values(*m_items.front()), m_items.front()->get_name());
+}
+
+void Dependency_property_rows::paste_properties_as_style()
+{
+    if ((m_context.clipboard == nullptr) || !m_context.clipboard->has_property_contents()) {
+        return;
+    }
+    const erhe::property::Property_set&      source   = m_context.clipboard->get_property_contents();
+    const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
+    Compound_operation::Parameters parameters;
+    for (const std::shared_ptr<erhe::Item_base>& item : m_items) {
+        if (item->is_sealed()) {
+            continue;
+        }
+        // Only the properties this item's type has (by identity), as paste.
+        erhe::property::Property_set filtered;
+        for (const erhe::property::Property_set::Entry& entry : source.entries()) {
+            if (entry.property->is_read_only()) {
+                continue;
+            }
+            if (registry.find_for_type(item->get_type(), entry.property->get_name()) == entry.property) {
+                filtered.set(*entry.property, entry.value);
+            }
+        }
+        if (filtered.empty()) {
+            continue;
+        }
+        parameters.operations.push_back(
+            std::make_shared<Style_set_operation>(
+                item,
+                item->get_style(),
+                std::make_shared<const erhe::property::Property_style>(m_context.clipboard->get_property_contents_name(), std::move(filtered))
+            )
+        );
+    }
+    if (parameters.operations.empty()) {
+        return;
+    }
+    m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
+}
+
+void Dependency_property_rows::clear_style()
+{
+    Compound_operation::Parameters parameters;
+    for (const std::shared_ptr<erhe::Item_base>& item : m_items) {
+        if (item->is_sealed() || !item->get_style()) {
+            continue;
+        }
+        parameters.operations.push_back(std::make_shared<Style_set_operation>(item, item->get_style(), nullptr));
+    }
+    if (parameters.operations.empty()) {
+        return;
+    }
+    m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
 }
 
 void Dependency_property_rows::paste_properties()

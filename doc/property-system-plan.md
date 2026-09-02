@@ -3,8 +3,8 @@
 Status: phases 0-4 and 6-8 implemented and verified (library, item
 integration, editor operation / rows / MCP tools / startup command, Material
 migration, Node transform properties, Light and Camera migrations, observer
-users, expressions and bindings, inherited flags, sealing). Section 7 holds
-the remaining work.
+users, expressions and bindings, inherited flags, sealing, style layer).
+Section 7 holds the remaining work.
 
 Reference: the WPF property system in `~/git/tksuoran/wpf`, files under
 `src/Microsoft.DotNet.Wpf/src/WindowsBase/System/Windows/`:
@@ -41,8 +41,9 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
   An untyped path (`Property_value` variant) exists for generic code: the
   Properties window, undo, serialization, MCP.
 - R3 Precedence. The effective value of a property on an object is, in
-  decreasing precedence: coerced, local, inherited, default. Each layer can
-  be present or absent independently; clearing a layer exposes the next one.
+  decreasing precedence: coerced, local, style (D25), inherited, default.
+  Each layer can be present or absent independently; clearing a layer
+  exposes the next one.
   The layer order leaves room for an animated layer between coerced and
   local (section 7).
 - R4 Callbacks. A property has an optional validate callback (value only, no
@@ -640,6 +641,72 @@ Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
     / `enable_flag_bits` / `set_flag_bits` seal and unseal, a copy of a
     locked item is sealed, a copy of an unlocked one is not).
 
+- D25 Style layer (WPF `Style` setters, `BaseValueSourceInternal.Style`).
+  - What exists today. Neither candidate of section 7 is a property store:
+    the graphics presets are a generated POD (`Graphics_preset_entry`
+    inside `Graphics_settings`) that the Settings window edits in place,
+    with no local-override concept to preserve, and the content library has
+    no material preset at all - `add_default_materials` builds twelve
+    metals by copying the same roughness, metallic, BxDF model and brushed
+    metal traits into each. The graphics presets stay as they are until
+    `Graphics_settings` is an item (section 7); the first user is the
+    material library, and the layer is generic for every item type.
+  - Library. `Property_style` (`erhe_property/property_style.hpp`) is a
+    name plus a `Property_set` (D17), immutable after construction and
+    shared as `std::shared_ptr<const Property_style>` (WPF seals a style
+    once used; a changed preset is a new object re-applied by whoever owns
+    the preset list). `Dependency_object::set_style(style)` /
+    `get_style()` install one style per object; R3 becomes coerced > local
+    (a stored value or an expression) > style > inherited > default, with
+    `Value_source::style`. A bridged property (D18) is always local and
+    ignores a style entry (the transform, the projection). A style entry
+    for an inherits-flagged property is the object's effective value and
+    so flows to descendants exactly as a local value would: the inheritance
+    walk, the descendant notification and the tree-change snapshot treat
+    "has a local value" as "has a local or style value". `set_style`
+    notifies, through the normal path (batches, D19 callbacks, observers,
+    descendants), every property in the union of the old and new style
+    whose effective value or source changes; local values are untouched
+    and shadow the style (WPF `IsSetOnContainer`). A sealed object (D24)
+    rejects `set_style`. A copy (D10) carries the style pointer (it is
+    authored state, WPF copies `StyleProperty`). `read_local_value`,
+    `for_each_local_value` and `Property_set::read_local_values` stay
+    local-only; `Material::operator==` also compares the style pointers.
+  - Serialization. A style is session state like an expression (D14):
+    the glTF exporters read effective values through the typed accessors,
+    so a styled material or light exports its baked values and imports
+    them as local values; the `properties` extras of D23 stay local-only.
+    Writing a style by name is future work with the preset library that
+    would own the names.
+  - Editor. `Style_set_operation` (item, style before, style after) is the
+    undo step. The generic rows show `Source: style (<name>)` in the
+    tooltip and the `*` prefix only for a local value, as before; the
+    context menu gains `Paste Properties as Style` (the clipboard bag,
+    named after the item it was copied from, becomes the style of every
+    selected item through one compound of `Style_set_operation`s) and
+    `Clear Style`. MCP: `set_item_style(item, source_item)` builds the
+    style from the source item's local values, `clear_item_style(item)`,
+    and `get_item_properties` reports `style` (the name or `null`) on the
+    item and `style` as a property source.
+  - Material library. `add_default_materials` creates one `Property_style`
+    `Brushed metal` (roughness, metallic, BxDF model, circular brushed
+    metal, anisotropy control) and gives each metal only its base color as
+    a local value plus that style, so the twelve materials share the
+    traits and a material edited in the Properties window keeps its
+    override when the style is swapped or cleared. `Material` gains a
+    name-only constructor that writes no local values; the
+    `Material_create_info` constructor keeps writing every field as a
+    local value (a full snapshot, which would shadow a style).
+  - Tests. `src/erhe/property/test/test_style.cpp` (style over default and
+    inherited, local over style, expression over style, `set_style`
+    notifying only the changed non-local properties with the right old and
+    new values and sources, swap and clear diffs, a style entry inherited
+    by a child and stopping the ancestor's propagation, bridged property
+    ignoring the style, copy carrying the style, sealed rejecting) and
+    `src/erhe/primitive/test/test_material_style.cpp` (a styled material
+    reads the traits, a local override wins, `get_values` bakes them,
+    `operator==` sees the style).
+
 ## 4. Migration design
 
 ### 4.1 Material
@@ -960,6 +1027,25 @@ built and launched on the Metal build to verify the affected window.
   was editable through them; the seal at the write funnel closes that for
   every writer at once.
 
+### Phase 11 - style layer
+
+- D25 in the library (`Property_style`, `set_style`, the precedence and
+  inheritance changes, `Value_source::style`) with `test_style.cpp`, then
+  `Style_set_operation`, the rows, MCP, and the material library's
+  `Brushed metal` style with `test_material_style.cpp`.
+- Verify (section 8): `get_item_properties` on a default metal reporting
+  `style` `Brushed metal` and `roughness` with source `style`,
+  `set_item_property` `roughness` on it reporting `local` while
+  `metallic` stays `style`, `set_item_style` from another item and
+  `clear_item_style` changing the sources with `undo` restoring them, the
+  rendered metals unchanged from before the migration
+  (`capture_screenshot`), and `capture_screenshot` of the Properties
+  window for a styled material showing only the local row with the `*`
+  prefix.
+- Found during verification, fixed alongside: the first `set_item_style`
+  iterated the `entries()` of a temporary `Property_set` (destroyed before
+  the loop ran) and reported no usable values; the bag is a local now.
+
 ## 6. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -967,8 +1053,8 @@ than a scene model: templates and triggers, `UncommonField`, dispatcher
 thread affinity, the attached-property browsable attributes, and two-way
 bindings (they exist for UI controls writing back to
 a model; erhe's ImGui windows are immediate-mode and read the item
-directly). Expressions and one-way bindings are D22, sealing is D24; the
-style layer is future work (section 7).
+directly). Expressions and one-way bindings are D22, sealing is D24, the
+style layer is D25.
 
 ## 7. Future work
 
@@ -981,13 +1067,11 @@ style layer is future work (section 7).
 - Expression serialization: the formula text of a driven property (D22)
   written to glTF extras and restored on import, with the D14 extras work;
   until then formulas are session state.
-- Style layer (WPF `Style` setters without triggers): a named `Property_set`
-  (D17) applied as a layer between local and inherited in R3, so a material,
-  light or render preset can be swapped while the object's local overrides
-  survive. Candidates: the graphics presets in
-  `config/editor/graphics_presets.json`, material presets in the content
-  library, and per-instance prefab overrides once
-  `doc/gltf-prefabs-plan.md` phase 6 takes them on.
+- Style users beyond the material library (D25): the graphics presets once
+  `Graphics_settings` is an item with registered properties, per-instance
+  prefab overrides once `doc/gltf-prefabs-plan.md` phase 6 takes them on,
+  and a preset library that owns style names so a style can be written to
+  glTF by name.
 - Read-only computed properties through `Property_key<T>` (R6): world
   transform, world bounds, child count, exposed for MCP, the Properties
   window and the expression variables of the value-provider item.
@@ -1094,6 +1178,19 @@ style layer is future work (section 7).
   reported `inherited` on the interior nodes and mesh, and
   `capture_screenshot` with a locked node selected showing its property
   rows greyed out.
+  The checks that passed at the end of phase 11 (`get_scene_materials`
+  gives the material ids and names): `get_item_properties` on `Titanium`
+  reporting `style` `Brushed metal` with `roughness`, `metallic`,
+  `bxdf_model` and `use_aniso_control` sourced `style` and `base_color`
+  `local`; `set_item_property` `roughness` making it `local` while the
+  others stay `style`; `set_item_style` with `source_item_name` `Gold`
+  reporting the `Gold` style with `base_color` as its only entry, the
+  traits falling to `default` and Titanium's local base color surviving;
+  `clear_item_style`; two `undo`s restoring `Brushed metal` in order (the
+  scene builder's insert compound sits right below on the stack: do not
+  undo a third time); the rendered metals identical to the phase 9
+  screenshot; and `capture_screenshot` with `Titanium` selected showing
+  `* Base Color` as the only starred row.
 - `capture_screenshot` works on the Metal swapchain (the same one-frame
   arm-then-collect protocol as the Vulkan windowed build), so the visual
   check of the Properties rows is `capture_screenshot` with a `path` in

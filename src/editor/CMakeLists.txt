@@ -357,6 +357,8 @@ erhe_target_sources_grouped(
     operations/material_change_operation.cpp
     operations/property_set_operation.cpp
     operations/property_set_operation.hpp
+    operations/style_set_operation.cpp
+    operations/style_set_operation.hpp
     operations/material_change_operation.hpp
     operations/mesh_material_assign_operation.cpp
     operations/mesh_material_assign_operation.hpp

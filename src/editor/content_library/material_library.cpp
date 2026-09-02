@@ -2,36 +2,42 @@
 
 #include "erhe_physics/physics_material.hpp"
 #include "erhe_primitive/material.hpp"
+#include "erhe_property/property_style.hpp"
 #include "erhe_profile/profile.hpp"
 
 namespace editor {
+
+auto make_brushed_metal_style() -> std::shared_ptr<const erhe::property::Property_style>
+{
+    using erhe::primitive::Material;
+    using erhe::property::Property_value;
+    erhe::property::Property_set values;
+    values.set(Material::roughness_property.get(),                  Property_value{glm::vec2{0.34f, 0.20f}});
+    values.set(Material::metallic_property.get(),                   Property_value{1.0f});
+    values.set(Material::bxdf_model_property.get(),                 Property_value{erhe::property::Enum_value{static_cast<int32_t>(erhe::primitive::Bxdf_model::anisotropic_brdf)}});
+    values.set(Material::use_circular_brushed_metal_property.get(), Property_value{true});
+    values.set(Material::use_aniso_control_property.get(),          Property_value{true});
+    return std::make_shared<const erhe::property::Property_style>("Brushed metal", std::move(values));
+}
 
 void add_default_materials(Content_library& library)
 {
     std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{library.mutex};
 
-    //const glm::vec2 roughness{0.68f, 0.34f};
-    const glm::vec2 roughness{0.34f, 0.20f};
+    using erhe::primitive::Material;
+
+    // The traits the metals share are one style (doc/property-system-plan.md
+    // D25): each material carries only its base color as a local value, so
+    // an edited trait stays a local override when the style is swapped.
+    const std::shared_ptr<const erhe::property::Property_style> brushed_metal = make_brushed_metal_style();
 
     auto& materials = *library.materials.get(); 
 
-    //materials.make<erhe::primitive::Material>("Default",   glm::vec3{0.500f, 0.500f, 0.500f}, roughness, 0.0f);
-    auto make = [&materials, &roughness](const char* name, float r, float g, float b)
+    auto make = [&materials, &brushed_metal](const char* name, float r, float g, float b)
     {
-        materials.make<erhe::primitive::Material>(
-            erhe::primitive::Material_create_info{
-                .name = name,
-                .values = {
-                    .base_color                 = glm::vec3{r, g, b},
-                    .roughness                  = roughness,
-                    .metallic                   = 1.0f,
-                    .bxdf_model                 = erhe::primitive::Bxdf_model::anisotropic_brdf,
-                    .blending_mode              = erhe::primitive::Material_blending_mode::opaque,
-                    .use_circular_brushed_metal = true,
-                    .use_aniso_control          = true
-                }
-            }
-        );
+        const std::shared_ptr<Material> material = materials.make<Material>(std::string_view{name});
+        material->set_style(brushed_metal);
+        material->set_value(Material::base_color_property, glm::vec3{r, g, b});
     };
     make("Titanium",  0.542f, 0.497f, 0.449f);
     make("Chromium",  0.549f, 0.556f, 0.554f);
