@@ -847,7 +847,6 @@ void Dependency_object::propagate_to_descendants(
     const Property_value&      new_value
 )
 {
-    const uint16_t index = property.get_index();
     for_each_inheritance_child(
         [&](Dependency_object& child) {
             if (child.has_own_value(property)) {

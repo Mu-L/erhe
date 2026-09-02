@@ -195,7 +195,6 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
             return make_error_content("expression must be a string");
         }
         const std::string text = expression_it->get<std::string>();
-        std::string error;
         if (!erhe::property::validate_expression_text(*property, text, error)) {
             return make_error_content("expression '" + text + "' rejected for property '" + property_name + "': " + error);
         }
