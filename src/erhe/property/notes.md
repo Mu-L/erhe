@@ -43,7 +43,11 @@ integration, future work and the verification workflow - is
   `set` ending in the node's `mark_dirty`,
   `doc/property-system.md` section 4.5).
 - **`Property_registry`** - function-local static registry; registration
-  happens from static members of owning classes, lookups by index, by
+  happens from static members of owning classes and from single-threaded
+  early startup (descriptor-driven registrations whose tables are
+  function-local statics, e.g. the editor's
+  `register_texture_graph_properties`), before the first concurrent
+  reader exists; lookups by index, by
   (owner type, subtype, name) or by (type bits, subtype, name)
   (`find_for_type`, what an object of that type means by the name),
   enumeration of the non-attached properties of a (type, subtype).

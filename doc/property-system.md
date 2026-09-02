@@ -4,9 +4,9 @@ Status: implemented. The library (`erhe::property`), the `Item_base`
 integration, the editor operation / generic rows / MCP tools / startup
 command, the `Material`, `Node`, `Light` and `Camera` migrations, observer
 users, expressions and bindings, inherited flags, sealing, the style layer,
-computed properties, the owner-subtype dimension and the geometry graph
-node migration are all in and verified. This is a live document; section 6
-holds the remaining work.
+computed properties, the owner-subtype dimension and the geometry and
+texture graph node migrations are all in and verified. This is a live
+document; section 6 holds the remaining work.
 
 Document roles. This document is the design record: goal, requirements,
 the design decisions with their WPF mapping and rationale, the item
@@ -87,7 +87,10 @@ table, see D2a).
   observers and pending batches are not copied.
 - R12 Threading. Property values are item state and are guarded by the same
   item-host mutex as the rest of the item (`Item_host_lock_guard`). The
-  registry is immutable after static initialization and is read lock-free.
+  registry's writes end with single-threaded early startup - C++ static
+  initialization plus descriptor-driven registrations run from
+  `run_editor()` before the first thread other than main exists (section
+  4.5) - and reads after that are lock-free.
 - R13 Undo. Every property write made from the editor UI is an `Operation` on
   the operation stack and restores the exact previous state on undo,
   including "no local value" (a clear), not just the previous effective value.
@@ -914,7 +917,7 @@ constructor keeps copying `m_projection`; the entries copy through D10.
 `Properties::camera_properties` is gone: every row it drew is a generic
 row now.
 
-### 4.5 Geometry graph nodes
+### 4.5 Graph nodes (geometry and texture)
 
 Every geometry graph node kind registers its parameters as subtype-keyed
 properties (D27) bridged over its existing members (D18), with
@@ -967,6 +970,21 @@ pickers, the lattice control point editing - draws through the node's
 `unregistered_parameters_imgui` override in an `Extra` row, and nodes
 with no registered properties (transform_from_node, passthrough, join,
 unary-op, groups, brush source) keep the hand-rolled `Parameters` entry.
+
+Texture graph: the parameters are per *descriptor*, not per C++ type
+(`Texture_descriptor_node` holds a `Parameter_value` vector parallel to
+its `erhe::texgen::Node_descriptor`), and the descriptors are
+function-local statics built on first use, so registration cannot ride
+C++ static initialization: `register_texture_graph_properties()`
+(`src/editor/texture_graph/texture_graph_properties.cpp`), called once
+from `run_editor()` while still single-threaded (the registry's write
+window, D3 / R12), allocates one subtype per descriptor and registers
+one property per float / color (vec4) / enum / bool / size parameter
+plus the seed of a seeded descriptor, with `Enum_info` tables built from
+the descriptor labels (pointer-stable process-lifetime storage) and
+bridges reaching the node's `Parameter_value` by parameter index.
+Gradient and curve parameters have no `Property_value` form and stay in
+`imgui()`.
 
 ### 4.6 Usage
 
@@ -1079,22 +1097,6 @@ style layer is D25.
 - Further item migrations, in priority order and each reusing the Material
   recipe (section 4.1): `Layout` (type, axis, volume), `Grid`, physics
   settings (mass, friction, restitution), `Brush_placement`.
-- Texture graph node parameters as properties (the geometry graph
-  migration is section 4.5; the infrastructure - D27 subtypes, shared
-  host, undo interplay - is in and shared). The texture graph's
-  parameters are per *descriptor*, not per C++ type
-  (`Texture_descriptor_node` holds a `Parameter_value` vector parallel to
-  its `erhe::texgen::Node_descriptor`), and descriptors are function-local
-  statics built on first use, so registration cannot ride C++ static
-  initialization: a `register_texture_graph_properties()` called once
-  from `run_editor()` before worker threads exist allocates one subtype
-  per descriptor and registers one property per parameter (float, color
-  as vec4, bool, enum with tables built from the descriptor labels, size
-  as the int exponent; gradient and curve parameters have no
-  `Property_value` form and stay in `imgui()`), with bridges capturing
-  the parameter index into `m_parameter_values`. Registering there also
-  needs the D3 / R12 wording amended to "registry writes end with
-  single-threaded early startup".
 - Shader graph (`src/editor/graph/`) node parameters as properties. The
   oldest graph editor has no parameter serialization and no undo
   operations at all; migrating it starts with adopting the
