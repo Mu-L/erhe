@@ -51,6 +51,11 @@ target_link_libraries(${_target}
         erhe::raytrace
     PRIVATE
         erhe::file
+        # Material's texture slot properties cast between Dependency_object
+        # and erhe::graphics::Texture_reference (Member_value_traits), which
+        # needs the complete class; the public header keeps its forward
+        # declaration.
+        erhe::graphics
         erhe::hash
         erhe::log
         erhe::profile

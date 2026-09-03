@@ -194,15 +194,15 @@ void Texture_material_output_node::on_removed_from_graph()
     const std::shared_ptr<erhe::primitive::Material> material = get_material();
     if (m_assign_to_material && material) {
         erhe::primitive::Material_texture_samplers& samplers = material->data.texture_samplers;
-        samplers.base_color.texture_reference.reset();
+        material->set_base_color_texture({});
         samplers.base_color.sampler.reset();
-        samplers.normal.texture_reference.reset();
+        material->set_normal_texture({});
         samplers.normal.sampler.reset();
-        samplers.emissive.texture_reference.reset();
+        material->set_emissive_texture({});
         samplers.emissive.sampler.reset();
-        samplers.metallic_roughness.texture_reference.reset();
+        material->set_metallic_roughness_texture({});
         samplers.metallic_roughness.sampler.reset();
-        samplers.occlusion.texture_reference.reset();
+        material->set_occlusion_texture({});
         samplers.occlusion.sampler.reset();
         material->set_metallic(0.0f);
         material->set_roughness(glm::vec2{0.5f, 0.5f});
@@ -379,7 +379,7 @@ void Texture_material_output_node::render_separate_channel(
         unregister_texture(slot);
         slot.target.reset();
         if (m_assign_to_material && (sampler_slot != nullptr)) {
-            sampler_slot->texture_reference.reset();
+            material->set_slot_texture(*sampler_slot, {});
             sampler_slot->sampler.reset();
             if (channel == Separate_channel::emissive) {
                 material->set_emissive(glm::vec3{0.0f, 0.0f, 0.0f});
@@ -398,7 +398,7 @@ void Texture_material_output_node::render_separate_channel(
     register_texture(slot, m_base_name + " " + suffix);
 
     if (m_assign_to_material && (sampler_slot != nullptr) && slot.target) {
-        sampler_slot->texture_reference = slot.target;
+        material->set_slot_texture(*sampler_slot, slot.target);
         sampler_slot->sampler = ensure_sampler();
         if (channel == Separate_channel::albedo) {
             material->set_base_color(glm::vec3{1.0f, 1.0f, 1.0f});
@@ -432,9 +432,9 @@ void Texture_material_output_node::render_orm(
         m_orm_target.reset();
         if (m_assign_to_material && material) {
             erhe::primitive::Material_texture_samplers& samplers = material->data.texture_samplers;
-            samplers.metallic_roughness.texture_reference.reset();
+            material->set_metallic_roughness_texture({});
             samplers.metallic_roughness.sampler.reset();
-            samplers.occlusion.texture_reference.reset();
+            material->set_occlusion_texture({});
             samplers.occlusion.sampler.reset();
             material->set_metallic(0.0f);
             material->set_roughness(glm::vec2{0.5f, 0.5f});
@@ -468,7 +468,7 @@ void Texture_material_output_node::render_orm(
         erhe::primitive::Material_texture_samplers& samplers = material->data.texture_samplers;
         // Packed texture drives roughness (.g) and metallic (.b); the scalar
         // multipliers pass the baked values through unchanged.
-        samplers.metallic_roughness.texture_reference = m_orm_target;
+        material->set_metallic_roughness_texture(m_orm_target);
         samplers.metallic_roughness.sampler = ensure_sampler();
         material->set_metallic(1.0f);
         material->set_roughness(glm::vec2{1.0f, 1.0f});
@@ -477,11 +477,11 @@ void Texture_material_output_node::render_orm(
         // packed texture there only when occlusion is actually connected, else
         // leave occlusion at the shader default of 1.0.
         if (occlusion.source_node != nullptr) {
-            samplers.occlusion.texture_reference = m_orm_target;
+            material->set_occlusion_texture(m_orm_target);
             samplers.occlusion.sampler = ensure_sampler();
             material->set_occlusion_texture_strength(1.0f);
         } else {
-            samplers.occlusion.texture_reference.reset();
+            material->set_occlusion_texture({});
             samplers.occlusion.sampler.reset();
         }
     }

@@ -13,6 +13,7 @@ add_executable(${_target}
     main.cpp
     test_attribute_encodings.cpp
     test_material_style.cpp
+    test_material_textures.cpp
     test_mesh_optimizer.cpp
     test_optimized_variant_build.cpp
 )
@@ -24,7 +25,10 @@ target_link_libraries(${_target}
         erhe::dataformat
         erhe::file
         erhe::geometry
+        erhe::graphics
+        erhe::item
         erhe::log
+        erhe::property
         erhe::verify
         GTest::gtest
 )

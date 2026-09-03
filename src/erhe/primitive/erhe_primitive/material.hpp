@@ -66,8 +66,11 @@ public:
     return false;
 }
 
-// The material state that is NOT a registered property: the texture slots.
-// Everything else lives in the Material's property store (see Material).
+// The material state whose storage is this struct: the texture slots. A
+// slot's texture_reference is also a registered property of the Material
+// (member-backed, doc/property-system.md D28), so write it through
+// Material::set_*_texture / set_data on a live material; the sampler and
+// the transform fields are edited here directly.
 class Material_data
 {
 public:
@@ -158,6 +161,14 @@ public:
     static const erhe::property::Property<bool>                   use_circular_brushed_metal_property;
     static const erhe::property::Property<Texgen_mode>            circular_brushed_metal_texgen_mode_property;
     static const erhe::property::Property<bool>                   use_aniso_control_property;
+    // The texture slots (member-backed over data.texture_samplers): an
+    // Object_reference whose pointee is a Texture_reference (a Texture, a
+    // Graph_texture, a Rendergraph_node).
+    static const erhe::property::Property<erhe::property::Object_reference> base_color_texture_property;
+    static const erhe::property::Property<erhe::property::Object_reference> metallic_roughness_texture_property;
+    static const erhe::property::Property<erhe::property::Object_reference> normal_texture_property;
+    static const erhe::property::Property<erhe::property::Object_reference> occlusion_texture_property;
+    static const erhe::property::Property<erhe::property::Object_reference> emissive_texture_property;
 
     [[nodiscard]] auto get_base_color                        () const -> glm::vec3              { return get_value(base_color_property); }
     [[nodiscard]] auto get_opacity                           () const -> float                  { return get_value(opacity_property); }
@@ -177,6 +188,11 @@ public:
     [[nodiscard]] auto get_use_circular_brushed_metal        () const -> bool                   { return get_value(use_circular_brushed_metal_property); }
     [[nodiscard]] auto get_circular_brushed_metal_texgen_mode() const -> Texgen_mode            { return get_value(circular_brushed_metal_texgen_mode_property); }
     [[nodiscard]] auto get_use_aniso_control                 () const -> bool                   { return get_value(use_aniso_control_property); }
+    [[nodiscard]] auto get_base_color_texture                () const -> const std::shared_ptr<erhe::graphics::Texture_reference>& { return data.texture_samplers.base_color.texture_reference; }
+    [[nodiscard]] auto get_metallic_roughness_texture        () const -> const std::shared_ptr<erhe::graphics::Texture_reference>& { return data.texture_samplers.metallic_roughness.texture_reference; }
+    [[nodiscard]] auto get_normal_texture                    () const -> const std::shared_ptr<erhe::graphics::Texture_reference>& { return data.texture_samplers.normal.texture_reference; }
+    [[nodiscard]] auto get_occlusion_texture                 () const -> const std::shared_ptr<erhe::graphics::Texture_reference>& { return data.texture_samplers.occlusion.texture_reference; }
+    [[nodiscard]] auto get_emissive_texture                  () const -> const std::shared_ptr<erhe::graphics::Texture_reference>& { return data.texture_samplers.emissive.texture_reference; }
 
     void set_base_color                        (const glm::vec3& value)      { set_value(base_color_property, value); }
     void set_opacity                           (float value)                 { set_value(opacity_property, value); }
@@ -196,6 +212,23 @@ public:
     void set_use_circular_brushed_metal        (bool value)                  { set_value(use_circular_brushed_metal_property, value); }
     void set_circular_brushed_metal_texgen_mode(Texgen_mode value)           { set_value(circular_brushed_metal_texgen_mode_property, value); }
     void set_use_aniso_control                 (bool value)                  { set_value(use_aniso_control_property, value); }
+    void set_base_color_texture                (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
+    void set_metallic_roughness_texture        (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
+    void set_normal_texture                    (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
+    void set_occlusion_texture                 (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
+    void set_emissive_texture                  (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
+
+    // Whole Material_data in: the texture references go through their
+    // properties (one change batch), the sampler and transform fields are
+    // assigned. The way undo applies a Material_data snapshot.
+    void set_data(const Material_data& new_data);
+    // The texture of one of this material's own slots (data.texture_samplers.*),
+    // for a caller holding the slot by pointer; a slot of another material
+    // is rejected with a logged error.
+    void set_slot_texture(Material_texture_sampler& slot, const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
+    // The property of one of this material's own slots; nullptr for a slot
+    // of another material.
+    [[nodiscard]] auto get_slot_texture_property(const Material_texture_sampler& slot) const -> const erhe::property::Property<erhe::property::Object_reference>*;
 
     // Whole-set snapshot in and out of the property store. set_values()
     // writes every field as a local value in one change batch.

@@ -29,7 +29,7 @@ void Material_change_operation::execute(App_context& context)
         m_usership.adopt(*context.asset_manager, m_material);
     }
     // TODO Lock the item
-    m_material->data = m_after;
+    m_material->set_data(m_after);
     // R5.8: the edit dirties the material's defining container (undo is an
     // edit too - the file no longer matches the live state either way).
     if (context.asset_manager != nullptr) {
@@ -40,7 +40,7 @@ void Material_change_operation::execute(App_context& context)
 void Material_change_operation::undo(App_context& context)
 {
     // TODO Lock the item
-    m_material->data = m_before;
+    m_material->set_data(m_before);
     if (context.asset_manager != nullptr) {
         context.asset_manager->mark_item_dirty(*m_material);
     }

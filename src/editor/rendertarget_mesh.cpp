@@ -163,7 +163,7 @@ void Rendertarget_mesh::resize_rendertarget(
     }
     // Resize recreates the texture and sampler; the material identity is
     // stable across resizes, only its texture binding follows.
-    m_material->data.texture_samplers.base_color.texture_reference = m_texture;
+    m_material->set_base_color_texture(m_texture);
     m_material->data.texture_samplers.base_color.sampler = m_sampler;
 
     m_local_width  = static_cast<float>(m_texture->get_width ()) / m_pixels_per_meter;

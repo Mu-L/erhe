@@ -239,7 +239,7 @@ void Texture_output_node::assign_to_material()
     if (!owning) {
         return;
     }
-    base_color.texture_reference = owning;
+    material->set_base_color_texture(owning);
 }
 
 void Texture_output_node::imgui()

@@ -1,9 +1,13 @@
 #include "erhe_primitive/material.hpp"
 
+#include "erhe_graphics/texture.hpp"
+#include "erhe_primitive/primitive_log.hpp"
+
 namespace erhe::primitive {
 
 namespace {
 
+using erhe::property::Object_reference;
 using erhe::property::Property;
 using erhe::property::Property_flags;
 using erhe::property::Property_metadata;
@@ -122,6 +126,39 @@ const Property<bool> Material::use_aniso_control_property = Property<bool>::regi
     "use_aniso_control", c_owner, Property_metadata{.default_value = false, .flags = c_partition | c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only", .label = "Aniso Control", .visible_when = is_anisotropic}}
 );
 
+// Texture slots (D28): member-backed over the Material_data slot. A bound
+// slot selects the texture-using shader variant and a normal texture's
+// two-component flag rides the texture (Shader_key), so a change is a
+// shader variant change.
+using Texture_slot = std::shared_ptr<erhe::graphics::Texture_reference>;
+constexpr uint64_t c_texture_types = erhe::Item_type::texture | erhe::Item_type::graph_texture;
+
+auto texture_ui(const std::string_view label, const Property_ui::Visible_when visible_when = {}) -> Property_ui
+{
+    return Property_ui{.group = "Textures", .label = label, .visible_when = visible_when, .reference_item_types = c_texture_types};
+}
+
+const Property<Object_reference> Material::base_color_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
+    "base_color_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.base_color.texture_reference; },
+    Property_metadata{.flags = c_variant, .ui = texture_ui("Base Color Texture")}
+);
+const Property<Object_reference> Material::metallic_roughness_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
+    "metallic_roughness_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.metallic_roughness.texture_reference; },
+    Property_metadata{.flags = c_variant, .ui = texture_ui("Metallic Roughness Texture", is_lit)}
+);
+const Property<Object_reference> Material::normal_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
+    "normal_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.normal.texture_reference; },
+    Property_metadata{.flags = c_variant, .ui = texture_ui("Normal Texture", is_lit)}
+);
+const Property<Object_reference> Material::occlusion_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
+    "occlusion_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.occlusion.texture_reference; },
+    Property_metadata{.flags = c_variant, .ui = texture_ui("Occlusion Texture", is_lit)}
+);
+const Property<Object_reference> Material::emissive_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
+    "emissive_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.emissive.texture_reference; },
+    Property_metadata{.flags = c_variant, .ui = texture_ui("Emissive Texture")}
+);
+
 Material::Material()                           = default;
 Material::Material(const Material&)            = default;
 Material& Material::operator=(const Material&) = default;
@@ -139,6 +176,60 @@ Material::Material(const std::string_view name)
     : Item{name}
 {
     enable_flag_bits(erhe::Item_flags::show_in_ui);
+}
+
+namespace {
+
+auto to_reference(const std::shared_ptr<erhe::graphics::Texture_reference>& texture) -> Object_reference
+{
+    return Object_reference{std::dynamic_pointer_cast<erhe::property::Dependency_object>(texture)};
+}
+
+} // anonymous namespace
+
+void Material::set_base_color_texture        (const std::shared_ptr<erhe::graphics::Texture_reference>& texture) { set_value(base_color_texture_property,         to_reference(texture)); }
+void Material::set_metallic_roughness_texture(const std::shared_ptr<erhe::graphics::Texture_reference>& texture) { set_value(metallic_roughness_texture_property, to_reference(texture)); }
+void Material::set_normal_texture            (const std::shared_ptr<erhe::graphics::Texture_reference>& texture) { set_value(normal_texture_property,             to_reference(texture)); }
+void Material::set_occlusion_texture         (const std::shared_ptr<erhe::graphics::Texture_reference>& texture) { set_value(occlusion_texture_property,          to_reference(texture)); }
+void Material::set_emissive_texture          (const std::shared_ptr<erhe::graphics::Texture_reference>& texture) { set_value(emissive_texture_property,           to_reference(texture)); }
+
+auto Material::get_slot_texture_property(const Material_texture_sampler& slot) const -> const Property<Object_reference>*
+{
+    const Material_texture_samplers& s = data.texture_samplers;
+    if (&slot == &s.base_color)         { return &base_color_texture_property;         }
+    if (&slot == &s.metallic_roughness) { return &metallic_roughness_texture_property; }
+    if (&slot == &s.normal)             { return &normal_texture_property;             }
+    if (&slot == &s.occlusion)          { return &occlusion_texture_property;          }
+    if (&slot == &s.emissive)           { return &emissive_texture_property;           }
+    return nullptr;
+}
+
+void Material::set_slot_texture(Material_texture_sampler& slot, const std::shared_ptr<erhe::graphics::Texture_reference>& texture)
+{
+    const Property<Object_reference>* property = get_slot_texture_property(slot);
+    if (property == nullptr) {
+        log_primitive->error("Material '{}': set_slot_texture with a slot of another material", get_name());
+        return;
+    }
+    set_value(*property, to_reference(texture));
+}
+
+void Material::set_data(const Material_data& new_data)
+{
+    const erhe::property::Dependency_object::Change_batch batch{*this};
+    const auto apply_slot = [this](Material_texture_sampler& slot, const Material_texture_sampler& new_slot, const Property<Object_reference>& property) {
+        set_value(property, to_reference(new_slot.texture_reference));
+        slot.sampler     = new_slot.sampler;
+        slot.texgen_mode = new_slot.texgen_mode;
+        slot.rotation    = new_slot.rotation;
+        slot.offset      = new_slot.offset;
+        slot.scale       = new_slot.scale;
+    };
+    apply_slot(data.texture_samplers.base_color,         new_data.texture_samplers.base_color,         base_color_texture_property);
+    apply_slot(data.texture_samplers.metallic_roughness, new_data.texture_samplers.metallic_roughness, metallic_roughness_texture_property);
+    apply_slot(data.texture_samplers.normal,             new_data.texture_samplers.normal,             normal_texture_property);
+    apply_slot(data.texture_samplers.occlusion,          new_data.texture_samplers.occlusion,          occlusion_texture_property);
+    apply_slot(data.texture_samplers.emissive,           new_data.texture_samplers.emissive,           emissive_texture_property);
 }
 
 auto Material::get_values() const -> Material_values

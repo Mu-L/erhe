@@ -1,6 +1,8 @@
 #include "erhe_file/file_log.hpp"
+#include "erhe_item/item_log.hpp"
 #include "erhe_log/log.hpp"
 #include "erhe_primitive/primitive_log.hpp"
+#include "erhe_property/property_log.hpp"
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -16,6 +18,8 @@ int main(int argc, char** argv)
     // log_primitive is a null shared_ptr dereference, not a silent no-op.
     erhe::log::initialize_log_sinks();
     erhe::file::log_file = spdlog::stdout_color_mt("erhe.file.bootstrap");
+    erhe::property::initialize_logging();
+    erhe::item::initialize_logging();
     erhe::primitive::initialize_logging();
 
     testing::InitGoogleTest(&argc, argv);
