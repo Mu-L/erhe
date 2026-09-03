@@ -4,8 +4,8 @@ Status: implemented. The library (`erhe::property`), the `Item_base`
 integration, the editor operation / generic rows / MCP tools / startup
 command, the `Material`, `Node`, `Light` and `Camera` migrations, observer
 users, expressions and bindings, inherited flags, sealing, the style layer,
-computed properties, the owner-subtype dimension and the geometry and
-texture graph node migrations are all in and verified. This is a live
+computed properties, the owner type id keyed registry and the geometry
+and texture graph node migrations are all in and verified. This is a live
 document; section 6 holds the remaining work.
 
 Document roles. This document is the design record: goal, requirements,
@@ -46,9 +46,10 @@ table, see D2a).
 ## 2. Requirements
 
 - R1 Registration. A property is registered once, statically, with a name, a
-  value type, an owner item type and default metadata, and gets a stable
-  global index. Registration and lookup by (owner type, name) and by index
-  are available at runtime for the editor and MCP.
+  value type, the owner type id of the registering class (D27) and default
+  metadata, and gets a stable global index. Registration and lookup by
+  (owner type, name), by (object, name) through the owner type chain, and
+  by index are available at runtime for the editor and MCP.
 - R2 Typed access. Callers read and write through a typed handle
   (`Property<T>`), so a `glm::vec3` property cannot be written with a `float`.
   An untyped path (`Property_value` variant) exists for generic code: the
@@ -156,12 +157,13 @@ table, see D2a).
   stores `static_cast<int32_t>(value)`.
 - D3 Registry. `Dependency_property` is an immutable registration record:
   global index (`uint16_t`, assigned sequentially as WPF `GlobalIndex`),
-  name, `Property_type`, owner type (the `Item_type` bit of the registering
-  class, or 0 for types outside `Item_type`), flags (read-only, attached),
-  validate callback, default `Property_metadata`, and a small vector of
-  (owner type, `Property_metadata`) overrides. `Property_registry` is a
-  function-local static (safe against static-initialization order) holding
-  records by index and an index by (owner type, name). Registration happens
+  name, `Property_type`, owner type (the `Owner_type` id of the registering
+  class, D27), flags (read-only, attached), validate callback, default
+  `Property_metadata`, and a small vector of (owner type,
+  `Property_metadata`) overrides. `Property_registry` is a function-local
+  static (safe against static-initialization order) holding records by
+  index, an index by (owner type, name), a per-owner-type list in
+  registration order, and the owner type id table. Registration happens
   from static members of the owning class:
 
   ```cpp
@@ -170,7 +172,7 @@ table, see D2a).
   // material.cpp
   const erhe::property::Property<glm::vec3> Material::base_color_property =
       erhe::property::Property<glm::vec3>::register_property(
-          "base_color", Item_type::material,
+          "base_color", Material::property_owner_type(),
           erhe::property::Property_metadata{ .default_value = glm::vec3{1.0f} }
       );
   ```
@@ -190,11 +192,12 @@ table, see D2a).
   `bool developer_only`, `Visible_when visible_when` - a predicate on the
   inspected object). The flags and the UI block are data only; the editor
   reads them (D11, D12) and the library never acts on them. Metadata
-  resolution for (property, object) walks the override list for the object's
-  `get_type()` bits: an override whose owner mask equals the bits wins, then
-  the last-registered override sharing a bit, then the default metadata.
-  Override lists are short (usually empty), so this is a linear scan with no
-  cache.
+  resolution for (property, object) walks the object's owner type chain
+  (D27) from its own id to the root and returns the first override
+  registered for an id on it, else the default metadata, so an override on
+  a base class applies to every derived class and a derived-class override
+  wins. Override lists are short (usually empty), so each level is a
+  linear scan with no cache.
 - D5 Effective value store. `Dependency_object` owns
   `std::vector<Effective_value_entry>` sorted by property index and searched
   by binary search (WPF `EffectiveValueEntry` array). An entry holds: index,
@@ -526,9 +529,9 @@ table, see D2a).
     place; it stays as it is.
   - Properties. `Item_base` registers `visible` (default `true`),
     `shadow_cast` (default `false`) and `lightmapped` (default `false`) as
-    inherits-flagged `bool` properties with owner type 0, so every item
-    type lists them (`for_each_property_of_type` matches owner 0 against
-    every type). The semantics are the D8 ones: the closest ancestor with a
+    inherits-flagged `bool` properties with owner type
+    `Item_base::property_owner_type()`, the id every item class descends
+    from (D27), so every item type lists them. The semantics are the D8 ones: the closest ancestor with a
     local value wins, as CSS `visibility` (a child under a hidden parent can
     be shown with a local `true`); WPF `IsVisible` (parent AND self) is not
     reproduced, because the coerced value of a local write is stored at
@@ -749,8 +752,8 @@ table, see D2a).
     move one propagation pass later, which is when the value itself
     changes. `Hierarchy::handle_add_child` / `handle_remove_child`
     invalidate `child_count`; the property is registered by `Hierarchy`
-    with owner type `Item_type::node | Item_type::content_library_node`
-    (the two `Hierarchy` item types), so both list it.
+    with its own owner type, so `Node` and `Content_library_node`, the
+    two classes deriving from it, both list it.
   - Mesh. `world_bounds_min` and `world_bounds_max` (vec3, group `World`)
     read `get_aabb_world()`; a mesh whose box is invalid (no primitives)
     reports `0 0 0` for both. `Mesh::handle_node_transform_update` and
@@ -770,32 +773,45 @@ table, see D2a).
     computed property through `find_for_type` and `get_value` with no
     special case: `{cube/world_translation.y}` is a valid source.
 
-- D27 Owner subtype (WPF per-class `DType` keying). WPF keys a
-  registration by the registering CLR class; erhe keys by `Item_type`
-  bits (D3), which every graph node kind shares (`Item_type::graph_node`),
-  so bits alone cannot give a torus node and a sphere node different
-  parameter sets. `Dependency_property::Registration::owner_subtype`
-  (`uint32_t`, default 0) is the per-class identity: registration,
-  `find`, `find_for_type` and `for_each_property_of_type` key on
-  (owner type, subtype, name), an object contributes its subtype through
-  `Dependency_object::get_property_owner_subtype()` (default 0), listing
-  for a subtype yields its own properties next to the subtype-0 ones, and
-  on a name tie the exact-subtype registration shadows the subtype-0 one
-  (WPF derived-DType shadowing). Subtype ids are allocated at
-  registration time (`allocate_property_owner_subtype()`, monotonic) and
-  are run-local: nothing persists them, properties serialize by name
-  everywhere (glTF extras, MCP, clipboard). The owning class caches its
-  id in a function-local static so static-initialization order across
-  translation units cannot bite. Metadata overrides (D4) stay keyed on
-  owner type bits only; a subtype registration carries its metadata in
-  its own record.
+- D27 Owner type id (WPF per-class `DependencyObjectType` keying). The
+  registry key is a per-class `Owner_type` id (`erhe_property/owner_type.hpp`)
+  with a parent link, not the `Item_type` bit mask: bits are shared by
+  every graph node kind and carry no ancestor relation, so they can
+  neither give a torus node and a sphere node different parameter sets nor
+  resolve a metadata override unambiguously. Id 0 is the root that every
+  `Dependency_object` belongs to; `allocate_owner_type(parent, name)`
+  appends to the registry's id table. An object reports its id through
+  `Dependency_object::get_property_owner_type()`. `Item<Base,
+  Intermediate, Self>` allocates `Self`'s id under
+  `Intermediate::property_owner_type()` in a function-local static, so
+  every class in an `Item<>` chain has an id that follows its C++
+  inheritance with no code of its own (`Mesh` -> `Node_attachment` ->
+  `Item_base` -> root, `Node` -> `Hierarchy` -> `Item_base` -> root);
+  `Item_base::property_owner_type()` is the id under the root that every
+  item descends from. A class outside an `Item<>` chain (the geometry
+  graph node kinds derive plainly from `Graph_editor_node`) keeps a
+  `property_owner_type()` function-local static allocated under its base's
+  id plus a `get_property_owner_type()` override; a runtime-defined kind
+  allocates one id per kind under its class id (the texture graph
+  descriptors, section 4.5). Lookup and listing walk the chain:
+  `Property_registry::find(id, name)` is the exact registration,
+  `find_for_object(id, name)` tries the object's id then each ancestor and
+  the nearest registration wins (a derived-class registration shadows a
+  base one by name), and `for_each_property_of_object(id)` lists the
+  root's registrations first down to the object's own, each level in
+  registration order, a shadowed name or a multiply-owned property
+  (`add_owner`) once at its nearest level. Ids are run-local: nothing
+  persists them, properties serialize by name everywhere (glTF extras,
+  MCP, clipboard); the id's name serves logs only. `Item_type` bits keep
+  serving `Item_filter`, `is<T>`, the content library cache and the
+  editor's type masks, and the library knows nothing of them.
 
 ## 4. Implementation
 
 ### 4.1 Material
 
 The following former `Material_data` fields are registered properties of
-`Material` (owner type `Item_type::material`), with the previous initializers
+`Material` (owner type `Material::property_owner_type()`), with the previous initializers
 as defaults: `base_color` (vec3), `opacity`, `roughness` (vec2), `metallic`,
 `reflectance`, `emissive` (vec3), `ior`, `transmission`,
 `normal_texture_scale`, `occlusion_texture_strength`, `double_sided` (bool),
@@ -849,7 +865,7 @@ R14 holds by construction: no per-frame path changed.
 ### 4.3 Light
 
 Every `Light` public field except `layer_id` is a registered property
-(owner type `Item_type::light`) stored in the entry store, the Material way
+(owner type `Light::property_owner_type()`) stored in the entry store, the Material way
 (section 4.1), with the previous initializers as defaults: `light_type`
 (`Light_type`, `Enum_info` table `c_light_type_enum_info` defined next to
 `Light::c_type_strings` in `light.cpp`, labels Directional / Point / Spot;
@@ -920,12 +936,13 @@ row now.
 
 ### 4.5 Graph nodes (geometry and texture)
 
-Every geometry graph node kind registers its parameters as subtype-keyed
-properties (D27) bridged over its existing members (D18), with
-`editor::make_node_member_bridge`
+Every geometry graph node kind registers its parameters as properties
+keyed on its own owner type id (D27) bridged over its existing members
+(D18), with `editor::make_node_member_bridge`
 (`src/editor/graph_editor/graph_node_property_bridge.hpp`) as the bridge
-factory and `Mesh_torus_node` as the recipe: a `property_owner_subtype()`
-function-local static, a `get_property_owner_subtype()` override, one
+factory and `Mesh_torus_node` as the recipe: a `property_owner_type()`
+function-local static allocated under `Graph_editor_node`'s id, a
+`get_property_owner_type()` override, one
 static `Property<T>` member per parameter whose `Property_ui` carries the
 canvas widget's ranges, and `flags = Property_flags::none` because the
 graph asset's JSON (`write_parameters` / `read_parameters`) stays the
@@ -966,7 +983,8 @@ overwritten at the next delivery, the same way the gizmo behaves on a
 driven translation (D22).
 
 The Node Properties window draws the generic rows (D12) for any node
-whose subtype is non-zero; what cannot be a property - `Asset_reference`
+whose owner type id is not `Graph_editor_node`'s own (a kind with
+registered properties); what cannot be a property - `Asset_reference`
 pickers, the lattice control point editing - draws through the node's
 `unregistered_parameters_imgui` override in an `Extra` row, and nodes
 with no registered properties (transform_from_node, passthrough, join,
@@ -979,7 +997,8 @@ function-local statics built on first use, so registration cannot ride
 C++ static initialization: `register_texture_graph_properties()`
 (`src/editor/texture_graph/texture_graph_properties.cpp`), called once
 from `run_editor()` while still single-threaded (the registry's write
-window, D3 / R12), allocates one subtype per descriptor and registers
+window, D3 / R12), allocates one owner type id per descriptor under
+`Texture_descriptor_node`'s id and registers
 one property per float / color (vec4) / enum / bool / size parameter
 plus the seed of a seeded descriptor, with `Enum_info` tables built from
 the descriptor labels (pointer-stable process-lifetime storage) and
@@ -1010,8 +1029,9 @@ Gradient and curve parameters have no `Property_value` form and stay in
 
 ### 4.7 Tests
 
-- `src/erhe/property/test/` (gtest): registry and overrides (owner
-  subtypes included: listing, exclusion, exact-subtype shadowing), every
+- `src/erhe/property/test/` (gtest): registry and overrides (owner type
+  chains included: listing order, shadowing, nearest-ancestor overrides,
+  `add_owner` on the chain), every
   value type (the integer vectors included), validate, coerce, change
   notifications and batching, inheritance through a `Test_object` tree,
   observers, enumerations, string conversion, property sets, bridged

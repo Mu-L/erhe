@@ -26,9 +26,8 @@ integration, future work and the verification workflow - is
   every enumeration property of that C++ type; one `static const` table per
   enumeration, next to its `c_str()`.
 - **`Dependency_property`** - one registration record: global index, name,
-  type, owner type (`Item_type` bits), owner subtype (below), read-only /
-  attached flags, validate callback, default `Property_metadata` and
-  per-owner-type overrides.
+  type, owner type id (below), read-only / attached flags, validate
+  callback, default `Property_metadata` and per-owner-type overrides.
 - **`Property_metadata`** - default value, property-changed and coerce
   callbacks, `inherits`, `Property_flags` (what a change affects),
   `Property_ui` (how the Properties window draws the row) and an optional
@@ -39,28 +38,33 @@ integration, future work and the verification workflow - is
   always `Value_source::local`, never inherits, is coerced on every read,
   and clearing it writes the default. `Node`'s translation / rotation /
   scale are bridged onto its `Trs_transform`; the editor's geometry graph
-  node parameters are bridged onto the node members (subtype-keyed, with
-  `set` ending in the node's `mark_dirty`,
+  node parameters are bridged onto the node members (keyed on the node
+  kind's owner type id, with `set` ending in the node's `mark_dirty`,
   `doc/property-system.md` section 4.5).
 - **`Property_registry`** - function-local static registry; registration
   happens from static members of owning classes and from single-threaded
   early startup (descriptor-driven registrations whose tables are
   function-local statics, e.g. the editor's
   `register_texture_graph_properties`), before the first concurrent
-  reader exists; lookups by index, by
-  (owner type, subtype, name) or by (type bits, subtype, name)
-  (`find_for_type`, what an object of that type means by the name),
-  enumeration of the non-attached properties of a (type, subtype).
-- **Owner subtype** (`Registration::owner_subtype`, D27) - second registry
-  key dimension for classes that share `Item_type` bits (every graph node
-  kind is `Item_type::graph_node`): a property registered with a non-zero
-  subtype is listed and found only for objects whose
-  `Dependency_object::get_property_owner_subtype()` returns that subtype,
-  next to the subtype-0 properties, and on a name tie the exact-subtype
-  registration wins. Ids come from `allocate_property_owner_subtype()`
-  (monotonic, run-local; properties serialize by name), cached by the
-  owning class in a function-local static. Metadata overrides stay keyed
-  on owner type bits only.
+  reader exists; lookups by index, exact by (owner type, name) (`find`),
+  by (object, name) through the owner type chain (`find_for_object`, what
+  an object of that class means by the name), and enumeration of the
+  non-attached properties of an object's class
+  (`for_each_property_of_object`: root-first, each level in registration
+  order, a shadowed name or a multiply-owned property once at its nearest
+  level).
+- **`Owner_type`** (`owner_type.hpp`, D27) - per-class owner type id with
+  a parent link; id 0 is the root every `Dependency_object` belongs to.
+  `allocate_owner_type(parent, name)` appends to the registry's id table;
+  `get_owner_type_parent`, `get_owner_type_name` and
+  `is_owner_type_or_descendant` read it. An object reports its id through
+  `Dependency_object::get_property_owner_type()`: `erhe::Item<>` allocates
+  one per class under its C++ parent's id, a class outside an `Item<>`
+  chain keeps a `property_owner_type()` function-local static, and a
+  runtime-defined kind allocates one id per kind under its class id. A
+  property registered for an id applies to every descendant id; a
+  registration on a descendant shadows an ancestor's of the same name.
+  Ids are run-local; properties serialize by name.
 - **`Property<T>` / `Property_key<T>`** - typed handles. `T` is a variant
   alternative or any C++ enumeration. `Property_key<T>` is the write
   permission for a stored read-only property.
@@ -155,10 +159,10 @@ right old values.
 
 ## Metadata resolution
 
-`Dependency_property::get_metadata(owner_type_bits)`: an override whose owner
-mask equals the bits wins, else the last-registered override sharing a bit,
-else the default metadata. Override lists are short so this is a linear scan,
-no cache.
+`Dependency_property::get_metadata(object_type)`: the override registered
+for the nearest id on the object's owner type chain (its own id first, then
+each parent up to the root), else the default metadata. Override lists are
+short so each level is a linear scan, no cache.
 
 ## Copy semantics
 
