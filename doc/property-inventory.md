@@ -9,7 +9,10 @@ design of each migration and refer here for the per-field list.
 
 Update this document in the same commit as any registration added,
 removed or changed in storage kind, and whenever a hand-written row is
-migrated or added.
+migrated or added. The same commit updates the owner's subsection in
+`doc/property-system.md` (4.1 to 4.11) when the design changed, and
+`src/erhe/property/notes.md` when a library mechanism changed; the design
+record's "Document roles" paragraph states the split.
 
 ## Storage kinds
 

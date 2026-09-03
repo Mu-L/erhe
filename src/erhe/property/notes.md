@@ -13,7 +13,11 @@ This file is the library reference: the current types and semantics of
 requirements, the decisions (the D-numbers cited below) with their WPF
 mapping and rationale, the item migrations, the editor / MCP / glTF
 integration, future work and the verification workflow - is
-`doc/property-system.md`.
+`doc/property-system.md`; the status table of every registered property
+by owner with its storage kind, and of the item fields not yet migrated,
+is `doc/property-inventory.md`. A change to a mechanism here updates this
+file and the design decision; a change to a registration updates the
+inventory (and the owner's design section when the design changed).
 
 ## Key types
 

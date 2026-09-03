@@ -16,8 +16,18 @@ migrations, the editor / MCP / glTF integration, future work and the
 verification workflow. `src/erhe/property/notes.md` is the library
 reference: the current types and semantics of `erhe::property` as one
 type-by-type summary, kept in sync with the code and free of rationale.
-Look a mechanism up there; read here for why it is shaped that way and
-how the rest of the codebase uses it.
+`doc/property-inventory.md` is the status table: every registered
+property by owner with its storage kind, and the hand-written Properties
+rows left to migrate. Look a mechanism up in the notes; read here for why
+it is shaped that way and how the rest of the codebase uses it; check the
+inventory for what is and is not a property yet.
+
+Updating together. A change to a registration touches all three: the
+code, the inventory's row for it, and this document's section for the
+owner (4.1 to 4.11) when the design changes; a new mechanism in
+`erhe::property` touches the notes and the design decision here. A
+migration of a hand-written row moves it from the inventory's "Not yet
+migrated" table to the owner's table in the same commit.
 
 Reference: the WPF property system, `https://github.com/dotnet/wpf` at the
 commit named in `doc/property-system-wpf-comparison.md`, files under
@@ -915,6 +925,10 @@ table, see D2a), and references to other objects (D28).
   the user.
 
 ## 4. Implementation
+
+Each subsection is the design of one owner's migration; the per-field
+list of what each owner registers, with storage kinds, is
+`doc/property-inventory.md`, updated together with these subsections.
 
 ### 4.1 Material
 
