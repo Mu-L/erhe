@@ -24,18 +24,18 @@ auto Mesh_box_node::get_property_owner_type() const -> erhe::property::Owner_typ
     return property_owner_type();
 }
 
-const Property<glm::vec3> Mesh_box_node::size_property = Property<glm::vec3>::register_property(
-    "size", Mesh_box_node::property_owner_type(),
+const Property<glm::vec3> Mesh_box_node::size_property = Property<glm::vec3>::register_member(
+    "size", Mesh_box_node::property_owner_type(), &Mesh_box_node::m_size,
     Property_metadata{
         .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
         .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
-        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Size"},
-        .bridge        = make_node_member_bridge<Mesh_box_node>(&Mesh_box_node::m_size)
-    }
+        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Size"}
+    },
+    mark_node_dirty
 );
 
-const Property<glm::ivec3> Mesh_box_node::subdivisions_property = Property<glm::ivec3>::register_property(
-    "subdivisions", Mesh_box_node::property_owner_type(),
+const Property<glm::ivec3> Mesh_box_node::subdivisions_property = Property<glm::ivec3>::register_member(
+    "subdivisions", Mesh_box_node::property_owner_type(), &Mesh_box_node::m_subdivisions,
     Property_metadata{
         .default_value = glm::ivec3{1, 1, 1},
         .flags         = erhe::property::Property_flags::none,
@@ -45,19 +45,19 @@ const Property<glm::ivec3> Mesh_box_node::subdivisions_property = Property<glm::
             .group   = "Parameters",
             .tooltip = "Interior subdivision planes per axis; 0 = vertices only at the min/max corners of that axis",
             .label   = "Subdivisions"
-        },
-        .bridge        = make_node_member_bridge<Mesh_box_node>(&Mesh_box_node::m_subdivisions)
-    }
+        }
+    },
+    mark_node_dirty
 );
 
-const Property<float> Mesh_box_node::power_property = Property<float>::register_property(
-    "power", Mesh_box_node::property_owner_type(),
+const Property<float> Mesh_box_node::power_property = Property<float>::register_member(
+    "power", Mesh_box_node::property_owner_type(), &Mesh_box_node::m_power,
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 0.1f, .max = 10.0f, .step = 0.01f, .group = "Parameters", .label = "Power"},
-        .bridge        = make_node_member_bridge<Mesh_box_node>(&Mesh_box_node::m_power)
-    }
+        .ui            = Property_ui{.min = 0.1f, .max = 10.0f, .step = 0.01f, .group = "Parameters", .label = "Power"}
+    },
+    mark_node_dirty
 );
 
 Mesh_box_node::Mesh_box_node()

@@ -45,28 +45,28 @@ auto Transform_node::get_property_owner_type() const -> erhe::property::Owner_ty
     return property_owner_type();
 }
 
-const Property<glm::vec3> Transform_node::translation_property = Property<glm::vec3>::register_property(
-    "translation", Transform_node::property_owner_type(),
+const Property<glm::vec3> Transform_node::translation_property = Property<glm::vec3>::register_member(
+    "translation", Transform_node::property_owner_type(), &Transform_node::m_translation,
     Property_metadata{
         .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
-        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Translation"},
-        .bridge = make_node_member_bridge<Transform_node>(&Transform_node::m_translation)
-    }
+        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Translation"}
+    },
+    mark_node_dirty
 );
 
 const Property<Transform_node::Rotation_mode> Transform_node::rotation_mode_property =
-    Property<Transform_node::Rotation_mode>::register_property(
+    Property<Transform_node::Rotation_mode>::register_member(
         "rotation_mode", Transform_node::property_owner_type(),
-        c_rotation_mode_enum_info,
+        c_rotation_mode_enum_info, &Transform_node::m_rotation_mode,
         Property_metadata{
             .flags  = erhe::property::Property_flags::none,
-            .ui     = Property_ui{.group = "Parameters", .label = "Rotation mode"},
-            .bridge = make_node_member_bridge<Transform_node>(&Transform_node::m_rotation_mode)
-        }
+            .ui     = Property_ui{.group = "Parameters", .label = "Rotation mode"}
+        },
+        mark_node_dirty
     );
 
-const Property<glm::vec3> Transform_node::rotation_degrees_property = Property<glm::vec3>::register_property(
-    "rotation", Transform_node::property_owner_type(),
+const Property<glm::vec3> Transform_node::rotation_degrees_property = Property<glm::vec3>::register_member(
+    "rotation", Transform_node::property_owner_type(), &Transform_node::m_rotation_degrees,
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
         .ui     = Property_ui{
@@ -74,13 +74,13 @@ const Property<glm::vec3> Transform_node::rotation_degrees_property = Property<g
             .group        = "Parameters",
             .label        = "Rotation (deg)", // stored in degrees, plain row
             .visible_when = visible_for_rotation_mode(Rotation_mode::euler_degrees)
-        },
-        .bridge = make_node_member_bridge<Transform_node>(&Transform_node::m_rotation_degrees)
-    }
+        }
+    },
+    mark_node_dirty
 );
 
-const Property<glm::vec4> Transform_node::rotation_quaternion_property = Property<glm::vec4>::register_property(
-    "rotation_quaternion", Transform_node::property_owner_type(),
+const Property<glm::vec4> Transform_node::rotation_quaternion_property = Property<glm::vec4>::register_member(
+    "rotation_quaternion", Transform_node::property_owner_type(), &Transform_node::m_rotation_quaternion,
     Property_metadata{
         .default_value = glm::vec4{0.0f, 0.0f, 0.0f, 1.0f},
         .flags         = erhe::property::Property_flags::none,
@@ -89,19 +89,19 @@ const Property<glm::vec4> Transform_node::rotation_quaternion_property = Propert
             .group        = "Parameters",
             .label        = "Rotation (quat xyzw)",
             .visible_when = visible_for_rotation_mode(Rotation_mode::quaternion)
-        },
-        .bridge        = make_node_member_bridge<Transform_node>(&Transform_node::m_rotation_quaternion)
-    }
+        }
+    },
+    mark_node_dirty
 );
 
-const Property<glm::vec3> Transform_node::scale_property = Property<glm::vec3>::register_property(
-    "scale", Transform_node::property_owner_type(),
+const Property<glm::vec3> Transform_node::scale_property = Property<glm::vec3>::register_member(
+    "scale", Transform_node::property_owner_type(), &Transform_node::m_scale,
     Property_metadata{
         .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Scale"},
-        .bridge        = make_node_member_bridge<Transform_node>(&Transform_node::m_scale)
-    }
+        .ui            = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Scale"}
+    },
+    mark_node_dirty
 );
 
 Transform_node::Transform_node()

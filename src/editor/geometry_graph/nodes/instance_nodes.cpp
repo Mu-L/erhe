@@ -27,24 +27,24 @@ auto Distribute_points_node::get_property_owner_type() const -> erhe::property::
 }
 
 const erhe::property::Property<int> Distribute_points_node::count_property =
-    erhe::property::Property<int>::register_property(
-        "count", Distribute_points_node::property_owner_type(),
+    erhe::property::Property<int>::register_member(
+        "count", Distribute_points_node::property_owner_type(), &Distribute_points_node::m_count,
         erhe::property::Property_metadata{
             .default_value = 100,
             .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
-            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 100000.0f, .step = 1.0f, .group = "Parameters", .label = "Count"},
-            .bridge        = make_node_member_bridge<Distribute_points_node>(&Distribute_points_node::m_count)
-        }
+            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 100000.0f, .step = 1.0f, .group = "Parameters", .label = "Count"}
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<int> Distribute_points_node::seed_property =
-    erhe::property::Property<int>::register_property(
-        "seed", Distribute_points_node::property_owner_type(),
+    erhe::property::Property<int>::register_member(
+        "seed", Distribute_points_node::property_owner_type(), &Distribute_points_node::m_seed,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
-            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Seed"},
-            .bridge = make_node_member_bridge<Distribute_points_node>(&Distribute_points_node::m_seed)
-        }
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Seed"}
+        },
+        mark_node_dirty
     );
 
 Distribute_points_node::Distribute_points_node()
@@ -172,25 +172,25 @@ auto Instance_on_points_node::get_property_owner_type() const -> erhe::property:
 }
 
 const erhe::property::Property<float> Instance_on_points_node::scale_property =
-    erhe::property::Property<float>::register_property(
-        "scale", Instance_on_points_node::property_owner_type(),
+    erhe::property::Property<float>::register_member(
+        "scale", Instance_on_points_node::property_owner_type(), &Instance_on_points_node::m_scale,
         erhe::property::Property_metadata{
             .default_value = 1.0f,
             .flags         = erhe::property::Property_flags::none,
-            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Scale"},
-            .bridge        = make_node_member_bridge<Instance_on_points_node>(&Instance_on_points_node::m_scale)
-        }
+            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Scale"}
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<bool> Instance_on_points_node::align_to_normal_property =
-    erhe::property::Property<bool>::register_property(
-        "align", Instance_on_points_node::property_owner_type(),
+    erhe::property::Property<bool>::register_member(
+        "align", Instance_on_points_node::property_owner_type(), &Instance_on_points_node::m_align_to_normal,
         erhe::property::Property_metadata{
             .default_value = true,
             .flags         = erhe::property::Property_flags::none,
-            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Align to normal"},
-            .bridge        = make_node_member_bridge<Instance_on_points_node>(&Instance_on_points_node::m_align_to_normal)
-        }
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Align to normal"}
+        },
+        mark_node_dirty
     );
 
 Instance_on_points_node::Instance_on_points_node()

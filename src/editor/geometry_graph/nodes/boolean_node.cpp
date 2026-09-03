@@ -34,14 +34,14 @@ auto Boolean_node::get_property_owner_type() const -> erhe::property::Owner_type
 }
 
 const erhe::property::Property<Boolean_node::Boolean_operation> Boolean_node::operation_property =
-    erhe::property::Property<Boolean_node::Boolean_operation>::register_property(
+    erhe::property::Property<Boolean_node::Boolean_operation>::register_member(
         "operation", Boolean_node::property_owner_type(),
-        c_boolean_operation_enum_info,
+        c_boolean_operation_enum_info, &Boolean_node::m_operation,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
-            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Operation"},
-            .bridge = make_node_member_bridge<Boolean_node>(&Boolean_node::m_operation)
-        }
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Operation"}
+        },
+        mark_node_dirty
     );
 
 Boolean_node::Boolean_node()

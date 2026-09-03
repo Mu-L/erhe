@@ -74,30 +74,30 @@ auto Geometry_output_node::get_property_owner_type() const -> erhe::property::Ow
 }
 
 const erhe::property::Property<std::string> Geometry_output_node::name_property =
-    erhe::property::Property<std::string>::register_property(
-        "name", Geometry_output_node::property_owner_type(),
+    erhe::property::Property<std::string>::register_member(
+        "name", Geometry_output_node::property_owner_type(), &Geometry_output_node::m_name,
         erhe::property::Property_metadata{
             .default_value = std::string{"Geometry Graph"},
             .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
-            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Name"},
-            .bridge        = make_node_member_bridge<Geometry_output_node>(&Geometry_output_node::m_name)
-        }
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Name"}
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<bool> Geometry_output_node::physics_property =
-    erhe::property::Property<bool>::register_property(
-        "physics", Geometry_output_node::property_owner_type(),
+    erhe::property::Property<bool>::register_member(
+        "physics", Geometry_output_node::property_owner_type(), &Geometry_output_node::m_physics_enabled,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
-            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Physics"},
-            .bridge = make_node_member_bridge<Geometry_output_node>(&Geometry_output_node::m_physics_enabled)
-        }
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Physics"}
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<erhe::physics::Motion_mode> Geometry_output_node::physics_motion_property =
-    erhe::property::Property<erhe::physics::Motion_mode>::register_property(
+    erhe::property::Property<erhe::physics::Motion_mode>::register_member(
         "physics_motion", Geometry_output_node::property_owner_type(),
-        c_physics_motion_enum_info,
+        c_physics_motion_enum_info, &Geometry_output_node::m_physics_motion_mode,
         erhe::property::Property_metadata{
             // default: the first table entry (Static)
             .flags         = erhe::property::Property_flags::none,
@@ -107,9 +107,9 @@ const erhe::property::Property<erhe::physics::Motion_mode> Geometry_output_node:
                 .visible_when = [](const erhe::property::Dependency_object& object) -> bool {
                     return static_cast<const Geometry_output_node&>(object).m_physics_enabled;
                 }
-            },
-            .bridge        = make_node_member_bridge<Geometry_output_node>(&Geometry_output_node::m_physics_motion_mode)
-        }
+            }
+        },
+        mark_node_dirty
     );
 
 Geometry_output_node::Geometry_output_node(App_context& context)

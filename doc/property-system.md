@@ -386,9 +386,11 @@ table, see D2a), and references to other objects (D28).
   type and the stored value: the identity for every storable type, and
   for a `std::shared_ptr<U>` member the cast to and from an
   `Object_reference` (D28) plus a validate that rejects a pointee that is
-  not a `U`. The material texture slots (section 4.1) and the mesh
-  primitive material (section 4.9) register this way; the hand-written
-  Camera and graph node bridges are candidates to migrate.
+  not a `U`. An enumeration member registers through the overload that
+  takes its `Enum_info`, as `register_property` does. The material texture
+  slots (section 4.1), the mesh primitive material (section 4.9), the
+  Camera projection fields (section 4.4) and the graph node parameters
+  (section 4.5) register this way.
 
 - D19 Item-side consequences through metadata callbacks. When a change of
   a property has a consequence inside the item library itself (not in the
@@ -1043,9 +1045,9 @@ defined next to `Projection::c_type_strings` in `projection.cpp`),
 `frustum_left`, `frustum_right`, `frustum_bottom`, `frustum_top`
 (logarithmic sliders 0..1000, `visible_when` per type as the hand-written
 rows switched), `z_near`, `z_far` (logarithmic sliders 0..1000) and
-`infinite_z_far` (bool, `visible_when` perspective types). One
-`make_projection_bridge<T>(member pointer)` helper in `camera.cpp` produces
-each bridge.
+`infinite_z_far` (bool, `visible_when` perspective types). Each registers
+with `register_member` over its `Projection` field, the accessor reaching
+the field through `Camera::projection()`.
 
 `exposure` and `shadow_range` are the camera's own scalars with no
 engineered representation, so they live in the entry store as ordinary
@@ -1060,10 +1062,10 @@ row now.
 ### 4.5 Graph nodes (geometry and texture)
 
 Every geometry graph node kind registers its parameters as properties
-keyed on its own owner type id (D27) bridged over its existing members
-(D18), with `editor::make_node_member_bridge`
-(`src/editor/graph_editor/graph_node_property_bridge.hpp`) as the bridge
-factory and `Mesh_torus_node` as the recipe: a `property_owner_type()`
+keyed on its own owner type id (D27) with `register_member` over its
+existing members (D18), `editor::mark_node_dirty`
+(`src/editor/graph_editor/graph_node_property_bridge.hpp`) as the
+`after_set` hook and `Mesh_torus_node` as the recipe: a `property_owner_type()`
 function-local static allocated under `Graph_editor_node`'s id, a
 `get_property_owner_type()` override, one
 static `Property<T>` member per parameter whose `Property_ui` carries the
@@ -1283,8 +1285,6 @@ style layer is D25.
   settings (mass, friction, restitution), `Brush_placement`; the texture
   slot's `texgen_mode`, `rotation`, `offset` and `scale` as ordinary
   properties (the sampler is not an item and stays in `Material_data`).
-- Hand-written bridges migrated to `register_member` (D18): the Camera
-  projection bridge and the graph node member bridge.
 - Object reference candidates beyond the content library: a node-typed
   reference (a `Lattice_node` driver) would list scene nodes, which
   `collect_reference_candidates` does not walk yet.

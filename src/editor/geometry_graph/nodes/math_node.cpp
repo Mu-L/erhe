@@ -39,34 +39,34 @@ auto Math_node::get_property_owner_type() const -> erhe::property::Owner_type
 }
 
 const erhe::property::Property<Math_node::Math_operation> Math_node::operation_property =
-    erhe::property::Property<Math_node::Math_operation>::register_property(
+    erhe::property::Property<Math_node::Math_operation>::register_member(
         "operation", Math_node::property_owner_type(),
-        c_math_operation_enum_info,
+        c_math_operation_enum_info, &Math_node::m_operation,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
-            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Operation"},
-            .bridge = make_node_member_bridge<Math_node>(&Math_node::m_operation)
-        }
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Operation"}
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<float> Math_node::a_property =
-    erhe::property::Property<float>::register_property(
-        "a", Math_node::property_owner_type(),
+    erhe::property::Property<float>::register_member(
+        "a", Math_node::property_owner_type(), &Math_node::m_a,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
-            .ui     = erhe::property::Property_ui{.step = 0.01f, .group = "Parameters", .label = "A"},
-            .bridge = make_node_member_bridge<Math_node>(&Math_node::m_a)
-        }
+            .ui     = erhe::property::Property_ui{.step = 0.01f, .group = "Parameters", .label = "A"}
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<float> Math_node::b_property =
-    erhe::property::Property<float>::register_property(
-        "b", Math_node::property_owner_type(),
+    erhe::property::Property<float>::register_member(
+        "b", Math_node::property_owner_type(), &Math_node::m_b,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
-            .ui     = erhe::property::Property_ui{.step = 0.01f, .group = "Parameters", .label = "B"},
-            .bridge = make_node_member_bridge<Math_node>(&Math_node::m_b)
-        }
+            .ui     = erhe::property::Property_ui{.step = 0.01f, .group = "Parameters", .label = "B"}
+        },
+        mark_node_dirty
     );
 
 Math_node::Math_node()

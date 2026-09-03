@@ -299,8 +299,8 @@ const erhe::property::Property<bool> Lattice_node::auto_fit_property =
     );
 
 const erhe::property::Property<glm::vec3> Lattice_node::cage_min_property =
-    erhe::property::Property<glm::vec3>::register_property(
-        "cage_min", Lattice_node::property_owner_type(),
+    erhe::property::Property<glm::vec3>::register_member(
+        "cage_min", Lattice_node::property_owner_type(), &Lattice_node::m_cage_min,
         erhe::property::Property_metadata{
             .default_value = glm::vec3{-1.0f, -1.0f, -1.0f},
             .flags         = erhe::property::Property_flags::none,
@@ -311,14 +311,14 @@ const erhe::property::Property<glm::vec3> Lattice_node::cage_min_property =
                 .visible_when = [](const erhe::property::Dependency_object& object) -> bool {
                     return !static_cast<const Lattice_node&>(object).m_auto_fit;
                 }
-            },
-            .bridge        = make_node_member_bridge<Lattice_node>(&Lattice_node::m_cage_min)
-        }
+            }
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<glm::vec3> Lattice_node::cage_max_property =
-    erhe::property::Property<glm::vec3>::register_property(
-        "cage_max", Lattice_node::property_owner_type(),
+    erhe::property::Property<glm::vec3>::register_member(
+        "cage_max", Lattice_node::property_owner_type(), &Lattice_node::m_cage_max,
         erhe::property::Property_metadata{
             .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
             .flags         = erhe::property::Property_flags::none,
@@ -329,9 +329,9 @@ const erhe::property::Property<glm::vec3> Lattice_node::cage_max_property =
                 .visible_when = [](const erhe::property::Dependency_object& object) -> bool {
                     return !static_cast<const Lattice_node&>(object).m_auto_fit;
                 }
-            },
-            .bridge        = make_node_member_bridge<Lattice_node>(&Lattice_node::m_cage_max)
-        }
+            }
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<glm::ivec3> Lattice_node::divisions_property =
@@ -386,25 +386,25 @@ const erhe::property::Property<erhe::geometry::operation::Lattice_interpolation>
     );
 
 const erhe::property::Property<bool> Lattice_node::regenerate_attributes_property =
-    erhe::property::Property<bool>::register_property(
-        "regenerate_attributes", Lattice_node::property_owner_type(),
+    erhe::property::Property<bool>::register_member(
+        "regenerate_attributes", Lattice_node::property_owner_type(), &Lattice_node::m_regenerate_attributes,
         erhe::property::Property_metadata{
             .default_value = true,
             .flags         = erhe::property::Property_flags::none,
-            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Regenerate normals"},
-            .bridge        = make_node_member_bridge<Lattice_node>(&Lattice_node::m_regenerate_attributes)
-        }
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Regenerate normals"}
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<bool> Lattice_node::show_cage_property =
-    erhe::property::Property<bool>::register_property(
-        "show_cage", Lattice_node::property_owner_type(),
+    erhe::property::Property<bool>::register_member(
+        "show_cage", Lattice_node::property_owner_type(), &Lattice_node::m_show_cage,
         erhe::property::Property_metadata{
             .default_value = true,
             .flags         = erhe::property::Property_flags::none,
-            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Show cage"},
-            .bridge        = make_node_member_bridge<Lattice_node>(&Lattice_node::m_show_cage)
-        }
+            .ui            = erhe::property::Property_ui{.group = "Parameters", .label = "Show cage"}
+        },
+        mark_node_dirty
     );
 
 void Lattice_node::transform_driver_imgui()

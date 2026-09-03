@@ -106,23 +106,23 @@ const Property<float> Sdf_sphere_node::voxel_size_property = Property<float>::re
     }
 );
 
-const Property<float> Sdf_sphere_node::radius_property = Property<float>::register_property(
-    "radius", Sdf_sphere_node::property_owner_type(),
+const Property<float> Sdf_sphere_node::radius_property = Property<float>::register_member(
+    "radius", Sdf_sphere_node::property_owner_type(), &Sdf_sphere_node::m_radius,
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius"},
-        .bridge        = make_node_member_bridge<Sdf_sphere_node>(&Sdf_sphere_node::m_radius)
-    }
+        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius"}
+    },
+    mark_node_dirty
 );
 
-const Property<glm::vec3> Sdf_sphere_node::center_property = Property<glm::vec3>::register_property(
-    "center", Sdf_sphere_node::property_owner_type(),
+const Property<glm::vec3> Sdf_sphere_node::center_property = Property<glm::vec3>::register_member(
+    "center", Sdf_sphere_node::property_owner_type(), &Sdf_sphere_node::m_center,
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
-        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Center"},
-        .bridge = make_node_member_bridge<Sdf_sphere_node>(&Sdf_sphere_node::m_center)
-    }
+        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Center"}
+    },
+    mark_node_dirty
 );
 
 Sdf_sphere_node::Sdf_sphere_node()
@@ -195,44 +195,44 @@ const Property<float> Sdf_capsule_node::voxel_size_property = Property<float>::r
     }
 );
 
-const Property<glm::vec3> Sdf_capsule_node::p0_property = Property<glm::vec3>::register_property(
-    "p0", Sdf_capsule_node::property_owner_type(),
+const Property<glm::vec3> Sdf_capsule_node::p0_property = Property<glm::vec3>::register_member(
+    "p0", Sdf_capsule_node::property_owner_type(), &Sdf_capsule_node::m_p0,
     Property_metadata{
         .default_value = glm::vec3{0.0f, -1.0f, 0.0f},
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.step = 0.01f, .group = "Parameters", .label = "P0"},
-        .bridge        = make_node_member_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_p0)
-    }
+        .ui            = Property_ui{.step = 0.01f, .group = "Parameters", .label = "P0"}
+    },
+    mark_node_dirty
 );
 
-const Property<glm::vec3> Sdf_capsule_node::p1_property = Property<glm::vec3>::register_property(
-    "p1", Sdf_capsule_node::property_owner_type(),
+const Property<glm::vec3> Sdf_capsule_node::p1_property = Property<glm::vec3>::register_member(
+    "p1", Sdf_capsule_node::property_owner_type(), &Sdf_capsule_node::m_p1,
     Property_metadata{
         .default_value = glm::vec3{0.0f, 1.0f, 0.0f},
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.step = 0.01f, .group = "Parameters", .label = "P1"},
-        .bridge        = make_node_member_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_p1)
-    }
+        .ui            = Property_ui{.step = 0.01f, .group = "Parameters", .label = "P1"}
+    },
+    mark_node_dirty
 );
 
-const Property<float> Sdf_capsule_node::radius0_property = Property<float>::register_property(
-    "radius0", Sdf_capsule_node::property_owner_type(),
+const Property<float> Sdf_capsule_node::radius0_property = Property<float>::register_member(
+    "radius0", Sdf_capsule_node::property_owner_type(), &Sdf_capsule_node::m_radius0,
     Property_metadata{
         .default_value = 0.5f,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius 0"},
-        .bridge        = make_node_member_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_radius0)
-    }
+        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius 0"}
+    },
+    mark_node_dirty
 );
 
-const Property<float> Sdf_capsule_node::radius1_property = Property<float>::register_property(
-    "radius1", Sdf_capsule_node::property_owner_type(),
+const Property<float> Sdf_capsule_node::radius1_property = Property<float>::register_member(
+    "radius1", Sdf_capsule_node::property_owner_type(), &Sdf_capsule_node::m_radius1,
     Property_metadata{
         .default_value = 0.5f,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius 1"},
-        .bridge        = make_node_member_bridge<Sdf_capsule_node>(&Sdf_capsule_node::m_radius1)
-    }
+        .ui            = Property_ui{.min = 0.001f, .max = 1000.0f, .step = 0.01f, .group = "Parameters", .label = "Radius 1"}
+    },
+    mark_node_dirty
 );
 
 Sdf_capsule_node::Sdf_capsule_node()
@@ -370,13 +370,13 @@ auto Sdf_to_geometry_node::get_property_owner_type() const -> erhe::property::Ow
     return property_owner_type();
 }
 
-const Property<float> Sdf_to_geometry_node::adaptivity_property = Property<float>::register_property(
-    "adaptivity", Sdf_to_geometry_node::property_owner_type(),
+const Property<float> Sdf_to_geometry_node::adaptivity_property = Property<float>::register_member(
+    "adaptivity", Sdf_to_geometry_node::property_owner_type(), &Sdf_to_geometry_node::m_adaptivity,
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
-        .ui     = Property_ui{.min = 0.0f, .max = 1.0f, .step = 0.01f, .group = "Parameters", .label = "Adaptivity"},
-        .bridge = make_node_member_bridge<Sdf_to_geometry_node>(&Sdf_to_geometry_node::m_adaptivity)
-    }
+        .ui     = Property_ui{.min = 0.0f, .max = 1.0f, .step = 0.01f, .group = "Parameters", .label = "Adaptivity"}
+    },
+    mark_node_dirty
 );
 
 Sdf_to_geometry_node::Sdf_to_geometry_node()
@@ -449,14 +449,14 @@ auto Sdf_boolean_node::get_property_owner_type() const -> erhe::property::Owner_
 }
 
 const Property<Sdf_boolean_node::Boolean_operation> Sdf_boolean_node::operation_property =
-    Property<Sdf_boolean_node::Boolean_operation>::register_property(
+    Property<Sdf_boolean_node::Boolean_operation>::register_member(
         "operation", Sdf_boolean_node::property_owner_type(),
-        c_sdf_boolean_operation_enum_info,
+        c_sdf_boolean_operation_enum_info, &Sdf_boolean_node::m_operation,
         Property_metadata{
             .flags  = erhe::property::Property_flags::none,
-            .ui     = Property_ui{.group = "Parameters", .label = "Operation"},
-            .bridge = make_node_member_bridge<Sdf_boolean_node>(&Sdf_boolean_node::m_operation)
-        }
+            .ui     = Property_ui{.group = "Parameters", .label = "Operation"}
+        },
+        mark_node_dirty
     );
 
 Sdf_boolean_node::Sdf_boolean_node()
@@ -542,14 +542,14 @@ auto Sdf_offset_node::get_property_owner_type() const -> erhe::property::Owner_t
     return property_owner_type();
 }
 
-const Property<float> Sdf_offset_node::distance_property = Property<float>::register_property(
-    "distance", Sdf_offset_node::property_owner_type(),
+const Property<float> Sdf_offset_node::distance_property = Property<float>::register_member(
+    "distance", Sdf_offset_node::property_owner_type(), &Sdf_offset_node::m_distance,
     Property_metadata{
         .default_value = 0.1f,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = -1.0f, .max = 1.0f, .step = 0.005f, .group = "Parameters", .label = "Distance"},
-        .bridge        = make_node_member_bridge<Sdf_offset_node>(&Sdf_offset_node::m_distance)
-    }
+        .ui            = Property_ui{.min = -1.0f, .max = 1.0f, .step = 0.005f, .group = "Parameters", .label = "Distance"}
+    },
+    mark_node_dirty
 );
 
 Sdf_offset_node::Sdf_offset_node()
@@ -614,14 +614,14 @@ auto Sdf_smooth_node::get_property_owner_type() const -> erhe::property::Owner_t
     return property_owner_type();
 }
 
-const Property<int> Sdf_smooth_node::iterations_property = Property<int>::register_property(
-    "iterations", Sdf_smooth_node::property_owner_type(),
+const Property<int> Sdf_smooth_node::iterations_property = Property<int>::register_member(
+    "iterations", Sdf_smooth_node::property_owner_type(), &Sdf_smooth_node::m_iterations,
     Property_metadata{
         .default_value = 1,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 0.0f, .max = 20.0f, .group = "Parameters", .label = "Iterations"},
-        .bridge        = make_node_member_bridge<Sdf_smooth_node>(&Sdf_smooth_node::m_iterations)
-    }
+        .ui            = Property_ui{.min = 0.0f, .max = 20.0f, .group = "Parameters", .label = "Iterations"}
+    },
+    mark_node_dirty
 );
 
 Sdf_smooth_node::Sdf_smooth_node()

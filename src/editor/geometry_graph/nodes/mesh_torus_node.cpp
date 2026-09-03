@@ -26,44 +26,44 @@ auto Mesh_torus_node::get_property_owner_type() const -> erhe::property::Owner_t
     return property_owner_type();
 }
 
-const Property<float> Mesh_torus_node::major_radius_property = Property<float>::register_property(
-    "major_radius", Mesh_torus_node::property_owner_type(),
+const Property<float> Mesh_torus_node::major_radius_property = Property<float>::register_member(
+    "major_radius", Mesh_torus_node::property_owner_type(), &Mesh_torus_node::m_major_radius,
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
-        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Major radius"},
-        .bridge        = make_node_member_bridge<Mesh_torus_node>(&Mesh_torus_node::m_major_radius)
-    }
+        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Major radius"}
+    },
+    mark_node_dirty
 );
 
-const Property<float> Mesh_torus_node::minor_radius_property = Property<float>::register_property(
-    "minor_radius", Mesh_torus_node::property_owner_type(),
+const Property<float> Mesh_torus_node::minor_radius_property = Property<float>::register_member(
+    "minor_radius", Mesh_torus_node::property_owner_type(), &Mesh_torus_node::m_minor_radius,
     Property_metadata{
         .default_value = 0.25f,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Minor radius"},
-        .bridge        = make_node_member_bridge<Mesh_torus_node>(&Mesh_torus_node::m_minor_radius)
-    }
+        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Minor radius"}
+    },
+    mark_node_dirty
 );
 
-const Property<int> Mesh_torus_node::major_steps_property = Property<int>::register_property(
-    "major_steps", Mesh_torus_node::property_owner_type(),
+const Property<int> Mesh_torus_node::major_steps_property = Property<int>::register_member(
+    "major_steps", Mesh_torus_node::property_owner_type(), &Mesh_torus_node::m_major_steps,
     Property_metadata{
         .default_value = 32,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 3.0f, .max = 128.0f, .group = "Parameters", .label = "Major steps"},
-        .bridge        = make_node_member_bridge<Mesh_torus_node>(&Mesh_torus_node::m_major_steps)
-    }
+        .ui            = Property_ui{.min = 3.0f, .max = 128.0f, .group = "Parameters", .label = "Major steps"}
+    },
+    mark_node_dirty
 );
 
-const Property<int> Mesh_torus_node::minor_steps_property = Property<int>::register_property(
-    "minor_steps", Mesh_torus_node::property_owner_type(),
+const Property<int> Mesh_torus_node::minor_steps_property = Property<int>::register_member(
+    "minor_steps", Mesh_torus_node::property_owner_type(), &Mesh_torus_node::m_minor_steps,
     Property_metadata{
         .default_value = 16,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 3.0f, .max = 128.0f, .group = "Parameters", .label = "Minor steps"},
-        .bridge        = make_node_member_bridge<Mesh_torus_node>(&Mesh_torus_node::m_minor_steps)
-    }
+        .ui            = Property_ui{.min = 3.0f, .max = 128.0f, .group = "Parameters", .label = "Minor steps"}
+    },
+    mark_node_dirty
 );
 
 Mesh_torus_node::Mesh_torus_node()

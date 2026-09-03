@@ -48,8 +48,8 @@ namespace {
 } // anonymous namespace
 
 const erhe::property::Property<float> Conway_node::kis_height_property =
-    erhe::property::Property<float>::register_property(
-        "kis_height", Conway_node::property_owner_type(),
+    erhe::property::Property<float>::register_member(
+        "kis_height", Conway_node::property_owner_type(), &Conway_node::m_kis_height,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
             .ui     = erhe::property::Property_ui{
@@ -59,14 +59,14 @@ const erhe::property::Property<float> Conway_node::kis_height_property =
                 .group        = "Parameters",
                 .label        = "Height",
                 .visible_when = visible_for_operation(Conway_operation::kis)
-            },
-            .bridge = make_node_member_bridge<Conway_node>(&Conway_node::m_kis_height)
-        }
+            }
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<float> Conway_node::truncate_ratio_property =
-    erhe::property::Property<float>::register_property(
-        "truncate_ratio", Conway_node::property_owner_type(),
+    erhe::property::Property<float>::register_member(
+        "truncate_ratio", Conway_node::property_owner_type(), &Conway_node::m_truncate_ratio,
         erhe::property::Property_metadata{
             .default_value = 1.0f / 3.0f,
             .flags         = erhe::property::Property_flags::none,
@@ -77,14 +77,14 @@ const erhe::property::Property<float> Conway_node::truncate_ratio_property =
                 .group        = "Parameters",
                 .label        = "Ratio",
                 .visible_when = visible_for_operation(Conway_operation::truncate)
-            },
-            .bridge        = make_node_member_bridge<Conway_node>(&Conway_node::m_truncate_ratio)
-        }
+            }
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<float> Conway_node::chamfer_ratio_property =
-    erhe::property::Property<float>::register_property(
-        "chamfer_ratio", Conway_node::property_owner_type(),
+    erhe::property::Property<float>::register_member(
+        "chamfer_ratio", Conway_node::property_owner_type(), &Conway_node::m_chamfer_ratio,
         erhe::property::Property_metadata{
             .default_value = 0.25f,
             .flags         = erhe::property::Property_flags::none,
@@ -95,14 +95,14 @@ const erhe::property::Property<float> Conway_node::chamfer_ratio_property =
                 .group        = "Parameters",
                 .label        = "Bevel ratio",
                 .visible_when = visible_for_operation(Conway_operation::chamfer)
-            },
-            .bridge        = make_node_member_bridge<Conway_node>(&Conway_node::m_chamfer_ratio)
-        }
+            }
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<float> Conway_node::gyro_ratio_property =
-    erhe::property::Property<float>::register_property(
-        "gyro_ratio", Conway_node::property_owner_type(),
+    erhe::property::Property<float>::register_member(
+        "gyro_ratio", Conway_node::property_owner_type(), &Conway_node::m_gyro_ratio,
         erhe::property::Property_metadata{
             .default_value = 1.0f / 3.0f,
             .flags         = erhe::property::Property_flags::none,
@@ -113,9 +113,9 @@ const erhe::property::Property<float> Conway_node::gyro_ratio_property =
                 .group        = "Parameters",
                 .label        = "Ratio",
                 .visible_when = visible_for_operation(Conway_operation::gyro)
-            },
-            .bridge        = make_node_member_bridge<Conway_node>(&Conway_node::m_gyro_ratio)
-        }
+            }
+        },
+        mark_node_dirty
     );
 
 auto Conway_node::find_operation_info(const Conway_operation operation) -> const Operation_info*

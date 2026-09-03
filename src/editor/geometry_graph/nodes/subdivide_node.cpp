@@ -34,25 +34,25 @@ auto Subdivide_node::get_property_owner_type() const -> erhe::property::Owner_ty
 }
 
 const erhe::property::Property<Subdivide_node::Mode> Subdivide_node::mode_property =
-    erhe::property::Property<Subdivide_node::Mode>::register_property(
+    erhe::property::Property<Subdivide_node::Mode>::register_member(
         "mode", Subdivide_node::property_owner_type(),
-        c_subdivide_mode_enum_info,
+        c_subdivide_mode_enum_info, &Subdivide_node::m_mode,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
-            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Mode"},
-            .bridge = make_node_member_bridge<Subdivide_node>(&Subdivide_node::m_mode)
-        }
+            .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Mode"}
+        },
+        mark_node_dirty
     );
 
 const erhe::property::Property<int> Subdivide_node::iterations_property =
-    erhe::property::Property<int>::register_property(
-        "iterations", Subdivide_node::property_owner_type(),
+    erhe::property::Property<int>::register_member(
+        "iterations", Subdivide_node::property_owner_type(), &Subdivide_node::m_iterations,
         erhe::property::Property_metadata{
             .default_value = 1,
             .flags         = erhe::property::Property_flags::none,
-            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 6.0f, .group = "Parameters", .label = "Iterations"},
-            .bridge        = make_node_member_bridge<Subdivide_node>(&Subdivide_node::m_iterations)
-        }
+            .ui            = erhe::property::Property_ui{.min = 0.0f, .max = 6.0f, .group = "Parameters", .label = "Iterations"}
+        },
+        mark_node_dirty
     );
 
 Subdivide_node::Subdivide_node()

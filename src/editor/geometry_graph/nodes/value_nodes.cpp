@@ -21,13 +21,13 @@ auto Float_value_node::get_property_owner_type() const -> erhe::property::Owner_
     return property_owner_type();
 }
 
-const Property<float> Float_value_node::value_property = Property<float>::register_property(
-    "value", Float_value_node::property_owner_type(),
+const Property<float> Float_value_node::value_property = Property<float>::register_member(
+    "value", Float_value_node::property_owner_type(), &Float_value_node::m_value,
     Property_metadata{
         .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
-        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Value"},
-        .bridge = make_node_member_bridge<Float_value_node>(&Float_value_node::m_value)
-    }
+        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Value"}
+    },
+    mark_node_dirty
 );
 
 auto Integer_value_node::property_owner_type() -> erhe::property::Owner_type
@@ -41,13 +41,13 @@ auto Integer_value_node::get_property_owner_type() const -> erhe::property::Owne
     return property_owner_type();
 }
 
-const Property<int> Integer_value_node::value_property = Property<int>::register_property(
-    "value", Integer_value_node::property_owner_type(),
+const Property<int> Integer_value_node::value_property = Property<int>::register_member(
+    "value", Integer_value_node::property_owner_type(), &Integer_value_node::m_value,
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
-        .ui     = Property_ui{.group = "Parameters", .label = "Value"},
-        .bridge = make_node_member_bridge<Integer_value_node>(&Integer_value_node::m_value)
-    }
+        .ui     = Property_ui{.group = "Parameters", .label = "Value"}
+    },
+    mark_node_dirty
 );
 
 auto Vector_value_node::property_owner_type() -> erhe::property::Owner_type
@@ -61,13 +61,13 @@ auto Vector_value_node::get_property_owner_type() const -> erhe::property::Owner
     return property_owner_type();
 }
 
-const Property<glm::vec3> Vector_value_node::value_property = Property<glm::vec3>::register_property(
-    "value", Vector_value_node::property_owner_type(),
+const Property<glm::vec3> Vector_value_node::value_property = Property<glm::vec3>::register_member(
+    "value", Vector_value_node::property_owner_type(), &Vector_value_node::m_value,
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
-        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Value"},
-        .bridge = make_node_member_bridge<Vector_value_node>(&Vector_value_node::m_value)
-    }
+        .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Value"}
+    },
+    mark_node_dirty
 );
 
 Float_value_node::Float_value_node()

@@ -26,34 +26,34 @@ auto Mesh_sphere_node::get_property_owner_type() const -> erhe::property::Owner_
     return property_owner_type();
 }
 
-const Property<float> Mesh_sphere_node::radius_property = Property<float>::register_property(
-    "radius", Mesh_sphere_node::property_owner_type(),
+const Property<float> Mesh_sphere_node::radius_property = Property<float>::register_member(
+    "radius", Mesh_sphere_node::property_owner_type(), &Mesh_sphere_node::m_radius,
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
-        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Radius"},
-        .bridge        = make_node_member_bridge<Mesh_sphere_node>(&Mesh_sphere_node::m_radius)
-    }
+        .ui            = Property_ui{.min = 0.01f, .max = 100.0f, .step = 0.01f, .group = "Parameters", .label = "Radius"}
+    },
+    mark_node_dirty
 );
 
-const Property<int> Mesh_sphere_node::slices_property = Property<int>::register_property(
-    "slices", Mesh_sphere_node::property_owner_type(),
+const Property<int> Mesh_sphere_node::slices_property = Property<int>::register_member(
+    "slices", Mesh_sphere_node::property_owner_type(), &Mesh_sphere_node::m_slice_count,
     Property_metadata{
         .default_value = 32,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 3.0f, .max = 128.0f, .group = "Parameters", .label = "Slices"},
-        .bridge        = make_node_member_bridge<Mesh_sphere_node>(&Mesh_sphere_node::m_slice_count)
-    }
+        .ui            = Property_ui{.min = 3.0f, .max = 128.0f, .group = "Parameters", .label = "Slices"}
+    },
+    mark_node_dirty
 );
 
-const Property<int> Mesh_sphere_node::stacks_property = Property<int>::register_property(
-    "stacks", Mesh_sphere_node::property_owner_type(),
+const Property<int> Mesh_sphere_node::stacks_property = Property<int>::register_member(
+    "stacks", Mesh_sphere_node::property_owner_type(), &Mesh_sphere_node::m_stack_division,
     Property_metadata{
         .default_value = 16,
         .flags         = erhe::property::Property_flags::none,
-        .ui            = Property_ui{.min = 1.0f, .max = 128.0f, .group = "Parameters", .label = "Stacks"},
-        .bridge        = make_node_member_bridge<Mesh_sphere_node>(&Mesh_sphere_node::m_stack_division)
-    }
+        .ui            = Property_ui{.min = 1.0f, .max = 128.0f, .group = "Parameters", .label = "Stacks"}
+    },
+    mark_node_dirty
 );
 
 Mesh_sphere_node::Mesh_sphere_node()

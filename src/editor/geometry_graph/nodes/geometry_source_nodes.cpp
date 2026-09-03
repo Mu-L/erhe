@@ -311,17 +311,17 @@ auto Scene_mesh_geometry_node::get_property_owner_type() const -> erhe::property
 }
 
 const erhe::property::Property<int> Scene_mesh_geometry_node::primitive_property =
-    erhe::property::Property<int>::register_property(
-        "primitive", Scene_mesh_geometry_node::property_owner_type(),
+    erhe::property::Property<int>::register_member(
+        "primitive", Scene_mesh_geometry_node::property_owner_type(), &Scene_mesh_geometry_node::m_primitive_index,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
             .ui     = erhe::property::Property_ui{
                 .group   = "Parameters",
                 .tooltip = "Fallback primitive index; a linked \"primitive\" input overrides it at evaluation time",
                 .label   = "Primitive"
-            },
-            .bridge = make_node_member_bridge<Scene_mesh_geometry_node>(&Scene_mesh_geometry_node::m_primitive_index)
-        }
+            }
+        },
+        mark_node_dirty
     );
 
 void Scene_mesh_geometry_node::unregistered_parameters_imgui(App_context&)
