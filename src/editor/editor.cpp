@@ -3542,7 +3542,18 @@ public:
             }
             after = erhe::property::Local_state{erhe::property::Expression_text{std::string{expression_sv}}};
         } else if (has_value) {
-            std::optional<erhe::property::Property_value> value = erhe::property::parse_value(*item, *property, value_sv);
+            std::optional<erhe::property::Property_value> value;
+            if (property->get_type() == erhe::property::Property_type::object) {
+                // D28: a name resolved in the item's scene; empty clears.
+                const std::shared_ptr<erhe::Item_base> referenced = value_sv.empty() ? std::shared_ptr<erhe::Item_base>{} : resolve_reference_by_name(m_app_context, *item, value_sv);
+                if (!value_sv.empty() && !referenced) {
+                    log_startup->warn("commands.json: scene.set_property: '{}' does not name an item of the scene of '{}'", value_sv, item->get_name());
+                    return;
+                }
+                value = erhe::property::Object_reference{referenced};
+            } else {
+                value = erhe::property::parse_value(*property, value_sv);
+            }
             if (!value.has_value()) {
                 log_startup->warn("commands.json: scene.set_property: '{}' is not a valid {} for '{}'", value_sv, erhe::property::c_str(property->get_type()), property_sv);
                 return;

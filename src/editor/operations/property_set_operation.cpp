@@ -39,20 +39,31 @@ auto referenced_item(const std::optional<erhe::property::Property_value>& value)
     return referenced_item(to_local_state(value));
 }
 
-// D28 host check: same scene, or a cross-scene referenceable asset. An item
-// whose scene cannot be determined (previews, unhosted test items) passes.
+// D28 host check: same scene, or a manager-owned asset (material, brush,
+// animation) the asset manager accepts across scenes; a scene-hosted item
+// (a texture, a graph texture, a node) never crosses scenes. An item whose
+// scene cannot be determined (previews, unhosted test items) passes.
 auto is_reference_allowed(App_context& context, const erhe::Item_base& target, const erhe::Item_base& referenced) -> bool
 {
     Scene_root* const target_scene     = find_scene_root_for_item(context, target);
     Scene_root* const referenced_scene = find_scene_root_for_item(context, referenced);
+    log_operations->trace(
+        "reference check: '{}' scene '{}', '{}' scene '{}'",
+        target.get_name(), (target_scene != nullptr) ? target_scene->get_name() : "<none>",
+        referenced.get_name(), (referenced_scene != nullptr) ? referenced_scene->get_name() : "<none>"
+    );
     if ((target_scene == nullptr) || (referenced_scene == nullptr) || (target_scene == referenced_scene)) {
         return true;
     }
-    if ((context.asset_manager != nullptr) && context.asset_manager->is_cross_scene_referenceable(referenced)) {
+    if (
+        (context.asset_manager != nullptr) &&
+        is_manager_owned_asset_type(asset_type_from_item(referenced)) &&
+        context.asset_manager->is_cross_scene_referenceable(referenced)
+    ) {
         return true;
     }
     log_operations->warn(
-        "property write refused: '{}' ({}) of scene '{}' cannot reference '{}' ({}) of scene '{}' (not a cross-scene referenceable asset)",
+        "property write refused: '{}' ({}) of scene '{}' cannot reference '{}' ({}) of scene '{}' (not a manager-owned asset that is cross-scene referenceable)",
         target.get_name(), target.get_type_name(), target_scene->get_name(),
         referenced.get_name(), referenced.get_type_name(), referenced_scene->get_name()
     );

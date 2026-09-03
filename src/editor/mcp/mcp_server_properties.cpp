@@ -303,11 +303,21 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
         } else {
             return make_error_content("value must be a string, number, bool, array of numbers, or null (reset to default)");
         }
-        after = erhe::property::parse_value(*item, *property, text);
-        if (!after.has_value()) {
-            if (property->get_type() == erhe::property::Property_type::object) {
-                return make_error_content("'" + text + "' does not name an item reachable from '" + item->get_name() + "' (use reference_id for an item id)");
+        if (property->get_type() == erhe::property::Property_type::object) {
+            // D28: a name resolved in the item's scene; empty clears.
+            if (text.empty()) {
+                after = erhe::property::Object_reference{};
+            } else {
+                const std::shared_ptr<erhe::Item_base> referenced = resolve_reference_by_name(m_context, *item, text);
+                if (!referenced) {
+                    return make_error_content("'" + text + "' does not name an item of the scene of '" + item->get_name() + "' (use reference_id for an item id)");
+                }
+                after = erhe::property::Object_reference{referenced};
             }
+        } else {
+            after = erhe::property::parse_value(*property, text);
+        }
+        if (!after.has_value()) {
             return make_error_content("'" + text + "' is not a valid " + erhe::property::c_str(property->get_type()) + " for property '" + property_name + "'");
         }
         if (!property->validate(after.value())) {

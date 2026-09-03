@@ -9,6 +9,7 @@
 #include "texture_graph/graph_texture.hpp"
 #include "texture_graph/texture_graph_node.hpp"
 
+#include "erhe_graphics/texture.hpp"
 #include "erhe_item/item.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/node.hpp"
@@ -64,6 +65,14 @@ auto find_item_in_scene(Scene_root& scene_root, Predicate&& matches) -> std::sha
             }
         }
     }
+    // Textures: the targets of a material's texture slot properties (D28).
+    if (library && library->textures) {
+        for (const std::shared_ptr<erhe::graphics::Texture>& texture : library->textures->get_all<erhe::graphics::Texture>()) {
+            if (texture && matches(*texture)) {
+                return texture;
+            }
+        }
+    }
     // Graph assets and their nodes: the nodes share the asset's host
     // (Graph_asset::set_item_host), so a D22 expression or an MCP property
     // call reaches a graph node the way it reaches a scene item.
@@ -112,6 +121,15 @@ auto find_item_in_scene_by_name(Scene_root& scene_root, const std::string_view n
     return find_item_in_scene(scene_root, [name](const erhe::Item_base& item) { return item.get_name() == name; });
 }
 
+auto resolve_reference_by_name(App_context& context, const erhe::Item_base& from, const std::string_view name) -> std::shared_ptr<erhe::Item_base>
+{
+    Scene_root* const scene_root = find_scene_root_for_item(context, from);
+    if (scene_root == nullptr) {
+        return {};
+    }
+    return find_item_in_scene_by_name(*scene_root, name);
+}
+
 auto find_scene_root_for_item(App_context& context, const erhe::Item_base& item) -> Scene_root*
 {
     if (context.app_scenes == nullptr) {
@@ -127,7 +145,15 @@ auto find_scene_root_for_item(App_context& context, const erhe::Item_base& item)
             if (host == candidate) {
                 return scene_root.get();
             }
-        } else if ((context.asset_manager != nullptr) && context.asset_manager->is_defined_by(item, candidate)) {
+            continue;
+        }
+        // An unhosted item (an asset-typed one): the scene whose content
+        // library lists it, else the scene the manager records as defining it.
+        const std::shared_ptr<Content_library>& library = scene_root->get_content_library();
+        if (library && library->root && library->root->has_item(item)) {
+            return scene_root.get();
+        }
+        if ((context.asset_manager != nullptr) && context.asset_manager->is_defined_by(item, candidate)) {
             return scene_root.get();
         }
     }

@@ -14,8 +14,9 @@ class App_context;
 class Scene_root;
 
 // Any item of a scene by unique id or by name: nodes, their attachments
-// (meshes, lights, cameras, ...) and the content library's materials. Name
-// lookup returns the first match in that order.
+// (meshes, lights, cameras, ...), the content library's materials and
+// textures, and its graph assets with their nodes. Name lookup returns the
+// first match in that order.
 [[nodiscard]] auto find_item_in_scene_by_id  (Scene_root& scene_root, std::size_t id)        -> std::shared_ptr<erhe::Item_base>;
 [[nodiscard]] auto find_item_in_scene_by_name(Scene_root& scene_root, std::string_view name) -> std::shared_ptr<erhe::Item_base>;
 
@@ -24,6 +25,13 @@ class Scene_root;
 // whose container defines it. nullptr when neither applies (a preview or
 // tool scene item, an unregistered asset).
 [[nodiscard]] auto find_scene_root_for_item(App_context& context, const erhe::Item_base& item) -> Scene_root*;
+
+// The item `name` names for an object reference written on `from` (D28):
+// find_item_in_scene_by_name in from's scene. This is the editor's name
+// resolution for object values; the library's parse_value context overload
+// walks from's Item_host, which an asset-typed item (a material) does not
+// have.
+[[nodiscard]] auto resolve_reference_by_name(App_context& context, const erhe::Item_base& from, std::string_view name) -> std::shared_ptr<erhe::Item_base>;
 
 // Object reference candidates (doc/property-system.md D28): the content
 // library items of the target's scene whose type bit is in item_types and
