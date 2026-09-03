@@ -6,11 +6,16 @@
 
 ## Overview
 
-Carries the node's erhe layout attachments: a `Layout` (the node arranges
-its direct children inside a volume) and/or a `Layout_item` (per-child
-parameters for a parent layout). Two optional sub-objects on one
-extension; a node may have either or both. Each sub-object carries its
-attachment's persistent Item flags (see [flags.md](flags.md)).
+Carries the node's erhe `Layout` attachment (the node arranges its direct
+children inside a volume) with the attachment's persistent Item flags
+(see [flags.md](flags.md)) and local property values.
+
+A child's per-child hints (alignment, margins, grid cell and span) are
+attached properties registered by `Layout` and set on the child node
+(`doc/property-system.md` section 4.14), so they ride the child's
+[`ERHE_node`](ERHE_node.md) `properties` map by their qualified names
+(`Layout.align_x` .. `Layout.grid_span`); this extension carries nothing
+for them.
 
 ## JSON layout
 
@@ -29,17 +34,8 @@ attachment's persistent Item flags (see [flags.md](flags.md)).
         "grid_track_extent_x": [1, 2, 1],
         "grid_track_extent_y": [],
         "grid_track_extent_z": [],
-        "flags": ["content", "show_in_ui", "show_debug_visualizations"]
-    },
-    "layout_item": {
-        "name": "Layout item",
-        "align": ["negative", "stretch", "positive"],
-        "margin_min": [0, 0, 0],
-        "margin_max": [0, 0.05, 0],
-        "grid_cell_auto": false,
-        "grid_cell": [1, 0, 0],
-        "grid_span": [2, 1, 1],
-        "flags": ["content", "show_in_ui"]
+        "flags": ["content", "show_in_ui", "show_debug_visualizations"],
+        "properties": {}
     }
 }
 ```
@@ -49,13 +45,18 @@ attachment's persistent Item flags (see [flags.md](flags.md)).
   `pos_x` | `neg_x` | `pos_y` | `neg_y` | `pos_z` | `neg_z`.
 - `layout.grid_track_extent_{x,y,z}`: per-track extents; empty array =
   uniform tracks.
-- `layout_item.align`: per-axis `negative` | `positive` | `stretch`.
 
 ## Load semantics
 
-Creates the attachment(s) on the node. Nodes inside prefab-instance
+Creates the attachment on the node. Nodes inside prefab-instance
 subtrees are never written (the instance root exports as an external-asset
 reference), matching every other per-node pass.
+
+A legacy `layout_item` sub-object (`align` as three alignment names
+`negative` | `positive` | `stretch`, `margin_min`, `margin_max`,
+`grid_cell_auto`, `grid_cell`, `grid_span`), written by files that predate
+the attached properties, loads as the corresponding `Layout.*` values on
+the node; its `name` and `flags` are dropped. It is never written.
 
 ## Schema
 

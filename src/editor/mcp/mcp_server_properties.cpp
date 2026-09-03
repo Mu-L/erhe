@@ -98,47 +98,55 @@ auto value_json(const erhe::property::Dependency_property& property, const erhe:
 auto properties_json(const erhe::property::Dependency_object& object) -> json
 {
     json properties = json::array();
-    const erhe::property::Owner_type owner_type = object.get_property_owner_type();
-    erhe::property::Property_registry::get().for_each_property_of_object(
-        owner_type,
-        [&](const erhe::property::Dependency_property& property) {
-            const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
-            const std::optional<erhe::property::Property_value> local      = object.read_local_value(property);
-            const std::optional<std::string_view>               expression = object.get_expression(property);
-            json entry = {
-                {"name",       std::string{property.get_name()}},
-                {"type",       erhe::property::c_str(property.get_type())},
-                {"value",      value_json(property, object.get_value(property))},
-                {"source",     erhe::property::c_str(object.get_value_source(property))},
-                {"local",      local.has_value() ? value_json(property, local.value()) : json(nullptr)},
-                {"expression", expression.has_value() ? json(std::string{expression.value()}) : json(nullptr)},
-                {"default",    value_json(property, metadata.default_value.value())},
-                {"read_only",  property.is_read_only()},
-                {"inherits",   metadata.inherits},
-                {"coerced",    object.is_coerced(property)},
-                {"flags",      metadata.flags}
-            };
-            if (const std::string_view error = object.get_expression_error(property); !error.empty()) {
-                entry["expression_error"] = std::string{error};
-            }
-            if (property.get_type() == erhe::property::Property_type::object) {
-                // D28: the referenced item's session id and type next to its name.
-                const erhe::property::Property_value        value      = object.get_value(property);
-                const std::shared_ptr<erhe::Item_base>      referenced = std::dynamic_pointer_cast<erhe::Item_base>(std::get<erhe::property::Object_reference>(value).object);
-                entry["reference_id"]   = referenced ? json(referenced->get_id()) : json(nullptr);
-                entry["reference_type"] = referenced ? json(std::string{referenced->get_type_name()}) : json(nullptr);
-                entry["reference_item_types"] = metadata.ui.reference_item_types;
-            }
-            if (const erhe::property::Enum_info* info = property.get_enum_info(); info != nullptr) {
-                json labels = json::array();
-                for (const erhe::property::Enum_entry& e : info->get_entries()) {
-                    labels.push_back(std::string{e.label});
-                }
-                entry["enum_labels"] = labels;
-            }
-            properties.push_back(entry);
+    const erhe::property::Owner_type         owner_type = object.get_property_owner_type();
+    const erhe::property::Property_registry& registry   = erhe::property::Property_registry::get();
+    const auto add = [&](const erhe::property::Dependency_property& property) {
+        const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
+        const std::optional<erhe::property::Property_value> local      = object.read_local_value(property);
+        const std::optional<std::string_view>               expression = object.get_expression(property);
+        json entry = {
+            {"name",       registry.qualified_name(property)}, // an attached property by its qualified name (D3)
+            {"attached",   property.is_attached()},
+            {"type",       erhe::property::c_str(property.get_type())},
+            {"value",      value_json(property, object.get_value(property))},
+            {"source",     erhe::property::c_str(object.get_value_source(property))},
+            {"local",      local.has_value() ? value_json(property, local.value()) : json(nullptr)},
+            {"expression", expression.has_value() ? json(std::string{expression.value()}) : json(nullptr)},
+            {"default",    value_json(property, metadata.default_value.value())},
+            {"read_only",  property.is_read_only()},
+            {"inherits",   metadata.inherits},
+            {"coerced",    object.is_coerced(property)},
+            {"flags",      metadata.flags}
+        };
+        if (const std::string_view error = object.get_expression_error(property); !error.empty()) {
+            entry["expression_error"] = std::string{error};
         }
-    );
+        if (property.get_type() == erhe::property::Property_type::object) {
+            // D28: the referenced item's session id and type next to its name.
+            const erhe::property::Property_value        value      = object.get_value(property);
+            const std::shared_ptr<erhe::Item_base>      referenced = std::dynamic_pointer_cast<erhe::Item_base>(std::get<erhe::property::Object_reference>(value).object);
+            entry["reference_id"]   = referenced ? json(referenced->get_id()) : json(nullptr);
+            entry["reference_type"] = referenced ? json(std::string{referenced->get_type_name()}) : json(nullptr);
+            entry["reference_item_types"] = metadata.ui.reference_item_types;
+        }
+        if (const erhe::property::Enum_info* info = property.get_enum_info(); info != nullptr) {
+            json labels = json::array();
+            for (const erhe::property::Enum_entry& e : info->get_entries()) {
+                labels.push_back(std::string{e.label});
+            }
+            entry["enum_labels"] = labels;
+        }
+        properties.push_back(entry);
+    };
+    registry.for_each_property_of_object(owner_type, add);
+    // Attached properties: the D12 listing rule (visible_when holds, or a
+    // local value is set).
+    registry.for_each_attached_property([&](const erhe::property::Dependency_property& property) {
+        const erhe::property::Property_ui::Visible_when& visible_when = property.get_metadata(owner_type).ui.visible_when;
+        if ((visible_when && visible_when(object)) || object.has_local_value(property)) {
+            add(property);
+        }
+    });
     return properties;
 }
 

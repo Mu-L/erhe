@@ -1,5 +1,4 @@
 #include "erhe_scene/layout.hpp"
-#include "erhe_scene/layout_item.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/scene_host.hpp"
@@ -181,8 +180,9 @@ namespace {
     return edges;
 }
 
-// Per-child layout parameters resolved from an optional Layout_item attachment;
-// a child without one uses these defaults. Shared by all layout algorithms.
+// Per-child layout parameters read from the attached properties the child
+// node carries (a child without local values uses the defaults). Shared by
+// all layout algorithms.
 class Resolved_item
 {
 public:
@@ -201,15 +201,14 @@ public:
 [[nodiscard]] auto resolve_item(const Node& child) -> Resolved_item
 {
     Resolved_item result;
-    const std::shared_ptr<Layout_item> item = get_attachment<Layout_item>(&child);
-    if (item) {
-        result.alignment      = item->alignment;
-        result.margin_min     = item->margin_min;
-        result.margin_max     = item->margin_max;
-        result.grid_cell_auto = item->grid_cell_auto;
-        result.grid_cell      = item->grid_cell;
-        result.grid_span      = item->grid_span;
-    }
+    result.alignment[0]   = child.get_value(Layout::align_x_property);
+    result.alignment[1]   = child.get_value(Layout::align_y_property);
+    result.alignment[2]   = child.get_value(Layout::align_z_property);
+    result.margin_min     = child.get_value(Layout::margin_min_property);
+    result.margin_max     = child.get_value(Layout::margin_max_property);
+    result.grid_cell_auto = child.get_value(Layout::grid_cell_auto_property);
+    result.grid_cell      = child.get_value(Layout::grid_cell_property);
+    result.grid_span      = child.get_value(Layout::grid_span_property);
     return result;
 }
 
@@ -294,11 +293,49 @@ constexpr erhe::property::Enum_entry c_axis_direction_entries[] = {
     {"-Z", static_cast<int32_t>(Axis_direction::neg_z)},
 };
 
-constexpr std::string_view c_group = "Layout";
+constexpr erhe::property::Enum_entry c_layout_alignment_entries[] = {
+    {"Negative", static_cast<int32_t>(Layout_alignment::negative)},
+    {"Positive", static_cast<int32_t>(Layout_alignment::positive)},
+    {"Stretch",  static_cast<int32_t>(Layout_alignment::stretch)},
+};
+
+constexpr std::string_view c_group      = "Layout";
+constexpr std::string_view c_item_group = "Layout Item";
 
 auto is_grid(const erhe::property::Dependency_object& object) -> bool
 {
     return static_cast<const Layout&>(object).get_layout_type() == Layout_type::grid;
+}
+
+// The layout of the node the object is a direct child of, if any: the
+// attached hints are listed on (and meaningful for) such children.
+auto parent_layout(const erhe::property::Dependency_object& object) -> std::shared_ptr<Layout>
+{
+    const Node* node = dynamic_cast<const Node*>(&object);
+    if (node == nullptr) {
+        return {};
+    }
+    const std::shared_ptr<Node> parent = node->get_parent_node();
+    if (!parent) {
+        return {};
+    }
+    return get_attachment<Layout>(parent.get());
+}
+
+auto under_layout(const erhe::property::Dependency_object& object) -> bool
+{
+    return static_cast<bool>(parent_layout(object));
+}
+
+auto under_grid_layout(const erhe::property::Dependency_object& object) -> bool
+{
+    const std::shared_ptr<Layout> layout = parent_layout(object);
+    return layout && (layout->get_layout_type() == Layout_type::grid);
+}
+
+auto under_grid_layout_explicit_cell(const erhe::property::Dependency_object& object) -> bool
+{
+    return under_grid_layout(object) && !object.get_value(Layout::grid_cell_auto_property);
 }
 
 auto positive_tracks(const Property_value& value) -> bool
@@ -307,10 +344,17 @@ auto positive_tracks(const Property_value& value) -> bool
     return (v.x >= 1) && (v.y >= 1) && (v.z >= 1);
 }
 
+auto non_negative_cell(const Property_value& value) -> bool
+{
+    const glm::ivec3 v = std::get<glm::ivec3>(value);
+    return (v.x >= 0) && (v.y >= 0) && (v.z >= 0);
+}
+
 } // anonymous namespace
 
-const erhe::property::Enum_info c_layout_type_enum_info   {"Layout_type",    c_layout_type_entries};
-const erhe::property::Enum_info c_axis_direction_enum_info{"Axis_direction", c_axis_direction_entries};
+const erhe::property::Enum_info c_layout_type_enum_info     {"Layout_type",      c_layout_type_entries};
+const erhe::property::Enum_info c_axis_direction_enum_info  {"Axis_direction",   c_axis_direction_entries};
+const erhe::property::Enum_info c_layout_alignment_enum_info{"Layout_alignment", c_layout_alignment_entries};
 
 const Property<Layout_type> Layout::type_property = Property<Layout_type>::register_member(
     "type", Layout::property_owner_type(), c_layout_type_enum_info, &Layout::m_type,
@@ -344,6 +388,41 @@ const Property<glm::ivec3> Layout::grid_track_count_property = Property<glm::ive
     "grid_track_count", Layout::property_owner_type(), &Layout::m_grid_track_count,
     Property_metadata{.default_value = glm::ivec3{1, 1, 1}, .ui = Property_ui{.min = 1.0f, .max = 1000.0f, .step = 0.1f, .group = c_group, .tooltip = "Grid: cells per axis", .label = "Grid Tracks", .visible_when = is_grid}},
     {}, positive_tracks
+);
+
+const Property<Layout_alignment> Layout::align_x_property = Property<Layout_alignment>::register_attached(
+    "align_x", Layout::property_owner_type(), c_layout_alignment_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Layout_alignment::negative), .ui = Property_ui{.group = c_item_group, .tooltip = "Pin to the cell's minimum or maximum face, or stretch to fill it", .label = "Align X", .visible_when = under_layout}}
+);
+const Property<Layout_alignment> Layout::align_y_property = Property<Layout_alignment>::register_attached(
+    "align_y", Layout::property_owner_type(), c_layout_alignment_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Layout_alignment::negative), .ui = Property_ui{.group = c_item_group, .tooltip = "Pin to the cell's minimum or maximum face, or stretch to fill it", .label = "Align Y", .visible_when = under_layout}}
+);
+const Property<Layout_alignment> Layout::align_z_property = Property<Layout_alignment>::register_attached(
+    "align_z", Layout::property_owner_type(), c_layout_alignment_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Layout_alignment::negative), .ui = Property_ui{.group = c_item_group, .tooltip = "Pin to the cell's minimum or maximum face, or stretch to fill it", .label = "Align Z", .visible_when = under_layout}}
+);
+const Property<glm::vec3> Layout::margin_min_property = Property<glm::vec3>::register_attached(
+    "margin_min", Layout::property_owner_type(),
+    Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.step = 0.01f, .group = c_item_group, .tooltip = "Inset at the cell minimum face", .label = "Margin Min", .visible_when = under_layout}}
+);
+const Property<glm::vec3> Layout::margin_max_property = Property<glm::vec3>::register_attached(
+    "margin_max", Layout::property_owner_type(),
+    Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.step = 0.01f, .group = c_item_group, .tooltip = "Inset at the cell maximum face", .label = "Margin Max", .visible_when = under_layout}}
+);
+const Property<bool> Layout::grid_cell_auto_property = Property<bool>::register_attached(
+    "grid_cell_auto", Layout::property_owner_type(),
+    Property_metadata{.default_value = true, .ui = Property_ui{.group = c_item_group, .tooltip = "Grid: place into the next free cell; off = use Grid Cell", .label = "Auto Cell", .visible_when = under_grid_layout}}
+);
+const Property<glm::ivec3> Layout::grid_cell_property = Property<glm::ivec3>::register_attached(
+    "grid_cell", Layout::property_owner_type(),
+    Property_metadata{.default_value = glm::ivec3{0, 0, 0}, .ui = Property_ui{.min = 0.0f, .max = 1000.0f, .step = 0.1f, .group = c_item_group, .tooltip = "Grid: explicit cell (i, j, k)", .label = "Grid Cell", .visible_when = under_grid_layout_explicit_cell}},
+    non_negative_cell
+);
+const Property<glm::ivec3> Layout::grid_span_property = Property<glm::ivec3>::register_attached(
+    "grid_span", Layout::property_owner_type(),
+    Property_metadata{.default_value = glm::ivec3{1, 1, 1}, .ui = Property_ui{.min = 1.0f, .max = 1000.0f, .step = 0.1f, .group = c_item_group, .tooltip = "Grid: cells spanned per axis; honored for auto placement too", .label = "Grid Span", .visible_when = under_grid_layout}},
+    positive_tracks
 );
 
 void Layout::set_layout_type     (const Type value)           { set_value(type_property, value); }
@@ -440,7 +519,7 @@ void Layout::layout_stack(Node& layout_node)
 
         // Cell keeps the full volume extent on the two cross axes; the primary
         // axis is the slice this child consumes (sized to the child's own extent).
-        // A Layout_item margin on the primary axis therefore shifts the child
+        // A margin hint on the primary axis therefore shifts the child
         // within its slice but does not reserve extra space between neighbours;
         // inter-child spacing on the primary axis is controlled by 'gap'.
         erhe::math::Aabb cell = m_volume;

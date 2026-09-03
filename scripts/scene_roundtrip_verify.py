@@ -711,7 +711,7 @@ def section_build_scene():
         check(S, "place_brush", bool(placed) and placed.get("node_id") is not None, str(placed))
 
     def block_layout():
-        # Layout on a node; layout_item on a child of that node (ERHE_layout).
+        # Layout on a node (ERHE_layout); attached layout hints on a child of that node.
         layout = mutate("add_node_attachment", {"scene_name": scene, "node_name": "P6 Torus", "type": "layout"})
         check(S, "add layout attachment", bool(layout) and layout.get("added"), str(layout))
         mutate("create_node", {
@@ -719,8 +719,11 @@ def section_build_scene():
             "parent_node_name": "P6 Torus", "position": [4.0, 1.0, 0.0],
         })
         check(S, "layout child node created", wait_for_scene_node(scene, "P6 Layout Child"))
-        layout_item = mutate("add_node_attachment", {"scene_name": scene, "node_name": "P6 Layout Child", "type": "layout_item"})
-        check(S, "add layout_item attachment", bool(layout_item) and layout_item.get("added"), str(layout_item))
+        # Per-child hints are Layout.* attached properties on the child (ERHE_node properties).
+        aligned = mutate("set_item_property", {"scene_name": scene, "item_name": "P6 Layout Child", "property": "Layout.align_y", "value": "Stretch"})
+        check(S, "set Layout.align_y on layout child", bool(aligned) and aligned.get("after") == "Stretch", str(aligned))
+        spanned = mutate("set_item_property", {"scene_name": scene, "item_name": "P6 Layout Child", "property": "Layout.grid_span", "value": "2 1 1"})
+        check(S, "set Layout.grid_span on layout child", bool(spanned) and spanned.get("after") == "2 1 1", str(spanned))
 
     def block_tags_locks():
         # Tags (ERHE_collections) + a locked node (ERHE_node flags).

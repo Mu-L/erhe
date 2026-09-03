@@ -24,7 +24,7 @@ inventory for what is and is not a property yet.
 
 Updating together. A change to a registration touches all three: the
 code, the inventory's row for it, and this document's section for the
-owner (4.1 to 4.13) when the design changes; a new mechanism in
+owner (4.1 to 4.14) when the design changes; a new mechanism in
 `erhe::property` touches the notes and the design decision here. A
 migration of a hand-written row moves it from the inventory's "Not yet
 migrated" table to the owner's table in the same commit.
@@ -193,6 +193,21 @@ table, see D2a), and references to other objects (D28).
   `Property<T>` is a copyable handle wrapping `const Dependency_property*`.
   `Property_key<T>` (R6) is the same handle plus write permission; the owner
   keeps it private and exposes a `Property<T>` obtained from it.
+
+  An attached property (R7) is registered by `register_attached` under
+  the registering type's owner type with a plain name (`align_x`); its
+  qualified name `<owner>.<name>` (`Layout.align_x`, WPF `Grid.Row`) is
+  the form serialization (D14), MCP (D13), the operation descriptions and
+  the row labels (D12) use, produced by `Property_registry::qualified_name`.
+  `find_for_object` resolves a qualified name to that owner's attached
+  registration for any object (`find_owner_type` is the reverse of
+  `get_owner_name`); its owner-chain walk never returns an attached
+  property and a qualified name never resolves a non-attached one.
+  `for_each_attached_property` lists every attached registration; the
+  per-object listing is `for_each_property_of_object` plus the D12 rule.
+  The value lives in the target object's entry store like any local
+  value, so undo, copy / paste, styles, expressions, observers and the
+  glTF properties map need nothing attached-specific.
 - D4 Metadata. `Property_metadata` holds `default_value` (a
   `Property_value`), `property_changed` (`void(Dependency_object&, const
   Property_changed_args&)`), `coerce` (`Property_value(const
@@ -325,6 +340,13 @@ table, see D2a), and references to other objects (D28).
   the item's local values into an editor clipboard) and Paste Properties
   (applies it to the selection through `Property_set_apply_operation`,
   skipping properties the target type does not have).
+
+  Attached properties (R7) follow the section's listing rule: an attached
+  property is listed on an object when the registering type's
+  `visible_when` holds for it, or when the object holds a local value for
+  it (a stale hint stays visible and resettable); with several items
+  selected, for every one of them. Its row label is `Property_ui::label`
+  or the qualified name (D3), under its group like any other row.
 - D13 MCP. Two tools in `src/editor/mcp/`: `get_item_properties(item)` lists
   (name, type, effective value, source, local value) and
   `set_item_property(item, name, value)` writes through
@@ -333,7 +355,9 @@ table, see D2a), and references to other objects (D28).
   travels as the referenced item's name with `reference_id` (its session
   id) and `reference_type` alongside, and `set_item_property` also takes
   `reference_id`. The listing has `sub_objects` and the write takes
-  `sub_object` (D29). A `scene.set_property` command
+  `sub_object` (D29). An attached property (R7) is listed by
+  its qualified name (D3) with `attached` true, under the D12 listing
+  rule, and is written by that name. A `scene.set_property` command
   (`config/editor/commands.json`, `doc/command_script.md`) with args
   `item`, `property`, `value` (and `sub_object`) uses the same conversion,
   so startup scripts can author properties.
@@ -1402,6 +1426,25 @@ accessor is named `get_layout_type()` because `get_type()` is the
 window keeps their custom / per-track rows and draws everything else as
 generic rows.
 
+### 4.14 Layout per-child hints (attached properties)
+
+`Layout` registers the per-child hints as attached properties (R7, D3,
+the first attached-property user; WPF `Grid.Row`): `align_x`, `align_y`,
+`align_z` (`Layout_alignment`, `Enum_info` `c_layout_alignment_enum_info`
+in `erhe_scene/layout.hpp`), `margin_min`, `margin_max`, `grid_cell_auto`,
+`grid_cell` (validated non-negative) and `grid_span` (validated to at
+least 1 per axis), UI group `Layout Item`, qualified `Layout.align_x` ..
+`Layout.grid_span`. The value is set on the child `Node`; `Node` knows
+nothing about layouts, and `Layout::update()` reads each direct child's
+values (a child without local values gets the defaults). Each hint's
+`visible_when` is "the object is a Node whose parent node has a Layout",
+the grid hints additionally "that layout is a grid" and `grid_cell` "and
+`grid_cell_auto` is off", so the D12 rule lists the rows on exactly the
+children a layout arranges. There is no per-child attachment class,
+catalog entry or hand-written row; a hint rides the child node's `ERHE_node` properties map (D14) by
+its qualified name, and the glTF importer reads a legacy `ERHE_layout`
+`layout_item` block into the attached values.
+
 ## 5. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -1439,16 +1482,6 @@ style layer is D25.
   glTF by name.
 - Further computed properties (D26) as their consumers appear: a node's
   world bounds over its subtree, a scene's item counts.
-- Layout per-child hints as attached properties (WPF `DockPanel.Dock`,
-  `Grid.Row`): `Layout` registers alignment and margin as attached
-  properties and reads them from each child node, so a child carries its
-  hint without `Node` knowing about layouts. First attached-property user
-  (R7). The library side exists (`register_attached`, D3); the first user
-  also needs the enumeration and UI side, because
-  `for_each_property_of_type` deliberately skips attached properties, so
-  the generic rows (D12) and MCP `get_item_properties` would not show the
-  hint on the child without a way to list the attached properties set on
-  an object (`for_each_local_value` reaches them once set).
 - Further item migrations, each reusing the Material recipe (section 4.1).
   `doc/property-inventory.md` owns the per-field status: every registered
   property with its storage kind, and the hand-written Properties rows
@@ -1459,9 +1492,9 @@ style layer is D25.
   `Graph_editor_node` base (or retiring the prototype), not with
   registrations.
 - Editor per-item state as attached properties registered by the editor:
-  item tree expansion, sheet-window formulas. Shares the attached-property
-  enumeration need with the `Layout` item above (whichever lands first
-  builds it).
+  item tree expansion, sheet-window formulas. The naming, lookup and
+  listing side exists (D3, D12, section 4.14); each needs its own
+  `visible_when` and a registering owner type on the editor side.
 - Animation channels targeting arbitrary properties (not only node TRS),
   which becomes possible once `Animation_channel` stores a
   `Dependency_property` index instead of `Animation_path`. For playback

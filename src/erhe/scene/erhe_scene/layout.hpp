@@ -37,8 +37,19 @@ enum class Axis_direction : unsigned int {
 [[nodiscard]] auto axis_sign  (Axis_direction direction) -> float;     // +1.0f / -1.0f
 [[nodiscard]] auto axis_vector(Axis_direction direction) -> glm::vec3; // signed unit vector
 
+// Alignment of a child within its layout cell, per axis.
+//   negative : pin the child to the cell's minimum face
+//   positive : pin the child to the cell's maximum face
+//   stretch  : scale the child to fill the cell on this axis
+enum class Layout_alignment : unsigned int {
+    negative = 0,
+    positive,
+    stretch
+};
+
 extern const erhe::property::Enum_info c_layout_type_enum_info;
 extern const erhe::property::Enum_info c_axis_direction_enum_info;
+extern const erhe::property::Enum_info c_layout_alignment_enum_info;
 
 // A Layout is a Node_attachment that owns a volume (an axis-aligned box in the
 // node's local space) and computes the local transform of each direct child
@@ -96,6 +107,20 @@ public:
     static const erhe::property::Property<Axis_direction> tertiary_property;
     static const erhe::property::Property<glm::vec3>      gap_property;
     static const erhe::property::Property<glm::ivec3>     grid_track_count_property;
+
+    // Per-child hints as attached properties (R7, doc/property-system.md
+    // section 4.14; WPF Grid.Row): registered by Layout, set on the child
+    // Node, qualified names "Layout.align_x" .. "Layout.grid_span". update()
+    // reads them from each direct child; a child without a local value
+    // is laid out with the defaults below.
+    static const erhe::property::Property<Layout_alignment> align_x_property;        // negative
+    static const erhe::property::Property<Layout_alignment> align_y_property;        // negative
+    static const erhe::property::Property<Layout_alignment> align_z_property;        // negative
+    static const erhe::property::Property<glm::vec3>        margin_min_property;     // inset at the cell minimum face
+    static const erhe::property::Property<glm::vec3>        margin_max_property;     // inset at the cell maximum face
+    static const erhe::property::Property<bool>             grid_cell_auto_property; // grid: true = next free cell, false = grid_cell
+    static const erhe::property::Property<glm::ivec3>       grid_cell_property;      // grid: explicit cell (i, j, k)
+    static const erhe::property::Property<glm::ivec3>       grid_span_property;      // grid: cells spanned per axis (>= 1)
 
     [[nodiscard]] auto get_layout_type     () const -> Type                    { return m_type; }
     [[nodiscard]] auto get_volume          () const -> const erhe::math::Aabb& { return m_volume; }

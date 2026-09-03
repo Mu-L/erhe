@@ -25,11 +25,13 @@
                 "grid_track_extent_x": {"type": "array", "items": {"type": "number"}},
                 "grid_track_extent_y": {"type": "array", "items": {"type": "number"}},
                 "grid_track_extent_z": {"type": "array", "items": {"type": "number"}},
-                "flags":               {"type": "array", "items": {"type": "string"}}
+                "flags":               {"type": "array", "items": {"type": "string"}},
+                "properties":          {"type": "object", "additionalProperties": {"type": "string"}}
             },
             "required": ["type"]
         },
         "layout_item": {
+            "description": "Legacy (read only, never written): per-child hints that are now the Layout.* attached properties in the node's ERHE_node properties map",
             "type": "object",
             "properties": {
                 "name":           {"type": "string"},

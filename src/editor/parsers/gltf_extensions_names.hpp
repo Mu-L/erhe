@@ -10,7 +10,6 @@
 #include "erhe_physics/irigid_body.hpp"
 #include "erhe_primitive/enums.hpp"
 #include "erhe_scene/layout.hpp"
-#include "erhe_scene/layout_item.hpp"
 
 #include <string_view>
 

@@ -64,7 +64,6 @@
 #include "erhe_scene/animation.hpp"
 #include "erhe_scene/camera.hpp"
 #include "erhe_scene/layout.hpp"
-#include "erhe_scene/layout_item.hpp"
 #include "erhe_scene/light.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/mesh_raytrace.hpp"
@@ -345,28 +344,6 @@ void Properties::layout_properties(erhe::scene::Layout& layout)
             });
         }
     }
-}
-
-void Properties::layout_item_properties(erhe::scene::Layout_item& layout_item)
-{
-    ERHE_PROFILE_FUNCTION();
-
-    add_entry("Align X", [&layout_item]() {
-        erhe::imgui::make_combo("##", layout_item.alignment[0], erhe::scene::Layout_item::c_alignment_strings, IM_ARRAYSIZE(erhe::scene::Layout_item::c_alignment_strings));
-    });
-    add_entry("Align Y", [&layout_item]() {
-        erhe::imgui::make_combo("##", layout_item.alignment[1], erhe::scene::Layout_item::c_alignment_strings, IM_ARRAYSIZE(erhe::scene::Layout_item::c_alignment_strings));
-    });
-    add_entry("Align Z", [&layout_item]() {
-        erhe::imgui::make_combo("##", layout_item.alignment[2], erhe::scene::Layout_item::c_alignment_strings, IM_ARRAYSIZE(erhe::scene::Layout_item::c_alignment_strings));
-    });
-    add_entry("Margin Min", [&layout_item]() { ImGui::DragFloat3("##", &layout_item.margin_min.x, 0.01f); });
-    add_entry("Margin Max", [&layout_item]() { ImGui::DragFloat3("##", &layout_item.margin_max.x, 0.01f); });
-    add_entry("Auto Cell",  [&layout_item]() { ImGui::Checkbox  ("##", &layout_item.grid_cell_auto); });
-    if (!layout_item.grid_cell_auto) {
-        add_entry("Grid Cell", [&layout_item]() { ImGui::DragInt3("##", &layout_item.grid_cell.x, 0.1f, 0, 1000); });
-    }
-    add_entry("Grid Span",  [&layout_item]() { ImGui::DragInt3  ("##", &layout_item.grid_span.x, 0.1f, 1, 1000); });
 }
 
 void Properties::skin_properties(erhe::scene::Skin& skin)
@@ -1158,7 +1135,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
     const auto& rendertarget    = std::dynamic_pointer_cast<Rendertarget_mesh      >(item);
     const auto& scene           = std::dynamic_pointer_cast<erhe::scene::Scene     >(item);
     const auto& layout          = std::dynamic_pointer_cast<erhe::scene::Layout    >(item);
-    const auto& layout_item     = std::dynamic_pointer_cast<erhe::scene::Layout_item>(item);
     const auto& light           = std::dynamic_pointer_cast<erhe::scene::Light     >(item);
     const auto& mesh            = std::dynamic_pointer_cast<erhe::scene::Mesh      >(item);
     const auto& node            = std::dynamic_pointer_cast<erhe::scene::Node      >(item);
@@ -1313,10 +1289,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
         layout_properties(*layout);
     }
 
-    if (layout_item) {
-        layout_item_properties(*layout_item);
-    }
-
     if (mesh) {
         mesh_properties(*mesh);
     }
@@ -1363,8 +1335,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
 
         // "Add Attachment": popup listing the attachment catalog, entries
         // disabled when the node cannot take that kind (duplicate / precondition).
-        // Subsumes the former one-off "Add Layout Item" button (same gate as the
-        // catalog's layout_item entry).
         add_entry("Add Attachment", [this, node]() {
             if (ImGui::Button("Add Attachment")) {
                 ImGui::OpenPopup("add_attachment_popup");

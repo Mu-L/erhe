@@ -138,7 +138,7 @@ auto item_local_properties_to_json(const erhe::Item_base& item) -> std::string
                 return; // formulas are session state (D14)
             }
             out += separator;
-            append_json_string(out, property.get_name());
+            append_json_string(out, erhe::property::Property_registry::get().qualified_name(property));
             out += ':';
             append_json_string(out, erhe::property::to_string(property, value));
             separator = ",";

@@ -48,7 +48,6 @@
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/camera.hpp"
 #include "erhe_scene/layout.hpp"
-#include "erhe_scene/layout_item.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/projection.hpp"
 #include "erhe_scene/light.hpp"
@@ -1070,18 +1069,6 @@ auto Scene_commands::attach_new_layout(erhe::scene::Node& node) -> std::shared_p
     layout->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui | Item_flags::show_debug_visualizations);
     m_context.operation_stack->queue(std::make_shared<Node_attach_operation>(layout, node.shared_node_from_this()));
     return layout;
-}
-
-auto Scene_commands::attach_new_layout_item(erhe::scene::Node& node) -> std::shared_ptr<erhe::scene::Layout_item>
-{
-    if (erhe::scene::get_attachment<erhe::scene::Layout_item>(&node)) {
-        log_scene->warn("Node '{}' already has a layout item attachment", node.get_name());
-        return {};
-    }
-    auto layout_item = std::make_shared<erhe::scene::Layout_item>("layout item");
-    layout_item->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
-    m_context.operation_stack->queue(std::make_shared<Node_attach_operation>(layout_item, node.shared_node_from_this()));
-    return layout_item;
 }
 
 auto Scene_commands::attach_new_grid(erhe::scene::Node& node) -> std::shared_ptr<Grid>

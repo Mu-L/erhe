@@ -23,7 +23,6 @@
 #include "erhe_physics/irigid_body.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/layout.hpp"
-#include "erhe_scene/layout_item.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
@@ -327,11 +326,11 @@ void add_gltf_editor_state(
             used_physics = true;
         }
 
-        // ERHE_layout: Layout and Layout_item attachment fields (two
-        // optional sub-objects on one extension), each with Item flags.
-        const std::shared_ptr<erhe::scene::Layout>      layout      = erhe::scene::get_attachment<erhe::scene::Layout>(node.get());
-        const std::shared_ptr<erhe::scene::Layout_item> layout_item = erhe::scene::get_attachment<erhe::scene::Layout_item>(node.get());
-        if (layout || layout_item) {
+        // ERHE_layout: the Layout attachment fields with Item flags. A child's
+        // layout hints are attached properties (Layout.align_x, ...) and ride
+        // the node's ERHE_node properties map like any local value.
+        const std::shared_ptr<erhe::scene::Layout> layout = erhe::scene::get_attachment<erhe::scene::Layout>(node.get());
+        if (layout) {
             nlohmann::json layout_json = nlohmann::json::object();
             if (layout) {
                 layout_json["layout"] = nlohmann::json{
@@ -349,22 +348,6 @@ void add_gltf_editor_state(
                     {"grid_track_extent_z", json_float_array(layout->get_grid_track_extent(2))},
                     {"flags",            json_flags(*layout)},
                     {"properties",       json_properties(*layout)},
-                };
-            }
-            if (layout_item) {
-                layout_json["layout_item"] = nlohmann::json{
-                    {"name",           layout_item->get_name()},
-                    {"align",          nlohmann::json::array({
-                                           layout_alignment_name(layout_item->alignment[0]),
-                                           layout_alignment_name(layout_item->alignment[1]),
-                                           layout_alignment_name(layout_item->alignment[2])})},
-                    {"margin_min",     json_vec3(layout_item->margin_min)},
-                    {"margin_max",     json_vec3(layout_item->margin_max)},
-                    {"grid_cell_auto", layout_item->grid_cell_auto},
-                    {"grid_cell",      json_ivec3(layout_item->grid_cell)},
-                    {"grid_span",      json_ivec3(layout_item->grid_span)},
-                    {"flags",          json_flags(*layout_item)},
-                    {"properties",     json_properties(*layout_item)},
                 };
             }
             append_members(arguments.extension_payloads.nodes[node.get()], fmt::format("\"ERHE_layout\":{}", layout_json.dump()));

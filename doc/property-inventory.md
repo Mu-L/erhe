@@ -4,13 +4,13 @@ The status of every editor-visible item field with respect to the
 property system (`erhe::property`, design record `doc/property-system.md`):
 which fields are registered properties, how each is stored, and which
 fields the Properties window still draws by hand. This document is the
-owner of that status; the design record's sections 4.1 to 4.13 own the
+owner of that status; the design record's sections 4.1 to 4.14 own the
 design of each migration and refer here for the per-field list.
 
 Update this document in the same commit as any registration added,
 removed or changed in storage kind, and whenever a hand-written row is
 migrated or added. The same commit updates the owner's subsection in
-`doc/property-system.md` (4.1 to 4.13) when the design changed, and
+`doc/property-system.md` (4.1 to 4.14) when the design changed, and
 `src/erhe/property/notes.md` when a library mechanism changed; the design
 record's "Document roles" paragraph states the split.
 
@@ -27,7 +27,9 @@ record's "Document roles" paragraph states the split.
   (D18), used where the value is not a plain member or the set has a side
   effect the member write does not cover. Does its own no-op check.
 - **computed** - read-only, `register_computed` (D26).
-- **attached** - `register_attached` (D3); no user yet.
+- **attached** - `register_attached` (D3): registered by one type, set on
+  objects of another, listed by the D12 rule under its qualified
+  `<owner>.<name>`. Layout's per-child hints (section 4.14).
 
 The Properties window tints a row's label by its value source (D12):
 member and bridge rows are blue, entry rows green / gray / cyan / orange /
@@ -132,6 +134,15 @@ Every Grid property's property_changed touches the settings store.
 
 Not properties: the per-axis grid track extent lists.
 
+Per-child hints, attached (section 4.14), set on the child Node:
+
+| Property | Storage | Notes |
+|---|---|---|
+| Layout.align_x, Layout.align_y, Layout.align_z | attached | enumeration, listed on children of a layout node |
+| Layout.margin_min, Layout.margin_max | attached | |
+| Layout.grid_cell_auto, Layout.grid_span | attached | listed under a grid layout; span at least 1 |
+| Layout.grid_cell | attached | listed when the cell is not automatic; non-negative |
+
 ### Brush_placement (`src/editor/brushes/brush_placement.cpp`, section 4.11)
 
 | Property | Storage | Notes |
@@ -190,7 +201,6 @@ migration priority order. Each migration follows the Material recipe
 | Owner | Fields | Notes |
 |---|---|---|
 | Physics_joint_settings | limits, drives | lists; no `Property_value` form, stay hand-written |
-| Layout_item | align x / y / z, margin min and max, auto cell, grid cell, grid span | first attached-property user (design record section 6) |
 | Light | flux, blackbody temperature | derived rows over intensity and temperature |
 | Scene | ambient light | the per-scene overrides stay a settings block |
 | Rendertarget_mesh | width, height, pixels per meter | |

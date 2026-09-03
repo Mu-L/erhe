@@ -23,7 +23,6 @@
 #include "erhe_primitive/material.hpp"
 #include "erhe_primitive/primitive.hpp"
 #include "erhe_scene/layout.hpp"
-#include "erhe_scene/layout_item.hpp"
 #include "erhe_scene/mesh.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene_renderer/mesh_memory.hpp"
@@ -210,26 +209,29 @@ void import_layouts(const erhe::gltf::Gltf_data& gltf_data)
             apply_flags(*layout, lj);
             node->attach(layout);
         }
+        // Legacy "layout_item" sub-object (files written before the hints
+        // became attached properties): the values land on the node as the
+        // Layout.* attached properties; the name and flags of the former
+        // attachment are dropped.
         const auto item_it = payload.find("layout_item");
         if ((item_it != payload.end()) && item_it->is_object()) {
             const nlohmann::json& ij = *item_it;
-            auto layout_item = std::make_shared<erhe::scene::Layout_item>(ij.value("name", std::string{"Layout item"}));
             const auto align_it = ij.find("align");
             if ((align_it != ij.end()) && align_it->is_array() && (align_it->size() >= 3)) {
+                const erhe::property::Property<erhe::scene::Layout_alignment>* align_properties[3] = {
+                    &erhe::scene::Layout::align_x_property, &erhe::scene::Layout::align_y_property, &erhe::scene::Layout::align_z_property
+                };
                 for (std::size_t axis = 0; axis < 3; ++axis) {
                     if ((*align_it)[axis].is_string()) {
-                        layout_item->alignment[axis] = layout_alignment_from_name((*align_it)[axis].get<std::string>());
+                        node->set_value(*align_properties[axis], layout_alignment_from_name((*align_it)[axis].get<std::string>()));
                     }
                 }
             }
-            layout_item->margin_min     = to_vec3(ij.value("margin_min", nlohmann::json{}), layout_item->margin_min);
-            layout_item->margin_max     = to_vec3(ij.value("margin_max", nlohmann::json{}), layout_item->margin_max);
-            layout_item->grid_cell_auto = ij.value("grid_cell_auto", layout_item->grid_cell_auto);
-            layout_item->grid_cell      = to_ivec3(ij.value("grid_cell", nlohmann::json{}), layout_item->grid_cell);
-            layout_item->grid_span      = to_ivec3(ij.value("grid_span", nlohmann::json{}), layout_item->grid_span);
-            layout_item->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui);
-            apply_flags(*layout_item, ij);
-            node->attach(layout_item);
+            node->set_value(erhe::scene::Layout::margin_min_property,     to_vec3 (ij.value("margin_min", nlohmann::json{}), node->get_value(erhe::scene::Layout::margin_min_property)));
+            node->set_value(erhe::scene::Layout::margin_max_property,     to_vec3 (ij.value("margin_max", nlohmann::json{}), node->get_value(erhe::scene::Layout::margin_max_property)));
+            node->set_value(erhe::scene::Layout::grid_cell_auto_property, ij.value("grid_cell_auto", node->get_value(erhe::scene::Layout::grid_cell_auto_property)));
+            node->set_value(erhe::scene::Layout::grid_cell_property,      to_ivec3(ij.value("grid_cell", nlohmann::json{}), node->get_value(erhe::scene::Layout::grid_cell_property)));
+            node->set_value(erhe::scene::Layout::grid_span_property,      to_ivec3(ij.value("grid_span", nlohmann::json{}), node->get_value(erhe::scene::Layout::grid_span_property)));
         }
     }
 }

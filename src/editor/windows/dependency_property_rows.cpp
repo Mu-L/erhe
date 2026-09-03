@@ -134,6 +134,28 @@ void Dependency_property_rows::draw_rows(Property_editor& editor)
             return false;
         }
     );
+    // Attached properties (R7, D12 listing rule): listed when the
+    // registering type's visible_when holds for every selected item, or
+    // every selected item holds a local value (a stale hint stays
+    // visible and resettable). Multi-select needs no owner-chain check:
+    // an attached property applies to any object.
+    registry.for_each_attached_property(
+        [this, &properties, owner_type](const Dependency_property& property) {
+            const Property_metadata& metadata = property.get_metadata(owner_type);
+            if (!m_context.developer_mode && metadata.ui.developer_only) {
+                return;
+            }
+            bool visible = true;
+            bool local   = true;
+            for (std::size_t i = 0; i < m_items->size(); ++i) {
+                visible = visible && metadata.ui.visible_when && metadata.ui.visible_when(*target(i));
+                local   = local   && target(i)->has_local_value(property);
+            }
+            if (visible || local) {
+                properties.push_back(&property);
+            }
+        }
+    );
     if (properties.empty()) {
         return;
     }
@@ -172,7 +194,8 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     // expression (D22).
     const std::optional<std::string_view> expression = first.get_expression(property);
     const bool             differs_from_default = first.has_local_value(property) && !(first.get_value(property) == metadata.default_value.value());
-    const std::string_view label_text           = metadata.ui.label.empty() ? property.get_name() : metadata.ui.label;
+    const std::string      qualified            = erhe::property::Property_registry::get().qualified_name(property);
+    const std::string_view label_text           = metadata.ui.label.empty() ? std::string_view{qualified} : metadata.ui.label;
     std::string label = expression.has_value()
         ? std::string{"= "} + std::string{label_text}
         : differs_from_default ? std::string{"* "} + std::string{label_text} : std::string{label_text};
@@ -681,7 +704,7 @@ void Dependency_property_rows::paste_properties_as_style()
             if (entry.property->is_read_only()) {
                 continue;
             }
-            if (registry.find_for_object(item->get_property_owner_type(), entry.property->get_name()) == entry.property) {
+            if (registry.find_for_object(item->get_property_owner_type(), registry.qualified_name(*entry.property)) == entry.property) {
                 filtered.set(*entry.property, entry.value);
             }
         }
@@ -735,7 +758,7 @@ void Dependency_property_rows::paste_properties()
             if (entry.property->is_read_only()) {
                 continue;
             }
-            if (registry.find_for_object(item->get_property_owner_type(), entry.property->get_name()) == entry.property) {
+            if (registry.find_for_object(item->get_property_owner_type(), registry.qualified_name(*entry.property)) == entry.property) {
                 filtered.set(*entry.property, entry.value);
             }
         }

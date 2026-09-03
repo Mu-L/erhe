@@ -38,7 +38,6 @@ namespace erhe::rendergraph {
 namespace erhe::scene {
     class Camera;
     class Layout;
-    class Layout_item;
     class Light;
     class Mesh;
     class Node;
@@ -309,7 +308,6 @@ public:
     auto attach_new_light           (erhe::scene::Node& node) -> std::shared_ptr<erhe::scene::Light>;
     auto attach_new_empty_mesh      (erhe::scene::Node& node) -> std::shared_ptr<erhe::scene::Mesh>;
     auto attach_new_layout          (erhe::scene::Node& node) -> std::shared_ptr<erhe::scene::Layout>;
-    auto attach_new_layout_item     (erhe::scene::Node& node) -> std::shared_ptr<erhe::scene::Layout_item>;
     auto attach_new_grid            (erhe::scene::Node& node) -> std::shared_ptr<Grid>;
     auto attach_new_frame_controller(erhe::scene::Node& node) -> std::shared_ptr<Frame_controller>;
 
