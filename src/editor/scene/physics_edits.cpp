@@ -20,7 +20,7 @@ void reapply_physics_material(App_context& context, const std::shared_ptr<erhe::
         scene_root->get_scene().for_each_node([&](const std::shared_ptr<erhe::scene::Node>& node) {
             const std::shared_ptr<Node_physics> node_physics = erhe::scene::get_attachment<Node_physics>(node.get());
             if (node_physics && (node_physics->get_physics_material() == physics_material)) {
-                node_physics->set_physics_material(physics_material);
+                node_physics->reapply_physics_material();
             }
             return true;
         });
@@ -36,7 +36,7 @@ void reapply_collision_filter(App_context& context, const std::shared_ptr<erhe::
         scene_root->get_scene().for_each_node([&](const std::shared_ptr<erhe::scene::Node>& node) {
             const std::shared_ptr<Node_physics> node_physics = erhe::scene::get_attachment<Node_physics>(node.get());
             if (node_physics && (node_physics->get_collision_filter() == collision_filter)) {
-                node_physics->set_collision_filter(collision_filter);
+                node_physics->reapply_collision_filter();
             }
             return true;
         });

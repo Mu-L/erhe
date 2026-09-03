@@ -1,5 +1,7 @@
 #pragma once
 
+#include "erhe_property/enum_info.hpp"
+
 #include "erhe_physics/transform.hpp"
 
 #include <glm/glm.hpp>
@@ -35,6 +37,10 @@ static constexpr const char* c_motion_mode_strings[] = {
 {
     return c_motion_mode_strings[static_cast<int>(motion_mode)];
 }
+
+// The authorable motion modes (e_invalid is not one), for a registered
+// property of Motion_mode type (doc/property-system.md D2a).
+extern const erhe::property::Enum_info c_motion_mode_enum_info;
 
 class Collision_filter;
 class ICollision_shape;

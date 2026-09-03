@@ -1247,6 +1247,52 @@ subscribes an observer or an expression to a primitive; `get_primitives()`
 is const, so no caller reaches `set_value` on a primitive except through
 `Mesh`.
 
+### 4.10 Node_physics
+
+The editor's `Node_physics` attachment registers its authored rigid body
+state as member-backed properties (D18, owner type
+`Node_physics::property_owner_type()`, UI group `Rigid Body`) over the
+`IRigid_body_create_info` it keeps and the intended motion mode: the
+members are what the rigid body is (re)created from at scene attach, so
+they stay the storage, and the `after_set` hook pushes the change to the
+live body. `motion_mode` (`erhe::physics::Motion_mode`, `Enum_info` table
+`c_motion_mode_enum_info` next to `c_motion_mode_strings` in
+`erhe_physics/irigid_body.hpp`, the four authorable modes) re-derives the
+effective mode and sets it on the body; `is_trigger` recreates the body;
+`friction` and `restitution` (validated to [0, 1]) set the body's;
+`linear_damping` and `angular_damping` ([0, 1], `visible_when` the mode is
+not static) set the body's damping while the body is not static;
+`gravity_factor` (0..2, `visible_when` not static) likewise;
+`wind_receptivity` (0..10 kg/s) and the two initial velocities (world
+space, applied at (re)creation) have no live consequence.
+`physics_material` and `collision_filter` are object properties (D28,
+`reference_item_types` the physics material and collision filter type
+bits; `find_item_in_scene` walks the content library's physics materials
+and collision filters so a name resolves) whose hook sets the body's
+material or filter;
+`reapply_physics_material()` / `reapply_collision_filter()` push the
+current one again after the referenced item itself was edited (what
+`scene/physics_edits` calls), because a write of the pointer the member
+already holds is a no-op (R4).
+
+Two properties carry hand-written bridges, each with its own no-op check
+because a bridged `set` is reached for every write: `mass` (the create
+info's optional mass, read from the live body until set; validated
+positive; the set stores it and scales the body's local inertia with the
+mass ratio) and `center_of_mass_offset` (the offset-center-of-mass
+wrapper around the collision shape; the set rewraps and recreates the
+body).
+
+The typed accessors (`set_motion_mode()`, `set_trigger()`, `set_mass()`,
+`set_friction()`, ... `set_collision_filter()`) write through the
+properties, so the MCP `edit_physics_body` tool, the glTF physics import
+overrides, the geometry graph mesh binding and the Properties rows all
+notify; the physics tool's drag-time overrides of friction, damping and
+gravity go to the rigid body only and are transient. The glTF exporters
+read the accessors, not the live body. `Properties::node_physics_properties`
+keeps only the diagnostics (body label, position, active state, collision
+shape, local center of mass and inertia).
+
 ## 5. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -1297,10 +1343,6 @@ style layer is D25.
 - Further item migrations, each reusing the Material recipe (section 4.1).
   The Properties window rows still hand-written (untinted, D12) are the
   inventory; in priority order:
-  - `Node_physics`: mass, friction, restitution, angular and linear
-    damping, motion mode, is-trigger, gravity factor, wind receptivity,
-    initial linear and angular velocity, center of mass, and the physics
-    material and collision filter as object references (D28).
   - `Physics_material` (static and dynamic friction, restitution, the two
     combine modes) and `Physics_joint_settings` (limits and drives are
     lists, which have no `Property_value` form and stay hand-written).

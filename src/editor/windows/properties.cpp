@@ -811,136 +811,20 @@ void Properties::node_physics_properties(Node_physics& node_physics)
         add_entry("Local Center of Mass", [=](){ ImGui::Text("%.2f, %.2f, %.2f", com.x, com.y, com.z); });
     }
 
-    add_entry("Mass", [rigid_body]() {
-        float           mass    = rigid_body->get_mass();
-        const glm::mat4 inertia = rigid_body->get_local_inertia();
-        if (ImGui::SliderFloat("##", &mass, 0.01f, 1000.0f)) {
-            rigid_body->set_mass_properties(mass, inertia);
-        }
-    });
-    add_entry("Friction", [rigid_body]() {
-        float friction = rigid_body->get_friction();
-        if (ImGui::SliderFloat("##", &friction, 0.0f, 1.0f)) {
-            rigid_body->set_friction(friction);
-        }
-    });
-    add_entry("Restitution", [rigid_body]() {
-        float restitution = rigid_body->get_restitution();
-        if (ImGui::SliderFloat("##", &restitution, 0.0f, 1.0f)) {
-            rigid_body->set_restitution(restitution);
-        }
-    });
-
-    // Static bodies don't have access to these properties, at least in Jolt
+    // Static bodies have no motion properties (Jolt).
     if (rigid_body->get_motion_mode() != erhe::physics::Motion_mode::e_static) {
-        add_entry("Angular Dampening", [rigid_body](){
-            float angular_damping = rigid_body->get_angular_damping();
-            float linear_damping  = rigid_body->get_linear_damping();
-            if (ImGui::SliderFloat("##", &angular_damping, 0.0f, 1.0f)) {
-                rigid_body->set_damping(linear_damping, angular_damping);
-            }
-        });
-        add_entry("Linear Dampening", [rigid_body](){
-            float angular_damping = rigid_body->get_angular_damping();
-            float linear_damping  = rigid_body->get_linear_damping();
-            if (ImGui::SliderFloat("##", &linear_damping, 0.0f, 1.0f)) {
-                rigid_body->set_damping(linear_damping, angular_damping);
-            }
-        });
-
         add_entry("Local Inertia", [rigid_body](){
             const glm::mat4 local_inertia = rigid_body->get_local_inertia();
-            float floats[4] = { local_inertia[0][0], local_inertia[1][1], local_inertia[2][2] };
-            ImGui::InputFloat3("##", floats);
-            // TODO floats back to rigid body?
+            ImGui::Text("%.3f, %.3f, %.3f", local_inertia[0][0], local_inertia[1][1], local_inertia[2][2]);
         });
     }
-
-    add_entry("Motion Mode", [&node_physics](){
-        // Display / set the user-facing motion mode through Node_physics so
-        // that the intended mode and the rigid body stay consistent (static
-        // trigger bodies are internally kinematic non-physical).
-        int i_motion_mode = static_cast<int>(node_physics.get_motion_mode());
-        if (ImGui::Combo("##", &i_motion_mode, erhe::physics::c_motion_mode_strings, IM_ARRAYSIZE(erhe::physics::c_motion_mode_strings))) {
-            if (i_motion_mode != static_cast<int>(erhe::physics::Motion_mode::e_invalid)) {
-                node_physics.set_motion_mode(static_cast<erhe::physics::Motion_mode>(i_motion_mode));
-            }
-        }
-    });
-
-    add_entry("Is Trigger", [&node_physics](){
-        bool is_trigger = node_physics.is_trigger();
-        if (ImGui::Checkbox("##", &is_trigger)) {
-            node_physics.set_trigger(is_trigger);
-        }
-    });
-
-    add_entry("Gravity Factor", [&node_physics](){
-        float gravity_factor = node_physics.get_gravity_factor();
-        if (ImGui::SliderFloat("##", &gravity_factor, 0.0f, 2.0f)) {
-            node_physics.set_gravity_factor(gravity_factor);
-        }
-    });
-
-    add_entry("Wind Receptivity", [&node_physics](){
-        float wind_receptivity = node_physics.get_wind_receptivity();
-        if (ImGui::SliderFloat("##", &wind_receptivity, 0.0f, 10.0f, "%.2f kg/s")) {
-            node_physics.set_wind_receptivity(wind_receptivity);
-        }
-    });
-
-    add_entry(
-        "Initial Linear Velocity",
-        [&node_physics](){
-            glm::vec3 velocity = node_physics.get_initial_linear_velocity();
-            if (ImGui::DragFloat3("##", &velocity.x, 0.01f)) {
-                node_physics.set_initial_linear_velocity(velocity);
-            }
-        },
-        "Applied when the rigid body is (re)created"
-    );
-
-    add_entry(
-        "Initial Angular Velocity",
-        [&node_physics](){
-            glm::vec3 velocity = node_physics.get_initial_angular_velocity();
-            if (ImGui::DragFloat3("##", &velocity.x, 0.01f)) {
-                node_physics.set_initial_angular_velocity(velocity);
-            }
-        },
-        "Applied when the rigid body is (re)created"
-    );
-
-    add_entry(
-        "Center of Mass",
-        [&node_physics](){
-            glm::vec3 offset = node_physics.get_center_of_mass_offset();
-            ImGui::DragFloat3("##", &offset.x, 0.01f);
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                node_physics.set_center_of_mass_offset(offset);
-            }
-        },
-        "Center of mass offset; applied when the edit is completed (recreates the rigid body)"
-    );
-
-    erhe::scene::Node* node = node_physics.get_node();
-    Scene_root* scene_root = (node != nullptr) ? static_cast<Scene_root*>(node->get_item_host()) : nullptr;
-    const std::shared_ptr<Content_library> content_library = (scene_root != nullptr) ? scene_root->get_content_library() : std::shared_ptr<Content_library>{};
-    if (content_library) {
-        add_entry("Physics Material", [this, &node_physics, content_library]() {
-            std::shared_ptr<erhe::physics::Physics_material> material = node_physics.get_physics_material();
-            if (content_library->physics_materials->combo(m_context, "##", material, true)) {
-                node_physics.set_physics_material(material);
-            }
-        });
-        add_entry("Collision Filter", [this, &node_physics, content_library]() {
-            std::shared_ptr<erhe::physics::Collision_filter> filter = node_physics.get_collision_filter();
-            if (content_library->collision_filters->combo(m_context, "##", filter, true)) {
-                node_physics.set_collision_filter(filter);
-            }
-        });
-    }
+    // The authored rigid body state (motion mode, trigger, mass, friction,
+    // restitution, damping, gravity factor, wind receptivity, initial
+    // velocities, center of mass, physics material, collision filter) is
+    // generic rows (doc/property-system.md 4.10), drawn by
+    // dependency_properties() after the item rows.
 }
+
 
 void Properties::node_joint_properties(Node_joint& node_joint)
 {

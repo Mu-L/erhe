@@ -313,13 +313,12 @@ void add_gltf_editor_state(
         // ERHE_physics: erhe rigid-body state KHR_physics_rigid_bodies
         // cannot carry (defaults mirror scene.json's).
         if (node_physics) {
-            const erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
             nlohmann::json physics_json{
                 {"motion_mode",     motion_mode_name(node_physics->get_motion_mode())},
-                {"friction",        json_float(rigid_body ? rigid_body->get_friction()        : 0.5f)},
-                {"restitution",     json_float(rigid_body ? rigid_body->get_restitution()     : 0.2f)},
-                {"linear_damping",  json_float(rigid_body ? rigid_body->get_linear_damping()  : 0.05f)},
-                {"angular_damping", json_float(rigid_body ? rigid_body->get_angular_damping() : 0.05f)},
+                {"friction",        json_float(node_physics->get_friction())},
+                {"restitution",     json_float(node_physics->get_restitution())},
+                {"linear_damping",  json_float(node_physics->get_linear_damping())},
+                {"angular_damping", json_float(node_physics->get_angular_damping())},
             };
             if (node_physics->get_wind_receptivity() != 0.0f) {
                 physics_json["wind_receptivity"] = json_float(node_physics->get_wind_receptivity());

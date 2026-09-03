@@ -11,6 +11,8 @@
 
 #include "erhe_graphics/texture.hpp"
 #include "erhe_item/item.hpp"
+#include "erhe_physics/collision_filter.hpp"
+#include "erhe_physics/physics_material.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/node_attachment.hpp"
@@ -70,6 +72,22 @@ auto find_item_in_scene(Scene_root& scene_root, Predicate&& matches) -> std::sha
         for (const std::shared_ptr<erhe::graphics::Texture>& texture : library->textures->get_all<erhe::graphics::Texture>()) {
             if (texture && matches(*texture)) {
                 return texture;
+            }
+        }
+    }
+    // Physics materials and collision filters: the targets of a
+    // Node_physics' reference properties (section 4.10).
+    if (library && library->physics_materials) {
+        for (const std::shared_ptr<erhe::physics::Physics_material>& physics_material : library->physics_materials->get_all<erhe::physics::Physics_material>()) {
+            if (physics_material && matches(*physics_material)) {
+                return physics_material;
+            }
+        }
+    }
+    if (library && library->collision_filters) {
+        for (const std::shared_ptr<erhe::physics::Collision_filter>& collision_filter : library->collision_filters->get_all<erhe::physics::Collision_filter>()) {
+            if (collision_filter && matches(*collision_filter)) {
+                return collision_filter;
             }
         }
     }

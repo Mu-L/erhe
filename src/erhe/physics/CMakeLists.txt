@@ -63,6 +63,7 @@ erhe_target_sources_grouped(
     erhe_physics/iconstraint.hpp
     erhe_physics/iconvex_hull_collision_shape.hpp
     erhe_physics/idebug_draw.hpp
+    erhe_physics/irigid_body.cpp
     erhe_physics/irigid_body.hpp
     erhe_physics/iworld.hpp
     erhe_physics/physics_joint_settings.cpp

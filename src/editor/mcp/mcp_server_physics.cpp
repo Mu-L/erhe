@@ -409,44 +409,27 @@ auto Mcp_server::action_edit_physics_body(const json& args) -> std::string
         applied.push_back("filter_name");
     }
 
-    erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
-    const bool wants_live_edit =
-        args.contains("mass")        || args.contains("friction") || args.contains("restitution") ||
-        args.contains("linear_damping") || args.contains("angular_damping");
-    if (wants_live_edit && (rigid_body == nullptr)) {
-        return make_error_content("Rigid body is not live (node not attached to a scene); mass / friction / restitution / damping not applied");
+    // The scalar dynamics are Node_physics properties: the create info
+    // keeps the authored value and the live body (if any) gets it now.
+    if (args.contains("mass")) {
+        node_physics->set_mass(args["mass"].get<float>());
+        applied.push_back("mass");
     }
-    if (rigid_body != nullptr) {
-        if (args.contains("mass")) {
-            // Inertia scales linearly with mass for a fixed shape (same
-            // ratio math as the create-path mass override in brush.cpp);
-            // keeping the old inertia would leave the body tumbling as if
-            // it still had the old mass.
-            const float new_mass = args["mass"].get<float>();
-            const float old_mass = rigid_body->get_mass();
-            glm::mat4 inertia = rigid_body->get_local_inertia();
-            if (old_mass > 0.0f) {
-                inertia = glm::mat4{glm::mat3{inertia} * (new_mass / old_mass)};
-            }
-            rigid_body->set_mass_properties(new_mass, inertia);
-            applied.push_back("mass");
-        }
-        if (args.contains("friction")) {
-            rigid_body->set_friction(args["friction"].get<float>());
-            applied.push_back("friction");
-        }
-        if (args.contains("restitution")) {
-            rigid_body->set_restitution(args["restitution"].get<float>());
-            applied.push_back("restitution");
-        }
-        if (args.contains("linear_damping") || args.contains("angular_damping")) {
-            rigid_body->set_damping(
-                args.value("linear_damping",  rigid_body->get_linear_damping()),
-                args.value("angular_damping", rigid_body->get_angular_damping())
-            );
-            if (args.contains("linear_damping"))  { applied.push_back("linear_damping"); }
-            if (args.contains("angular_damping")) { applied.push_back("angular_damping"); }
-        }
+    if (args.contains("friction")) {
+        node_physics->set_friction(args["friction"].get<float>());
+        applied.push_back("friction");
+    }
+    if (args.contains("restitution")) {
+        node_physics->set_restitution(args["restitution"].get<float>());
+        applied.push_back("restitution");
+    }
+    if (args.contains("linear_damping")) {
+        node_physics->set_linear_damping(args["linear_damping"].get<float>());
+        applied.push_back("linear_damping");
+    }
+    if (args.contains("angular_damping")) {
+        node_physics->set_angular_damping(args["angular_damping"].get<float>());
+        applied.push_back("angular_damping");
     }
 
     const std::shared_ptr<erhe::physics::ICollision_shape>& shape = node_physics->get_collision_shape();

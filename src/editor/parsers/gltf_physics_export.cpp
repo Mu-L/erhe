@@ -357,9 +357,9 @@ auto build_gltf_physics_data(const erhe::scene::Scene& scene, const Content_libr
             if (motion_mode != erhe::physics::Motion_mode::e_static) {
                 erhe::gltf::Physics_node_motion motion{};
                 motion.is_kinematic = (motion_mode != erhe::physics::Motion_mode::e_dynamic);
-                const erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
-                if (!motion.is_kinematic && (rigid_body != nullptr)) {
-                    motion.mass = rigid_body->get_mass();
+                const float mass = node_physics->get_mass(); // 0 while neither authored nor live
+                if (!motion.is_kinematic && (mass > 0.0f)) {
+                    motion.mass = mass;
                 }
                 motion.center_of_mass = node_physics->get_center_of_mass_offset();
                 // Initial velocities are stored in world space; the spec wants
