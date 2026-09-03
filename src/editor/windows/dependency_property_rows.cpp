@@ -35,6 +35,28 @@ using erhe::property::Property_ui;
 using erhe::property::Property_value;
 using erhe::property::Value_source;
 
+namespace {
+
+// Label hue per value source (D12). A member-backed (bridged, D18)
+// property always reports Value_source::local, so it gets its own hue.
+[[nodiscard]] auto label_color(const Value_source source, const bool bridged) -> uint32_t
+{
+    if (bridged) {
+        return IM_COL32(200, 224, 255, 255); // blue: member-backed
+    }
+    switch (source) {
+        case Value_source::default_value: return IM_COL32(205, 205, 205, 255); // gray: the metadata default
+        case Value_source::local:         return IM_COL32(190, 235, 190, 255); // green: set on this object
+        case Value_source::expression:    return IM_COL32(170, 240, 240, 255); // cyan: driven by a formula
+        case Value_source::style:         return IM_COL32(255, 225, 170, 255); // orange: from the style
+        case Value_source::inherited:     return IM_COL32(225, 195, 255, 255); // purple: from an ancestor
+        case Value_source::computed:      return IM_COL32(165, 165, 165, 255); // dim gray: computed, read-only
+    }
+    return IM_COL32(255, 255, 255, 255);
+}
+
+} // anonymous namespace
+
 Dependency_property_rows::Dependency_property_rows(App_context& context)
     : m_context{context}
 {
@@ -161,6 +183,9 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     }
     tooltip += "Source: ";
     tooltip += erhe::property::c_str(first.get_value_source(property));
+    if (metadata.bridge.is_bound()) {
+        tooltip += " (member-backed)";
+    }
     if (first.is_coerced(property)) {
         tooltip += " (coerced)";
     }
@@ -190,9 +215,10 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     }
 
     const bool sealed = first_item.is_sealed(); // D24: a sealed item's rows are read-only
-    // Tinted label: the row is a registered property (D12), telling it
-    // apart from a hand-written row of the same window.
-    constexpr uint32_t c_property_row_label_color = IM_COL32(200, 224, 255, 255);
+    // Tinted label (D12): one hue per value source, so a registered
+    // property is told apart from a hand-written row and its layer is
+    // read at a glance - the tooltip names the source in words.
+    const uint32_t c_property_row_label_color = label_color(first.get_value_source(property), metadata.bridge.is_bound());
     editor.add_entry(
         std::move(label),
         [this, items = m_items, sub_object = m_sub_object, &property, &metadata, sealed]() {

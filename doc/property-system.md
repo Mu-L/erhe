@@ -283,9 +283,13 @@ table, see D2a), and references to other objects (D28).
   as Euler-degree drag with a raw x/y/z/w readout, input text, a combo
   filled from the property's `Enum_info` labels, and for an object
   property the `item_reference_imgui` field (D28). Every such row's
-  label is tinted light blue, so a hand-written row of the same window
-  (state not yet a registered property) is told apart at a glance. The
-  `Property_ui` block
+  label is tinted by its value source - gray for the default, green for a
+  local value, blue for a member-backed property (D18), cyan for an
+  expression (D22), orange for a style (D25), purple for an inherited
+  value, dim gray for a computed one (D26) - so a hand-written row of the
+  same window (state not yet a registered property) and the layer a
+  value comes from are both told at a glance; the tooltip names the
+  source in words. The `Property_ui` block
   (D4) selects the widget variant and its limits: `color` draws a color
   edit for vec3 / vec4, `angle_degrees` converts radians to degrees for
   display, `slider` draws a slider within `min` / `max`, `group` collapses
