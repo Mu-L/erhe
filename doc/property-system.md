@@ -17,7 +17,8 @@ type-by-type summary, kept in sync with the code and free of rationale.
 Look a mechanism up there; read here for why it is shaped that way and
 how the rest of the codebase uses it.
 
-Reference: the WPF property system in `~/git/tksuoran/wpf`, files under
+Reference: the WPF property system, `https://github.com/dotnet/wpf` at the
+commit named in `doc/property-system-wpf-comparison.md`, files under
 `src/Microsoft.DotNet.Wpf/src/WindowsBase/System/Windows/`:
 `DependencyProperty.cs` (registration, global index, owner metadata),
 `PropertyMetadata.cs` (default value, changed / coerce callbacks),
