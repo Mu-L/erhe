@@ -11,6 +11,7 @@ erhe_target_sources_grouped(
     erhe_property/enum_info.hpp
     erhe_property/expression.cpp
     erhe_property/expression.hpp
+    erhe_property/owner_type.hpp
     erhe_property/property_log.cpp
     erhe_property/property_log.hpp
     erhe_property/property_metadata.hpp

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "erhe_property/enum_info.hpp"
+#include "erhe_property/owner_type.hpp"
 #include "erhe_property/property_metadata.hpp"
 #include "erhe_property/property_value.hpp"
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -131,8 +133,22 @@ public:
         for_each_property_of_type(type_bits, 0, callback);
     }
 
+    // Owner type id table (owner_type.hpp): entry 0 is the root.
+    auto               allocate_owner_type(Owner_type parent, std::string_view name) -> Owner_type;
+    [[nodiscard]] auto get_owner_parent   (Owner_type id) const -> Owner_type;
+    [[nodiscard]] auto get_owner_name     (Owner_type id) const -> std::string_view;
+
 private:
-    Property_registry() = default;
+    Property_registry();
+
+    // A deque keeps the names at stable addresses, so a string_view handed
+    // out by get_owner_name stays valid across later allocations.
+    class Owner_entry
+    {
+    public:
+        Owner_type  parent;
+        std::string name;
+    };
 
     struct Owner_name_key
     {
@@ -152,6 +168,7 @@ private:
     };
 
     mutable std::mutex                                                 m_mutex;
+    std::deque<Owner_entry>                                            m_owner_types;
     std::vector<std::unique_ptr<Dependency_property>>                  m_properties;
     std::unordered_map<Owner_name_key, uint16_t, Owner_name_hash>      m_by_owner_and_name;
 };

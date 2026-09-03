@@ -94,10 +94,66 @@ void Dependency_property::add_owner(const uint64_t owner_type, Property_metadata
 
 //
 
+Property_registry::Property_registry()
+{
+    m_owner_types.push_back(Owner_entry{.parent = root_owner_type, .name = "root"});
+}
+
 auto Property_registry::get() -> Property_registry&
 {
     static Property_registry s_registry;
     return s_registry;
+}
+
+auto Property_registry::allocate_owner_type(const Owner_type parent, const std::string_view name) -> Owner_type
+{
+    const std::lock_guard<std::mutex> lock{m_mutex};
+    ERHE_VERIFY(parent < m_owner_types.size());
+    const Owner_type id = static_cast<Owner_type>(m_owner_types.size());
+    m_owner_types.push_back(Owner_entry{.parent = parent, .name = std::string{name}});
+    return id;
+}
+
+auto Property_registry::get_owner_parent(const Owner_type id) const -> Owner_type
+{
+    const std::lock_guard<std::mutex> lock{m_mutex};
+    ERHE_VERIFY(id < m_owner_types.size());
+    return m_owner_types[id].parent;
+}
+
+auto Property_registry::get_owner_name(const Owner_type id) const -> std::string_view
+{
+    const std::lock_guard<std::mutex> lock{m_mutex};
+    ERHE_VERIFY(id < m_owner_types.size());
+    return m_owner_types[id].name;
+}
+
+auto allocate_owner_type(const Owner_type parent, const std::string_view name) -> Owner_type
+{
+    return Property_registry::get().allocate_owner_type(parent, name);
+}
+
+auto get_owner_type_parent(const Owner_type id) -> Owner_type
+{
+    return Property_registry::get().get_owner_parent(id);
+}
+
+auto get_owner_type_name(const Owner_type id) -> std::string_view
+{
+    return Property_registry::get().get_owner_name(id);
+}
+
+auto is_owner_type_or_descendant(Owner_type id, const Owner_type ancestor) -> bool
+{
+    for (;;) {
+        if (id == ancestor) {
+            return true;
+        }
+        if (id == root_owner_type) {
+            return false;
+        }
+        id = get_owner_type_parent(id);
+    }
 }
 
 auto Property_registry::register_property(Dependency_property::Registration&& registration) -> const Dependency_property&

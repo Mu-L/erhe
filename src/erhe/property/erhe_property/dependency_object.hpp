@@ -2,6 +2,7 @@
 
 #include "erhe_property/dependency_property.hpp"
 #include "erhe_property/expression.hpp"
+#include "erhe_property/owner_type.hpp"
 #include "erhe_property/property_metadata.hpp"
 #include "erhe_property/property_style.hpp"
 #include "erhe_property/property_value.hpp"
@@ -85,6 +86,10 @@ public:
     // this object also match properties registered with this subtype.
     // 0 = only subtype-0 properties apply.
     [[nodiscard]] virtual auto get_property_owner_subtype() const -> uint32_t { return 0; }
+
+    // Per-class owner type id (owner_type.hpp). Item_base returns the id of
+    // the object's class; a runtime-defined kind returns its own id.
+    [[nodiscard]] virtual auto get_property_owner_id() const -> Owner_type { return root_owner_type; }
 
     // Tree for inherits-flagged properties (Hierarchy overrides both).
     [[nodiscard]] virtual auto get_inheritance_parent() const -> const Dependency_object* { return nullptr; }

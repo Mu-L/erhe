@@ -382,6 +382,17 @@ public:
     }
     auto get_type     () const -> uint64_t         override { return Self::get_static_type(); }
     auto get_type_name() const -> std::string_view override { return Self::static_type_name; }
+
+    // Property owner type id of Self, allocated under Intermediate's id on
+    // first use (erhe_property/owner_type.hpp).
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type
+    {
+        static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(
+            Intermediate::property_owner_type(), Self::static_type_name
+        );
+        return s_id;
+    }
+    auto get_property_owner_id() const -> erhe::property::Owner_type override { return Self::property_owner_type(); }
 };
 
 class Item_base
@@ -406,6 +417,8 @@ public:
     // (D22) is this item (""), its inheritance parent ("..") or an item of
     // the same host by name (Item_host::find_hosted_item).
     [[nodiscard]] auto get_property_owner_type () const -> uint64_t override { return get_type(); }
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    [[nodiscard]] auto get_property_owner_id   () const -> erhe::property::Owner_type override { return property_owner_type(); }
     [[nodiscard]] auto resolve_expression_object(std::string_view path) const -> erhe::property::Dependency_object* override;
 
     // For items whose host is tracked by an owning container (e.g. the

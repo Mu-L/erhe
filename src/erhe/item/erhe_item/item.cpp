@@ -383,6 +383,12 @@ auto Item_base::describe(int level) const -> std::string
     }
 }
 
+auto Item_base::property_owner_type() -> erhe::property::Owner_type
+{
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(erhe::property::root_owner_type, "Item_base");
+    return s_id;
+}
+
 auto Item_base::resolve_expression_object(const std::string_view path) const -> erhe::property::Dependency_object*
 {
     if (path.empty()) {
