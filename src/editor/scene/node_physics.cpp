@@ -123,7 +123,7 @@ const Property<glm::vec3> Node_physics::center_of_mass_offset_property = Propert
 const Property<Object_reference> Node_physics::physics_material_property = Property<Object_reference>::register_member<Node_physics, std::shared_ptr<erhe::physics::Physics_material>>(
     "physics_material", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.physics_material; },
     Property_metadata{.ui = Property_ui{.group = c_group, .tooltip = "Shared material; its friction and restitution override the scalar ones in contact resolution", .label = "Physics Material", .reference_item_types = erhe::Item_type::physics_material}},
-    [](Node_physics& node_physics) { node_physics.reapply_physics_material(); }
+    [](Node_physics& node_physics) { node_physics.observe_physics_material(); node_physics.reapply_physics_material(); }
 );
 const Property<Object_reference> Node_physics::collision_filter_property = Property<Object_reference>::register_member<Node_physics, std::shared_ptr<erhe::physics::Collision_filter>>(
     "collision_filter", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.collision_filter; },
@@ -131,8 +131,32 @@ const Property<Object_reference> Node_physics::collision_filter_property = Prope
     [](Node_physics& node_physics) { node_physics.reapply_collision_filter(); }
 );
 
-Node_physics::Node_physics(const Node_physics&) = default;
-Node_physics& Node_physics::operator=(const Node_physics&) = default;
+Node_physics::Node_physics(const Node_physics& src)
+    : Item              {src}
+    , markers           {src.markers}
+    , m_physics_world   {src.m_physics_world}
+    , m_create_info     {src.m_create_info}
+    , m_rigid_body      {src.m_rigid_body}
+    , m_motion_mode     {src.m_motion_mode}
+    , m_wind_receptivity{src.m_wind_receptivity}
+    , m_wake_on_attach  {src.m_wake_on_attach}
+{
+    observe_physics_material();
+}
+
+Node_physics& Node_physics::operator=(const Node_physics& src)
+{
+    Item::operator=(src);
+    markers            = src.markers;
+    m_physics_world    = src.m_physics_world;
+    m_create_info      = src.m_create_info;
+    m_rigid_body       = src.m_rigid_body;
+    m_motion_mode      = src.m_motion_mode;
+    m_wind_receptivity = src.m_wind_receptivity;
+    m_wake_on_attach   = src.m_wake_on_attach;
+    observe_physics_material();
+    return *this;
+}
 
 Node_physics::Node_physics(const Node_physics& src, erhe::for_clone)
     : Item          {src, erhe::for_clone{}}
@@ -143,12 +167,14 @@ Node_physics::Node_physics(const Node_physics& src, erhe::for_clone)
     , m_motion_mode {src.m_motion_mode}
     , m_wind_receptivity{src.m_wind_receptivity}
 {
+    observe_physics_material();
 }
 
 Node_physics::Node_physics(const IRigid_body_create_info& create_info)
     : m_create_info{create_info}
     , m_motion_mode{create_info.motion_mode}
 {
+    observe_physics_material();
 }
 
 Node_physics::~Node_physics() noexcept
@@ -430,6 +456,16 @@ void Node_physics::reapply_physics_material()
 {
     if (m_rigid_body) {
         m_rigid_body->set_physics_material(m_create_info.physics_material);
+    }
+}
+
+void Node_physics::observe_physics_material()
+{
+    m_physics_material_observer.release();
+    if (m_create_info.physics_material) {
+        m_physics_material_observer = m_create_info.physics_material->add_observer(
+            [this](erhe::property::Dependency_object&, const erhe::property::Property_changed_args&) { reapply_physics_material(); }
+        );
     }
 }
 

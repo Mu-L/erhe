@@ -4,7 +4,6 @@
 
 namespace erhe::physics {
     class Collision_filter;
-    class Physics_material;
     class Physics_joint_settings;
 }
 
@@ -14,11 +13,6 @@ class App_context;
 
 // Helpers for propagating edits of shared physics content-library items to
 // the live physics state. Used by the properties window and the MCP server.
-
-// Re-assigns the edited material to every scene body using it so the physics
-// backend re-snapshots the values (the per-body snapshot does not track the
-// shared item).
-void reapply_physics_material(App_context& context, const std::shared_ptr<erhe::physics::Physics_material>& physics_material);
 
 // Re-assigns the edited filter to every scene body using it so the physics
 // backend recompiles the filter snapshot.

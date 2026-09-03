@@ -193,11 +193,11 @@ auto Mcp_server::query_physics_items(const json& args) -> std::string
         materials.push_back({
             {"name",                material->get_name()},
             {"id",                  material->get_id()},
-            {"static_friction",     material->static_friction},
-            {"dynamic_friction",    material->dynamic_friction},
-            {"restitution",         material->restitution},
-            {"friction_combine",    combine_mode_to_string(material->friction_combine)},
-            {"restitution_combine", combine_mode_to_string(material->restitution_combine)}
+            {"static_friction",     material->get_static_friction()},
+            {"dynamic_friction",    material->get_dynamic_friction()},
+            {"restitution",         material->get_restitution()},
+            {"friction_combine",    combine_mode_to_string(material->get_friction_combine())},
+            {"restitution_combine", combine_mode_to_string(material->get_restitution_combine())}
         });
     }
     json filters = json::array();
@@ -589,11 +589,11 @@ auto Mcp_server::action_create_physics_material(const json& args) -> std::string
     }
 
     auto item = std::make_shared<erhe::physics::Physics_material>(name);
-    item->static_friction     = args.value("static_friction",  item->static_friction);
-    item->dynamic_friction    = args.value("dynamic_friction", item->dynamic_friction);
-    item->restitution         = args.value("restitution",      item->restitution);
-    item->friction_combine    = parse_combine_mode(args.value("friction_combine",    ""), item->friction_combine);
-    item->restitution_combine = parse_combine_mode(args.value("restitution_combine", ""), item->restitution_combine);
+    item->set_static_friction    (args.value("static_friction",  item->get_static_friction()));
+    item->set_dynamic_friction   (args.value("dynamic_friction", item->get_dynamic_friction()));
+    item->set_restitution        (args.value("restitution",      item->get_restitution()));
+    item->set_friction_combine   (parse_combine_mode(args.value("friction_combine",    ""), item->get_friction_combine()));
+    item->set_restitution_combine(parse_combine_mode(args.value("restitution_combine", ""), item->get_restitution_combine()));
 
     m_context.operation_stack->queue(
         std::make_shared<Item_insert_remove_operation>(
@@ -635,27 +635,26 @@ auto Mcp_server::action_edit_physics_material(const json& args) -> std::string
         item->set_name(args["new_name"].get<std::string>());
         applied.push_back("new_name");
     }
-    if (args.contains("static_friction"))  { item->static_friction  = args["static_friction"].get<float>();  applied.push_back("static_friction"); }
-    if (args.contains("dynamic_friction")) { item->dynamic_friction = args["dynamic_friction"].get<float>(); applied.push_back("dynamic_friction"); }
-    if (args.contains("restitution"))      { item->restitution      = args["restitution"].get<float>();      applied.push_back("restitution"); }
+    if (args.contains("static_friction"))  { item->set_static_friction (args["static_friction"].get<float>());  applied.push_back("static_friction"); }
+    if (args.contains("dynamic_friction")) { item->set_dynamic_friction(args["dynamic_friction"].get<float>()); applied.push_back("dynamic_friction"); }
+    if (args.contains("restitution"))      { item->set_restitution     (args["restitution"].get<float>());      applied.push_back("restitution"); }
     if (args.contains("friction_combine")) {
-        item->friction_combine = parse_combine_mode(args["friction_combine"].get<std::string>(), item->friction_combine);
+        item->set_friction_combine(parse_combine_mode(args["friction_combine"].get<std::string>(), item->get_friction_combine()));
         applied.push_back("friction_combine");
     }
     if (args.contains("restitution_combine")) {
-        item->restitution_combine = parse_combine_mode(args["restitution_combine"].get<std::string>(), item->restitution_combine);
+        item->set_restitution_combine(parse_combine_mode(args["restitution_combine"].get<std::string>(), item->get_restitution_combine()));
         applied.push_back("restitution_combine");
     }
-    reapply_physics_material(m_context, item);
 
     return make_json_content({
         {"name",                item->get_name()},
         {"applied",             applied},
-        {"static_friction",     item->static_friction},
-        {"dynamic_friction",    item->dynamic_friction},
-        {"restitution",         item->restitution},
-        {"friction_combine",    combine_mode_to_string(item->friction_combine)},
-        {"restitution_combine", combine_mode_to_string(item->restitution_combine)}
+        {"static_friction",     item->get_static_friction()},
+        {"dynamic_friction",    item->get_dynamic_friction()},
+        {"restitution",         item->get_restitution()},
+        {"friction_combine",    combine_mode_to_string(item->get_friction_combine())},
+        {"restitution_combine", combine_mode_to_string(item->get_restitution_combine())}
     }).dump();
 }
 

@@ -342,11 +342,11 @@ void import_gltf_physics(
         const erhe::gltf::Physics_material_description& description = physics.materials[i];
         const std::string name = description.name.empty() ? fmt::format("Physics material {}", i) : description.name;
         auto item = std::make_shared<erhe::physics::Physics_material>(name);
-        item->static_friction     = description.static_friction;
-        item->dynamic_friction    = description.dynamic_friction;
-        item->restitution         = description.restitution;
-        item->friction_combine    = to_combine_mode(description.friction_combine);
-        item->restitution_combine = to_combine_mode(description.restitution_combine);
+        item->set_static_friction    (description.static_friction);
+        item->set_dynamic_friction   (description.dynamic_friction);
+        item->set_restitution        (description.restitution);
+        item->set_friction_combine   (to_combine_mode(description.friction_combine));
+        item->set_restitution_combine(to_combine_mode(description.restitution_combine));
         importer.material_items.push_back(item);
         operations.push_back(
             std::make_shared<Content_library_attach_operation<erhe::physics::Physics_material>>(

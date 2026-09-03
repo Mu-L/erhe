@@ -11,22 +11,6 @@
 
 namespace editor {
 
-void reapply_physics_material(App_context& context, const std::shared_ptr<erhe::physics::Physics_material>& physics_material)
-{
-    if (context.app_scenes == nullptr) {
-        return;
-    }
-    for (const std::shared_ptr<Scene_root>& scene_root : context.app_scenes->get_scene_roots()) {
-        scene_root->get_scene().for_each_node([&](const std::shared_ptr<erhe::scene::Node>& node) {
-            const std::shared_ptr<Node_physics> node_physics = erhe::scene::get_attachment<Node_physics>(node.get());
-            if (node_physics && (node_physics->get_physics_material() == physics_material)) {
-                node_physics->reapply_physics_material();
-            }
-            return true;
-        });
-    }
-}
-
 void reapply_collision_filter(App_context& context, const std::shared_ptr<erhe::physics::Collision_filter>& collision_filter)
 {
     if (context.app_scenes == nullptr) {

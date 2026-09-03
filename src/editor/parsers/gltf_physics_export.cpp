@@ -126,11 +126,11 @@ public:
         material_index_map.emplace(material.get(), index);
         erhe::gltf::Physics_material_description description{};
         description.name                = material->get_name();
-        description.static_friction     = material->static_friction;
-        description.dynamic_friction    = material->dynamic_friction;
-        description.restitution         = material->restitution;
-        description.friction_combine    = to_gltf_combine_mode(material->friction_combine);
-        description.restitution_combine = to_gltf_combine_mode(material->restitution_combine);
+        description.static_friction     = material->get_static_friction();
+        description.dynamic_friction    = material->get_dynamic_friction();
+        description.restitution         = material->get_restitution();
+        description.friction_combine    = to_gltf_combine_mode(material->get_friction_combine());
+        description.restitution_combine = to_gltf_combine_mode(material->get_restitution_combine());
         data.materials.push_back(std::move(description));
         return index;
     }

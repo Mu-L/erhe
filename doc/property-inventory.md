@@ -4,13 +4,13 @@ The status of every editor-visible item field with respect to the
 property system (`erhe::property`, design record `doc/property-system.md`):
 which fields are registered properties, how each is stored, and which
 fields the Properties window still draws by hand. This document is the
-owner of that status; the design record's sections 4.1 to 4.11 own the
+owner of that status; the design record's sections 4.1 to 4.12 own the
 design of each migration and refer here for the per-field list.
 
 Update this document in the same commit as any registration added,
 removed or changed in storage kind, and whenever a hand-written row is
 migrated or added. The same commit updates the owner's subsection in
-`doc/property-system.md` (4.1 to 4.11) when the design changed, and
+`doc/property-system.md` (4.1 to 4.12) when the design changed, and
 `src/erhe/property/notes.md` when a library mechanism changed; the design
 record's "Document roles" paragraph states the split.
 
@@ -115,6 +115,13 @@ Not properties: the five slot samplers (`Material_data`, edited through
 
 Every Grid property's property_changed touches the settings store.
 
+### Physics_material (`src/erhe/physics/erhe_physics/physics_material.cpp`, section 4.12)
+
+| Property | Storage | Notes |
+|---|---|---|
+| static_friction, dynamic_friction, restitution | entry | bodies re-snapshot through the Node_physics observer |
+| friction_combine, restitution_combine | entry | enumerations |
+
 ### Brush_placement (`src/editor/brushes/brush_placement.cpp`, section 4.11)
 
 | Property | Storage | Notes |
@@ -172,7 +179,6 @@ migration priority order. Each migration follows the Material recipe
 
 | Owner | Fields | Notes |
 |---|---|---|
-| Physics_material | static_friction, dynamic_friction, restitution, friction_combine, restitution_combine | |
 | Physics_joint_settings | limits, drives | lists; no `Property_value` form, stay hand-written |
 | Layout | type, volume min and max, primary / secondary / tertiary axis, gap, grid tracks | |
 | Layout_item | align x / y / z, margin min and max, auto cell, grid cell, grid span | first attached-property user (design record section 6) |

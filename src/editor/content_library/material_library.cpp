@@ -101,15 +101,15 @@ void add_default_physics_materials(Content_library& library)
 
     // Spec-default KHR_physics_rigid_bodies material: static / dynamic
     // friction 0.6, restitution 0.0, average combine modes. These match the
-    // Physics_material member defaults; set explicitly so the values stay
-    // correct even if the class defaults change.
+    // Physics_material property defaults; set explicitly so the values stay
+    // correct even if the property defaults change.
     std::shared_ptr<erhe::physics::Physics_material> default_material =
         physics_materials.make<erhe::physics::Physics_material>("Default");
-    default_material->static_friction     = 0.6f;
-    default_material->dynamic_friction    = 0.6f;
-    default_material->restitution         = 0.0f;
-    default_material->friction_combine    = erhe::physics::Combine_mode::e_average;
-    default_material->restitution_combine = erhe::physics::Combine_mode::e_average;
+    default_material->set_static_friction    (0.6f);
+    default_material->set_dynamic_friction   (0.6f);
+    default_material->set_restitution        (0.0f);
+    default_material->set_friction_combine   (erhe::physics::Combine_mode::e_average);
+    default_material->set_restitution_combine(erhe::physics::Combine_mode::e_average);
 }
 
 }

@@ -2,6 +2,7 @@
 
 #include "erhe_scene/node_attachment.hpp"
 #include "erhe_physics/irigid_body.hpp"
+#include "erhe_property/dependency_object.hpp"
 #include "erhe_property/dependency_property.hpp"
 
 #include <vector>
@@ -112,8 +113,9 @@ public:
     void               set_angular_damping(float angular_damping);
 
     // Shared physics material; updates both create info and the live rigid
-    // body. reapply_physics_material() pushes the current material to the
-    // body again after the Physics_material item was edited, so the
+    // body. The attachment observes the material's properties (doc/
+    // property-system.md section 4.12) and reapply_physics_material() pushes
+    // the current material to the body again when one changes, so the
     // backend re-snapshots the values.
     [[nodiscard]] auto get_physics_material    () const -> const std::shared_ptr<erhe::physics::Physics_material>&;
     void               set_physics_material    (const std::shared_ptr<erhe::physics::Physics_material>& physics_material);
@@ -190,6 +192,9 @@ private:
     void apply_damping              ();
     void apply_gravity_factor       ();
     void apply_center_of_mass_offset(const glm::vec3& offset);
+    // Subscribes to the current material (every property); the subscription
+    // dies with this attachment, so the callback never outlives it.
+    void observe_physics_material   ();
 
     erhe::physics::IWorld*                      m_physics_world{nullptr};
     erhe::physics::IRigid_body_create_info      m_create_info;
@@ -197,6 +202,7 @@ private:
     erhe::physics::Motion_mode                  m_motion_mode{erhe::physics::Motion_mode::e_dynamic};
     float                                       m_wind_receptivity{0.0f};
     bool                                        m_wake_on_attach{false};
+    erhe::property::Observer_token              m_physics_material_observer;
 };
 
 }

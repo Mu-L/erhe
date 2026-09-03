@@ -38,7 +38,6 @@ namespace erhe::geometry {
 namespace erhe::physics {
     class Collision_filter;
     class Physics_joint_settings;
-    class Physics_material;
 }
 namespace erhe::primitive {
     class Buffer_mesh;
@@ -121,7 +120,6 @@ private:
     // Generic rows for the item's registered properties
     // (doc/property-system.md D12), inside the item's group.
     void dependency_properties        (const std::shared_ptr<erhe::Item_base>& item);
-    void physics_material_properties  (const std::shared_ptr<erhe::physics::Physics_material>& physics_material);
     void collision_filter_properties  (const std::shared_ptr<erhe::physics::Collision_filter>& collision_filter);
     void physics_joint_settings_properties(const std::shared_ptr<erhe::physics::Physics_joint_settings>& settings);
     void item_flags                   (const std::shared_ptr<erhe::Item_base>& item);

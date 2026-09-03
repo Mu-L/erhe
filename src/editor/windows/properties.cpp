@@ -55,7 +55,6 @@
 #include "erhe_physics/icollision_shape.hpp"
 #include "erhe_physics/irigid_body.hpp"
 #include "erhe_physics/physics_joint_settings.hpp"
-#include "erhe_physics/physics_material.hpp"
 #include "erhe_primitive/buffer_mesh.hpp"
 #include "erhe_primitive/enums.hpp"
 #include "erhe_primitive/primitive.hpp"
@@ -882,7 +881,6 @@ void Properties::node_joint_properties(Node_joint& node_joint)
 
 namespace {
 
-constexpr const char* c_combine_mode_names[] = { "Average", "Minimum", "Maximum", "Multiply" };
 constexpr const char* c_drive_type_names  [] = { "Linear", "Angular" };
 constexpr const char* c_drive_mode_names  [] = { "Force", "Acceleration" };
 
@@ -908,41 +906,6 @@ void optional_float_editor(std::optional<float>& value, const float default_valu
 }
 
 } // anonymous namespace
-
-void Properties::physics_material_properties(const std::shared_ptr<erhe::physics::Physics_material>& physics_material)
-{
-    ERHE_PROFILE_FUNCTION();
-
-    add_entry("Static Friction", [this, physics_material]() {
-        if (ImGui::SliderFloat("##", &physics_material->static_friction, 0.0f, 1.0f)) {
-            reapply_physics_material(m_context, physics_material);
-        }
-    });
-    add_entry("Dynamic Friction", [this, physics_material]() {
-        if (ImGui::SliderFloat("##", &physics_material->dynamic_friction, 0.0f, 1.0f)) {
-            reapply_physics_material(m_context, physics_material);
-        }
-    });
-    add_entry("Restitution", [this, physics_material]() {
-        if (ImGui::SliderFloat("##", &physics_material->restitution, 0.0f, 1.0f)) {
-            reapply_physics_material(m_context, physics_material);
-        }
-    });
-    add_entry("Friction Combine", [this, physics_material]() {
-        int current = static_cast<int>(physics_material->friction_combine);
-        if (ImGui::Combo("##", &current, c_combine_mode_names, IM_ARRAYSIZE(c_combine_mode_names))) {
-            physics_material->friction_combine = static_cast<erhe::physics::Combine_mode>(current);
-            reapply_physics_material(m_context, physics_material);
-        }
-    });
-    add_entry("Restitution Combine", [this, physics_material]() {
-        int current = static_cast<int>(physics_material->restitution_combine);
-        if (ImGui::Combo("##", &current, c_combine_mode_names, IM_ARRAYSIZE(c_combine_mode_names))) {
-            physics_material->restitution_combine = static_cast<erhe::physics::Combine_mode>(current);
-            reapply_physics_material(m_context, physics_material);
-        }
-    });
-}
 
 void Properties::collision_filter_properties(const std::shared_ptr<erhe::physics::Collision_filter>& collision_filter)
 {
@@ -1220,7 +1183,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
     const auto& brush_placement = std::dynamic_pointer_cast<Brush_placement        >(item);
     const auto& geometry_graph_mesh = std::dynamic_pointer_cast<Geometry_graph_mesh>(item);
     const auto& texture         = std::dynamic_pointer_cast<erhe::graphics::Texture>(item);
-    const auto& physics_material  = std::dynamic_pointer_cast<erhe::physics::Physics_material      >(item);
     const auto& collision_filter  = std::dynamic_pointer_cast<erhe::physics::Collision_filter      >(item);
     const auto& physics_joint     = std::dynamic_pointer_cast<erhe::physics::Physics_joint_settings>(item);
 
@@ -1346,10 +1308,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
 
     if (node_joint) {
         node_joint_properties(*node_joint);
-    }
-
-    if (physics_material) {
-        physics_material_properties(physics_material);
     }
 
     if (collision_filter) {

@@ -24,7 +24,7 @@ inventory for what is and is not a property yet.
 
 Updating together. A change to a registration touches all three: the
 code, the inventory's row for it, and this document's section for the
-owner (4.1 to 4.11) when the design changes; a new mechanism in
+owner (4.1 to 4.12) when the design changes; a new mechanism in
 `erhe::property` touches the notes and the design decision here. A
 migration of a hand-written row moves it from the inventory's "Not yet
 migrated" table to the owner's table in the same commit.
@@ -467,6 +467,9 @@ table, see D2a), and references to other objects (D28).
     rather than one value; same token, ordering and batch rules as D15.
     WPF has no equivalent (`DependencyPropertyDescriptor` is per
     property); it saves one token per registered property of the type.
+  - `Node_physics` is the second any-property observer user: it observes
+    its physics material so the backend body re-snapshots the material
+    values on an edit (section 4.12).
 - D22 Expressions and bindings (WPF `Expression`, `DependentList`,
   `SetCurrentValue`). A property of an object can be driven by a formula
   instead of a stored value; the formula sits at the local level of R3
@@ -1289,9 +1292,10 @@ bits; `find_item_in_scene` walks the content library's physics materials
 and collision filters so a name resolves) whose hook sets the body's
 material or filter;
 `reapply_physics_material()` / `reapply_collision_filter()` push the
-current one again after the referenced item itself was edited (what
-`scene/physics_edits` calls), because a write of the pointer the member
-already holds is a no-op (R4).
+current one again after the referenced item itself was edited, because a
+write of the pointer the member already holds is a no-op (R4): the
+material observer of section 4.12 calls the first, and
+`scene/physics_edits` walks the scenes for the second.
 
 Two properties carry hand-written bridges, each with its own no-op check
 because a bridged `set` is reached for every write: `mass` (the create
@@ -1343,6 +1347,37 @@ over the `GEO::index_t` members (`NO_INDEX` reads as -1);
 `set_corner()` writes through the property.
 `Properties::brush_placement_properties` keeps the brush's polygon
 count diagnostics.
+
+### 4.12 Physics_material
+
+`Physics_material` (`erhe::physics`, the KHR_physics_rigid_bodies material
+item) registers its five fields as entry-stored properties (owner type
+`Physics_material::property_owner_type()`) with the spec defaults as the
+property defaults: `static_friction` and `dynamic_friction` (0.6,
+validated non-negative; the extension and the physics sense set no upper
+bound, so a file value above the 0..1 slider still loads), `restitution`
+(0, validated to [0, 1]) and the enumerations `friction_combine` and
+`restitution_combine` (`Combine_mode`, `Enum_info` table
+`c_combine_mode_enum_info` next to the enumeration in
+`erhe_physics/physics_material.hpp`, defined in `physics_material.cpp`).
+The typed accessors (`get_static_friction()`, `set_static_friction()`, ...)
+read and write the store, and every reader - the Jolt body snapshot, the
+glTF physics import and export, the MCP physics tools, the default
+library material - uses them.
+
+The consequence of an edit stays backend-neutral. A backend may snapshot
+the material per body at `IRigid_body::set_physics_material()` (Jolt
+does, so its contact listener reads the values without locks), and the
+material does not know the bodies that reference it, so the holder of
+the reference pushes it again: the editor's `Node_physics` subscribes an
+any-property observer (D21) to its material whenever its
+`physics_material` property is set (and in its constructors, which copy
+the create info), with `reapply_physics_material()` as the callback; the
+token lives in the attachment, so the callback never outlives it, and a
+material edit from any writer - Properties row, `Property_set_operation`,
+MCP `edit_physics_material` or `set_item_property`, glTF import - reaches
+every live body through the `IRigid_body` interface. The Properties
+window draws the material as generic rows only.
 
 ## 5. Out of scope
 

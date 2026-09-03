@@ -648,11 +648,11 @@ auto Jolt_rigid_body::get_material_snapshot() const -> const Physics_material_sn
 void Jolt_rigid_body::update_material_snapshot()
 {
     if (m_physics_material) {
-        m_material_snapshot.static_friction     = m_physics_material->static_friction;
-        m_material_snapshot.dynamic_friction    = m_physics_material->dynamic_friction;
-        m_material_snapshot.restitution         = m_physics_material->restitution;
-        m_material_snapshot.friction_combine    = m_physics_material->friction_combine;
-        m_material_snapshot.restitution_combine = m_physics_material->restitution_combine;
+        m_material_snapshot.static_friction     = m_physics_material->get_static_friction();
+        m_material_snapshot.dynamic_friction    = m_physics_material->get_dynamic_friction();
+        m_material_snapshot.restitution         = m_physics_material->get_restitution();
+        m_material_snapshot.friction_combine    = m_physics_material->get_friction_combine();
+        m_material_snapshot.restitution_combine = m_physics_material->get_restitution_combine();
         m_material_snapshot.has_material        = true;
     } else {
         m_material_snapshot = Physics_material_snapshot{};
