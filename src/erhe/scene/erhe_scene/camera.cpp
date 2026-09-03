@@ -18,7 +18,7 @@ using erhe::property::Property_ui;
 using erhe::property::Property_value;
 using Type = Projection::Type;
 
-constexpr uint64_t         c_owner = erhe::Item_type::camera;
+const erhe::property::Owner_type c_owner = Camera::property_owner_type();
 constexpr std::string_view c_group = "Projection";
 
 // D18: the property reads and writes the Projection member directly, so

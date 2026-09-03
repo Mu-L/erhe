@@ -38,7 +38,7 @@ auto world_bounds_corner(const erhe::property::Dependency_object& object, const 
 
 // Computed world bounds (D26)
 const erhe::property::Property<glm::vec3> Mesh::world_bounds_min_property = erhe::property::Property<glm::vec3>::register_computed(
-    "world_bounds_min", erhe::Item_type::mesh,
+    "world_bounds_min", Mesh::property_owner_type(),
     [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return world_bounds_corner(object, false); },
     erhe::property::Property_metadata{
         .flags = erhe::property::Property_flags::none,
@@ -46,7 +46,7 @@ const erhe::property::Property<glm::vec3> Mesh::world_bounds_min_property = erhe
     }
 );
 const erhe::property::Property<glm::vec3> Mesh::world_bounds_max_property = erhe::property::Property<glm::vec3>::register_computed(
-    "world_bounds_max", erhe::Item_type::mesh,
+    "world_bounds_max", Mesh::property_owner_type(),
     [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return world_bounds_corner(object, true); },
     erhe::property::Property_metadata{
         .flags = erhe::property::Property_flags::none,

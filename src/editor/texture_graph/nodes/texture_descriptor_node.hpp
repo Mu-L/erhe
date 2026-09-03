@@ -57,7 +57,7 @@ public:
     // register_texture_graph_properties() at startup; the bridges reach the
     // live values through these accessors (registration is descriptor-driven,
     // not a static class member, so it has no class access).
-    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] auto get_property_owner_type() const -> erhe::property::Owner_type override;
     [[nodiscard]] auto parameter_value(std::size_t index) -> erhe::texgen::Parameter_value&;
     [[nodiscard]] auto parameter_value(std::size_t index) const -> const erhe::texgen::Parameter_value&;
     [[nodiscard]] auto get_seed() const -> float { return m_seed; }

@@ -3511,7 +3511,7 @@ public:
             log_startup->warn("commands.json: scene.set_property: item '{}' not found", item_sv);
             return;
         }
-        const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_type(item->get_type(), item->get_property_owner_subtype(), property_sv);
+        const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(item->get_property_owner_type(), property_sv);
         if (property == nullptr) {
             log_startup->warn("commands.json: scene.set_property: {} '{}' has no property '{}'", item->get_type_name(), item->get_name(), property_sv);
             return;

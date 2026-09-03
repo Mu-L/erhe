@@ -15,19 +15,19 @@ using erhe::property::Property;
 using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 
-auto Mesh_torus_node::property_owner_subtype() -> uint32_t
+auto Mesh_torus_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Mesh_torus_node");
+    return s_id;
 }
 
-auto Mesh_torus_node::get_property_owner_subtype() const -> uint32_t
+auto Mesh_torus_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Mesh_torus_node::major_radius_property = Property<float>::register_property(
-    "major_radius", erhe::Item_type::graph_node, Mesh_torus_node::property_owner_subtype(),
+    "major_radius", Mesh_torus_node::property_owner_type(),
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -37,7 +37,7 @@ const Property<float> Mesh_torus_node::major_radius_property = Property<float>::
 );
 
 const Property<float> Mesh_torus_node::minor_radius_property = Property<float>::register_property(
-    "minor_radius", erhe::Item_type::graph_node, Mesh_torus_node::property_owner_subtype(),
+    "minor_radius", Mesh_torus_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.25f,
         .flags         = erhe::property::Property_flags::none,
@@ -47,7 +47,7 @@ const Property<float> Mesh_torus_node::minor_radius_property = Property<float>::
 );
 
 const Property<int> Mesh_torus_node::major_steps_property = Property<int>::register_property(
-    "major_steps", erhe::Item_type::graph_node, Mesh_torus_node::property_owner_subtype(),
+    "major_steps", Mesh_torus_node::property_owner_type(),
     Property_metadata{
         .default_value = 32,
         .flags         = erhe::property::Property_flags::none,
@@ -57,7 +57,7 @@ const Property<int> Mesh_torus_node::major_steps_property = Property<int>::regis
 );
 
 const Property<int> Mesh_torus_node::minor_steps_property = Property<int>::register_property(
-    "minor_steps", erhe::Item_type::graph_node, Mesh_torus_node::property_owner_subtype(),
+    "minor_steps", Mesh_torus_node::property_owner_type(),
     Property_metadata{
         .default_value = 16,
         .flags         = erhe::property::Property_flags::none,

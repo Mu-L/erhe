@@ -62,20 +62,20 @@ const erhe::property::Enum_info c_physics_motion_enum_info{"Motion_mode", c_phys
 
 }
 
-auto Geometry_output_node::property_owner_subtype() -> uint32_t
+auto Geometry_output_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Geometry_output_node");
+    return s_id;
 }
 
-auto Geometry_output_node::get_property_owner_subtype() const -> uint32_t
+auto Geometry_output_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const erhe::property::Property<std::string> Geometry_output_node::name_property =
     erhe::property::Property<std::string>::register_property(
-        "name", erhe::Item_type::graph_node, Geometry_output_node::property_owner_subtype(),
+        "name", Geometry_output_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = std::string{"Geometry Graph"},
             .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -86,7 +86,7 @@ const erhe::property::Property<std::string> Geometry_output_node::name_property 
 
 const erhe::property::Property<bool> Geometry_output_node::physics_property =
     erhe::property::Property<bool>::register_property(
-        "physics", erhe::Item_type::graph_node, Geometry_output_node::property_owner_subtype(),
+        "physics", Geometry_output_node::property_owner_type(),
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
             .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Physics"},
@@ -96,7 +96,7 @@ const erhe::property::Property<bool> Geometry_output_node::physics_property =
 
 const erhe::property::Property<erhe::physics::Motion_mode> Geometry_output_node::physics_motion_property =
     erhe::property::Property<erhe::physics::Motion_mode>::register_property(
-        "physics_motion", erhe::Item_type::graph_node, Geometry_output_node::property_owner_subtype(),
+        "physics_motion", Geometry_output_node::property_owner_type(),
         c_physics_motion_enum_info,
         erhe::property::Property_metadata{
             // default: the first table entry (Static)

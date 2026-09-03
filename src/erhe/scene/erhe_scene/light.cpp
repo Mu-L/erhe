@@ -25,7 +25,7 @@ using erhe::property::Property_changed_args;
 using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 
-constexpr uint64_t c_owner = erhe::Item_type::light;
+const erhe::property::Owner_type c_owner = Light::property_owner_type();
 
 constexpr erhe::property::Enum_entry c_light_type_entries[] = {
     { "Directional", static_cast<int32_t>(Light_type::directional) },

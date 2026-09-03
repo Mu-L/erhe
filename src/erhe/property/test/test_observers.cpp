@@ -10,8 +10,8 @@ using namespace erhe::property::test;
 
 namespace {
 
-const Property<int> obs_int   = Property<int>::register_property("obs_int", type_a);
-const Property<int> obs_other = Property<int>::register_property("obs_other", type_a);
+const Property<int> obs_int   = Property<int>::register_property("obs_int", type_a());
+const Property<int> obs_other = Property<int>::register_property("obs_other", type_a());
 
 } // anonymous namespace
 

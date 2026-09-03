@@ -11,9 +11,9 @@ using namespace erhe::property::test;
 
 namespace {
 
-const Property<float> seal_float = Property<float>::register_property("seal_float", type_a, Property_metadata{.default_value = 1.0f});
-const Property<float> seal_inh   = Property<float>::register_property("seal_inh",   type_a, Property_metadata{.default_value = 0.0f, .inherits = true});
-const Property<float> seal_src   = Property<float>::register_property("seal_src",   type_a, Property_metadata{.default_value = 2.0f});
+const Property<float> seal_float = Property<float>::register_property("seal_float", type_a(), Property_metadata{.default_value = 1.0f});
+const Property<float> seal_inh   = Property<float>::register_property("seal_inh",   type_a(), Property_metadata{.default_value = 0.0f, .inherits = true});
+const Property<float> seal_src   = Property<float>::register_property("seal_src",   type_a(), Property_metadata{.default_value = 2.0f});
 
 } // anonymous namespace
 

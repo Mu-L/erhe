@@ -57,14 +57,14 @@ TEST(Camera_properties, bridged_writes_are_visible_through_projection)
 TEST(Camera_properties, untyped_access_with_enumeration_labels)
 {
     auto camera = std::make_shared<Camera>("c");
-    const Dependency_property* type = Property_registry::get().find_for_type(camera->get_type(), "projection_type");
+    const Dependency_property* type = Property_registry::get().find_for_object(camera->get_property_owner_type(), "projection_type");
     ASSERT_NE(type, nullptr);
     EXPECT_EQ(to_string(*type, camera->get_value(*type)), "Perspective Vertical");
     camera->set_value(*type, parse_value(*type, "Generic Frustum").value());
     EXPECT_EQ(camera->projection()->projection_type, Projection::Type::generic_frustum);
     EXPECT_FALSE(parse_value(*type, "Fisheye").has_value());
 
-    const Dependency_property* z_far = Property_registry::get().find_for_type(camera->get_type(), "z_far");
+    const Dependency_property* z_far = Property_registry::get().find_for_object(camera->get_property_owner_type(), "z_far");
     ASSERT_NE(z_far, nullptr);
     camera->set_value(*z_far, parse_value(*z_far, "500").value());
     EXPECT_FLOAT_EQ(camera->projection()->z_far, 500.0f);

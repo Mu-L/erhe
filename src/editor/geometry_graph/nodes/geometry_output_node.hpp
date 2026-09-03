@@ -55,8 +55,8 @@ public:
     // Registered parameter properties (D18 / D27; Mesh_torus_node is the
     // recipe). The material Asset_reference is not a property and draws
     // through unregistered_parameters_imgui().
-    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
-    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    [[nodiscard]] auto get_property_owner_type() const -> erhe::property::Owner_type override;
     [[nodiscard]] auto has_unregistered_parameters() const -> bool override { return true; }
     void unregistered_parameters_imgui(App_context& context) override;
     static const erhe::property::Property<std::string>                name_property;

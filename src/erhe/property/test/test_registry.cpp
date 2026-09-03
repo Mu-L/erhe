@@ -7,10 +7,10 @@ using namespace erhe::property::test;
 
 namespace {
 
-const Property<float>       reg_float  = Property<float>::register_property("reg_float", type_a, Property_metadata{.default_value = 2.5f});
-const Property<glm::vec3>   reg_vec3   = Property<glm::vec3>::register_property("reg_vec3", type_a);
-const Property<std::string> reg_string = Property<std::string>::register_property("reg_string", type_b, Property_metadata{.default_value = std::string{"hello"}});
-const Property<int>         reg_attached = Property<int>::register_attached("reg_attached", type_c);
+const Property<float>       reg_float  = Property<float>::register_property("reg_float", type_a(), Property_metadata{.default_value = 2.5f});
+const Property<glm::vec3>   reg_vec3   = Property<glm::vec3>::register_property("reg_vec3", type_a());
+const Property<std::string> reg_string = Property<std::string>::register_property("reg_string", type_b(), Property_metadata{.default_value = std::string{"hello"}});
+const Property<int>         reg_attached = Property<int>::register_attached("reg_attached", type_c());
 
 } // anonymous namespace
 
@@ -18,7 +18,7 @@ TEST(Property_registry, registered_properties_have_expected_records)
 {
     EXPECT_EQ(reg_float.get().get_name(), "reg_float");
     EXPECT_EQ(reg_float.get().get_type(), Property_type::floating);
-    EXPECT_EQ(reg_float.get().get_owner_type(), type_a);
+    EXPECT_EQ(reg_float.get().get_owner_type(), type_a());
     EXPECT_FALSE(reg_float.get().is_read_only());
     EXPECT_FALSE(reg_float.get().is_attached());
     EXPECT_TRUE(reg_attached.get().is_attached());
@@ -38,127 +38,166 @@ TEST(Property_registry, indices_are_distinct_and_resolve_back)
 TEST(Property_registry, find_by_owner_and_name)
 {
     Property_registry& registry = Property_registry::get();
-    EXPECT_EQ(registry.find(type_a, "reg_float"), reg_float.get_ptr());
-    EXPECT_EQ(registry.find(type_b, "reg_string"), reg_string.get_ptr());
-    EXPECT_EQ(registry.find(type_b, "reg_float"), nullptr);
-    EXPECT_EQ(registry.find(type_a, "no_such_property"), nullptr);
+    EXPECT_EQ(registry.find(type_a(), "reg_float"), reg_float.get_ptr());
+    EXPECT_EQ(registry.find(type_b(), "reg_string"), reg_string.get_ptr());
+    EXPECT_EQ(registry.find(type_b(), "reg_float"), nullptr);
+    EXPECT_EQ(registry.find(type_a(), "no_such_property"), nullptr);
 }
 
 TEST(Property_registry, default_values)
 {
-    EXPECT_EQ(std::get<float>(reg_float.get().get_default_value(type_a)), 2.5f);
-    EXPECT_EQ(std::get<glm::vec3>(reg_vec3.get().get_default_value(type_a)), glm::vec3{0.0f});
-    EXPECT_EQ(std::get<std::string>(reg_string.get().get_default_value(type_b)), "hello");
+    EXPECT_EQ(std::get<float>(reg_float.get().get_default_value(type_a())), 2.5f);
+    EXPECT_EQ(std::get<glm::vec3>(reg_vec3.get().get_default_value(type_a())), glm::vec3{0.0f});
+    EXPECT_EQ(std::get<std::string>(reg_string.get().get_default_value(type_b())), "hello");
 }
 
-TEST(Property_registry, for_each_property_of_type_lists_non_attached_owners_only)
+TEST(Property_registry, for_each_property_of_object_lists_non_attached_owners_only)
 {
     std::vector<std::string> names_a;
-    Property_registry::get().for_each_property_of_type(type_a, [&](const Dependency_property& p) { names_a.emplace_back(p.get_name()); });
+    Property_registry::get().for_each_property_of_object(type_a(), [&](const Dependency_property& p) { names_a.emplace_back(p.get_name()); });
     EXPECT_NE(std::find(names_a.begin(), names_a.end(), "reg_float"), names_a.end());
     EXPECT_NE(std::find(names_a.begin(), names_a.end(), "reg_vec3"), names_a.end());
     EXPECT_EQ(std::find(names_a.begin(), names_a.end(), "reg_string"), names_a.end());
 
     std::vector<std::string> names_c;
-    Property_registry::get().for_each_property_of_type(type_c, [&](const Dependency_property& p) { names_c.emplace_back(p.get_name()); });
+    Property_registry::get().for_each_property_of_object(type_c(), [&](const Dependency_property& p) { names_c.emplace_back(p.get_name()); });
     EXPECT_EQ(std::find(names_c.begin(), names_c.end(), "reg_attached"), names_c.end());
 }
 
 TEST(Property_registry, override_metadata_per_owner_type)
 {
-    const Property<float> p = Property<float>::register_property("reg_override", type_a, Property_metadata{.default_value = 1.0f});
+    const Property<float> p = Property<float>::register_property("reg_override", type_a(), Property_metadata{.default_value = 1.0f});
     Property_metadata override_metadata{};
     override_metadata.default_value = 7.0f;
     override_metadata.inherits      = true;
     override_metadata.flags         = Property_flags::affects_transform;
     override_metadata.ui.min        = -1.0f;
-    const_cast<Dependency_property&>(p.get()).override_metadata(type_b, override_metadata);
+    const_cast<Dependency_property&>(p.get()).override_metadata(type_b(), override_metadata);
 
-    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_a)), 1.0f);
-    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_b)), 7.0f);
-    EXPECT_FALSE(p.get().get_metadata(type_a).inherits);
-    EXPECT_TRUE (p.get().get_metadata(type_b).inherits);
-    EXPECT_EQ(p.get().get_metadata(type_b).flags, Property_flags::affects_transform);
-    EXPECT_EQ(p.get().get_metadata(type_b).ui.min, -1.0f);
-    // An object of type_b sees the override; type_a the default.
-    Test_object a{type_a};
-    Test_object b{type_b};
+    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_a())), 1.0f);
+    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_b())), 7.0f);
+    EXPECT_FALSE(p.get().get_metadata(type_a()).inherits);
+    EXPECT_TRUE (p.get().get_metadata(type_b()).inherits);
+    EXPECT_EQ(p.get().get_metadata(type_b()).flags, Property_flags::affects_transform);
+    EXPECT_EQ(p.get().get_metadata(type_b()).ui.min, -1.0f);
+    // An object of type_b() sees the override; type_a() the default.
+    Test_object a{type_a()};
+    Test_object b{type_b()};
     EXPECT_EQ(a.get_value(p), 1.0f);
     EXPECT_EQ(b.get_value(p), 7.0f);
     // The override's missing fields keep the default metadata's default value.
-    const_cast<Dependency_property&>(p.get()).override_metadata(type_c, Property_metadata{.inherits = true});
-    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_c)), 1.0f);
+    const_cast<Dependency_property&>(p.get()).override_metadata(type_c(), Property_metadata{.inherits = true});
+    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_c())), 1.0f);
 }
 
 TEST(Property_registry, add_owner_makes_property_findable_and_listed_for_new_owner)
 {
-    const Property<int> p = Property<int>::register_property("reg_add_owner", type_a, Property_metadata{.default_value = 3});
-    const_cast<Dependency_property&>(p.get()).add_owner(type_b, Property_metadata{.default_value = 4});
-    EXPECT_EQ(Property_registry::get().find(type_b, "reg_add_owner"), p.get_ptr());
+    const Property<int> p = Property<int>::register_property("reg_add_owner", type_a(), Property_metadata{.default_value = 3});
+    const_cast<Dependency_property&>(p.get()).add_owner(type_b(), Property_metadata{.default_value = 4});
+    EXPECT_EQ(Property_registry::get().find(type_b(), "reg_add_owner"), p.get_ptr());
     std::vector<std::string> names_b;
-    Property_registry::get().for_each_property_of_type(type_b, [&](const Dependency_property& q) { names_b.emplace_back(q.get_name()); });
+    Property_registry::get().for_each_property_of_object(type_b(), [&](const Dependency_property& q) { names_b.emplace_back(q.get_name()); });
     EXPECT_NE(std::find(names_b.begin(), names_b.end(), "reg_add_owner"), names_b.end());
-    Test_object b{type_b};
+    Test_object b{type_b()};
     EXPECT_EQ(b.get_value(p), 4);
 }
 
-TEST(Property_registry, owner_subtype_keys_listing_and_lookup)
+TEST(Property_registry, owner_type_chain_lists_finds_and_shadows)
 {
     Property_registry& registry = Property_registry::get();
-    const uint32_t subtype_1 = allocate_property_owner_subtype();
-    const uint32_t subtype_2 = allocate_property_owner_subtype();
-    EXPECT_NE(subtype_1, 0u);
-    EXPECT_NE(subtype_1, subtype_2);
+    const Owner_type parent = type_a();
+    const Owner_type child  = type_a_child();
+    EXPECT_EQ(get_owner_type_parent(child), parent);
+    EXPECT_EQ(get_owner_type_parent(parent), root_owner_type);
+    EXPECT_EQ(get_owner_type_name(child), "type_a_child");
+    EXPECT_TRUE (is_owner_type_or_descendant(child, parent));
+    EXPECT_TRUE (is_owner_type_or_descendant(child, root_owner_type));
+    EXPECT_FALSE(is_owner_type_or_descendant(parent, child));
 
-    // The same name registers under different subtypes of one owner type,
-    // and shadows a subtype-0 registration of that name.
-    const Property<float> sub_float_1 = Property<float>::register_property("reg_sub_float", type_a, subtype_1, Property_metadata{.default_value = 1.0f});
-    const Property<float> sub_float_2 = Property<float>::register_property("reg_sub_float", type_a, subtype_2, Property_metadata{.default_value = 2.0f});
-    const Property<float> sub_float_0 = Property<float>::register_property("reg_sub_float", type_a, Property_metadata{.default_value = 0.5f});
-    const Property<int>   sub_only    = Property<int>::register_property("reg_sub_only", type_a, subtype_1);
+    // The same name registers on the parent and on the child; the child's
+    // registration shadows the parent's for child objects only.
+    const Property<float> chain_parent = Property<float>::register_property("reg_chain_float", parent, Property_metadata{.default_value = 0.5f});
+    const Property<float> chain_child  = Property<float>::register_property("reg_chain_float", child,  Property_metadata{.default_value = 1.0f});
+    const Property<int>   child_only   = Property<int>::register_property("reg_child_only", child);
+    const Property<int>   root_level   = Property<int>::register_property("reg_root_level", root_owner_type, Property_metadata{.default_value = 3});
 
-    EXPECT_EQ(sub_float_1.get().get_owner_subtype(), subtype_1);
-    EXPECT_EQ(sub_float_0.get().get_owner_subtype(), 0u);
+    EXPECT_EQ(chain_parent.get().get_owner_type(), parent);
+    EXPECT_EQ(chain_child.get().get_owner_type(), child);
 
-    // find() keys on the (owner type, subtype, name) triple.
-    EXPECT_EQ(registry.find(type_a, subtype_1, "reg_sub_float"), sub_float_1.get_ptr());
-    EXPECT_EQ(registry.find(type_a, subtype_2, "reg_sub_float"), sub_float_2.get_ptr());
-    EXPECT_EQ(registry.find(type_a, "reg_sub_float"), sub_float_0.get_ptr());
-    EXPECT_EQ(registry.find(type_a, "reg_sub_only"), nullptr);
+    // find() is exact; find_for_object() walks the chain, nearest first.
+    EXPECT_EQ(registry.find(parent, "reg_chain_float"), chain_parent.get_ptr());
+    EXPECT_EQ(registry.find(child,  "reg_chain_float"), chain_child.get_ptr());
+    EXPECT_EQ(registry.find(parent, "reg_child_only"), nullptr);
+    EXPECT_EQ(registry.find_for_object(child,  "reg_chain_float"), chain_child.get_ptr());
+    EXPECT_EQ(registry.find_for_object(parent, "reg_chain_float"), chain_parent.get_ptr());
+    EXPECT_EQ(registry.find_for_object(child,  "reg_float"),       reg_float.get_ptr());
+    EXPECT_EQ(registry.find_for_object(child,  "reg_root_level"),  root_level.get_ptr());
+    EXPECT_EQ(registry.find_for_object(parent, "reg_child_only"),  nullptr);
+    EXPECT_EQ(registry.find_for_object(type_b(), "reg_chain_float"), nullptr);
 
-    // Listing for a subtype includes its own and subtype-0 properties;
-    // listing without a subtype excludes every subtype registration.
-    std::vector<const Dependency_property*> listed_1;
-    registry.for_each_property_of_type(type_a, subtype_1, [&](const Dependency_property& p) { listed_1.push_back(&p); });
-    EXPECT_NE(std::find(listed_1.begin(), listed_1.end(), sub_float_1.get_ptr()), listed_1.end());
-    EXPECT_NE(std::find(listed_1.begin(), listed_1.end(), sub_only.get_ptr()), listed_1.end());
-    EXPECT_NE(std::find(listed_1.begin(), listed_1.end(), reg_float.get_ptr()), listed_1.end());
-    EXPECT_EQ(std::find(listed_1.begin(), listed_1.end(), sub_float_2.get_ptr()), listed_1.end());
+    // Listing for the child: root level first, then the parent's, then its
+    // own; the shadowed parent registration is not listed.
+    std::vector<const Dependency_property*> listed_child;
+    registry.for_each_property_of_object(child, [&](const Dependency_property& p) { listed_child.push_back(&p); });
+    const auto position = [&listed_child](const Dependency_property* p) { return std::find(listed_child.begin(), listed_child.end(), p) - listed_child.begin(); };
+    EXPECT_NE(std::find(listed_child.begin(), listed_child.end(), chain_child.get_ptr()), listed_child.end());
+    EXPECT_NE(std::find(listed_child.begin(), listed_child.end(), child_only.get_ptr()),  listed_child.end());
+    EXPECT_NE(std::find(listed_child.begin(), listed_child.end(), reg_float.get_ptr()),   listed_child.end());
+    EXPECT_NE(std::find(listed_child.begin(), listed_child.end(), root_level.get_ptr()),  listed_child.end());
+    EXPECT_EQ(std::find(listed_child.begin(), listed_child.end(), chain_parent.get_ptr()), listed_child.end());
+    EXPECT_LT(position(root_level.get_ptr()), position(reg_float.get_ptr()));
+    EXPECT_LT(position(reg_float.get_ptr()),  position(chain_child.get_ptr()));
 
-    std::vector<const Dependency_property*> listed_0;
-    registry.for_each_property_of_type(type_a, [&](const Dependency_property& p) { listed_0.push_back(&p); });
-    EXPECT_EQ(std::find(listed_0.begin(), listed_0.end(), sub_float_1.get_ptr()), listed_0.end());
-    EXPECT_EQ(std::find(listed_0.begin(), listed_0.end(), sub_only.get_ptr()), listed_0.end());
+    std::vector<const Dependency_property*> listed_parent;
+    registry.for_each_property_of_object(parent, [&](const Dependency_property& p) { listed_parent.push_back(&p); });
+    EXPECT_NE(std::find(listed_parent.begin(), listed_parent.end(), chain_parent.get_ptr()), listed_parent.end());
+    EXPECT_EQ(std::find(listed_parent.begin(), listed_parent.end(), chain_child.get_ptr()),  listed_parent.end());
+    EXPECT_EQ(std::find(listed_parent.begin(), listed_parent.end(), child_only.get_ptr()),   listed_parent.end());
 
-    // find_for_type prefers the exact-subtype match on a name tie.
-    EXPECT_EQ(registry.find_for_type(type_a, subtype_1, "reg_sub_float"), sub_float_1.get_ptr());
-    EXPECT_EQ(registry.find_for_type(type_a, subtype_2, "reg_sub_float"), sub_float_2.get_ptr());
-    EXPECT_EQ(registry.find_for_type(type_a, "reg_sub_float"), sub_float_0.get_ptr());
-    EXPECT_EQ(registry.find_for_type(type_a, subtype_1, "reg_float"), reg_float.get_ptr());
-    EXPECT_EQ(registry.find_for_type(type_a, subtype_2, "reg_sub_only"), nullptr);
+    // Listing for the root yields root-level registrations only.
+    std::vector<const Dependency_property*> listed_root;
+    registry.for_each_property_of_object(root_owner_type, [&](const Dependency_property& p) { listed_root.push_back(&p); });
+    EXPECT_NE(std::find(listed_root.begin(), listed_root.end(), root_level.get_ptr()), listed_root.end());
+    EXPECT_EQ(std::find(listed_root.begin(), listed_root.end(), reg_float.get_ptr()),  listed_root.end());
 
-    // An object's subtype selects its view of the registry.
-    Test_object o1{type_a};
-    o1.set_property_owner_subtype(subtype_1);
-    Test_object o2{type_a};
-    o2.set_property_owner_subtype(subtype_2);
-    EXPECT_EQ(o1.get_value(sub_float_1), 1.0f);
-    EXPECT_EQ(o2.get_value(sub_float_2), 2.0f);
+    // An object's id selects its view of the registry.
+    Test_object o_parent{parent};
+    Test_object o_child{child};
+    EXPECT_EQ(o_parent.get_value(chain_parent), 0.5f);
+    EXPECT_EQ(o_child.get_value(chain_child), 1.0f);
+    EXPECT_EQ(o_child.get_value(root_level), 3);
+}
+
+TEST(Property_registry, override_resolves_to_nearest_ancestor)
+{
+    const Property<float> p = Property<float>::register_property("reg_chain_override", root_owner_type, Property_metadata{.default_value = 1.0f});
+    // An override on the parent applies to the child; an override on the
+    // child wins over it.
+    const_cast<Dependency_property&>(p.get()).override_metadata(type_a(), Property_metadata{.default_value = 2.0f});
+    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_a())), 2.0f);
+    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_a_child())), 2.0f);
+    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_b())), 1.0f);
+    const_cast<Dependency_property&>(p.get()).override_metadata(type_a_child(), Property_metadata{.default_value = 3.0f});
+    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_a())), 2.0f);
+    EXPECT_EQ(std::get<float>(p.get().get_default_value(type_a_child())), 3.0f);
+    Test_object child{type_a_child()};
+    EXPECT_EQ(child.get_value(p), 3.0f);
+}
+
+TEST(Property_registry, add_owner_on_the_chain_is_listed_once)
+{
+    const Property<int> p = Property<int>::register_property("reg_multi_owner", type_a(), Property_metadata{.default_value = 1});
+    const_cast<Dependency_property&>(p.get()).add_owner(type_a_child(), Property_metadata{.default_value = 2});
+    std::vector<const Dependency_property*> listed;
+    Property_registry::get().for_each_property_of_object(type_a_child(), [&](const Dependency_property& q) { listed.push_back(&q); });
+    EXPECT_EQ(std::count(listed.begin(), listed.end(), p.get_ptr()), 1);
+    Test_object child{type_a_child()};
+    EXPECT_EQ(child.get_value(p), 2);
 }
 
 TEST(Property_registry, read_only_key)
 {
-    const Property_key<int> key = Property_key<int>::register_read_only("reg_read_only", type_a, Property_metadata{.default_value = 10});
+    const Property_key<int> key = Property_key<int>::register_read_only("reg_read_only", type_a(), Property_metadata{.default_value = 10});
     const Property<int> p = key.get_property();
     EXPECT_TRUE(p.get().is_read_only());
     Test_object o;

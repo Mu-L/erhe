@@ -25,7 +25,7 @@ enum class Texgen_enum_parameter : int {};
 // registry references for the life of the process.
 struct Registration_state
 {
-    std::unordered_map<const erhe::texgen::Node_descriptor*, uint32_t> subtypes;
+    std::unordered_map<const erhe::texgen::Node_descriptor*, erhe::property::Owner_type> owner_types;
     std::deque<std::vector<erhe::property::Enum_entry>>                enum_entries;
     std::deque<erhe::property::Enum_info>                              enum_infos;
     bool                                                               registered{false};
@@ -71,7 +71,7 @@ auto state() -> Registration_state&
     };
 }
 
-void register_descriptor_parameter(const erhe::texgen::Parameter_descriptor& parameter, const std::size_t parameter_index, const uint32_t subtype)
+void register_descriptor_parameter(const erhe::texgen::Parameter_descriptor& parameter, const std::size_t parameter_index, const erhe::property::Owner_type owner)
 {
     using erhe::property::Property;
     using erhe::property::Property_metadata;
@@ -80,7 +80,7 @@ void register_descriptor_parameter(const erhe::texgen::Parameter_descriptor& par
     switch (parameter.kind) {
         case erhe::texgen::Parameter_kind::float_parameter: {
             static_cast<void>(Property<float>::register_property(
-                parameter.name, erhe::Item_type::graph_node, subtype,
+                parameter.name, owner,
                 Property_metadata{
                     .default_value = parameter.default_float,
                     .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -92,7 +92,7 @@ void register_descriptor_parameter(const erhe::texgen::Parameter_descriptor& par
         }
         case erhe::texgen::Parameter_kind::color_parameter: {
             static_cast<void>(Property<glm::vec4>::register_property(
-                parameter.name, erhe::Item_type::graph_node, subtype,
+                parameter.name, owner,
                 Property_metadata{
                     .default_value = glm::vec4{parameter.default_color[0], parameter.default_color[1], parameter.default_color[2], parameter.default_color[3]},
                     .flags         = erhe::property::Property_flags::none,
@@ -113,7 +113,7 @@ void register_descriptor_parameter(const erhe::texgen::Parameter_descriptor& par
             state().enum_entries.push_back(std::move(entries));
             state().enum_infos.emplace_back(std::string_view{parameter.name}, std::span<const erhe::property::Enum_entry>{state().enum_entries.back()});
             static_cast<void>(Property<Texgen_enum_parameter>::register_property(
-                parameter.name, erhe::Item_type::graph_node, subtype,
+                parameter.name, owner,
                 state().enum_infos.back(),
                 Property_metadata{
                     .default_value = erhe::property::Enum_value{static_cast<int32_t>(parameter.default_enum_index)},
@@ -126,7 +126,7 @@ void register_descriptor_parameter(const erhe::texgen::Parameter_descriptor& par
         }
         case erhe::texgen::Parameter_kind::bool_parameter: {
             static_cast<void>(Property<bool>::register_property(
-                parameter.name, erhe::Item_type::graph_node, subtype,
+                parameter.name, owner,
                 Property_metadata{
                     .default_value = parameter.default_bool,
                     .flags         = erhe::property::Property_flags::none,
@@ -138,7 +138,7 @@ void register_descriptor_parameter(const erhe::texgen::Parameter_descriptor& par
         }
         case erhe::texgen::Parameter_kind::size_parameter: {
             static_cast<void>(Property<int>::register_property(
-                parameter.name, erhe::Item_type::graph_node, subtype,
+                parameter.name, owner,
                 Property_metadata{
                     .default_value = parameter.default_size_exponent,
                     .flags         = erhe::property::Property_flags::none,
@@ -174,14 +174,14 @@ void register_texture_graph_properties()
     }
     registration_state.registered = true;
     for (const erhe::texgen::Node_descriptor* descriptor : all_texture_node_descriptors()) {
-        const uint32_t subtype = erhe::property::allocate_property_owner_subtype();
-        registration_state.subtypes.emplace(descriptor, subtype);
+        const erhe::property::Owner_type owner = erhe::property::allocate_owner_type(Texture_descriptor_node::property_owner_type(), descriptor->name);
+        registration_state.owner_types.emplace(descriptor, owner);
         for (std::size_t i = 0, end = descriptor->parameters.size(); i < end; ++i) {
-            register_descriptor_parameter(descriptor->parameters[i], i, subtype);
+            register_descriptor_parameter(descriptor->parameters[i], i, owner);
         }
         if (descriptor->uses_seed()) {
             static_cast<void>(erhe::property::Property<float>::register_property(
-                "seed", erhe::Item_type::graph_node, subtype,
+                "seed", owner,
                 erhe::property::Property_metadata{
                     .flags  = erhe::property::Property_flags::none,
                     .ui     = erhe::property::Property_ui{.step = 1.0f, .group = "Parameters", .label = "Seed"},
@@ -201,11 +201,11 @@ void register_texture_graph_properties()
     }
 }
 
-auto texture_descriptor_owner_subtype(const erhe::texgen::Node_descriptor* const descriptor) -> uint32_t
+auto texture_descriptor_owner_type(const erhe::texgen::Node_descriptor* const descriptor) -> erhe::property::Owner_type
 {
     const Registration_state& registration_state = state();
-    const auto i = registration_state.subtypes.find(descriptor);
-    return (i != registration_state.subtypes.end()) ? i->second : 0;
+    const auto i = registration_state.owner_types.find(descriptor);
+    return (i != registration_state.owner_types.end()) ? i->second : Texture_descriptor_node::property_owner_type();
 }
 
 } // namespace editor

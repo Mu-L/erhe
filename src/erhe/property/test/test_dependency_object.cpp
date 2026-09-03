@@ -9,22 +9,22 @@ namespace {
 
 int s_callback_count = 0;
 
-const Property<bool>      obj_bool  = Property<bool>::register_property("obj_bool", type_a);
-const Property<int>       obj_int   = Property<int>::register_property("obj_int", type_a, Property_metadata{.default_value = 5});
-const Property<float>     obj_float = Property<float>::register_property("obj_float", type_a, Property_metadata{.default_value = 1.0f});
-const Property<glm::vec2> obj_vec2  = Property<glm::vec2>::register_property("obj_vec2", type_a);
-const Property<glm::vec4> obj_vec4  = Property<glm::vec4>::register_property("obj_vec4", type_a);
-const Property<glm::quat> obj_quat  = Property<glm::quat>::register_property("obj_quat", type_a);
-const Property<std::string> obj_string = Property<std::string>::register_property("obj_string", type_a);
-const Property<glm::ivec3> obj_ivec3 = Property<glm::ivec3>::register_property("obj_ivec3", type_a);
+const Property<bool>      obj_bool  = Property<bool>::register_property("obj_bool", type_a());
+const Property<int>       obj_int   = Property<int>::register_property("obj_int", type_a(), Property_metadata{.default_value = 5});
+const Property<float>     obj_float = Property<float>::register_property("obj_float", type_a(), Property_metadata{.default_value = 1.0f});
+const Property<glm::vec2> obj_vec2  = Property<glm::vec2>::register_property("obj_vec2", type_a());
+const Property<glm::vec4> obj_vec4  = Property<glm::vec4>::register_property("obj_vec4", type_a());
+const Property<glm::quat> obj_quat  = Property<glm::quat>::register_property("obj_quat", type_a());
+const Property<std::string> obj_string = Property<std::string>::register_property("obj_string", type_a());
+const Property<glm::ivec3> obj_ivec3 = Property<glm::ivec3>::register_property("obj_ivec3", type_a());
 
 const Property<float> obj_validated = Property<float>::register_property(
-    "obj_validated", type_a, Property_metadata{.default_value = 0.5f},
+    "obj_validated", type_a(), Property_metadata{.default_value = 0.5f},
     [](const Property_value& v) { const float f = std::get<float>(v); return (f >= 0.0f) && (f <= 1.0f); }
 );
 
 const Property<int> obj_coerced = Property<int>::register_property(
-    "obj_coerced", type_a,
+    "obj_coerced", type_a(),
     Property_metadata{
         .default_value = 0,
         .coerce = [](const Dependency_object& o, const Property_value& v) -> Property_value {
@@ -35,7 +35,7 @@ const Property<int> obj_coerced = Property<int>::register_property(
 );
 
 const Property<int> obj_with_callback = Property<int>::register_property(
-    "obj_with_callback", type_a,
+    "obj_with_callback", type_a(),
     Property_metadata{
         .default_value    = 0,
         .property_changed = [](Dependency_object&, const Property_changed_args&) { ++s_callback_count; }

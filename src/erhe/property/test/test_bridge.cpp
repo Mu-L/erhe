@@ -13,13 +13,13 @@ namespace {
 class Bridged_object : public Test_object
 {
 public:
-    Bridged_object() : Test_object{type_d} {}
+    Bridged_object() : Test_object{type_d()} {}
     glm::vec3 position{0.0f};
     int       set_calls{0};
 };
 
 const Property<glm::vec3> bridged_position = Property<glm::vec3>::register_property(
-    "bridged_position", type_d,
+    "bridged_position", type_d(),
     Property_metadata{
         .default_value = glm::vec3{1.0f, 2.0f, 3.0f},
         .bridge = Property_bridge{
@@ -33,7 +33,7 @@ const Property<glm::vec3> bridged_position = Property<glm::vec3>::register_prope
     }
 );
 
-const Property<int> bridged_plain = Property<int>::register_property("bridged_plain", type_d);
+const Property<int> bridged_plain = Property<int>::register_property("bridged_plain", type_d());
 
 } // anonymous namespace
 

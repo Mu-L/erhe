@@ -124,7 +124,7 @@ auto item_local_properties_to_json(const erhe::Item_base& item) -> std::string
 {
     std::string out{"{"};
     const char* separator = "";
-    const uint64_t owner_type = item.get_property_owner_type();
+    const erhe::property::Owner_type owner_type = item.get_property_owner_type();
     item.for_each_local_value(
         [&](const erhe::property::Dependency_property& property, const erhe::property::Property_value& value) {
             const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
@@ -150,7 +150,7 @@ auto item_local_properties_to_json(const erhe::Item_base& item) -> std::string
 
 auto apply_item_local_property(erhe::Item_base& item, const std::string_view name, const std::string_view value) -> bool
 {
-    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_type(item.get_property_owner_type(), item.get_property_owner_subtype(), name);
+    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(item.get_property_owner_type(), name);
     if (property == nullptr) {
         log_gltf->warn("'{}': no property '{}' on {}", item.get_name(), name, item.get_type_name());
         return false;

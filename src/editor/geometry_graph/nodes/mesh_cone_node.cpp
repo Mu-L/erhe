@@ -15,19 +15,19 @@ using erhe::property::Property;
 using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 
-auto Mesh_cone_node::property_owner_subtype() -> uint32_t
+auto Mesh_cone_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Mesh_cone_node");
+    return s_id;
 }
 
-auto Mesh_cone_node::get_property_owner_subtype() const -> uint32_t
+auto Mesh_cone_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Mesh_cone_node::height_property = Property<float>::register_property(
-    "height", erhe::Item_type::graph_node, Mesh_cone_node::property_owner_subtype(),
+    "height", Mesh_cone_node::property_owner_type(),
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -37,7 +37,7 @@ const Property<float> Mesh_cone_node::height_property = Property<float>::registe
 );
 
 const Property<float> Mesh_cone_node::radius_property = Property<float>::register_property(
-    "radius", erhe::Item_type::graph_node, Mesh_cone_node::property_owner_subtype(),
+    "radius", Mesh_cone_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.5f,
         .flags         = erhe::property::Property_flags::none,
@@ -47,7 +47,7 @@ const Property<float> Mesh_cone_node::radius_property = Property<float>::registe
 );
 
 const Property<bool> Mesh_cone_node::use_bottom_property = Property<bool>::register_property(
-    "use_bottom", erhe::Item_type::graph_node, Mesh_cone_node::property_owner_subtype(),
+    "use_bottom", Mesh_cone_node::property_owner_type(),
     Property_metadata{
         .default_value = true,
         .flags         = erhe::property::Property_flags::none,
@@ -57,7 +57,7 @@ const Property<bool> Mesh_cone_node::use_bottom_property = Property<bool>::regis
 );
 
 const Property<int> Mesh_cone_node::slices_property = Property<int>::register_property(
-    "slices", erhe::Item_type::graph_node, Mesh_cone_node::property_owner_subtype(),
+    "slices", Mesh_cone_node::property_owner_type(),
     Property_metadata{
         .default_value = 32,
         .flags         = erhe::property::Property_flags::none,
@@ -67,7 +67,7 @@ const Property<int> Mesh_cone_node::slices_property = Property<int>::register_pr
 );
 
 const Property<int> Mesh_cone_node::stacks_property = Property<int>::register_property(
-    "stacks", erhe::Item_type::graph_node, Mesh_cone_node::property_owner_subtype(),
+    "stacks", Mesh_cone_node::property_owner_type(),
     Property_metadata{
         .default_value = 1,
         .flags         = erhe::property::Property_flags::none,

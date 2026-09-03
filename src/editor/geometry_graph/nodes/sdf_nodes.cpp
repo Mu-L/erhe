@@ -85,19 +85,19 @@ template <typename NodeT>
 
 } // anonymous namespace
 
-auto Sdf_sphere_node::property_owner_subtype() -> uint32_t
+auto Sdf_sphere_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Sdf_sphere_node");
+    return s_id;
 }
 
-auto Sdf_sphere_node::get_property_owner_subtype() const -> uint32_t
+auto Sdf_sphere_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Sdf_sphere_node::voxel_size_property = Property<float>::register_property(
-    "voxel_size", erhe::Item_type::graph_node, Sdf_sphere_node::property_owner_subtype(),
+    "voxel_size", Sdf_sphere_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.05f,
         .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -107,7 +107,7 @@ const Property<float> Sdf_sphere_node::voxel_size_property = Property<float>::re
 );
 
 const Property<float> Sdf_sphere_node::radius_property = Property<float>::register_property(
-    "radius", erhe::Item_type::graph_node, Sdf_sphere_node::property_owner_subtype(),
+    "radius", Sdf_sphere_node::property_owner_type(),
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none,
@@ -117,7 +117,7 @@ const Property<float> Sdf_sphere_node::radius_property = Property<float>::regist
 );
 
 const Property<glm::vec3> Sdf_sphere_node::center_property = Property<glm::vec3>::register_property(
-    "center", erhe::Item_type::graph_node, Sdf_sphere_node::property_owner_subtype(),
+    "center", Sdf_sphere_node::property_owner_type(),
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
         .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Center"},
@@ -174,19 +174,19 @@ void Sdf_sphere_node::read_parameters(const nlohmann::json& in)
 
 // Sdf_capsule_node
 
-auto Sdf_capsule_node::property_owner_subtype() -> uint32_t
+auto Sdf_capsule_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Sdf_capsule_node");
+    return s_id;
 }
 
-auto Sdf_capsule_node::get_property_owner_subtype() const -> uint32_t
+auto Sdf_capsule_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Sdf_capsule_node::voxel_size_property = Property<float>::register_property(
-    "voxel_size", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    "voxel_size", Sdf_capsule_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.05f,
         .flags         = erhe::property::Property_flags::none,
@@ -196,7 +196,7 @@ const Property<float> Sdf_capsule_node::voxel_size_property = Property<float>::r
 );
 
 const Property<glm::vec3> Sdf_capsule_node::p0_property = Property<glm::vec3>::register_property(
-    "p0", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    "p0", Sdf_capsule_node::property_owner_type(),
     Property_metadata{
         .default_value = glm::vec3{0.0f, -1.0f, 0.0f},
         .flags         = erhe::property::Property_flags::none,
@@ -206,7 +206,7 @@ const Property<glm::vec3> Sdf_capsule_node::p0_property = Property<glm::vec3>::r
 );
 
 const Property<glm::vec3> Sdf_capsule_node::p1_property = Property<glm::vec3>::register_property(
-    "p1", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    "p1", Sdf_capsule_node::property_owner_type(),
     Property_metadata{
         .default_value = glm::vec3{0.0f, 1.0f, 0.0f},
         .flags         = erhe::property::Property_flags::none,
@@ -216,7 +216,7 @@ const Property<glm::vec3> Sdf_capsule_node::p1_property = Property<glm::vec3>::r
 );
 
 const Property<float> Sdf_capsule_node::radius0_property = Property<float>::register_property(
-    "radius0", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    "radius0", Sdf_capsule_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.5f,
         .flags         = erhe::property::Property_flags::none,
@@ -226,7 +226,7 @@ const Property<float> Sdf_capsule_node::radius0_property = Property<float>::regi
 );
 
 const Property<float> Sdf_capsule_node::radius1_property = Property<float>::register_property(
-    "radius1", erhe::Item_type::graph_node, Sdf_capsule_node::property_owner_subtype(),
+    "radius1", Sdf_capsule_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.5f,
         .flags         = erhe::property::Property_flags::none,
@@ -298,19 +298,19 @@ void Sdf_capsule_node::read_parameters(const nlohmann::json& in)
 
 // Sdf_from_geometry_node
 
-auto Sdf_from_geometry_node::property_owner_subtype() -> uint32_t
+auto Sdf_from_geometry_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Sdf_from_geometry_node");
+    return s_id;
 }
 
-auto Sdf_from_geometry_node::get_property_owner_subtype() const -> uint32_t
+auto Sdf_from_geometry_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Sdf_from_geometry_node::voxel_size_property = Property<float>::register_property(
-    "voxel_size", erhe::Item_type::graph_node, Sdf_from_geometry_node::property_owner_subtype(),
+    "voxel_size", Sdf_from_geometry_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.05f,
         .flags         = erhe::property::Property_flags::none,
@@ -359,19 +359,19 @@ void Sdf_from_geometry_node::read_parameters(const nlohmann::json& in)
 
 // Sdf_to_geometry_node
 
-auto Sdf_to_geometry_node::property_owner_subtype() -> uint32_t
+auto Sdf_to_geometry_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Sdf_to_geometry_node");
+    return s_id;
 }
 
-auto Sdf_to_geometry_node::get_property_owner_subtype() const -> uint32_t
+auto Sdf_to_geometry_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Sdf_to_geometry_node::adaptivity_property = Property<float>::register_property(
-    "adaptivity", erhe::Item_type::graph_node, Sdf_to_geometry_node::property_owner_subtype(),
+    "adaptivity", Sdf_to_geometry_node::property_owner_type(),
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
         .ui     = Property_ui{.min = 0.0f, .max = 1.0f, .step = 0.01f, .group = "Parameters", .label = "Adaptivity"},
@@ -437,20 +437,20 @@ constexpr erhe::property::Enum_entry c_sdf_boolean_operation_entries[] = {
 const erhe::property::Enum_info c_sdf_boolean_operation_enum_info{"Sdf_boolean_operation", c_sdf_boolean_operation_entries};
 } // anonymous namespace
 
-auto Sdf_boolean_node::property_owner_subtype() -> uint32_t
+auto Sdf_boolean_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Sdf_boolean_node");
+    return s_id;
 }
 
-auto Sdf_boolean_node::get_property_owner_subtype() const -> uint32_t
+auto Sdf_boolean_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<Sdf_boolean_node::Boolean_operation> Sdf_boolean_node::operation_property =
     Property<Sdf_boolean_node::Boolean_operation>::register_property(
-        "operation", erhe::Item_type::graph_node, Sdf_boolean_node::property_owner_subtype(),
+        "operation", Sdf_boolean_node::property_owner_type(),
         c_sdf_boolean_operation_enum_info,
         Property_metadata{
             .flags  = erhe::property::Property_flags::none,
@@ -531,19 +531,19 @@ void Sdf_boolean_node::read_parameters(const nlohmann::json& in)
 
 // Sdf_offset_node
 
-auto Sdf_offset_node::property_owner_subtype() -> uint32_t
+auto Sdf_offset_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Sdf_offset_node");
+    return s_id;
 }
 
-auto Sdf_offset_node::get_property_owner_subtype() const -> uint32_t
+auto Sdf_offset_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Sdf_offset_node::distance_property = Property<float>::register_property(
-    "distance", erhe::Item_type::graph_node, Sdf_offset_node::property_owner_subtype(),
+    "distance", Sdf_offset_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.1f,
         .flags         = erhe::property::Property_flags::none,
@@ -603,19 +603,19 @@ void Sdf_offset_node::read_parameters(const nlohmann::json& in)
 
 // Sdf_smooth_node
 
-auto Sdf_smooth_node::property_owner_subtype() -> uint32_t
+auto Sdf_smooth_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Sdf_smooth_node");
+    return s_id;
 }
 
-auto Sdf_smooth_node::get_property_owner_subtype() const -> uint32_t
+auto Sdf_smooth_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<int> Sdf_smooth_node::iterations_property = Property<int>::register_property(
-    "iterations", erhe::Item_type::graph_node, Sdf_smooth_node::property_owner_subtype(),
+    "iterations", Sdf_smooth_node::property_owner_type(),
     Property_metadata{
         .default_value = 1,
         .flags         = erhe::property::Property_flags::none,

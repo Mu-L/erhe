@@ -55,22 +55,20 @@ void Dependency_property_rows::add_rows(Property_editor& editor, const std::vect
     // registration order.
     const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
     std::vector<const Dependency_property*> properties;
-    registry.for_each_property_of_type(
-        m_items->front()->get_type(),
-        m_items->front()->get_property_owner_subtype(),
+    registry.for_each_property_of_object(
+        m_items->front()->get_property_owner_type(),
         [&properties](const Dependency_property& property) { properties.push_back(&property); }
     );
     for (std::size_t i = 1; i < m_items->size(); ++i) {
-        const uint64_t type_bits     = (*m_items)[i]->get_type();
-        const uint32_t owner_subtype = (*m_items)[i]->get_property_owner_subtype();
+        const erhe::property::Owner_type object_type = (*m_items)[i]->get_property_owner_type();
         std::erase_if(
             properties,
-            [&registry, type_bits, owner_subtype](const Dependency_property* property) {
-                return registry.find_for_type(type_bits, owner_subtype, property->get_name()) != property;
+            [&registry, object_type](const Dependency_property* property) {
+                return registry.find_for_object(object_type, property->get_name()) != property;
             }
         );
     }
-    const uint64_t owner_type = m_items->front()->get_property_owner_type();
+    const erhe::property::Owner_type owner_type = m_items->front()->get_property_owner_type();
     if (!m_context.developer_mode) {
         std::erase_if(properties, [owner_type](const Dependency_property* property) { return property->get_metadata(owner_type).ui.developer_only; });
     }
@@ -603,7 +601,7 @@ void Dependency_property_rows::paste_properties_as_style()
             if (entry.property->is_read_only()) {
                 continue;
             }
-            if (registry.find_for_type(item->get_type(), item->get_property_owner_subtype(), entry.property->get_name()) == entry.property) {
+            if (registry.find_for_object(item->get_property_owner_type(), entry.property->get_name()) == entry.property) {
                 filtered.set(*entry.property, entry.value);
             }
         }
@@ -657,7 +655,7 @@ void Dependency_property_rows::paste_properties()
             if (entry.property->is_read_only()) {
                 continue;
             }
-            if (registry.find_for_type(item->get_type(), item->get_property_owner_subtype(), entry.property->get_name()) == entry.property) {
+            if (registry.find_for_object(item->get_property_owner_type(), entry.property->get_name()) == entry.property) {
                 filtered.set(*entry.property, entry.value);
             }
         }

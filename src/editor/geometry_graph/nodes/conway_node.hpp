@@ -69,8 +69,8 @@ public:
     // Mesh_torus_node is the recipe. The operation itself is type identity
     // (one node type per operator) and is not a property; each operator
     // parameter row shows only for its operator (Property_ui::visible_when).
-    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
-    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    [[nodiscard]] auto get_property_owner_type() const -> erhe::property::Owner_type override;
     static const erhe::property::Property<float> kis_height_property;
     static const erhe::property::Property<float> truncate_ratio_property;
     static const erhe::property::Property<float> chamfer_ratio_property;

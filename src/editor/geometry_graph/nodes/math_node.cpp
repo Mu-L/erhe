@@ -27,20 +27,20 @@ constexpr erhe::property::Enum_entry c_math_operation_entries[] = {
 const erhe::property::Enum_info c_math_operation_enum_info{"Math_operation", c_math_operation_entries};
 } // anonymous namespace
 
-auto Math_node::property_owner_subtype() -> uint32_t
+auto Math_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Math_node");
+    return s_id;
 }
 
-auto Math_node::get_property_owner_subtype() const -> uint32_t
+auto Math_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const erhe::property::Property<Math_node::Math_operation> Math_node::operation_property =
     erhe::property::Property<Math_node::Math_operation>::register_property(
-        "operation", erhe::Item_type::graph_node, Math_node::property_owner_subtype(),
+        "operation", Math_node::property_owner_type(),
         c_math_operation_enum_info,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -51,7 +51,7 @@ const erhe::property::Property<Math_node::Math_operation> Math_node::operation_p
 
 const erhe::property::Property<float> Math_node::a_property =
     erhe::property::Property<float>::register_property(
-        "a", erhe::Item_type::graph_node, Math_node::property_owner_subtype(),
+        "a", Math_node::property_owner_type(),
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
             .ui     = erhe::property::Property_ui{.step = 0.01f, .group = "Parameters", .label = "A"},
@@ -61,7 +61,7 @@ const erhe::property::Property<float> Math_node::a_property =
 
 const erhe::property::Property<float> Math_node::b_property =
     erhe::property::Property<float>::register_property(
-        "b", erhe::Item_type::graph_node, Math_node::property_owner_subtype(),
+        "b", Math_node::property_owner_type(),
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
             .ui     = erhe::property::Property_ui{.step = 0.01f, .group = "Parameters", .label = "B"},

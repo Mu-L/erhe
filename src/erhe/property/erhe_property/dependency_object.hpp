@@ -77,19 +77,11 @@ public:
     Dependency_object& operator=(const Dependency_object& other);
     virtual ~Dependency_object() noexcept;
 
-    // Item_type bits used for metadata resolution (Item_base returns
-    // get_type()).
-    [[nodiscard]] virtual auto get_property_owner_type() const -> uint64_t { return 0; }
-
-    // Second registry key dimension for classes that share owner type bits
-    // (Registration::owner_subtype): property listing and name lookup for
-    // this object also match properties registered with this subtype.
-    // 0 = only subtype-0 properties apply.
-    [[nodiscard]] virtual auto get_property_owner_subtype() const -> uint32_t { return 0; }
-
-    // Per-class owner type id (owner_type.hpp). Item_base returns the id of
-    // the object's class; a runtime-defined kind returns its own id.
-    [[nodiscard]] virtual auto get_property_owner_id() const -> Owner_type { return root_owner_type; }
+    // Per-class owner type id (owner_type.hpp): the registry key for what
+    // properties this object has and which metadata applies. Item<> returns
+    // the id of the object's class; a runtime-defined kind returns its own
+    // id.
+    [[nodiscard]] virtual auto get_property_owner_type() const -> Owner_type { return root_owner_type; }
 
     // Tree for inherits-flagged properties (Hierarchy overrides both).
     [[nodiscard]] virtual auto get_inheritance_parent() const -> const Dependency_object* { return nullptr; }

@@ -173,9 +173,9 @@ auto Texture_descriptor_node::descriptor() const -> const erhe::texgen::Node_des
     return &m_descriptor;
 }
 
-auto Texture_descriptor_node::get_property_owner_subtype() const -> uint32_t
+auto Texture_descriptor_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return texture_descriptor_owner_subtype(&m_descriptor);
+    return texture_descriptor_owner_type(&m_descriptor);
 }
 
 auto Texture_descriptor_node::parameter_value(const std::size_t index) -> erhe::texgen::Parameter_value&

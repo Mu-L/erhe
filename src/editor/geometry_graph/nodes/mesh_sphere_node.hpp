@@ -18,8 +18,8 @@ public:
 
     // Parameter properties bridged over the members below (D18 / D27);
     // Mesh_torus_node is the recipe.
-    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
-    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    [[nodiscard]] auto get_property_owner_type() const -> erhe::property::Owner_type override;
     static const erhe::property::Property<float> radius_property;
     static const erhe::property::Property<int>   slices_property;
     static const erhe::property::Property<int>   stacks_property;

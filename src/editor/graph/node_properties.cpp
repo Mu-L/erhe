@@ -315,7 +315,7 @@ void Node_properties_window::graph_editor_node_properties(Graph_editor_window_ba
             ImGui::EndCombo();
         }
     });
-    if (node->get_property_owner_subtype() != 0) {
+    if (node->get_property_owner_type() != Graph_editor_node::property_owner_type()) {
         // Registered parameter properties (D27) draw as generic rows: value
         // source, reset to default, expressions, Property_set_operation
         // undo. What is not a property (Asset_reference combos, stats)

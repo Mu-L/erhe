@@ -22,20 +22,20 @@ constexpr erhe::property::Enum_entry c_subdivide_mode_entries[] = {
 const erhe::property::Enum_info c_subdivide_mode_enum_info{"Subdivide_mode", c_subdivide_mode_entries};
 } // anonymous namespace
 
-auto Subdivide_node::property_owner_subtype() -> uint32_t
+auto Subdivide_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Subdivide_node");
+    return s_id;
 }
 
-auto Subdivide_node::get_property_owner_subtype() const -> uint32_t
+auto Subdivide_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const erhe::property::Property<Subdivide_node::Mode> Subdivide_node::mode_property =
     erhe::property::Property<Subdivide_node::Mode>::register_property(
-        "mode", erhe::Item_type::graph_node, Subdivide_node::property_owner_subtype(),
+        "mode", Subdivide_node::property_owner_type(),
         c_subdivide_mode_enum_info,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -46,7 +46,7 @@ const erhe::property::Property<Subdivide_node::Mode> Subdivide_node::mode_proper
 
 const erhe::property::Property<int> Subdivide_node::iterations_property =
     erhe::property::Property<int>::register_property(
-        "iterations", erhe::Item_type::graph_node, Subdivide_node::property_owner_subtype(),
+        "iterations", Subdivide_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = 1,
             .flags         = erhe::property::Property_flags::none,

@@ -75,7 +75,7 @@ auto make_transform_bridge(
 } // anonymous namespace
 
 const Property<glm::vec3> Node::translation_property = Property<glm::vec3>::register_property(
-    "translation", erhe::Item_type::node,
+    "translation", Node::property_owner_type(),
     Property_metadata{
         .default_value = glm::vec3{0.0f, 0.0f, 0.0f},
         .flags         = c_transform_flags,
@@ -84,7 +84,7 @@ const Property<glm::vec3> Node::translation_property = Property<glm::vec3>::regi
     }
 );
 const Property<glm::quat> Node::rotation_property = Property<glm::quat>::register_property(
-    "rotation", erhe::Item_type::node,
+    "rotation", Node::property_owner_type(),
     Property_metadata{
         .default_value = glm::quat{1.0f, 0.0f, 0.0f, 0.0f},
         .flags         = c_transform_flags,
@@ -93,7 +93,7 @@ const Property<glm::quat> Node::rotation_property = Property<glm::quat>::registe
     }
 );
 const Property<glm::vec3> Node::scale_property = Property<glm::vec3>::register_property(
-    "scale", erhe::Item_type::node,
+    "scale", Node::property_owner_type(),
     Property_metadata{
         .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
         .flags         = c_transform_flags,
@@ -104,7 +104,7 @@ const Property<glm::vec3> Node::scale_property = Property<glm::vec3>::register_p
 
 // Computed world transform components (D26)
 const Property<glm::vec3> Node::world_translation_property = Property<glm::vec3>::register_computed(
-    "world_translation", erhe::Item_type::node,
+    "world_translation", Node::property_owner_type(),
     [](const Dependency_object& object) -> Property_value {
         return static_cast<const Node&>(object).world_from_node_transform().get_translation();
     },
@@ -114,7 +114,7 @@ const Property<glm::vec3> Node::world_translation_property = Property<glm::vec3>
     }
 );
 const Property<glm::quat> Node::world_rotation_property = Property<glm::quat>::register_computed(
-    "world_rotation", erhe::Item_type::node,
+    "world_rotation", Node::property_owner_type(),
     [](const Dependency_object& object) -> Property_value {
         return static_cast<const Node&>(object).world_from_node_transform().get_rotation();
     },
@@ -124,7 +124,7 @@ const Property<glm::quat> Node::world_rotation_property = Property<glm::quat>::r
     }
 );
 const Property<glm::vec3> Node::world_scale_property = Property<glm::vec3>::register_computed(
-    "world_scale", erhe::Item_type::node,
+    "world_scale", Node::property_owner_type(),
     [](const Dependency_object& object) -> Property_value {
         return static_cast<const Node&>(object).world_from_node_transform().get_scale();
     },

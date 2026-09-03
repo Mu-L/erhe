@@ -100,15 +100,15 @@ auto Item_filter::describe() const -> std::string
 // -----------------------------------------------------------------------------
 
 const erhe::property::Property<bool> Item_base::visible_property = erhe::property::Property<bool>::register_property(
-    "visible", 0,
+    "visible", Item_base::property_owner_type(),
     erhe::property::Property_metadata{.default_value = true, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.label = "Visible"}}
 );
 const erhe::property::Property<bool> Item_base::shadow_cast_property = erhe::property::Property<bool>::register_property(
-    "shadow_cast", 0,
+    "shadow_cast", Item_base::property_owner_type(),
     erhe::property::Property_metadata{.default_value = false, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Cast Shadow"}}
 );
 const erhe::property::Property<bool> Item_base::lightmapped_property = erhe::property::Property<bool>::register_property(
-    "lightmapped", 0,
+    "lightmapped", Item_base::property_owner_type(),
     erhe::property::Property_metadata{.default_value = false, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Lightmapped"}}
 );
 

@@ -20,8 +20,8 @@ public:
     // the members below (D18): the members stay the storage, JSON stays
     // the serializer, and the generic rows / MCP / expressions write
     // through the bridge, which ends in mark_dirty().
-    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
-    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    [[nodiscard]] auto get_property_owner_type() const -> erhe::property::Owner_type override;
     static const erhe::property::Property<float> major_radius_property;
     static const erhe::property::Property<float> minor_radius_property;
     static const erhe::property::Property<int>   major_steps_property;

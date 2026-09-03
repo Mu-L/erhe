@@ -7,10 +7,10 @@ using namespace erhe::property::test;
 
 namespace {
 
-const Property<float> inh_float = Property<float>::register_property("inh_float", type_a, Property_metadata{.default_value = 1.0f, .inherits = true});
-const Property<int>   inh_plain = Property<int>::register_property("inh_plain", type_a, Property_metadata{.default_value = 0});
+const Property<float> inh_float = Property<float>::register_property("inh_float", type_a(), Property_metadata{.default_value = 1.0f, .inherits = true});
+const Property<int>   inh_plain = Property<int>::register_property("inh_plain", type_a(), Property_metadata{.default_value = 0});
 const Property<float> inh_coerced = Property<float>::register_property(
-    "inh_coerced", type_a,
+    "inh_coerced", type_a(),
     Property_metadata{
         .default_value = 0.0f,
         .coerce   = [](const Dependency_object&, const Property_value& v) -> Property_value { return std::min(std::get<float>(v), 10.0f); },

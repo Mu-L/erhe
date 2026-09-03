@@ -34,19 +34,19 @@ const erhe::property::Enum_info c_rotation_mode_enum_info{"Rotation_mode", c_rot
 
 } // anonymous namespace
 
-auto Transform_node::property_owner_subtype() -> uint32_t
+auto Transform_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Transform_node");
+    return s_id;
 }
 
-auto Transform_node::get_property_owner_subtype() const -> uint32_t
+auto Transform_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<glm::vec3> Transform_node::translation_property = Property<glm::vec3>::register_property(
-    "translation", erhe::Item_type::graph_node, Transform_node::property_owner_subtype(),
+    "translation", Transform_node::property_owner_type(),
     Property_metadata{
         .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
         .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Translation"},
@@ -56,7 +56,7 @@ const Property<glm::vec3> Transform_node::translation_property = Property<glm::v
 
 const Property<Transform_node::Rotation_mode> Transform_node::rotation_mode_property =
     Property<Transform_node::Rotation_mode>::register_property(
-        "rotation_mode", erhe::Item_type::graph_node, Transform_node::property_owner_subtype(),
+        "rotation_mode", Transform_node::property_owner_type(),
         c_rotation_mode_enum_info,
         Property_metadata{
             .flags  = erhe::property::Property_flags::none,
@@ -66,7 +66,7 @@ const Property<Transform_node::Rotation_mode> Transform_node::rotation_mode_prop
     );
 
 const Property<glm::vec3> Transform_node::rotation_degrees_property = Property<glm::vec3>::register_property(
-    "rotation", erhe::Item_type::graph_node, Transform_node::property_owner_subtype(),
+    "rotation", Transform_node::property_owner_type(),
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
         .ui     = Property_ui{
@@ -80,7 +80,7 @@ const Property<glm::vec3> Transform_node::rotation_degrees_property = Property<g
 );
 
 const Property<glm::vec4> Transform_node::rotation_quaternion_property = Property<glm::vec4>::register_property(
-    "rotation_quaternion", erhe::Item_type::graph_node, Transform_node::property_owner_subtype(),
+    "rotation_quaternion", Transform_node::property_owner_type(),
     Property_metadata{
         .default_value = glm::vec4{0.0f, 0.0f, 0.0f, 1.0f},
         .flags         = erhe::property::Property_flags::none,
@@ -95,7 +95,7 @@ const Property<glm::vec4> Transform_node::rotation_quaternion_property = Propert
 );
 
 const Property<glm::vec3> Transform_node::scale_property = Property<glm::vec3>::register_property(
-    "scale", erhe::Item_type::graph_node, Transform_node::property_owner_subtype(),
+    "scale", Transform_node::property_owner_type(),
     Property_metadata{
         .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
         .flags         = erhe::property::Property_flags::none,

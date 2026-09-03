@@ -82,14 +82,14 @@ TEST(Light_properties, typed_and_untyped_access)
     light->set_cast_shadow(false);
     EXPECT_FALSE(light->casts_shadow());
 
-    const Dependency_property* type = Property_registry::get().find_for_type(light->get_type(), "light_type");
+    const Dependency_property* type = Property_registry::get().find_for_object(light->get_property_owner_type(), "light_type");
     ASSERT_NE(type, nullptr);
     EXPECT_EQ(to_string(*type, light->get_value(*type)), "Spot");
     light->set_value(*type, parse_value(*type, "Point").value());
     EXPECT_EQ(light->get_light_type(), Light_type::point);
     EXPECT_FALSE(parse_value(*type, "Area").has_value());
 
-    const Dependency_property* color = Property_registry::get().find_for_type(light->get_type(), "color");
+    const Dependency_property* color = Property_registry::get().find_for_object(light->get_property_owner_type(), "color");
     ASSERT_NE(color, nullptr);
     light->set_value(*color, parse_value(*color, "0.5 0.25 1").value());
     EXPECT_EQ(light->get_color(), (glm::vec3{0.5f, 0.25f, 1.0f}));

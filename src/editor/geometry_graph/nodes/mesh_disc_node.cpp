@@ -15,19 +15,19 @@ using erhe::property::Property;
 using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 
-auto Mesh_disc_node::property_owner_subtype() -> uint32_t
+auto Mesh_disc_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Mesh_disc_node");
+    return s_id;
 }
 
-auto Mesh_disc_node::get_property_owner_subtype() const -> uint32_t
+auto Mesh_disc_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Mesh_disc_node::outer_radius_property = Property<float>::register_property(
-    "outer_radius", erhe::Item_type::graph_node, Mesh_disc_node::property_owner_subtype(),
+    "outer_radius", Mesh_disc_node::property_owner_type(),
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -37,7 +37,7 @@ const Property<float> Mesh_disc_node::outer_radius_property = Property<float>::r
 );
 
 const Property<float> Mesh_disc_node::inner_radius_property = Property<float>::register_property(
-    "inner_radius", erhe::Item_type::graph_node, Mesh_disc_node::property_owner_subtype(),
+    "inner_radius", Mesh_disc_node::property_owner_type(),
     Property_metadata{
         .default_value = 0.0f,
         .flags         = erhe::property::Property_flags::none,
@@ -47,7 +47,7 @@ const Property<float> Mesh_disc_node::inner_radius_property = Property<float>::r
 );
 
 const Property<int> Mesh_disc_node::slices_property = Property<int>::register_property(
-    "slices", erhe::Item_type::graph_node, Mesh_disc_node::property_owner_subtype(),
+    "slices", Mesh_disc_node::property_owner_type(),
     Property_metadata{
         .default_value = 32,
         .flags         = erhe::property::Property_flags::none,
@@ -57,7 +57,7 @@ const Property<int> Mesh_disc_node::slices_property = Property<int>::register_pr
 );
 
 const Property<int> Mesh_disc_node::stacks_property = Property<int>::register_property(
-    "stacks", erhe::Item_type::graph_node, Mesh_disc_node::property_owner_subtype(),
+    "stacks", Mesh_disc_node::property_owner_type(),
     Property_metadata{
         .default_value = 1,
         .flags         = erhe::property::Property_flags::none,

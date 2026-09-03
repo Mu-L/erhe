@@ -18,13 +18,13 @@ namespace {
 class Computed_object : public Test_object
 {
 public:
-    Computed_object() : Test_object{type_d} {}
+    Computed_object() : Test_object{type_d()} {}
     glm::vec3 size{1.0f, 2.0f, 3.0f};
     int       compute_calls{0};
 };
 
 const Property<glm::vec3> computed_extent = Property<glm::vec3>::register_computed(
-    "computed_extent", type_d,
+    "computed_extent", type_d(),
     [](const Dependency_object& o) -> Property_value {
         Computed_object& c = const_cast<Computed_object&>(static_cast<const Computed_object&>(o));
         ++c.compute_calls;
@@ -37,11 +37,11 @@ const Property<glm::vec3> computed_extent = Property<glm::vec3>::register_comput
 );
 
 const Property<int> computed_count = Property<int>::register_computed(
-    "computed_count", type_d,
+    "computed_count", type_d(),
     [](const Dependency_object& o) -> Property_value { return static_cast<int>(static_cast<const Computed_object&>(o).size.x); }
 );
 
-const Property<float> computed_target = Property<float>::register_property("computed_target", type_d);
+const Property<float> computed_target = Property<float>::register_property("computed_target", type_d());
 
 } // anonymous namespace
 

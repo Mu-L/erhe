@@ -10,7 +10,7 @@ using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 using erhe::property::Property_value;
 
-constexpr uint64_t c_owner = erhe::Item_type::material;
+const erhe::property::Owner_type c_owner = Material::property_owner_type();
 
 auto unit_range(const Property_value& v) -> bool
 {

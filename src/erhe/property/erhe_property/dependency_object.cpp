@@ -441,10 +441,9 @@ void Dependency_object::for_each_local_value(const std::function<void(const Depe
     // sorted). A bridged property with an expression entry is emitted once,
     // with the bridge value.
     std::vector<const Dependency_property*> bridged;
-    const uint64_t owner_type = get_property_owner_type();
-    registry.for_each_property_of_type(
+    const Owner_type owner_type = get_property_owner_type();
+    registry.for_each_property_of_object(
         owner_type,
-        get_property_owner_subtype(),
         [&bridged, owner_type](const Dependency_property& property) {
             if (property.get_metadata(owner_type).bridge.is_bound()) {
                 bridged.push_back(&property);
@@ -630,7 +629,7 @@ void Dependency_object::resolve_references(Effective_value_entry& entry, const D
         if (object == nullptr) {
             continue;
         }
-        const Dependency_property* source_property = registry.find_for_type(object->get_property_owner_type(), object->get_property_owner_subtype(), reference.property_name);
+        const Dependency_property* source_property = registry.find_for_object(object->get_property_owner_type(), reference.property_name);
         if (source_property == nullptr) {
             continue;
         }
@@ -983,7 +982,7 @@ auto Dependency_object::set_style(std::shared_ptr<const Property_style> style) -
 void Dependency_object::capture_inheritance_snapshot_recursive(Inheritance_snapshot& snapshot)
 {
     const Property_registry& registry = Property_registry::get();
-    const uint64_t owner_type = get_property_owner_type();
+    const Owner_type owner_type = get_property_owner_type();
     const std::size_t count = registry.get_count();
     for (uint16_t index = 0; index < count; ++index) {
         const Dependency_property& property = registry.get(index);

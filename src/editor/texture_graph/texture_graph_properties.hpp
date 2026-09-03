@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include "erhe_property/owner_type.hpp"
 
 namespace erhe::texgen { class Node_descriptor; }
 
@@ -22,6 +22,8 @@ void register_texture_graph_properties();
 
 // The subtype allocated for the descriptor, 0 when
 // register_texture_graph_properties() has not registered it.
-[[nodiscard]] auto texture_descriptor_owner_subtype(const erhe::texgen::Node_descriptor* descriptor) -> uint32_t;
+// The owner type id of a descriptor's node kind; the Texture_descriptor_node
+// class id for a descriptor without registered properties.
+[[nodiscard]] auto texture_descriptor_owner_type(const erhe::texgen::Node_descriptor* descriptor) -> erhe::property::Owner_type;
 
 } // namespace editor

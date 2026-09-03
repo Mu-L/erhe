@@ -8,9 +8,9 @@ using namespace erhe::property::test;
 
 namespace {
 
-const Property<int>   set_int   = Property<int>::register_property("set_int", type_a);
-const Property<float> set_float = Property<float>::register_property("set_float", type_a, Property_metadata{.default_value = 1.0f});
-const Property<bool>  set_bool  = Property<bool>::register_property("set_bool", type_a);
+const Property<int>   set_int   = Property<int>::register_property("set_int", type_a());
+const Property<float> set_float = Property<float>::register_property("set_float", type_a(), Property_metadata{.default_value = 1.0f});
+const Property<bool>  set_bool  = Property<bool>::register_property("set_bool", type_a());
 
 } // anonymous namespace
 

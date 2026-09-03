@@ -64,7 +64,7 @@ TEST(Node_properties, writes_update_world_transform_and_serial)
 TEST(Node_properties, untyped_access_and_bag)
 {
     auto node = std::make_shared<erhe::scene::Node>("n");
-    const Dependency_property* translation = Property_registry::get().find_for_type(node->get_type(), "translation");
+    const Dependency_property* translation = Property_registry::get().find_for_object(node->get_property_owner_type(), "translation");
     ASSERT_NE(translation, nullptr);
     node->set_value(*translation, parse_value(*translation, "1 2 3").value());
     EXPECT_EQ(to_string(*translation, node->get_value(*translation)), "1 2 3");

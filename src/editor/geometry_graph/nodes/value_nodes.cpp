@@ -10,19 +10,19 @@ using erhe::property::Property;
 using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 
-auto Float_value_node::property_owner_subtype() -> uint32_t
+auto Float_value_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Float_value_node");
+    return s_id;
 }
 
-auto Float_value_node::get_property_owner_subtype() const -> uint32_t
+auto Float_value_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<float> Float_value_node::value_property = Property<float>::register_property(
-    "value", erhe::Item_type::graph_node, Float_value_node::property_owner_subtype(),
+    "value", Float_value_node::property_owner_type(),
     Property_metadata{
         .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
         .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Value"},
@@ -30,19 +30,19 @@ const Property<float> Float_value_node::value_property = Property<float>::regist
     }
 );
 
-auto Integer_value_node::property_owner_subtype() -> uint32_t
+auto Integer_value_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Integer_value_node");
+    return s_id;
 }
 
-auto Integer_value_node::get_property_owner_subtype() const -> uint32_t
+auto Integer_value_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<int> Integer_value_node::value_property = Property<int>::register_property(
-    "value", erhe::Item_type::graph_node, Integer_value_node::property_owner_subtype(),
+    "value", Integer_value_node::property_owner_type(),
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
         .ui     = Property_ui{.group = "Parameters", .label = "Value"},
@@ -50,19 +50,19 @@ const Property<int> Integer_value_node::value_property = Property<int>::register
     }
 );
 
-auto Vector_value_node::property_owner_subtype() -> uint32_t
+auto Vector_value_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Vector_value_node");
+    return s_id;
 }
 
-auto Vector_value_node::get_property_owner_subtype() const -> uint32_t
+auto Vector_value_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<glm::vec3> Vector_value_node::value_property = Property<glm::vec3>::register_property(
-    "value", erhe::Item_type::graph_node, Vector_value_node::property_owner_subtype(),
+    "value", Vector_value_node::property_owner_type(),
     Property_metadata{
         .flags  = erhe::property::Property_flags::none,
         .ui     = Property_ui{.step = 0.01f, .group = "Parameters", .label = "Value"},

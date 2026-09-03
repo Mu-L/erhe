@@ -69,8 +69,8 @@ public:
     // bridge (cage freeze, offset resample); the transform-driver reference
     // and the control point editing stay in
     // unregistered_parameters_imgui().
-    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
-    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    [[nodiscard]] auto get_property_owner_type() const -> erhe::property::Owner_type override;
     [[nodiscard]] auto has_unregistered_parameters() const -> bool override { return true; }
     void unregistered_parameters_imgui(App_context& context) override;
     static const erhe::property::Property<bool>       auto_fit_property;

@@ -4,7 +4,7 @@
 
 #include <fmt/format.h>
 
-#include <atomic>
+#include <algorithm>
 #include <limits>
 
 namespace erhe::property {
@@ -14,7 +14,6 @@ Dependency_property::Dependency_property(const uint16_t index, Registration&& re
     , m_name            {registration.name}
     , m_type            {registration.type}
     , m_owner_type      {registration.owner_type}
-    , m_owner_subtype   {registration.owner_subtype}
     , m_read_only       {registration.read_only}
     , m_attached        {registration.attached}
     , m_enum_info       {registration.enum_info}
@@ -34,23 +33,26 @@ Dependency_property::Dependency_property(const uint16_t index, Registration&& re
     ERHE_VERIFY(validate(m_default_metadata.default_value.value()));
 }
 
-auto Dependency_property::get_metadata(const uint64_t owner_type_bits) const -> const Property_metadata&
+auto Dependency_property::get_metadata(const Owner_type object_type) const -> const Property_metadata&
 {
-    const Property_metadata* any_bit_match = nullptr;
-    for (const Override& entry : m_overrides) {
-        if (entry.owner_type == owner_type_bits) {
-            return entry.metadata;
+    if (m_overrides.empty()) {
+        return m_default_metadata;
+    }
+    for (Owner_type id = object_type; ; id = get_owner_type_parent(id)) {
+        for (const Override& entry : m_overrides) {
+            if (entry.owner_type == id) {
+                return entry.metadata;
+            }
         }
-        if ((entry.owner_type & owner_type_bits) != 0) {
-            any_bit_match = &entry.metadata;
+        if (id == root_owner_type) {
+            return m_default_metadata;
         }
     }
-    return (any_bit_match != nullptr) ? *any_bit_match : m_default_metadata;
 }
 
-auto Dependency_property::get_default_value(const uint64_t owner_type_bits) const -> const Property_value&
+auto Dependency_property::get_default_value(const Owner_type object_type) const -> const Property_value&
 {
-    return get_metadata(owner_type_bits).default_value.value();
+    return get_metadata(object_type).default_value.value();
 }
 
 auto Dependency_property::validate(const Property_value& value) const -> bool
@@ -76,7 +78,7 @@ auto Dependency_property::validate(const Property_value& value) const -> bool
     return true;
 }
 
-void Dependency_property::override_metadata(const uint64_t owner_type, Property_metadata metadata)
+void Dependency_property::override_metadata(const Owner_type owner_type, Property_metadata metadata)
 {
     if (!metadata.default_value.has_value()) {
         metadata.default_value = m_default_metadata.default_value;
@@ -86,7 +88,7 @@ void Dependency_property::override_metadata(const uint64_t owner_type, Property_
     m_overrides.push_back(Override{.owner_type = owner_type, .metadata = std::move(metadata)});
 }
 
-void Dependency_property::add_owner(const uint64_t owner_type, Property_metadata metadata)
+void Dependency_property::add_owner(const Owner_type owner_type, Property_metadata metadata)
 {
     override_metadata(owner_type, std::move(metadata));
     Property_registry::get().add_owner(*this, owner_type);
@@ -160,57 +162,70 @@ auto Property_registry::register_property(Dependency_property::Registration&& re
 {
     const std::lock_guard<std::mutex> lock{m_mutex};
     ERHE_VERIFY(m_properties.size() < std::numeric_limits<uint16_t>::max());
-    const Owner_name_key key{.owner_type = registration.owner_type, .owner_subtype = registration.owner_subtype, .name = std::string{registration.name}};
+    ERHE_VERIFY(registration.owner_type < m_owner_types.size());
+    const Owner_name_key key{.owner_type = registration.owner_type, .name = std::string{registration.name}};
     if (m_by_owner_and_name.contains(key)) {
-        ERHE_FATAL("property '%s' is already registered for owner type 0x%llx subtype %u", key.name.c_str(), static_cast<unsigned long long>(key.owner_type), static_cast<unsigned int>(key.owner_subtype));
+        ERHE_FATAL("property '%s' is already registered for owner type %u (%s)", key.name.c_str(), static_cast<unsigned int>(key.owner_type), m_owner_types[key.owner_type].name.c_str());
     }
     const uint16_t index = static_cast<uint16_t>(m_properties.size());
     m_properties.push_back(std::unique_ptr<Dependency_property>{new Dependency_property{index, std::move(registration)}});
     m_by_owner_and_name.emplace(key, index);
+    if (m_by_owner.size() <= key.owner_type) {
+        m_by_owner.resize(static_cast<std::size_t>(key.owner_type) + 1);
+    }
+    m_by_owner[key.owner_type].push_back(index);
     return *m_properties.back();
 }
 
-void Property_registry::add_owner(const Dependency_property& property, const uint64_t owner_type)
+void Property_registry::add_owner(const Dependency_property& property, const Owner_type owner_type)
 {
     const std::lock_guard<std::mutex> lock{m_mutex};
-    const Owner_name_key key{.owner_type = owner_type, .owner_subtype = property.get_owner_subtype(), .name = std::string{property.get_name()}};
+    ERHE_VERIFY(owner_type < m_owner_types.size());
+    const Owner_name_key key{.owner_type = owner_type, .name = std::string{property.get_name()}};
     if (m_by_owner_and_name.contains(key)) {
-        ERHE_FATAL("property '%s' is already registered for owner type 0x%llx subtype %u", key.name.c_str(), static_cast<unsigned long long>(owner_type), static_cast<unsigned int>(key.owner_subtype));
+        ERHE_FATAL("property '%s' is already registered for owner type %u (%s)", key.name.c_str(), static_cast<unsigned int>(owner_type), m_owner_types[owner_type].name.c_str());
     }
     m_by_owner_and_name.emplace(key, property.get_index());
+    if (m_by_owner.size() <= owner_type) {
+        m_by_owner.resize(static_cast<std::size_t>(owner_type) + 1);
+    }
+    m_by_owner[owner_type].push_back(property.get_index());
 }
 
-auto Property_registry::find(const uint64_t owner_type, const uint32_t owner_subtype, const std::string_view name) const -> const Dependency_property*
+auto Property_registry::find(const Owner_type owner_type, const std::string_view name) const -> const Dependency_property*
 {
     const std::lock_guard<std::mutex> lock{m_mutex};
-    const auto i = m_by_owner_and_name.find(Owner_name_key{.owner_type = owner_type, .owner_subtype = owner_subtype, .name = std::string{name}});
+    const auto i = m_by_owner_and_name.find(Owner_name_key{.owner_type = owner_type, .name = std::string{name}});
     if (i == m_by_owner_and_name.end()) {
         return nullptr;
     }
     return m_properties[i->second].get();
 }
 
-auto Property_registry::find_for_type(const uint64_t type_bits, const uint32_t owner_subtype, const std::string_view name) const -> const Dependency_property*
+auto Property_registry::owner_chain(const Owner_type object_type) const -> std::vector<Owner_type>
 {
-    const Dependency_property* subtype_match = nullptr;
-    const Dependency_property* untyped_match = nullptr;
-    for_each_property_of_type(
-        type_bits,
-        owner_subtype,
-        [&subtype_match, &untyped_match, owner_subtype, name](const Dependency_property& property) {
-            if (property.get_name() != name) {
-                return;
-            }
-            if ((owner_subtype != 0) && (property.get_owner_subtype() == owner_subtype)) {
-                if (subtype_match == nullptr) {
-                    subtype_match = &property;
-                }
-            } else if (untyped_match == nullptr) {
-                untyped_match = &property;
-            }
+    std::vector<Owner_type> chain;
+    const std::lock_guard<std::mutex> lock{m_mutex};
+    ERHE_VERIFY(object_type < m_owner_types.size());
+    for (Owner_type id = object_type; ; id = m_owner_types[id].parent) {
+        chain.push_back(id);
+        if (id == root_owner_type) {
+            return chain;
         }
-    );
-    return (subtype_match != nullptr) ? subtype_match : untyped_match;
+    }
+}
+
+auto Property_registry::find_for_object(const Owner_type object_type, const std::string_view name) const -> const Dependency_property*
+{
+    for (Owner_type id = object_type; ; id = get_owner_type_parent(id)) {
+        const Dependency_property* property = find(id, name);
+        if (property != nullptr) {
+            return property;
+        }
+        if (id == root_owner_type) {
+            return nullptr;
+        }
+    }
 }
 
 auto Property_registry::get(const uint16_t index) const -> const Dependency_property&
@@ -224,39 +239,46 @@ auto Property_registry::get_count() const -> std::size_t
     return m_properties.size();
 }
 
-void Property_registry::for_each_property_of_type(
-    const uint64_t                                             type_bits,
-    const uint32_t                                             owner_subtype,
+void Property_registry::for_each_property_of_object(
+    const Owner_type                                           object_type,
     const std::function<void(const Dependency_property&)>&     callback
 ) const
 {
-    for (const std::unique_ptr<Dependency_property>& property : m_properties) {
-        if (property->is_attached()) {
-            continue;
-        }
-        const uint32_t subtype = property->get_owner_subtype();
-        if ((subtype != 0) && (subtype != owner_subtype)) {
-            continue;
-        }
-        const uint64_t owner = property->get_owner_type();
-        if ((owner == 0) || ((owner & type_bits) != 0)) {
-            callback(*property);
-            continue;
-        }
-        // add_owner() registrations of a base-type property for a derived type
-        for (const Dependency_property::Override& entry : property->m_overrides) {
-            if ((entry.owner_type & type_bits) != 0) {
-                callback(*property);
-                break;
+    const std::vector<Owner_type> chain = owner_chain(object_type);
+    // Nearest level first so a shadowed name and a multiply-owned property
+    // are claimed by the nearest level, then visit root-first.
+    std::vector<const Dependency_property*> visited;
+    std::vector<std::string_view>           names;
+    std::vector<std::size_t>                level_begin;
+    {
+        const std::lock_guard<std::mutex> lock{m_mutex};
+        for (const Owner_type id : chain) {
+            level_begin.push_back(visited.size());
+            if (id >= m_by_owner.size()) {
+                continue;
+            }
+            for (const uint16_t index : m_by_owner[id]) {
+                const Dependency_property* property = m_properties[index].get();
+                if (property->is_attached()) {
+                    continue;
+                }
+                if (std::find(visited.begin(), visited.end(), property) != visited.end()) {
+                    continue;
+                }
+                if (std::find(names.begin(), names.end(), property->get_name()) != names.end()) {
+                    continue;
+                }
+                visited.push_back(property);
+                names.push_back(property->get_name());
             }
         }
     }
-}
-
-auto allocate_property_owner_subtype() -> uint32_t
-{
-    static std::atomic<uint32_t> s_next_owner_subtype{1};
-    return s_next_owner_subtype.fetch_add(1);
+    level_begin.push_back(visited.size());
+    for (std::size_t level = chain.size(); level > 0; --level) {
+        for (std::size_t i = level_begin[level - 1], end = level_begin[level]; i < end; ++i) {
+            callback(*visited[i]);
+        }
+    }
 }
 
 } // namespace erhe::property

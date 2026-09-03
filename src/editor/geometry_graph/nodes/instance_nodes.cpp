@@ -15,20 +15,20 @@ namespace editor {
 
 // Distribute_points_node
 
-auto Distribute_points_node::property_owner_subtype() -> uint32_t
+auto Distribute_points_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Distribute_points_node");
+    return s_id;
 }
 
-auto Distribute_points_node::get_property_owner_subtype() const -> uint32_t
+auto Distribute_points_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const erhe::property::Property<int> Distribute_points_node::count_property =
     erhe::property::Property<int>::register_property(
-        "count", erhe::Item_type::graph_node, Distribute_points_node::property_owner_subtype(),
+        "count", Distribute_points_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = 100,
             .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -39,7 +39,7 @@ const erhe::property::Property<int> Distribute_points_node::count_property =
 
 const erhe::property::Property<int> Distribute_points_node::seed_property =
     erhe::property::Property<int>::register_property(
-        "seed", erhe::Item_type::graph_node, Distribute_points_node::property_owner_subtype(),
+        "seed", Distribute_points_node::property_owner_type(),
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
             .ui     = erhe::property::Property_ui{.group = "Parameters", .label = "Seed"},
@@ -160,20 +160,20 @@ void Distribute_points_node::read_parameters(const nlohmann::json& in)
 
 // Instance_on_points_node
 
-auto Instance_on_points_node::property_owner_subtype() -> uint32_t
+auto Instance_on_points_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Instance_on_points_node");
+    return s_id;
 }
 
-auto Instance_on_points_node::get_property_owner_subtype() const -> uint32_t
+auto Instance_on_points_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const erhe::property::Property<float> Instance_on_points_node::scale_property =
     erhe::property::Property<float>::register_property(
-        "scale", erhe::Item_type::graph_node, Instance_on_points_node::property_owner_subtype(),
+        "scale", Instance_on_points_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = 1.0f,
             .flags         = erhe::property::Property_flags::none,
@@ -184,7 +184,7 @@ const erhe::property::Property<float> Instance_on_points_node::scale_property =
 
 const erhe::property::Property<bool> Instance_on_points_node::align_to_normal_property =
     erhe::property::Property<bool>::register_property(
-        "align", erhe::Item_type::graph_node, Instance_on_points_node::property_owner_subtype(),
+        "align", Instance_on_points_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = true,
             .flags         = erhe::property::Property_flags::none,

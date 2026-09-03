@@ -45,11 +45,11 @@ public:
     [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return c_type_gadget; }
 };
 
-const Property<float> widget_tint  = Property<float>::register_property("tint", c_type_widget, Property_metadata{.default_value = 1.0f, .inherits = true});
-const Property<int>   widget_count = Property<int>::register_property("count", c_type_widget, Property_metadata{.default_value = 2});
+const Property<float> widget_tint  = Property<float>::register_property("tint", Widget::property_owner_type(), Property_metadata{.default_value = 1.0f, .inherits = true});
+const Property<int>   widget_count = Property<int>::register_property("count", Widget::property_owner_type(), Property_metadata{.default_value = 2});
 
 // The same property name registered for another type is a distinct property.
-const Property<float> gadget_tint = Property<float>::register_property("tint", c_type_gadget, Property_metadata{.default_value = 9.0f});
+const Property<float> gadget_tint = Property<float>::register_property("tint", Gadget::property_owner_type(), Property_metadata{.default_value = 9.0f});
 
 } // anonymous namespace
 
@@ -57,20 +57,25 @@ TEST(Item_properties, item_type_drives_metadata_and_lookup)
 {
     auto widget = std::make_shared<Widget>("w");
     auto gadget = std::make_shared<Gadget>("g");
-    EXPECT_EQ(widget->get_property_owner_type(), c_type_widget);
+    EXPECT_EQ(widget->get_property_owner_type(), Widget::property_owner_type());
+    EXPECT_EQ(get_owner_type_parent(Widget::property_owner_type()), erhe::Hierarchy::property_owner_type());
+    EXPECT_EQ(get_owner_type_parent(erhe::Hierarchy::property_owner_type()), erhe::Item_base::property_owner_type());
     EXPECT_EQ(widget->get_value(widget_tint), 1.0f);
     EXPECT_EQ(gadget->get_value(gadget_tint), 9.0f);
-    EXPECT_EQ(Property_registry::get().find(c_type_widget, "tint"), widget_tint.get_ptr());
-    EXPECT_EQ(Property_registry::get().find(c_type_gadget, "tint"), gadget_tint.get_ptr());
+    EXPECT_EQ(Property_registry::get().find(Widget::property_owner_type(), "tint"), widget_tint.get_ptr());
+    EXPECT_EQ(Property_registry::get().find(Gadget::property_owner_type(), "tint"), gadget_tint.get_ptr());
+    // A base item property is found for a derived item through the chain.
+    EXPECT_EQ(Property_registry::get().find_for_object(Widget::property_owner_type(), "visible"), erhe::Item_base::visible_property.get_ptr());
+    EXPECT_EQ(Property_registry::get().find_for_object(Widget::property_owner_type(), "child_count"), erhe::Hierarchy::child_count_property.get_ptr());
 
     std::vector<std::string> names;
-    // Item_base's owner-0 properties (visible, shadow_cast, lightmapped)
-    // are listed for every type; their order relative to this file's
-    // statics is static-initialization order, so filter them out.
-    Property_registry::get().for_each_property_of_type(
-        widget->get_type(),
+    // Item_base's and Hierarchy's properties (visible, shadow_cast,
+    // lightmapped, child_count) are listed before Widget's own; keep only
+    // Widget's.
+    Property_registry::get().for_each_property_of_object(
+        widget->get_property_owner_type(),
         [&](const Dependency_property& p) {
-            if (p.get_owner_type() != 0) {
+            if (p.get_owner_type() == Widget::property_owner_type()) {
                 names.emplace_back(p.get_name());
             }
         }

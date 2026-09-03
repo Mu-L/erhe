@@ -15,9 +15,9 @@ using namespace erhe::property::test;
 
 namespace {
 
-const Property<float> st_a   = Property<float>::register_property("st_a", type_a, Property_metadata{.default_value = 1.0f});
-const Property<float> st_b   = Property<float>::register_property("st_b", type_a, Property_metadata{.default_value = 2.0f});
-const Property<float> st_inh = Property<float>::register_property("st_inh", type_a, Property_metadata{.default_value = 0.0f, .inherits = true});
+const Property<float> st_a   = Property<float>::register_property("st_a", type_a(), Property_metadata{.default_value = 1.0f});
+const Property<float> st_b   = Property<float>::register_property("st_b", type_a(), Property_metadata{.default_value = 2.0f});
+const Property<float> st_inh = Property<float>::register_property("st_inh", type_a(), Property_metadata{.default_value = 0.0f, .inherits = true});
 
 auto make_style(const std::string_view name, const float a, const std::optional<float> b = {}, const std::optional<float> inh = {}) -> std::shared_ptr<const Property_style>
 {

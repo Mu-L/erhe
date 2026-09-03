@@ -30,8 +30,8 @@ public:
     // (Property_ui::visible_when). rotation_degrees is stored in degrees,
     // so it stays a plain vec3 row (angle_degrees presentation would
     // convert from radians).
-    [[nodiscard]] static auto property_owner_subtype() -> uint32_t;
-    [[nodiscard]] auto get_property_owner_subtype() const -> uint32_t override;
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    [[nodiscard]] auto get_property_owner_type() const -> erhe::property::Owner_type override;
     static const erhe::property::Property<glm::vec3>     translation_property;
     static const erhe::property::Property<Rotation_mode> rotation_mode_property;
     static const erhe::property::Property<glm::vec3>     rotation_degrees_property;

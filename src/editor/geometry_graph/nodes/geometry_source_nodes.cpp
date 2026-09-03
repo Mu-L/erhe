@@ -299,20 +299,20 @@ void Scene_mesh_geometry_node::evaluate(Geometry_graph&)
     set_output(0, Geometry_payload{.value = make_output_geometry(source)});
 }
 
-auto Scene_mesh_geometry_node::property_owner_subtype() -> uint32_t
+auto Scene_mesh_geometry_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Scene_mesh_geometry_node");
+    return s_id;
 }
 
-auto Scene_mesh_geometry_node::get_property_owner_subtype() const -> uint32_t
+auto Scene_mesh_geometry_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const erhe::property::Property<int> Scene_mesh_geometry_node::primitive_property =
     erhe::property::Property<int>::register_property(
-        "primitive", erhe::Item_type::graph_node, Scene_mesh_geometry_node::property_owner_subtype(),
+        "primitive", Scene_mesh_geometry_node::property_owner_type(),
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none, // the graph JSON is the serializer
             .ui     = erhe::property::Property_ui{

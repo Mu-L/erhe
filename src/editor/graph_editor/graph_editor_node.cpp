@@ -55,11 +55,11 @@ void Graph_editor_node::unregistered_parameters_imgui(App_context&)
 
 void Graph_editor_node::on_property_changed(const erhe::property::Property_changed_args& args)
 {
-    // Only the node's own parameter properties (subtype-keyed, D27) feed
-    // the JSON parameter dump; a write during a canvas gesture is the
-    // gesture itself and commits through commit_parameter_edit().
-    const uint32_t owner_subtype = args.property.get_owner_subtype();
-    if ((owner_subtype != 0) && (owner_subtype == get_property_owner_subtype()) && !m_parameter_edit_in_progress) {
+    // Only the node's own parameter properties (registered for the node
+    // kind's owner type) feed the JSON parameter dump; a write during a
+    // canvas gesture is the gesture itself and commits through
+    // commit_parameter_edit().
+    if ((args.property.get_owner_type() == get_property_owner_type()) && !m_parameter_edit_in_progress) {
         m_committed_parameters = dump_parameters();
     }
 }

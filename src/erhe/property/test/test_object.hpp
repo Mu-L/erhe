@@ -9,11 +9,14 @@
 
 namespace erhe::property::test {
 
-// Owner type bits for test registrations; far from any Item_type bit.
-constexpr uint64_t type_a = uint64_t{1} << 50;
-constexpr uint64_t type_b = uint64_t{1} << 51;
-constexpr uint64_t type_c = uint64_t{1} << 52;
-constexpr uint64_t type_d = uint64_t{1} << 53; // bridged-property tests only
+// Owner type ids for test registrations. Functions (not variables) so a
+// registration in another translation unit's static initialization finds
+// the id allocated. type_a_child is a child of type_a(); the rest are roots.
+inline auto type_a() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_a"); return id; }
+inline auto type_b() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_b"); return id; }
+inline auto type_c() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_c"); return id; }
+inline auto type_d() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_d"); return id; } // bridged-property tests only
+inline auto type_a_child() -> Owner_type { static const Owner_type id = allocate_owner_type(type_a(), "type_a_child"); return id; }
 
 struct Recorded_change
 {
@@ -29,7 +32,7 @@ struct Recorded_change
 class Test_object : public Dependency_object
 {
 public:
-    explicit Test_object(const uint64_t type = type_a) : m_type{type} {}
+    explicit Test_object(const Owner_type type = type_a()) : m_type{type} {}
     Test_object(const Test_object&) = default;
     Test_object& operator=(const Test_object&) = default;
     ~Test_object() noexcept override
@@ -42,9 +45,7 @@ public:
         }
     }
 
-    auto get_property_owner_type() const -> uint64_t override                  { return m_type; }
-    auto get_property_owner_subtype() const -> uint32_t override                { return m_owner_subtype; }
-    void set_property_owner_subtype(const uint32_t owner_subtype)               { m_owner_subtype = owner_subtype; }
+    auto get_property_owner_type() const -> Owner_type override                { return m_type; }
     auto get_inheritance_parent () const -> const Dependency_object* override  { return m_parent; }
     void for_each_inheritance_child(const std::function<void(Dependency_object&)>& callback) override
     {
@@ -89,8 +90,7 @@ protected:
     }
 
 private:
-    uint64_t                  m_type;
-    uint32_t                  m_owner_subtype{0};
+    Owner_type                m_type;
     Test_object*              m_parent{nullptr};
     std::vector<Test_object*> m_children;
 };

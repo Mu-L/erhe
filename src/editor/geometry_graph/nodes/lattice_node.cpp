@@ -247,15 +247,15 @@ void Lattice_node::evaluate(Geometry_graph&)
     set_output(0, Geometry_payload{.value = destination});
 }
 
-auto Lattice_node::property_owner_subtype() -> uint32_t
+auto Lattice_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Lattice_node");
+    return s_id;
 }
 
-auto Lattice_node::get_property_owner_subtype() const -> uint32_t
+auto Lattice_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 namespace {
@@ -268,7 +268,7 @@ const erhe::property::Enum_info c_lattice_interpolation_enum_info{"Lattice_inter
 
 const erhe::property::Property<bool> Lattice_node::auto_fit_property =
     erhe::property::Property<bool>::register_property(
-        "auto_fit", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        "auto_fit", Lattice_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = true,
             .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -300,7 +300,7 @@ const erhe::property::Property<bool> Lattice_node::auto_fit_property =
 
 const erhe::property::Property<glm::vec3> Lattice_node::cage_min_property =
     erhe::property::Property<glm::vec3>::register_property(
-        "cage_min", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        "cage_min", Lattice_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = glm::vec3{-1.0f, -1.0f, -1.0f},
             .flags         = erhe::property::Property_flags::none,
@@ -318,7 +318,7 @@ const erhe::property::Property<glm::vec3> Lattice_node::cage_min_property =
 
 const erhe::property::Property<glm::vec3> Lattice_node::cage_max_property =
     erhe::property::Property<glm::vec3>::register_property(
-        "cage_max", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        "cage_max", Lattice_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
             .flags         = erhe::property::Property_flags::none,
@@ -336,7 +336,7 @@ const erhe::property::Property<glm::vec3> Lattice_node::cage_max_property =
 
 const erhe::property::Property<glm::ivec3> Lattice_node::divisions_property =
     erhe::property::Property<glm::ivec3>::register_property(
-        "divisions", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        "divisions", Lattice_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = glm::ivec3{2, 2, 2},
             .flags         = erhe::property::Property_flags::none,
@@ -365,7 +365,7 @@ const erhe::property::Property<glm::ivec3> Lattice_node::divisions_property =
 
 const erhe::property::Property<erhe::geometry::operation::Lattice_interpolation> Lattice_node::interpolation_property =
     erhe::property::Property<erhe::geometry::operation::Lattice_interpolation>::register_property(
-        "interpolation", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        "interpolation", Lattice_node::property_owner_type(),
         c_lattice_interpolation_enum_info,
         erhe::property::Property_metadata{
             .flags  = erhe::property::Property_flags::none,
@@ -387,7 +387,7 @@ const erhe::property::Property<erhe::geometry::operation::Lattice_interpolation>
 
 const erhe::property::Property<bool> Lattice_node::regenerate_attributes_property =
     erhe::property::Property<bool>::register_property(
-        "regenerate_attributes", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        "regenerate_attributes", Lattice_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = true,
             .flags         = erhe::property::Property_flags::none,
@@ -398,7 +398,7 @@ const erhe::property::Property<bool> Lattice_node::regenerate_attributes_propert
 
 const erhe::property::Property<bool> Lattice_node::show_cage_property =
     erhe::property::Property<bool>::register_property(
-        "show_cage", erhe::Item_type::graph_node, Lattice_node::property_owner_subtype(),
+        "show_cage", Lattice_node::property_owner_type(),
         erhe::property::Property_metadata{
             .default_value = true,
             .flags         = erhe::property::Property_flags::none,

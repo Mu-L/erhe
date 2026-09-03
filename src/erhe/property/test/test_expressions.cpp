@@ -15,15 +15,15 @@ using namespace erhe::property::test;
 
 namespace {
 
-constexpr uint64_t type_e = uint64_t{1} << 54; // expression tests
-constexpr uint64_t type_f = uint64_t{1} << 55; // expression tests, bridged target
+auto type_e() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_e"); return id; } // expression tests
+auto type_f() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_f"); return id; } // expression tests, bridged target
 
 // Test_object that resolves reference paths the way Item_base does: "" is
 // the object, ".." its parent, anything else a name among the live objects.
 class Named_object : public Test_object
 {
 public:
-    explicit Named_object(std::string name, const uint64_t type = type_e)
+    explicit Named_object(std::string name, const Owner_type type = type_e())
         : Test_object{type}
         , m_name     {std::move(name)}
     {
@@ -76,19 +76,19 @@ constexpr Enum_entry c_mode_entries[] = {
 };
 const Enum_info c_mode_info{"Mode", c_mode_entries};
 
-const Property<float>       ex_float  = Property<float>::register_property("ex_float", type_e);
-const Property<float>       ex_source = Property<float>::register_property("ex_source", type_e, Property_metadata{.default_value = 2.0f});
-const Property<int>         ex_int    = Property<int>::register_property("ex_int", type_e);
-const Property<bool>        ex_bool   = Property<bool>::register_property("ex_bool", type_e);
-const Property<glm::vec2>   ex_vec2   = Property<glm::vec2>::register_property("ex_vec2", type_e);
-const Property<glm::vec3>   ex_vec3   = Property<glm::vec3>::register_property("ex_vec3", type_e, Property_metadata{.default_value = glm::vec3{1.0f, 2.0f, 3.0f}});
-const Property<glm::vec3>   ex_other  = Property<glm::vec3>::register_property("ex_other", type_e);
-const Property<glm::quat>   ex_quat   = Property<glm::quat>::register_property("ex_quat", type_e);
-const Property<std::string> ex_string = Property<std::string>::register_property("ex_string", type_e);
-const Property<glm::ivec3>  ex_ivec3  = Property<glm::ivec3>::register_property("ex_ivec3", type_e);
-const Property<Mode>        ex_mode   = Property<Mode>::register_property("ex_mode", type_e, c_mode_info);
+const Property<float>       ex_float  = Property<float>::register_property("ex_float", type_e());
+const Property<float>       ex_source = Property<float>::register_property("ex_source", type_e(), Property_metadata{.default_value = 2.0f});
+const Property<int>         ex_int    = Property<int>::register_property("ex_int", type_e());
+const Property<bool>        ex_bool   = Property<bool>::register_property("ex_bool", type_e());
+const Property<glm::vec2>   ex_vec2   = Property<glm::vec2>::register_property("ex_vec2", type_e());
+const Property<glm::vec3>   ex_vec3   = Property<glm::vec3>::register_property("ex_vec3", type_e(), Property_metadata{.default_value = glm::vec3{1.0f, 2.0f, 3.0f}});
+const Property<glm::vec3>   ex_other  = Property<glm::vec3>::register_property("ex_other", type_e());
+const Property<glm::quat>   ex_quat   = Property<glm::quat>::register_property("ex_quat", type_e());
+const Property<std::string> ex_string = Property<std::string>::register_property("ex_string", type_e());
+const Property<glm::ivec3>  ex_ivec3  = Property<glm::ivec3>::register_property("ex_ivec3", type_e());
+const Property<Mode>        ex_mode   = Property<Mode>::register_property("ex_mode", type_e(), c_mode_info);
 const Property<float>       ex_clamped = Property<float>::register_property(
-    "ex_clamped", type_e,
+    "ex_clamped", type_e(),
     Property_metadata{
         .coerce = [](const Dependency_object&, const Property_value& v) -> Property_value {
             return std::clamp(std::get<float>(v), 0.0f, 1.0f);
@@ -96,21 +96,21 @@ const Property<float>       ex_clamped = Property<float>::register_property(
     }
 );
 const Property<float>       ex_positive = Property<float>::register_property(
-    "ex_positive", type_e, Property_metadata{},
+    "ex_positive", type_e(), Property_metadata{},
     [](const Property_value& v) { return std::get<float>(v) >= 0.0f; }
 );
-const Property<float>       ex_inherited = Property<float>::register_property("ex_inherited", type_e, Property_metadata{.default_value = 7.0f, .inherits = true});
+const Property<float>       ex_inherited = Property<float>::register_property("ex_inherited", type_e(), Property_metadata{.default_value = 7.0f, .inherits = true});
 
 class Bridged_target : public Named_object
 {
 public:
-    explicit Bridged_target(std::string name) : Named_object{std::move(name), type_f} {}
+    explicit Bridged_target(std::string name) : Named_object{std::move(name), type_f()} {}
     glm::vec3 position{0.0f};
     int       set_calls{0};
 };
 
 const Property<glm::vec3> bridged_target_position = Property<glm::vec3>::register_property(
-    "bridged_target_position", type_f,
+    "bridged_target_position", type_f(),
     Property_metadata{
         .bridge = Property_bridge{
             .get = [](const Dependency_object& o) -> Property_value { return static_cast<const Bridged_target&>(o).position; },
@@ -122,7 +122,7 @@ const Property<glm::vec3> bridged_target_position = Property<glm::vec3>::registe
         }
     }
 );
-const Property<float> bridged_target_scalar = Property<float>::register_property("bridged_target_scalar", type_f);
+const Property<float> bridged_target_scalar = Property<float>::register_property("bridged_target_scalar", type_f());
 
 } // anonymous namespace
 

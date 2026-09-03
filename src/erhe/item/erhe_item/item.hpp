@@ -392,7 +392,7 @@ public:
         );
         return s_id;
     }
-    auto get_property_owner_id() const -> erhe::property::Owner_type override { return Self::property_owner_type(); }
+    auto get_property_owner_type() const -> erhe::property::Owner_type override { return Self::property_owner_type(); }
 };
 
 class Item_base
@@ -412,13 +412,13 @@ public:
     [[nodiscard]] virtual auto get_type_name() const -> std::string_view { return "Item_base"; };
     [[nodiscard]] virtual auto get_item_host() const -> Item_host*       { return m_item_host; }
 
-    // Implements erhe::property::Dependency_object: property metadata is
-    // resolved by the item's type bits, and an expression reference path
-    // (D22) is this item (""), its inheritance parent ("..") or an item of
-    // the same host by name (Item_host::find_hosted_item).
-    [[nodiscard]] auto get_property_owner_type () const -> uint64_t override { return get_type(); }
+    // Implements erhe::property::Dependency_object: the owner type id is
+    // the item's class (Item<> overrides it per class; this is the id every
+    // item class descends from), and an expression reference path (D22) is
+    // this item (""), its inheritance parent ("..") or an item of the same
+    // host by name (Item_host::find_hosted_item).
     [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
-    [[nodiscard]] auto get_property_owner_id   () const -> erhe::property::Owner_type override { return property_owner_type(); }
+    [[nodiscard]] auto get_property_owner_type () const -> erhe::property::Owner_type override { return property_owner_type(); }
     [[nodiscard]] auto resolve_expression_object(std::string_view path) const -> erhe::property::Dependency_object* override;
 
     // For items whose host is tracked by an owning container (e.g. the

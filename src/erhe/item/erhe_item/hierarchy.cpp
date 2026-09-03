@@ -11,7 +11,7 @@ namespace erhe {
 using namespace erhe::item;
 
 const erhe::property::Property<int> Hierarchy::child_count_property = erhe::property::Property<int>::register_computed(
-    "child_count", Item_type::node | Item_type::content_library_node,
+    "child_count", Hierarchy::property_owner_type(),
     [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
         return static_cast<int>(static_cast<const Hierarchy&>(object).get_child_count());
     },

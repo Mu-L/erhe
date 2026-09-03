@@ -13,19 +13,19 @@ using erhe::property::Property;
 using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 
-auto Mesh_box_node::property_owner_subtype() -> uint32_t
+auto Mesh_box_node::property_owner_type() -> erhe::property::Owner_type
 {
-    static const uint32_t s_subtype = erhe::property::allocate_property_owner_subtype();
-    return s_subtype;
+    static const erhe::property::Owner_type s_id = erhe::property::allocate_owner_type(Graph_editor_node::property_owner_type(), "Mesh_box_node");
+    return s_id;
 }
 
-auto Mesh_box_node::get_property_owner_subtype() const -> uint32_t
+auto Mesh_box_node::get_property_owner_type() const -> erhe::property::Owner_type
 {
-    return property_owner_subtype();
+    return property_owner_type();
 }
 
 const Property<glm::vec3> Mesh_box_node::size_property = Property<glm::vec3>::register_property(
-    "size", erhe::Item_type::graph_node, Mesh_box_node::property_owner_subtype(),
+    "size", Mesh_box_node::property_owner_type(),
     Property_metadata{
         .default_value = glm::vec3{1.0f, 1.0f, 1.0f},
         .flags         = erhe::property::Property_flags::none, // the graph JSON is the serializer
@@ -35,7 +35,7 @@ const Property<glm::vec3> Mesh_box_node::size_property = Property<glm::vec3>::re
 );
 
 const Property<glm::ivec3> Mesh_box_node::subdivisions_property = Property<glm::ivec3>::register_property(
-    "subdivisions", erhe::Item_type::graph_node, Mesh_box_node::property_owner_subtype(),
+    "subdivisions", Mesh_box_node::property_owner_type(),
     Property_metadata{
         .default_value = glm::ivec3{1, 1, 1},
         .flags         = erhe::property::Property_flags::none,
@@ -51,7 +51,7 @@ const Property<glm::ivec3> Mesh_box_node::subdivisions_property = Property<glm::
 );
 
 const Property<float> Mesh_box_node::power_property = Property<float>::register_property(
-    "power", erhe::Item_type::graph_node, Mesh_box_node::property_owner_subtype(),
+    "power", Mesh_box_node::property_owner_type(),
     Property_metadata{
         .default_value = 1.0f,
         .flags         = erhe::property::Property_flags::none,

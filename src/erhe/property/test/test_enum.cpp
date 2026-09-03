@@ -22,9 +22,9 @@ constexpr Enum_entry c_color_mode_entries[] = {
 };
 const Enum_info c_color_mode_info{"Color_mode", c_color_mode_entries};
 
-const Property<Color_mode> enum_mode = Property<Color_mode>::register_property("enum_mode", type_a, c_color_mode_info);
+const Property<Color_mode> enum_mode = Property<Color_mode>::register_property("enum_mode", type_a(), c_color_mode_info);
 const Property<Color_mode> enum_mode_default = Property<Color_mode>::register_property(
-    "enum_mode_default", type_a, c_color_mode_info, Property_metadata{.default_value = make_value(Color_mode::gray)}
+    "enum_mode_default", type_a(), c_color_mode_info, Property_metadata{.default_value = make_value(Color_mode::gray)}
 );
 
 } // anonymous namespace
