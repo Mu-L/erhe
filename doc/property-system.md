@@ -1294,9 +1294,31 @@ style layer is D25.
   the generic rows (D12) and MCP `get_item_properties` would not show the
   hint on the child without a way to list the attached properties set on
   an object (`for_each_local_value` reaches them once set).
-- Further item migrations, in priority order and each reusing the Material
-  recipe (section 4.1): `Layout` (type, axis, volume), `Grid`, physics
-  settings (mass, friction, restitution), `Brush_placement`.
+- Further item migrations, each reusing the Material recipe (section 4.1).
+  The Properties window rows still hand-written (untinted, D12) are the
+  inventory; in priority order:
+  - `Node_physics`: mass, friction, restitution, angular and linear
+    damping, motion mode, is-trigger, gravity factor, wind receptivity,
+    initial linear and angular velocity, center of mass, and the physics
+    material and collision filter as object references (D28).
+  - `Physics_material` (static and dynamic friction, restitution, the two
+    combine modes) and `Physics_joint_settings` (limits and drives are
+    lists, which have no `Property_value` form and stay hand-written).
+  - `Layout` (type, volume min and max, primary / secondary / tertiary
+    axes, gap, grid tracks) and `Layout_item` (align x / y / z, margins,
+    auto cell, grid cell, grid span) - the latter is the attached-property
+    candidate above, and both wait on it.
+  - `Light`: flux and blackbody temperature.
+  - `Scene`: ambient light; the per-scene overrides stay a settings block.
+  - `Rendertarget_mesh`: width, height, pixels per meter.
+  - `Animation`: start and end time.
+  - `Node_joint`: enable collision, and the connected node as a node-typed
+    object reference (D28).
+  - `Brush_placement`, and `Grid`.
+  The remaining rows are read-only diagnostics (geometry and buffer mesh
+  counts, texture dimensions, raytrace state, skin joints), name and id
+  rows, and list editors (attachments, samplers, channels), which are not
+  properties.
 - Shader graph (`src/editor/graph/`) node parameters as properties. The
   oldest graph editor has no parameter serialization and no undo
   operations at all; migrating it starts with adopting the
