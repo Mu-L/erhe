@@ -67,10 +67,11 @@ public:
 }
 
 // The material state whose storage is this struct: the texture slots. A
-// slot's texture_reference is also a registered property of the Material
-// (member-backed, doc/property-system.md D28), so write it through
-// Material::set_*_texture / set_data on a live material; the sampler and
-// the transform fields are edited here directly.
+// slot's texture_reference and its texgen_mode, rotation, offset and scale
+// are also registered properties of the Material (member-backed,
+// doc/property-system.md D18 / D28), so write them through the Material
+// properties or set_data on a live material; the sampler is edited here
+// directly.
 class Material_data
 {
 public:
@@ -169,6 +170,28 @@ public:
     static const erhe::property::Property<erhe::property::Object_reference> normal_texture_property;
     static const erhe::property::Property<erhe::property::Object_reference> occlusion_texture_property;
     static const erhe::property::Property<erhe::property::Object_reference> emissive_texture_property;
+    // The slot transforms (member-backed over the same slots): the texgen
+    // source and the UV rotation, offset and scale the shader applies.
+    static const erhe::property::Property<Texgen_mode> base_color_texture_texgen_mode_property;
+    static const erhe::property::Property<float>       base_color_texture_uv_rotation_property;
+    static const erhe::property::Property<glm::vec2>   base_color_texture_uv_offset_property;
+    static const erhe::property::Property<glm::vec2>   base_color_texture_uv_scale_property;
+    static const erhe::property::Property<Texgen_mode> metallic_roughness_texture_texgen_mode_property;
+    static const erhe::property::Property<float>       metallic_roughness_texture_uv_rotation_property;
+    static const erhe::property::Property<glm::vec2>   metallic_roughness_texture_uv_offset_property;
+    static const erhe::property::Property<glm::vec2>   metallic_roughness_texture_uv_scale_property;
+    static const erhe::property::Property<Texgen_mode> normal_texture_texgen_mode_property;
+    static const erhe::property::Property<float>       normal_texture_uv_rotation_property;
+    static const erhe::property::Property<glm::vec2>   normal_texture_uv_offset_property;
+    static const erhe::property::Property<glm::vec2>   normal_texture_uv_scale_property;
+    static const erhe::property::Property<Texgen_mode> occlusion_texture_texgen_mode_property;
+    static const erhe::property::Property<float>       occlusion_texture_uv_rotation_property;
+    static const erhe::property::Property<glm::vec2>   occlusion_texture_uv_offset_property;
+    static const erhe::property::Property<glm::vec2>   occlusion_texture_uv_scale_property;
+    static const erhe::property::Property<Texgen_mode> emissive_texture_texgen_mode_property;
+    static const erhe::property::Property<float>       emissive_texture_uv_rotation_property;
+    static const erhe::property::Property<glm::vec2>   emissive_texture_uv_offset_property;
+    static const erhe::property::Property<glm::vec2>   emissive_texture_uv_scale_property;
 
     [[nodiscard]] auto get_base_color                        () const -> glm::vec3              { return get_value(base_color_property); }
     [[nodiscard]] auto get_opacity                           () const -> float                  { return get_value(opacity_property); }
@@ -218,9 +241,9 @@ public:
     void set_occlusion_texture                 (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
     void set_emissive_texture                  (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
 
-    // Whole Material_data in: the texture references go through their
-    // properties (one change batch), the sampler and transform fields are
-    // assigned. The way undo applies a Material_data snapshot.
+    // Whole Material_data in: the texture references and the slot
+    // transforms go through their properties (one change batch), the
+    // samplers are assigned. The way undo applies a Material_data snapshot.
     void set_data(const Material_data& new_data);
     // The texture of one of this material's own slots (data.texture_samplers.*),
     // for a caller holding the slot by pointer; a slot of another material

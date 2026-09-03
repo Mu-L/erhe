@@ -950,20 +950,30 @@ selects the texture-using variant and a normal texture's two-component
 flag rides the texture. Member-backed because the per-frame readers
 (`Material_buffer::gather_texture`, `Shader_key::derive`) read the member
 with no variant access, the `Material_create_info` designated initializers
-at every construction site keep working, and the slot's sampler and
-transform fields stay in `Material_data` with `Material_change_operation`.
+at every construction site keep working, and the slot's sampler stays in
+`Material_data` with `Material_change_operation`. The slot transforms are
+member-backed the same way, over the same slot: `<slot>_texture_texgen_mode`
+(`Texgen_mode`, flagged `affects_shader_variant` because `Shader_key`
+selects the texgen variant from it), `<slot>_texture_uv_rotation`
+(`angle_degrees`), `<slot>_texture_uv_offset` and `<slot>_texture_uv_scale`
+(vec2), each in the `<Slot> Texture` UI group and `visible_when` the slot
+is bound (the PBR slots also lit); the per-frame readers
+(`Material_buffer`, `Shader_key`) and the glTF import and export read the
+members.
 The `Member_value_traits` cast to `erhe::graphics::Texture_reference` needs
 the complete class, so `erhe::primitive` links `erhe::graphics` privately.
 Writers of a live material use `set_base_color_texture()` and the other
-setters, `set_slot_texture(slot, texture)` for a slot held by pointer, or
-`set_data(Material_data)` (what `Material_change_operation` applies: the
-textures through the properties in one change batch, the rest assigned);
+setters, `set_slot_texture(slot, texture)` for a slot held by pointer,
+`set_value` on a slot transform property, or `set_data(Material_data)`
+(what `Material_change_operation` applies: the textures and slot
+transforms through the properties in one change batch, the samplers
+assigned);
 construction-time fills (`Material_create_info.data`, the glTF importer's
 `bind_material_textures`) stay member writes under the D18 caveat. The
-Properties window draws the slot textures as generic rows and, under a
-`<slot> Texture` group, the bound slot's transform and sampler rows; its
-material inspect snapshot ignores the texture references so a texture
-edit records one operation.
+Properties window draws the slot textures and transforms as generic rows
+and, under a `<Slot> Sampler` group, the bound slot's sampler rows; its
+material inspect snapshot ignores the property-backed slot fields so a
+texture or transform edit records one operation.
 
 ### 4.2 Node
 
@@ -1282,9 +1292,7 @@ style layer is D25.
   an object (`for_each_local_value` reaches them once set).
 - Further item migrations, in priority order and each reusing the Material
   recipe (section 4.1): `Layout` (type, axis, volume), `Grid`, physics
-  settings (mass, friction, restitution), `Brush_placement`; the texture
-  slot's `texgen_mode`, `rotation`, `offset` and `scale` as ordinary
-  properties (the sampler is not an item and stays in `Material_data`).
+  settings (mass, friction, restitution), `Brush_placement`.
 - Object reference candidates beyond the content library: a node-typed
   reference (a `Lattice_node` driver) would list scene nodes, which
   `collect_reference_candidates` does not walk yet.

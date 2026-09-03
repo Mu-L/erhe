@@ -82,12 +82,12 @@ TEST(Material_textures, set_data_writes_slots_through_the_properties)
     material->set_data(after);
     EXPECT_EQ(material->get_occlusion_texture().get(), static_cast<erhe::graphics::Texture_reference*>(texture.get()));
     EXPECT_EQ(material->data.texture_samplers.occlusion.scale, (glm::vec2{2.0f, 2.0f}));
-    EXPECT_EQ(notifications, 1);
+    EXPECT_EQ(notifications, 2); // the texture and the UV scale, both properties; the other slot fields are unchanged
     EXPECT_TRUE(material->data == after);
 
     material->set_data(Material_data{});
     EXPECT_FALSE(material->get_occlusion_texture());
-    EXPECT_EQ(notifications, 2);
+    EXPECT_EQ(notifications, 4);
 }
 
 TEST(Material_textures, equality_and_property_set_see_the_slot)

@@ -1592,17 +1592,24 @@ void Properties::dependency_properties(const std::shared_ptr<erhe::Item_base>& i
 
 namespace {
 
-// The slot textures are registered properties with their own undo
-// (Property_set_operation, doc/property-system.md D28), so the material
-// inspect snapshot covers only the sampler and transform fields: `base`
-// with the texture references of `textures`.
-auto with_textures_of(erhe::primitive::Material_data base, const erhe::primitive::Material_data& textures) -> erhe::primitive::Material_data
+// The slot textures and slot transforms are registered properties with
+// their own undo (Property_set_operation, doc/property-system.md D18 /
+// D28), so the material inspect snapshot covers only the samplers: `base`
+// with the property-backed slot fields of `properties`.
+auto with_property_fields_of(erhe::primitive::Material_data base, const erhe::primitive::Material_data& properties) -> erhe::primitive::Material_data
 {
-    base.texture_samplers.base_color.texture_reference         = textures.texture_samplers.base_color.texture_reference;
-    base.texture_samplers.metallic_roughness.texture_reference = textures.texture_samplers.metallic_roughness.texture_reference;
-    base.texture_samplers.normal.texture_reference             = textures.texture_samplers.normal.texture_reference;
-    base.texture_samplers.occlusion.texture_reference          = textures.texture_samplers.occlusion.texture_reference;
-    base.texture_samplers.emissive.texture_reference           = textures.texture_samplers.emissive.texture_reference;
+    const auto copy_slot = [](erhe::primitive::Material_texture_sampler& to, const erhe::primitive::Material_texture_sampler& from) {
+        to.texture_reference = from.texture_reference;
+        to.texgen_mode       = from.texgen_mode;
+        to.rotation          = from.rotation;
+        to.offset            = from.offset;
+        to.scale             = from.scale;
+    };
+    copy_slot(base.texture_samplers.base_color,         properties.texture_samplers.base_color);
+    copy_slot(base.texture_samplers.metallic_roughness, properties.texture_samplers.metallic_roughness);
+    copy_slot(base.texture_samplers.normal,             properties.texture_samplers.normal);
+    copy_slot(base.texture_samplers.occlusion,          properties.texture_samplers.occlusion);
+    copy_slot(base.texture_samplers.emissive,           properties.texture_samplers.emissive);
     return base;
 }
 
@@ -1614,7 +1621,7 @@ void Properties::end_material_inspect()
         m_material_state = Editor_state::clean;
         return;
     }
-    const erhe::primitive::Material_data before = with_textures_of(m_inspected_material_initial_state, m_inspected_material->data);
+    const erhe::primitive::Material_data before = with_property_fields_of(m_inspected_material_initial_state, m_inspected_material->data);
     if (m_inspected_material->data != before) {
         log_operations->info("end_material_inspect - material changed");
         m_context.operation_stack->queue(
@@ -1702,25 +1709,13 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
     if (scene_root != nullptr) {
         const std::shared_ptr<Content_library>& content_library = scene_root->get_content_library();
         if (content_library) {
-            // A slot's texture is a generic row (the Textures group above,
-            // doc/property-system.md D28). The transform and sampler rows of
-            // a bound slot follow here - the shader applies them regardless
+            // A slot's texture and its transform are generic rows (the
+            // Textures group and the per-slot groups above,
+            // doc/property-system.md D18 / D28). The sampler rows of a
+            // bound slot follow here - the shader applies them regardless
             // of which source provided the texture.
             auto add_texture_slot_entries = [this](const std::string& label, erhe::primitive::Material_texture_sampler* sampler) {
                 if (sampler->texture_reference) {
-                    push_group(label + " Texture", ImGuiTreeNodeFlags_None, m_indent);
-                    push_group("Transform", ImGuiTreeNodeFlags_None, m_indent);
-                    add_entry("Texgen",   [sampler]() {
-                        int current = static_cast<int>(sampler->texgen_mode);
-                        if (ImGui::Combo("##", &current, erhe::primitive::c_texgen_mode_names, IM_ARRAYSIZE(erhe::primitive::c_texgen_mode_names))) {
-                            sampler->texgen_mode = static_cast<erhe::primitive::Texgen_mode>(current);
-                        }
-                    });
-                    add_entry("Offset",   [sampler](){ ImGui::SliderFloat2("##", &sampler->offset.x, -10.0f, 10.0f); });
-                    add_entry("Scale",    [sampler](){ ImGui::SliderFloat2("##", &sampler->scale.x,  -10.0f, 10.0f); });
-                    add_entry("Rotation", [sampler](){ ImGui::SliderFloat ("##", &sampler->rotation, -10.0f, 10.0f); });
-                    pop_group();
-
                     // Sampler state rows. Every edit REPLACES the slot's
                     // sampler with a freshly created one (never mutates in
                     // place), so the material inspect snapshot sees the
@@ -1734,7 +1729,7 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                     const auto replace_sampler = [this](erhe::primitive::Material_texture_sampler* slot, const erhe::graphics::Sampler_create_info& create_info) {
                         slot->sampler = std::make_shared<erhe::graphics::Sampler>(*m_context.graphics_device, create_info);
                     };
-                    push_group("Sampler", ImGuiTreeNodeFlags_None, m_indent);
+                    push_group(label + " Sampler", ImGuiTreeNodeFlags_None, m_indent);
                     static const char* const c_wrap_names[]   = {"Repeat", "Clamp to Edge", "Mirrored Repeat"};
                     static const char* const c_filter_names[] = {"Nearest", "Linear"};
                     static const char* const c_mipmap_names[] = {"Not Mipmapped", "Nearest", "Linear"};
@@ -1787,7 +1782,6 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                             replace_sampler(sampler, create_info);
                         }
                     });
-                    pop_group();
                     pop_group();
                 }
             };
