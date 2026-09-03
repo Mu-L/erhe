@@ -172,22 +172,39 @@ void collect_reference_candidates(
     if (scene_root == nullptr) {
         return;
     }
-    const std::shared_ptr<Content_library>& library = scene_root->get_content_library();
-    if (!library || !library->root) {
-        return;
-    }
     const bool developer_mode = context.developer_mode;
-    library->root->for_each_const<Content_library_node>(
-        [&out, item_types, developer_mode](const Content_library_node& node) -> bool {
-            const std::shared_ptr<erhe::Item_base>& item = node.item;
-            if (!item || ((item->get_type() & item_types) == 0)) {
-                return true; // continue
+    const auto consider = [&out, item_types, developer_mode](const std::shared_ptr<erhe::Item_base>& item) {
+        if (!item || ((item->get_type() & item_types) == 0)) {
+            return;
+        }
+        const bool shown =
+            item->is_shown_in_ui() ||
+            (developer_mode && ((item->get_flag_bits() & erhe::Item_flags::show_in_developer_ui) != 0));
+        if (shown) {
+            out.push_back(item);
+        }
+    };
+
+    const std::shared_ptr<Content_library>& library = scene_root->get_content_library();
+    if (library && library->root) {
+        library->root->for_each_const<Content_library_node>(
+            [&consider](const Content_library_node& node) -> bool {
+                consider(node.item);
+                return true;
             }
-            const bool shown =
-                item->is_shown_in_ui() ||
-                (developer_mode && ((item->get_flag_bits() & erhe::Item_flags::show_in_developer_ui) != 0));
-            if (shown) {
-                out.push_back(item);
+        );
+    }
+
+    // Scene nodes and their attachments, for a node-typed (or mesh-, camera-,
+    // light-typed) reference. The root node is not in the transform-update
+    // buckets for_each_node visits, so it is considered on its own.
+    const erhe::scene::Scene& scene = scene_root->get_scene();
+    consider(scene.get_root_node());
+    scene.for_each_node(
+        [&consider](const std::shared_ptr<erhe::scene::Node>& node) {
+            consider(node);
+            for (const std::shared_ptr<erhe::scene::Node_attachment>& attachment : node->get_attachments()) {
+                consider(attachment);
             }
             return true;
         }

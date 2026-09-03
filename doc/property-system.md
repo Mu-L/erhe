@@ -883,9 +883,10 @@ table, see D2a), and references to other objects (D28).
     `collect_item_references`.
   - Rows (D12). The row is `item_reference_imgui`: a drop target
     filtered by `reference_item_types`, a drag source, a picker over the
-    target scene's content library items of that mask
+    target scene's items of that mask - the content library items, and
+    the scene's nodes and node attachments for a node-typed reference
     (`collect_reference_candidates`, a caller-owned scratch cleared after
-    the draw), and a clear button when `show_clear_button` holds; it
+    the draw) - and a clear button when `show_clear_button` holds; it
     commits on selection like the enumeration combo.
   - Everything else applies as to any type: inheritance, styles, coerce,
     computed and read-only, `Property_set` bags (a pasted bag shares the
@@ -1293,9 +1294,6 @@ style layer is D25.
 - Further item migrations, in priority order and each reusing the Material
   recipe (section 4.1): `Layout` (type, axis, volume), `Grid`, physics
   settings (mass, friction, restitution), `Brush_placement`.
-- Object reference candidates beyond the content library: a node-typed
-  reference (a `Lattice_node` driver) would list scene nodes, which
-  `collect_reference_candidates` does not walk yet.
 - Shader graph (`src/editor/graph/`) node parameters as properties. The
   oldest graph editor has no parameter serialization and no undo
   operations at all; migrating it starts with adopting the

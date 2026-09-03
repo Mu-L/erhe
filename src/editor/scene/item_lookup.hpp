@@ -33,11 +33,12 @@ class Scene_root;
 // have.
 [[nodiscard]] auto resolve_reference_by_name(App_context& context, const erhe::Item_base& from, std::string_view name) -> std::shared_ptr<erhe::Item_base>;
 
-// Object reference candidates (doc/property-system.md D28): the content
-// library items of the target's scene whose type bit is in item_types and
-// that are shown in the UI (developer-only items in developer mode). Clears
-// `out` first; the caller clears it again after the draw so the strong
-// references do not outlive the frame.
+// Object reference candidates (doc/property-system.md D28): the items of
+// the target's scene whose type bit is in item_types and that are shown in
+// the UI (developer-only items in developer mode) - the content library
+// items, and the scene's nodes and node attachments (a node-typed
+// reference lists scene nodes). Clears `out` first; the caller clears it
+// again after the draw so the strong references do not outlive the frame.
 void collect_reference_candidates(
     App_context&                                   context,
     const erhe::Item_base&                         target,
