@@ -344,6 +344,11 @@ auto Dependency_property_rows::draw_widget(
             }
             return changed;
         }
+        case Property_type::object: {
+            // Widget lands with the editor side of the object reference work.
+            ImGui::TextUnformatted(erhe::property::to_string(value).c_str());
+            return false;
+        }
         case Property_type::ivec2: {
             glm::ivec2 v = std::get<glm::ivec2>(value);
             const bool changed = ImGui::DragInt2("##", &v.x, std::max(speed, 1.0f), has_range ? static_cast<int>(min) : 0, has_range ? static_cast<int>(max) : 0);
@@ -503,7 +508,7 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
         reset_to_default(property);
     }
     const bool driven      = m_items->front()->get_expression(property).has_value();
-    const bool can_drive   = !driven && writable && (property.get_type() != Property_type::string);
+    const bool can_drive   = !driven && writable && (property.get_type() != Property_type::string) && (property.get_type() != Property_type::object);
     if (ImGui::MenuItem("Edit as expression", nullptr, false, can_drive)) {
         edit_as_expression(property);
     }
@@ -561,6 +566,7 @@ void Dependency_property_rows::edit_as_expression(const Dependency_property& pro
         case Property_type::ivec3:       { const glm::ivec3 v = std::get<glm::ivec3>(value); text = std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z); break; }
         case Property_type::ivec4:       { const glm::ivec4 v = std::get<glm::ivec4>(value); text = std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z) + ", " + std::to_string(v.w); break; }
         case Property_type::string:      return;
+        case Property_type::object:      return;
     }
     begin_edit(property);
     queue_set(property, erhe::property::Local_state{erhe::property::Expression_text{std::move(text)}});

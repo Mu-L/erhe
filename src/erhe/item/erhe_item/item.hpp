@@ -420,6 +420,11 @@ public:
     [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
     [[nodiscard]] auto get_property_owner_type () const -> erhe::property::Owner_type override { return property_owner_type(); }
     [[nodiscard]] auto resolve_expression_object(std::string_view path) const -> erhe::property::Dependency_object* override;
+    // Object references (D28): the item name is the path, and the owning
+    // pointer is shared_from_this (null for an item not owned by a
+    // shared_ptr, which no reference can then hold).
+    [[nodiscard]] auto get_reference_path  () const -> std::string override;
+    [[nodiscard]] auto get_shared_reference() const -> std::shared_ptr<erhe::property::Dependency_object> override;
 
     // For items whose host is tracked by an owning container (e.g. the
     // editor's content library): the container maintains this pointer on

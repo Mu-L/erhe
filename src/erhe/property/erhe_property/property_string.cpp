@@ -1,4 +1,5 @@
 #include "erhe_property/property_string.hpp"
+#include "erhe_property/dependency_object.hpp"
 #include "erhe_property/dependency_property.hpp"
 #include "erhe_property/enum_info.hpp"
 
@@ -155,6 +156,10 @@ auto to_string(const Property_value& value, const Enum_info* enum_info) -> std::
             const glm::ivec4 v = std::get<glm::ivec4>(value);
             return std::to_string(v.x) + " " + std::to_string(v.y) + " " + std::to_string(v.z) + " " + std::to_string(v.w);
         }
+        case Property_type::object: {
+            const Object_reference& reference = std::get<Object_reference>(value);
+            return reference.object ? reference.object->get_reference_path() : std::string{};
+        }
     }
     return {};
 }
@@ -259,6 +264,10 @@ auto parse_value(const Property_type type, const std::string_view text_in, const
             }
             return glm::ivec4{v->at(0), v->at(1), v->at(2), v->at(3)};
         }
+        case Property_type::object: {
+            // Needs the referencing object; see the context overload.
+            return std::nullopt;
+        }
     }
     return std::nullopt;
 }
@@ -266,6 +275,26 @@ auto parse_value(const Property_type type, const std::string_view text_in, const
 auto parse_value(const Dependency_property& property, const std::string_view text) -> std::optional<Property_value>
 {
     return parse_value(property.get_type(), text, property.get_enum_info());
+}
+
+auto parse_value(const Dependency_object& context, const Dependency_property& property, const std::string_view text_in) -> std::optional<Property_value>
+{
+    if (property.get_type() != Property_type::object) {
+        return parse_value(property.get_type(), text_in, property.get_enum_info());
+    }
+    const std::string_view text = trim(text_in);
+    if (text.empty()) {
+        return Object_reference{};
+    }
+    const Dependency_object* const resolved = context.resolve_expression_object(text);
+    if (resolved == nullptr) {
+        return std::nullopt;
+    }
+    std::shared_ptr<Dependency_object> shared = resolved->get_shared_reference();
+    if (!shared) {
+        return std::nullopt;
+    }
+    return Object_reference{std::move(shared)};
 }
 
 } // namespace erhe::property

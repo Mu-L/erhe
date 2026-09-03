@@ -8,6 +8,7 @@
 
 namespace erhe::property {
 
+class Dependency_object;
 class Dependency_property;
 class Enum_info;
 
@@ -24,5 +25,11 @@ class Enum_info;
 // parse as the type.
 [[nodiscard]] auto parse_value(Property_type type, std::string_view text, const Enum_info* enum_info = nullptr) -> std::optional<Property_value>;
 [[nodiscard]] auto parse_value(const Dependency_property& property, std::string_view text) -> std::optional<Property_value>;
+
+// parse_value with the object the value is for (D28): an object reference
+// is a path resolved through context.resolve_expression_object (empty
+// text = the null reference; an unresolved path or an object that is not
+// shareable = nullopt); every other type delegates to the overload above.
+[[nodiscard]] auto parse_value(const Dependency_object& context, const Dependency_property& property, std::string_view text) -> std::optional<Property_value>;
 
 } // namespace erhe::property

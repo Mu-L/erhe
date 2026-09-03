@@ -90,6 +90,11 @@ public:
     bool                 developer_only{false};
     std::string_view     label         {}; // row label; empty = the property name
     Visible_when         visible_when  {};
+    // Object properties (D28): the item type mask the row accepts as a
+    // drop / picker candidate (erhe::Item_type bits, opaque here), and
+    // whether the row offers a clear button.
+    uint64_t             reference_item_types{0};
+    bool                 show_clear_button   {true};
 };
 
 // Storage outside the object's entry store (doc/property-system.md

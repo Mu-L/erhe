@@ -401,6 +401,16 @@ auto Item_base::resolve_expression_object(const std::string_view path) const -> 
     return (host != nullptr) ? host->find_hosted_item(path) : nullptr;
 }
 
+auto Item_base::get_reference_path() const -> std::string
+{
+    return get_name();
+}
+
+auto Item_base::get_shared_reference() const -> std::shared_ptr<erhe::property::Dependency_object>
+{
+    return const_cast<Item_base*>(this)->weak_from_this().lock();
+}
+
 auto Item_base::get_id() const -> std::size_t
 {
     return m_id.get_id();

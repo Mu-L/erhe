@@ -24,6 +24,7 @@ add_executable(${_target}
     test_bridge.cpp
     test_computed.cpp
     test_expressions.cpp
+    test_object_reference.cpp
 )
 
 target_link_libraries(${_target}

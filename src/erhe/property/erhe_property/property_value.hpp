@@ -4,12 +4,15 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <variant>
 
 namespace erhe::property {
+
+class Dependency_object;
 
 // Stored form of a C++ enumeration property value. Kept distinct from int so
 // generic code (Properties window, MCP, serialization) can tell an
@@ -18,6 +21,16 @@ struct Enum_value
 {
     int32_t value{0};
     [[nodiscard]] auto operator==(const Enum_value&) const -> bool = default;
+};
+
+// A reference to another object (doc/property-system.md D28): a strong
+// pointer, compared by identity. The library knows Dependency_object only;
+// the text form and the parse go through the object's virtuals
+// (get_reference_path / resolve_expression_object).
+struct Object_reference
+{
+    std::shared_ptr<Dependency_object> object{};
+    [[nodiscard]] auto operator==(const Object_reference&) const -> bool = default;
 };
 
 using Property_value = std::variant<
@@ -32,7 +45,8 @@ using Property_value = std::variant<
     Enum_value,
     glm::ivec2,
     glm::ivec3,
-    glm::ivec4
+    glm::ivec4,
+    Object_reference
 >;
 
 // Enumerators are the Property_value variant indices.
@@ -48,7 +62,8 @@ enum class Property_type : uint8_t {
     enumeration = 8,
     ivec2       = 9,
     ivec3       = 10,
-    ivec4       = 11
+    ivec4       = 11,
+    object      = 12
 };
 
 [[nodiscard]] constexpr auto c_str(const Property_type type) -> const char*
@@ -66,6 +81,7 @@ enum class Property_type : uint8_t {
         case Property_type::ivec2:       return "ivec2";
         case Property_type::ivec3:       return "ivec3";
         case Property_type::ivec4:       return "ivec4";
+        case Property_type::object:      return "object";
     }
     return "?";
 }
@@ -88,7 +104,8 @@ concept Property_value_type =
     std::is_same_v<T, Enum_value>  ||
     std::is_same_v<T, glm::ivec2>  ||
     std::is_same_v<T, glm::ivec3>  ||
-    std::is_same_v<T, glm::ivec4>;
+    std::is_same_v<T, glm::ivec4>  ||
+    std::is_same_v<T, Object_reference>;
 
 template <typename T>
 concept Property_enum_type = std::is_enum_v<T>;
@@ -123,6 +140,7 @@ template <Property_storable T>
     if constexpr (std::is_same_v<S, glm::ivec2>)  { return Property_type::ivec2;       }
     if constexpr (std::is_same_v<S, glm::ivec3>)  { return Property_type::ivec3;       }
     if constexpr (std::is_same_v<S, glm::ivec4>)  { return Property_type::ivec4;       }
+    if constexpr (std::is_same_v<S, Object_reference>) { return Property_type::object; }
 }
 
 // C++ value -> stored variant
@@ -155,7 +173,8 @@ template <Property_storable T>
 }
 
 // The value a property of the given type has when its metadata names none:
-// false, 0, 0.0f, zero vectors, identity quaternion, "", enumeration 0
+// false, 0, 0.0f, zero vectors, identity quaternion, "", enumeration 0,
+// null reference
 // (Property<E>::register_property replaces that with the table's first
 // entry).
 [[nodiscard]] inline auto zero_value(const Property_type type) -> Property_value
@@ -173,6 +192,7 @@ template <Property_storable T>
         case Property_type::ivec2:       return glm::ivec2{0};
         case Property_type::ivec3:       return glm::ivec3{0};
         case Property_type::ivec4:       return glm::ivec4{0};
+        case Property_type::object:      return Object_reference{};
     }
     return false;
 }

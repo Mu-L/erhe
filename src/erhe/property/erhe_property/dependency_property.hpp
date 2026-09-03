@@ -12,6 +12,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -162,6 +163,44 @@ private:
     std::vector<std::vector<uint16_t>>                                 m_by_owner; // indexed by owner type id, registration order
 };
 
+// Conversion between an object's member and the stored Property_value, for
+// member-backed registrations (Property<T>::register_member, D28). The
+// identity serves every Property_storable member type (enumerations
+// through make_value / get_as); a std::shared_ptr<U> member is stored as an
+// Object_reference, cast to and from U (U may be a Dependency_object class
+// or an interface the pointee also implements), and its validate rejects a
+// non-null pointee that is not a U. Instantiate where U is complete.
+template <typename Member>
+struct Member_value_traits;
+
+template <Property_storable M>
+struct Member_value_traits<M>
+{
+    using stored_type = M;
+    [[nodiscard]] static auto to_value  (const M& member) -> Property_value  { return make_value<M>(member); }
+    [[nodiscard]] static auto from_value(const Property_value& value) -> M   { return get_as<M>(value); }
+    [[nodiscard]] static auto validate  (const Property_value&) -> bool      { return true; }
+};
+
+template <typename U>
+struct Member_value_traits<std::shared_ptr<U>>
+{
+    using stored_type = Object_reference;
+    [[nodiscard]] static auto to_value(const std::shared_ptr<U>& member) -> Property_value
+    {
+        return Object_reference{std::dynamic_pointer_cast<Dependency_object>(member)};
+    }
+    [[nodiscard]] static auto from_value(const Property_value& value) -> std::shared_ptr<U>
+    {
+        return std::dynamic_pointer_cast<U>(std::get<Object_reference>(value).object);
+    }
+    [[nodiscard]] static auto validate(const Property_value& value) -> bool
+    {
+        const Object_reference& reference = std::get<Object_reference>(value);
+        return (!reference.object) || (dynamic_cast<const U*>(reference.object.get()) != nullptr);
+    }
+};
+
 // Typed handle to a registered property. Copyable, trivially cheap.
 template <Property_storable T>
 class Property
@@ -244,6 +283,73 @@ public:
                 }
             )
         };
+    }
+
+    // A member-backed property (D28, D18 semantics): the owner's member is
+    // the storage, reached through `access` (a callable returning a
+    // reference to the member from an Owner&, const or not - a generic
+    // lambda `[](auto& o) -> auto& { return o.a.b.c; }` or the
+    // pointer-to-member overload below). `set` writes the member through
+    // Member_value_traits and then runs `after_set(owner)`, the consequence
+    // a hand-written bridge ran inline. The traits' validate is combined
+    // with `validate`.
+    template <typename Owner, typename Member, typename Accessor>
+        requires (!Property_enum_type<T>) && std::is_same_v<typename Member_value_traits<Member>::stored_type, T>
+    static auto register_member(
+        std::string_view            name,
+        Owner_type                  owner_type,
+        Accessor                    access,
+        Property_metadata           metadata  = {},
+        std::type_identity_t<std::function<void(Owner&)>> after_set = {},
+        Validate_callback           validate  = {}
+    ) -> Property<T>
+    {
+        using Traits = Member_value_traits<Member>;
+        metadata.bridge = Property_bridge{
+            .get = [access](const Dependency_object& object) -> Property_value {
+                const Owner& owner = static_cast<const Owner&>(object);
+                return Traits::to_value(access(owner));
+            },
+            .set = [access, after_set](Dependency_object& object, const Property_value& value) {
+                Owner& owner = static_cast<Owner&>(object);
+                access(owner) = Traits::from_value(value);
+                if (after_set) {
+                    after_set(owner);
+                }
+            }
+        };
+        Validate_callback combined = [validate = std::move(validate)](const Property_value& value) -> bool {
+            return Traits::validate(value) && ((!validate) || validate(value));
+        };
+        return Property<T>{
+            &Property_registry::get().register_property(
+                Dependency_property::Registration{
+                    .name       = name,
+                    .type       = property_type_of<T>(),
+                    .owner_type = owner_type,
+                    .metadata   = std::move(metadata),
+                    .validate   = std::move(combined),
+                }
+            )
+        };
+    }
+
+    template <typename Owner, typename Member>
+        requires (!Property_enum_type<T>) && std::is_same_v<typename Member_value_traits<Member>::stored_type, T>
+    static auto register_member(
+        std::string_view            name,
+        Owner_type                  owner_type,
+        Member Owner::*             member,
+        Property_metadata           metadata  = {},
+        std::type_identity_t<std::function<void(Owner&)>> after_set = {},
+        Validate_callback           validate  = {}
+    ) -> Property<T>
+    {
+        return register_member<Owner, Member>(
+            name, owner_type,
+            [member](auto& owner) -> auto& { return owner.*member; },
+            std::move(metadata), std::move(after_set), std::move(validate)
+        );
     }
 
     // A computed property (D26): read-only, its effective value is
