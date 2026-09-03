@@ -84,7 +84,11 @@ old members so existing files load.
   `outer_spot_angle` / `cast_shadow` (NOT `temperature`); `Camera`
   `exposure` / `shadow_range` (projection fields are bridged, already
   excluded); `Material` fields carried by native PBR fields or
-  `ERHE_material` (`src/erhe/primitive/erhe_primitive/material.cpp:62-123`).
+  `ERHE_material` (`src/erhe/primitive/erhe_primitive/material.cpp:62-123`);
+  the object properties of doc/property-system.md D28 - the five
+  `Material` texture slots (`textureInfo`) and `Mesh_primitive::material`
+  (the primitive's material index) - which are member-backed and so
+  already excluded from the value pass, but are flagged for the record.
 
 ### 1. Shared helpers - `src/erhe/gltf/erhe_gltf/gltf_item_flags.{hpp,cpp}`
 

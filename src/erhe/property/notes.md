@@ -19,9 +19,13 @@ integration, future work and the verification workflow - is
 
 - **`Property_value`** - `std::variant<bool, int, float, glm::vec2, glm::vec3,
   glm::vec4, glm::quat, std::string, Enum_value, glm::ivec2, glm::ivec3,
-  glm::ivec4>`; `Property_type` enumerators are the variant indices.
-  `Enum_value` wraps the integer of a C++ enumeration so generic code can
-  tell an enumeration from an `int`.
+  glm::ivec4, Object_reference>`; `Property_type` enumerators are the
+  variant indices. `Enum_value` wraps the integer of a C++ enumeration so
+  generic code can tell an enumeration from an `int`. `Object_reference`
+  (D28) is a strong `std::shared_ptr<Dependency_object>` compared by
+  identity; its text form is the pointee's `get_reference_path()` and it
+  is parsed with the context overload of `parse_value` (below). Object
+  properties are neither expression sources nor targets.
 - **`Enum_info`** - immutable enumerator table (label, value) referenced by
   every enumeration property of that C++ type; one `static const` table per
   enumeration, next to its `c_str()`.
@@ -41,6 +45,16 @@ integration, future work and the verification workflow - is
   node parameters are bridged onto the node members (keyed on the node
   kind's owner type id, with `set` ending in the node's `mark_dirty`,
   `doc/property-system.md` section 4.5).
+- **`Property<T>::register_member`** - a bridged registration built by
+  the library from a pointer-to-member or an accessor lambda returning a
+  reference to the member, with an optional `after_set(Owner&)` hook run
+  after a write that changed the member (an unchanged write does
+  nothing). `Member_value_traits<Member>` converts member and stored
+  value: identity for every storable type; a `std::shared_ptr<U>` member
+  is stored as an `Object_reference`, cast to and from `U`, with a
+  validate rejecting a pointee that is not a `U` (instantiate where `U`
+  is complete). Users: `erhe::primitive::Material`'s texture slots,
+  `erhe::scene::Mesh_primitive::material`.
 - **`Property_registry`** - function-local static registry; registration
   happens from static members of owning classes and from single-threaded
   early startup (descriptor-driven registrations whose tables are
@@ -83,7 +97,11 @@ integration, future work and the verification workflow - is
 - **`Dependency_object`** - the per-object store: sparse vector of entries
   sorted by property index, binary-searched; an entry exists only for a
   property with a local value and holds that value plus its coerced value
-  when the coerce callback changed it.
+  when the coerce callback changed it. Two virtuals serve object
+  references: `get_reference_path()` (the text form of a reference to
+  this object, empty by default; `Item_base` returns its name) and
+  `get_shared_reference()` (the owning pointer a reference stores, null
+  by default; `Item_base` returns `shared_from_this`).
 - **`Observer_token`** - RAII subscription to one property on one object,
   or to every property of it (`add_observer` without a property).
 - **`Expression`** (`expression.hpp`) - a compiled formula driving one
@@ -104,7 +122,10 @@ integration, future work and the verification workflow - is
   object, clipboard payload, diff.
 - **`Property_style`** - a named, immutable `Property_set` shared through
   `std::shared_ptr<const Property_style>`; an object's style layer (D25).
-- **`property_string.hpp`** - `to_string` / `parse_value` for every type.
+- **`property_string.hpp`** - `to_string` / `parse_value` for every type;
+  `parse_value(const Dependency_object& context, property, text)` resolves
+  an object reference through `context.resolve_expression_object` (empty
+  text is the null reference) and delegates every other type.
 
 ## Value precedence and callbacks
 
@@ -182,4 +203,4 @@ item state guarded by the item's host mutex, like the rest of the item.
 `test/` (gtest): registry and overrides, every value type, validate, coerce,
 change notifications and batching, inheritance through a `Test_object` tree,
 observers, enumerations, string conversion, property sets, bridged storage,
-computed properties.
+computed properties, object references and `register_member`.

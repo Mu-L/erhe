@@ -22,6 +22,8 @@ Foundational entity system for erhe. Provides identity, flags, naming, tags, par
 - `get_flag_bits()`, `set_flag_bits()`, `enable_flag_bits()`, `disable_flag_bits()`
 - `is_visible()`, `is_selected()`, `is_hovered()`, `show()`, `hide()`, `set_visible()`, `set_selected()` - `show` / `hide` / `set_visible` write a local `visible_property` value; `clear_value(visible_property)` returns to the inherited / default value
 - `visible_property`, `shadow_cast_property`, `lightmapped_property` - owner type 0 (listed for every item type), default true / false / false, `inherits`
+- `get_reference_path()` / `get_shared_reference()` - the name and `shared_from_this` an object reference (`doc/property-system.md` D28) uses to name and hold this item
+- `get_property_sub_object_count()` / `get_property_sub_object(index)` / `get_property_sub_object_label(index)` - property sub-objects (D29): Dependency_objects the item owns by value that the editor addresses as (item, index); the defaults report none (`Mesh` overrides them with its primitives)
 - `is_lock_edit()` / `set_lock_edit()` - the `lock_edit` flag is the property-store seal (`Dependency_object::seal`, D24): while set, every local property write is refused (`set_value` returns false, logged); `is_sealed()` agrees with the flag, including after a copy
 - `add_tag()`, `remove_tag()`, `has_tag()`, `get_tags()`, `clear_tags()`
 - `set_source_path()`, `get_source_path()`

@@ -4,9 +4,11 @@ Status: implemented. The library (`erhe::property`), the `Item_base`
 integration, the editor operation / generic rows / MCP tools / startup
 command, the `Material`, `Node`, `Light` and `Camera` migrations, observer
 users, expressions and bindings, inherited flags, sealing, the style layer,
-computed properties, the owner type id keyed registry and the geometry
-and texture graph node migrations are all in and verified. This is a live
-document; section 6 holds the remaining work.
+computed properties, the owner type id keyed registry, the geometry
+and texture graph node migrations, object references (the material
+texture slots) and property sub-objects (the mesh primitives with their
+material) are all in and verified. This is a live document; section 6
+holds the remaining work.
 
 Document roles. This document is the design record: goal, requirements,
 the design decisions with their WPF mapping and rationale, the item
@@ -40,8 +42,8 @@ mechanism instead of one hand-written path per field.
 
 Value types in scope: `bool`, `int`, `float`, `glm::vec2`, `glm::vec3`,
 `glm::vec4`, `glm::ivec2`, `glm::ivec3`, `glm::ivec4`, `glm::quat`,
-`std::string`, and C++ enumerations (any `enum class` with an enumerator
-table, see D2a).
+`std::string`, C++ enumerations (any `enum class` with an enumerator
+table, see D2a), and references to other objects (D28).
 
 ## 2. Requirements
 
@@ -136,8 +138,9 @@ table, see D2a).
 - D2 Value representation.
   `Property_value = std::variant<bool, int, float, glm::vec2, glm::vec3,
   glm::vec4, glm::quat, std::string, Enum_value, glm::ivec2, glm::ivec3,
-  glm::ivec4>` (the integer vectors appended so the variant indices of the
-  original types are stable) with a matching
+  glm::ivec4, Object_reference>` (the integer vectors and the object
+  reference appended so the variant indices of the earlier types are
+  stable; `Object_reference` is D28) with a matching
   `enum class Property_type : uint8_t` whose enumerators are the variant
   indices. `Property<T>` is valid for `T` in that list or for any C++
   enumeration type (constrained with a concept); an enumeration `T` maps to
@@ -264,7 +267,11 @@ table, see D2a).
   which reads the property's `Property_flags` (D4) and runs the matching
   editor consequence: `affects_draw_list_partition` rebuilds the draw lists,
   `affects_shader_variant` re-derives the material's shader variant. The
-  hook is the only place that maps flags to editor actions.
+  hook is the only place that maps flags to editor actions. The operation
+  carries an optional sub-object index (D29): the target is then
+  `item->get_property_sub_object(index)`, the item stays the one the
+  operation names and seals against, and a sub-object that no longer
+  exists at apply time is a logged no-op.
   `Material_change_operation` stays for the fields that remain in
   `Material_data` (texture samplers). A `Property_set_apply_operation`
   applies a `Property_set` (D17) to a list of items and records one before
@@ -273,8 +280,9 @@ table, see D2a).
   `dependency_properties(item)` section that lists the registered properties
   of the item's type in registration order and draws one widget per
   `Property_type`: checkbox, drag int, drag float, drag float2/3/4, quaternion
-  as Euler-degree drag with a raw x/y/z/w readout, input text, and a combo
-  filled from the property's `Enum_info` labels. The `Property_ui` block
+  as Euler-degree drag with a raw x/y/z/w readout, input text, a combo
+  filled from the property's `Enum_info` labels, and for an object
+  property the `item_reference_imgui` field (D28). The `Property_ui` block
   (D4) selects the widget variant and its limits: `color` draws a color
   edit for vec3 / vec4, `angle_degrees` converts radians to degrees for
   display, `slider` draws a slider within `min` / `max`, `group` collapses
@@ -304,10 +312,14 @@ table, see D2a).
   (name, type, effective value, source, local value) and
   `set_item_property(item, name, value)` writes through
   `Property_set_operation`. Values travel as strings through D16, so
-  enumeration values travel as their labels. A `scene.set_property` command
+  enumeration values travel as their labels; an object value (D28)
+  travels as the referenced item's name with `reference_id` (its session
+  id) and `reference_type` alongside, and `set_item_property` also takes
+  `reference_id`. The listing has `sub_objects` and the write takes
+  `sub_object` (D29). A `scene.set_property` command
   (`config/editor/commands.json`, `doc/command_script.md`) with args
-  `item`, `property`, `value` uses the same conversion, so startup scripts
-  can author properties.
+  `item`, `property`, `value` (and `sub_object`) uses the same conversion,
+  so startup scripts can author properties.
 - D14 Serialization. glTF import and export read and write the
   fields they natively map (`Node` TRS, `Material` PBR fields) through the
   typed accessors; the file format did not change except the D23 extras.
@@ -317,7 +329,10 @@ table, see D2a).
   for nodes, meshes (D23, `ERHE_node` `properties` / `mesh_properties`),
   lights (`ERHE_light` `properties`) and cameras (`ERHE_camera`
   `properties`); materials still export field-by-field through their
-  native glTF fields plus the `ERHE_material` extension (section 6).
+  native glTF fields plus the `ERHE_material` extension (section 6). An
+  object value (D28) rides its native glTF carrier - a primitive's
+  material index, a material's `textureInfo` - and never the extras:
+  both users are member-backed (D18), which the extras writer skips.
 - D15 Observers (R16). `Dependency_object::add_observer(property, callback)
   -> Observer_token` and `remove_observer(Observer_token)`; the token is a
   move-only RAII object that unsubscribes on destruction, and an object
@@ -333,7 +348,12 @@ table, see D2a).
   space-separated components, booleans are `true` / `false`, enumerations are
   their `Enum_info` labels, strings are verbatim. Both directions round-trip
   every value exactly for the non-float types and to the shortest float
-  representation that round-trips for `float` (`std::to_chars`).
+  representation that round-trips for `float` (`std::to_chars`). An
+  object reference (D28) needs the referencing object to parse, so a
+  second overload `parse_value(const Dependency_object& context,
+  property, text)` resolves the text through
+  `context.resolve_expression_object` and delegates every other type to
+  the plain one.
 - D17 Value bags (R19). `Property_set` in `erhe_property/property_set.hpp`
   is a vector of (`const Dependency_property*`, `Property_value`) sorted by
   property index with `read_local_values(const Dependency_object&) ->
@@ -355,6 +375,20 @@ table, see D2a).
   path per body per frame; moving the components into the entry store would
   force decomposition on every matrix write and change the world matrix of
   glTF matrix nodes to compose(decompose(M)).
+  `Property<T>::register_member(name, owner_type, member, metadata,
+  after_set)` registers a bridged property without spelling the bridge
+  out: the library builds `get` / `set` from a pointer-to-member or an
+  accessor lambda (`[](auto& o) -> auto& { return o.a.b.c; }` for a
+  nested member), `set` writes the member and then runs the optional
+  `after_set(owner)` hook - the consequence a hand-written bridge ran
+  inline - and a write of the value the member already holds does
+  neither (R4). `Member_value_traits<Member>` converts between the member
+  type and the stored value: the identity for every storable type, and
+  for a `std::shared_ptr<U>` member the cast to and from an
+  `Object_reference` (D28) plus a validate that rejects a pointee that is
+  not a `U`. The material texture slots (section 4.1) and the mesh
+  primitive material (section 4.9) register this way; the hand-written
+  Camera and graph node bridges are candidates to migrate.
 
 - D19 Item-side consequences through metadata callbacks. When a change of
   a property has a consequence inside the item library itself (not in the
@@ -388,11 +422,11 @@ table, see D2a).
     thumbnails that are drawn re-render, at most once per frame, and a
     hidden one re-renders when it is next drawn. The token lives in the
     slot and is replaced when the slot is reclaimed for another item; a
-    destroyed item deactivates it (D15). Material texture sampler edits
-    (texture, offset, scale, wrap) are not properties and do not refresh a
-    thumbnail, as before. The Properties window material preview keeps its
-    per-frame render: it must also follow those sampler edits and the
-    window size.
+    destroyed item deactivates it (D15). A texture slot's texture is a
+    property (D28, section 4.1) and refreshes the thumbnail; the slot's
+    sampler and transform fields are not properties and do not. The
+    Properties window material preview keeps its per-frame render: it
+    must also follow those sampler edits and the window size.
   - `Shadow_render_node`. The `cast_shadow` consequence already arrives
     through the D19 changed callback: `Scene_host::on_light_changed`
     invalidates the scene's `Light_set` and `Light_set::resolve` recomputes
@@ -435,7 +469,7 @@ table, see D2a).
     `k` reads component `k` of the source (a scalar source reads its
     value), so `{../scale}` on a `vec3` target mirrors the parent's scale.
     `bool` sources read as `0` / `1`, enumerations as their integer.
-    `string` properties are neither sources nor targets. Results convert
+    `string` and object (D28) properties are neither sources nor targets. Results convert
     per target type: `bool` is `value != 0`, `int` and enumeration round
     to nearest (an enumeration value outside its table is an error, the
     previous value stays), `float` truncates from `double`.
@@ -806,6 +840,70 @@ table, see D2a).
   serving `Item_filter`, `is<T>`, the content library cache and the
   editor's type masks, and the library knows nothing of them.
 
+- D28 Object references. `Object_reference` (the last `Property_value`
+  alternative, `Property_type::object`) holds a strong
+  `std::shared_ptr<Dependency_object>` compared by identity: the same
+  lifetime the members it replaced had (a material keeps its textures
+  alive, a mesh its materials), so a copy of the object (D10) shares the
+  pointee and the store holds exactly what the member held. The library
+  knows `Dependency_object`, not `Item_base` (D1).
+  - Class restriction. The registration's validate (R4, value only)
+    rejects a non-null pointee that is not of the owner's accepted class
+    (`Member_value_traits<std::shared_ptr<U>>` supplies it for a
+    member-backed registration, D18). For the editor, `Property_ui`
+    carries `reference_item_types` (the `Item_type` mask the row accepts,
+    opaque to the library) and `show_clear_button`.
+  - Text form. `to_string` is the pointee's `get_reference_path()`, a
+    `Dependency_object` virtual that is the inverse of
+    `resolve_expression_object` (`Item_base`: the item name; empty for a
+    null reference), and the pointer an `Object_reference` stores comes
+    from `get_shared_reference()` (`Item_base`: `shared_from_this`, null
+    for an item no `shared_ptr` owns, which no reference can then hold).
+    The library's context parse (D16) walks from the referencing object's
+    `Item_host`; the editor resolves names itself through
+    `resolve_reference_by_name` (`scene/item_lookup`), the lookup in the
+    scene `find_scene_root_for_item` finds for the item - its host, else
+    the content library that lists it, else the asset manager's defining
+    record - because an asset-typed item such as a material has no host.
+    Names are not unique, exactly as for D22 references; MCP disambiguates
+    with `reference_id`.
+  - Editor write funnel. `apply_item_property` applies an object value
+    only when the referenced item belongs to the target's scene, or is a
+    manager-owned asset (material, brush, animation) the asset manager
+    reports cross-scene referenceable; a scene-hosted texture, graph
+    texture or node never crosses scenes (the manager treats every item
+    without a defining record as referenceable, which is meant for
+    assets). A failing check logs a warning naming both items and
+    applies nothing. `Property_set_operation` and
+    `Property_set_apply_operation` adopt an `Asset_reference` usership
+    for every managed asset in their before and after states at first
+    execute (asset-manager plan R5.4) and report those items from
+    `collect_item_references`.
+  - Rows (D12). The row is `item_reference_imgui`: a drop target
+    filtered by `reference_item_types`, a drag source, a picker over the
+    target scene's content library items of that mask
+    (`collect_reference_candidates`, a caller-owned scratch cleared after
+    the draw), and a clear button when `show_clear_button` holds; it
+    commits on selection like the enumeration combo.
+  - Everything else applies as to any type: inheritance, styles, coerce,
+    computed and read-only, `Property_set` bags (a pasted bag shares the
+    pointee), and `operator==` of items.
+
+- D29 Property sub-objects. A `Dependency_object` an item owns by value
+  that is not an item itself - a `Mesh_primitive` - is addressed as
+  (item, index) through three `Item_base` virtuals with empty defaults:
+  `get_property_sub_object_count()`, `get_property_sub_object(index)`
+  (const and non-const) and `get_property_sub_object_label(index)`. The
+  index is stable for the item's current list. `Property_set_operation`
+  carries the optional index (D11), `Dependency_property_rows::
+  add_sub_object_rows` draws a sub-object's registered properties with
+  the same edit, undo and context-menu machinery (the bag entries - copy,
+  paste, style - act on items and are not offered), MCP lists
+  `sub_objects` and takes `sub_object` (D13), and a sub-object of a
+  sealed item (D24) is as sealed as the item, checked in the editor
+  funnel because the sub-object has no seal of its own. Section 4.9 is
+  the user.
+
 ## 4. Implementation
 
 ### 4.1 Material
@@ -839,6 +937,31 @@ getters and setters for every migrated field (`get_base_color()`,
 material preview, MCP tools, tests) use the accessor and nothing else
 changed. `operator==(Material)` compares the remaining `Material_data`, the
 property bags of D17 and the style pointers (D25).
+
+The five texture slots are object properties (D28) registered with
+`register_member` (D18) over `data.texture_samplers.<slot>.texture_reference`:
+`base_color_texture`, `metallic_roughness_texture`, `normal_texture`,
+`occlusion_texture` and `emissive_texture` (group `Textures`,
+`reference_item_types` texture | graph texture, the PBR slots
+`visible_when` lit), flagged `affects_shader_variant` because a bound slot
+selects the texture-using variant and a normal texture's two-component
+flag rides the texture. Member-backed because the per-frame readers
+(`Material_buffer::gather_texture`, `Shader_key::derive`) read the member
+with no variant access, the `Material_create_info` designated initializers
+at every construction site keep working, and the slot's sampler and
+transform fields stay in `Material_data` with `Material_change_operation`.
+The `Member_value_traits` cast to `erhe::graphics::Texture_reference` needs
+the complete class, so `erhe::primitive` links `erhe::graphics` privately.
+Writers of a live material use `set_base_color_texture()` and the other
+setters, `set_slot_texture(slot, texture)` for a slot held by pointer, or
+`set_data(Material_data)` (what `Material_change_operation` applies: the
+textures through the properties in one change batch, the rest assigned);
+construction-time fills (`Material_create_info.data`, the glTF importer's
+`bind_material_textures`) stay member writes under the D18 caveat. The
+Properties window draws the slot textures as generic rows and, under a
+`<slot> Texture` group, the bound slot's transform and sampler rows; its
+material inspect snapshot ignores the texture references so a texture
+edit records one operation.
 
 ### 4.2 Node
 
@@ -1024,8 +1147,11 @@ Gradient and curve parameters have no `Property_value` form and stay in
   `doc/command_script.md`) with `item`, `property` and `value` or
   `expression`, using the D16 string conversion (enumerations by label).
 - Registering a new property: follow the D3 example; `Material`
-  (section 4.1, stored) and `Camera` (section 4.4, bridged) are the
-  recipes. An enumeration needs its `Enum_info` table next to the `c_str`.
+  (section 4.1, stored and member-backed) and `Camera` (section 4.4,
+  hand-written bridge) are the recipes. An enumeration needs its
+  `Enum_info` table next to the `c_str`; a member that already exists is
+  `register_member` (D18); a reference to another item is an
+  `Object_reference` property (D28) with `reference_item_types` set.
 
 ### 4.7 Tests
 
@@ -1036,7 +1162,8 @@ Gradient and curve parameters have no `Property_value` form and stay in
   notifications and batching, inheritance through a `Test_object` tree,
   observers, enumerations, string conversion, property sets, bridged
   storage, expressions (integer-vector targets and component sources
-  included), sealing, styles, computed properties.
+  included), sealing, styles, computed properties, object references and
+  `register_member` (`test_object_reference.cpp`).
 - `src/erhe/item/test/`: `test_properties.cpp` (inheritance through
   `Hierarchy`, reparent, clone), `test_item_visibility.cpp` (derived
   bits), `test_item_sealing.cpp` (`lock_edit` seal sync).
@@ -1045,7 +1172,10 @@ Gradient and curve parameters have no `Property_value` form and stay in
   `test_light_properties.cpp`, `test_camera_properties.cpp`,
   `test_node_computed.cpp` (world properties, `child_count`, mesh bounds).
 - `src/erhe/primitive/test/test_material_style.cpp` (the `Brushed metal`
-  style).
+  style), `test_material_textures.cpp` (the texture slot properties).
+- `src/erhe/scene/test/test_mesh_primitive_material.cpp` (the primitive
+  material property, the sub-object addressing, the owner stamp across
+  copies).
 
 ### 4.8 Notes and gotchas
 
@@ -1073,6 +1203,34 @@ Gradient and curve parameters have no `Property_value` form and stay in
   (KHR_lights_punctual has no temperature), so an export / import round
   trip matches on every light property except `temperature`.
 
+### 4.9 Mesh primitives
+
+`Mesh_primitive` derives from `Dependency_object` with its own owner type
+(allocated under the root, named `Mesh_primitive`) and registers `material`
+as an object property (D28) with `register_member` over its `material`
+member (`reference_item_types` material, no clear button: a primitive keeps
+a material). The registration's `after_set` calls the owning mesh's
+`notify_primitive_material_changed()`, the `Scene_host::
+on_mesh_material_changed` notification `set_primitive_material` ran inline
+before; `Mesh::set_primitive_material` writes the property, so it stays the
+one writer (draw list material set plan R4) and the generic rows, undo and
+MCP reach the same funnel. Each primitive carries an owner link (mesh,
+index) that `Mesh::stamp_primitive_owners()` writes after every change of
+the primitive list - `add_primitive`, `set_primitives`, the clone
+constructor and the move operations - so the link survives the vector
+copies. The mesh addresses its primitives as property sub-objects (D29):
+the count, `&m_primitives[index]`, and the primitive's name (`Primitive N`
+when it has none) as the label; the Properties window's `Primitive N`
+groups draw the sub-object rows.
+
+Storage rule: `Mesh::m_primitives` is a `std::vector`, and a reallocation
+copy-constructs the `Dependency_object` base, which keeps neither
+observers nor expression dependents (D10). A `Mesh_primitive` therefore
+registers member-backed properties only (no entries to lose) and nothing
+subscribes an observer or an expression to a primitive; `get_primitives()`
+is const, so no caller reaches `set_value` on a primitive except through
+`Mesh`.
+
 ## 5. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -1097,7 +1255,9 @@ style layer is D25.
   a round trip bakes effective values into local ones), and one carrier
   per item type in place of the `properties` / `mesh_properties` members
   scattered across `ERHE_node`, `ERHE_light` and `ERHE_camera` (D14,
-  D23). Future work that is not yet fully planned:
+  D23); the object properties of D28 keep riding their native carriers
+  and get that plan's `native_gltf` flag. Future work that is not yet
+  fully planned:
   `doc/gltf-properties-extension-plan.md` is the draft, explicitly
   incomplete and not ready to implement; the decisions it records so far
   live there and nowhere else.
@@ -1120,7 +1280,14 @@ style layer is D25.
   an object (`for_each_local_value` reaches them once set).
 - Further item migrations, in priority order and each reusing the Material
   recipe (section 4.1): `Layout` (type, axis, volume), `Grid`, physics
-  settings (mass, friction, restitution), `Brush_placement`.
+  settings (mass, friction, restitution), `Brush_placement`; the texture
+  slot's `texgen_mode`, `rotation`, `offset` and `scale` as ordinary
+  properties (the sampler is not an item and stays in `Material_data`).
+- Hand-written bridges migrated to `register_member` (D18): the Camera
+  projection bridge and the graph node member bridge.
+- Object reference candidates beyond the content library: a node-typed
+  reference (a `Lattice_node` driver) would list scene nodes, which
+  `collect_reference_candidates` does not walk yet.
 - Shader graph (`src/editor/graph/`) node parameters as properties. The
   oldest graph editor has no parameter serialization and no undo
   operations at all; migrating it starts with adopting the
