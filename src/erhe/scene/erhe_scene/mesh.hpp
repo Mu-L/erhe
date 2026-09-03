@@ -25,9 +25,43 @@ class Raytrace_primitive;
 class Scene_host;
 class Skin;
 
-class Mesh_primitive
+class Mesh;
+
+// One primitive of a Mesh with its material. A property sub-object of its
+// mesh (doc/property-system.md D29): a Dependency_object with its own owner
+// type, whose `material` is a member-backed object property
+// (Mesh_primitive::material_property), so the generic rows, undo and MCP
+// reach it as (mesh, primitive index); Mesh::set_primitive_material stays
+// the one writer. It registers member-backed properties only and nothing
+// observes a primitive: the mesh holds primitives by value in a vector,
+// and a reallocation copy-constructs the Dependency_object base, which
+// keeps neither observers nor expression dependents.
+class Mesh_primitive : public erhe::property::Dependency_object
 {
 public:
+    Mesh_primitive();
+    Mesh_primitive(
+        const std::shared_ptr<erhe::primitive::Primitive>& primitive,
+        const std::shared_ptr<erhe::primitive::Material>&  material                 = {},
+        const glm::vec4&                                   lightmap_uv_scale_offset = glm::vec4{0.0f}
+    );
+    // Copies the three fields; the owner link is not copied (Mesh stamps it).
+    Mesh_primitive(const Mesh_primitive& other);
+    Mesh_primitive& operator=(const Mesh_primitive& other);
+    ~Mesh_primitive() noexcept override;
+
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    [[nodiscard]] auto get_property_owner_type() const -> erhe::property::Owner_type override { return property_owner_type(); }
+
+    // Object reference to an erhe::primitive::Material, member-backed over
+    // `material`; a write notifies the owning mesh's scene host.
+    static const erhe::property::Property<erhe::property::Object_reference> material_property;
+
+    // The mesh whose primitive list holds this object, and the index there;
+    // null / 0 for a primitive value outside a mesh.
+    [[nodiscard]] auto get_owner() const -> Mesh*       { return m_owner; }
+    [[nodiscard]] auto get_index() const -> std::size_t { return m_index; }
+
     std::shared_ptr<erhe::primitive::Primitive> primitive;
     std::shared_ptr<erhe::primitive::Material>  material;
 
@@ -37,15 +71,20 @@ public:
     // lightmap baker (doc/lightmap_baking_plan.md), uploaded per draw by
     // Primitive_buffer.
     glm::vec4                                   lightmap_uv_scale_offset{0.0f};
-};
 
-class Mesh;
+private:
+    friend class Mesh;
+    static void on_material_set(Mesh_primitive& primitive); // material_property after_set
+
+    Mesh*       m_owner{nullptr};
+    std::size_t m_index{0};
+};
 
 class Mesh : public erhe::Item<Item_base, Node_attachment, Mesh, erhe::Item_kind::clone_using_custom_clone_constructor>
 {
 public:
     Mesh(); // default
-    explicit Mesh(Mesh&&) noexcept;
+    explicit Mesh(Mesh&&) noexcept; // re-stamps the primitives' owner link
     Mesh& operator=(Mesh&&) noexcept;
     ~Mesh() noexcept override;
 
@@ -67,6 +106,12 @@ public:
     // Implements Node_attachment
     void handle_item_host_update     (erhe::Item_host* old_item_host, erhe::Item_host* new_item_host) override;
     void handle_node_transform_update()                                                               override;
+
+    // Implements Item_base (D29): the primitives are the sub-objects.
+    [[nodiscard]] auto get_property_sub_object_count() const -> std::size_t override;
+    [[nodiscard]] auto get_property_sub_object      (std::size_t index) -> erhe::property::Dependency_object* override;
+    [[nodiscard]] auto get_property_sub_object      (std::size_t index) const -> const erhe::property::Dependency_object* override;
+    [[nodiscard]] auto get_property_sub_object_label(std::size_t index) const -> std::string override;
 
     // Public API
     void clear_primitives    ();
@@ -108,9 +153,11 @@ public:
     [[nodiscard]] auto begin_optimized_variant_edit(std::size_t primitive_index) -> std::shared_ptr<erhe::primitive::Primitive>;
     void add_primitive       (const std::shared_ptr<erhe::primitive::Primitive>& primitive, const std::shared_ptr<erhe::primitive::Material>& material = {});
     void set_primitives      (const std::vector<Mesh_primitive>& primitives);
-    // Reassign the material of one primitive. This is the ONLY way to change
-    // it: get_primitives() is const, so the scene host (draw lists) always
-    // sees the change (Scene_host::on_mesh_material_changed).
+    // Reassign the material of one primitive: a write of the primitive's
+    // material_property, whose after_set notifies the scene host
+    // (Scene_host::on_mesh_material_changed). get_primitives() is const, so
+    // every writer - this, the generic rows, undo, MCP - goes through the
+    // property and the draw lists always see the change.
     void set_primitive_material(std::size_t primitive_index, const std::shared_ptr<erhe::primitive::Material>& material);
     // Set the baked-lightmap atlas region of one primitive. Likewise the only
     // way to change it, so the scene host (draw list primitive records) always
@@ -148,9 +195,17 @@ public:
     float                 line_width{1.0f};
 
 private:
+    friend class Mesh_primitive;
+
     // Scene_host of the node this mesh is attached to, or nullptr.
     [[nodiscard]] auto get_scene_host() const -> Scene_host*;
     void notify_primitives_changed();
+    // Mesh_primitive::material_property after_set: the scene host sees the
+    // reassignment (the body set_primitive_material ran inline before D29).
+    void notify_primitive_material_changed();
+    // Sets every primitive's owner link to (this, index); after any change
+    // of m_primitives (element writes included: a reallocation copies).
+    void stamp_primitive_owners();
 
     std::vector<Mesh_primitive>                      m_primitives;
     erhe::raytrace::IScene*                          m_rt_scene{nullptr};

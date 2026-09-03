@@ -291,8 +291,9 @@ public:
     // lambda `[](auto& o) -> auto& { return o.a.b.c; }` or the
     // pointer-to-member overload below). `set` writes the member through
     // Member_value_traits and then runs `after_set(owner)`, the consequence
-    // a hand-written bridge ran inline. The traits' validate is combined
-    // with `validate`.
+    // a hand-written bridge ran inline; a write of the value the member
+    // already holds does neither (R4: consequences follow effective changes
+    // only). The traits' validate is combined with `validate`.
     template <typename Owner, typename Member, typename Accessor>
         requires (!Property_enum_type<T>) && std::is_same_v<typename Member_value_traits<Member>::stored_type, T>
     static auto register_member(
@@ -312,6 +313,9 @@ public:
             },
             .set = [access, after_set](Dependency_object& object, const Property_value& value) {
                 Owner& owner = static_cast<Owner&>(object);
+                if (Traits::to_value(access(owner)) == value) {
+                    return;
+                }
                 access(owner) = Traits::from_value(value);
                 if (after_set) {
                     after_set(owner);

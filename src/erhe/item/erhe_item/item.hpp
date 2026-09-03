@@ -426,6 +426,16 @@ public:
     [[nodiscard]] auto get_reference_path  () const -> std::string override;
     [[nodiscard]] auto get_shared_reference() const -> std::shared_ptr<erhe::property::Dependency_object> override;
 
+    // Property sub-objects (doc/property-system.md D29): Dependency_objects
+    // this item owns by value that are not items themselves and that the
+    // editor addresses as (item, index) - a Mesh's primitives. The index is
+    // stable for the item's current list; a label names the sub-object in
+    // the UI. The default is no sub-objects.
+    [[nodiscard]] virtual auto get_property_sub_object_count() const -> std::size_t { return 0; }
+    [[nodiscard]] virtual auto get_property_sub_object      (std::size_t index) -> erhe::property::Dependency_object* { static_cast<void>(index); return nullptr; }
+    [[nodiscard]] virtual auto get_property_sub_object      (std::size_t index) const -> const erhe::property::Dependency_object* { static_cast<void>(index); return nullptr; }
+    [[nodiscard]] virtual auto get_property_sub_object_label(std::size_t index) const -> std::string { static_cast<void>(index); return {}; }
+
     // For items whose host is tracked by an owning container (e.g. the
     // editor's content library): the container maintains this pointer on
     // add / remove / owner change. Types that derive their host from scene

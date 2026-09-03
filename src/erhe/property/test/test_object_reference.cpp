@@ -209,6 +209,10 @@ TEST(Member_backed_property, shared_ptr_member_round_trips_through_traits)
     EXPECT_EQ(a->partner.get(), b.get());
     EXPECT_EQ(a->after_set_calls, 2);
 
+    // Unchanged: neither the write nor after_set.
+    a->set_value(partner_property, Object_reference{b});
+    EXPECT_EQ(a->after_set_calls, 2);
+
     // The traits' validate rejects a pointee that is not a Named_object.
     std::shared_ptr<Test_object> plain = std::make_shared<Test_object>();
     a->set_value(partner_property, Object_reference{plain});

@@ -16,6 +16,71 @@
 
 namespace erhe::scene {
 
+// Mesh_primitive (D29)
+
+Mesh_primitive::Mesh_primitive() = default;
+
+Mesh_primitive::Mesh_primitive(
+    const std::shared_ptr<erhe::primitive::Primitive>& primitive_in,
+    const std::shared_ptr<erhe::primitive::Material>&  material_in,
+    const glm::vec4&                                   lightmap_uv_scale_offset_in
+)
+    : primitive               {primitive_in}
+    , material                {material_in}
+    , lightmap_uv_scale_offset{lightmap_uv_scale_offset_in}
+{
+}
+
+Mesh_primitive::Mesh_primitive(const Mesh_primitive& other)
+    : erhe::property::Dependency_object{other}
+    , primitive               {other.primitive}
+    , material                {other.material}
+    , lightmap_uv_scale_offset{other.lightmap_uv_scale_offset}
+{
+}
+
+Mesh_primitive& Mesh_primitive::operator=(const Mesh_primitive& other)
+{
+    if (this != &other) {
+        erhe::property::Dependency_object::operator=(other);
+        primitive                = other.primitive;
+        material                 = other.material;
+        lightmap_uv_scale_offset = other.lightmap_uv_scale_offset;
+        // m_owner / m_index stay: they describe this object's slot.
+    }
+    return *this;
+}
+
+Mesh_primitive::~Mesh_primitive() noexcept = default;
+
+auto Mesh_primitive::property_owner_type() -> erhe::property::Owner_type
+{
+    static const erhe::property::Owner_type id = erhe::property::allocate_owner_type(erhe::property::root_owner_type, "Mesh_primitive");
+    return id;
+}
+
+void Mesh_primitive::on_material_set(Mesh_primitive& primitive)
+{
+    if (primitive.m_owner != nullptr) {
+        primitive.m_owner->notify_primitive_material_changed();
+    }
+}
+
+const erhe::property::Property<erhe::property::Object_reference> Mesh_primitive::material_property =
+    erhe::property::Property<erhe::property::Object_reference>::register_member(
+        "material", Mesh_primitive::property_owner_type(), &Mesh_primitive::material,
+        erhe::property::Property_metadata{
+            .ui = erhe::property::Property_ui{
+                .label                = "Material",
+                .reference_item_types = erhe::Item_type::material,
+                .show_clear_button    = false // a primitive keeps a material
+            }
+        },
+        &Mesh_primitive::on_material_set
+    );
+
+// Mesh
+
 auto Mesh::get_scene_host() const -> Scene_host*
 {
     // Every Item_host a Mesh can be attached to is a Scene_host (see
@@ -71,6 +136,39 @@ void Mesh::notify_primitives_changed()
         return;
     }
     scene_host->on_mesh_primitives_changed(shared_this);
+}
+
+void Mesh::stamp_primitive_owners()
+{
+    for (std::size_t i = 0, end = m_primitives.size(); i < end; ++i) {
+        m_primitives[i].m_owner = this;
+        m_primitives[i].m_index = i;
+    }
+}
+
+auto Mesh::get_property_sub_object_count() const -> std::size_t
+{
+    return m_primitives.size();
+}
+
+auto Mesh::get_property_sub_object(const std::size_t index) -> erhe::property::Dependency_object*
+{
+    return (index < m_primitives.size()) ? &m_primitives[index] : nullptr;
+}
+
+auto Mesh::get_property_sub_object(const std::size_t index) const -> const erhe::property::Dependency_object*
+{
+    return (index < m_primitives.size()) ? &m_primitives[index] : nullptr;
+}
+
+auto Mesh::get_property_sub_object_label(const std::size_t index) const -> std::string
+{
+    if (index >= m_primitives.size()) {
+        return {};
+    }
+    const std::shared_ptr<erhe::primitive::Primitive>& primitive = m_primitives[index].primitive;
+    const std::string_view name = primitive ? primitive->get_name() : std::string_view{};
+    return name.empty() ? "Primitive " + std::to_string(index) : std::string{name};
 }
 
 void Mesh::clear_primitives()
@@ -175,12 +273,14 @@ void Mesh::add_primitive(
 )
 {
     m_primitives.emplace_back(primitive, material);
+    stamp_primitive_owners();
     update_rt_primitives();
 }
 
 void Mesh::set_primitives(const std::vector<Mesh_primitive>& primitives)
 {
     m_primitives = primitives;
+    stamp_primitive_owners();
     update_rt_primitives();
 }
 
@@ -189,10 +289,12 @@ void Mesh::set_primitive_material(const std::size_t primitive_index, const std::
     if (primitive_index >= m_primitives.size()) {
         return;
     }
-    if (m_primitives[primitive_index].material == material) {
-        return;
-    }
-    m_primitives[primitive_index].material = material;
+    // Unchanged value: the store notifies nothing (R4).
+    m_primitives[primitive_index].set_value(Mesh_primitive::material_property, erhe::property::Object_reference{material});
+}
+
+void Mesh::notify_primitive_material_changed()
+{
     const std::shared_ptr<Mesh> shared_this = std::static_pointer_cast<Mesh>(weak_from_this().lock());
     if (!shared_this) {
         return;
@@ -229,9 +331,40 @@ auto Mesh::get_primitives() const -> const std::vector<Mesh_primitive>&
     return m_primitives;
 }
 
-Mesh::Mesh()                           = default;
-Mesh::Mesh(Mesh&&) noexcept            = default;
-Mesh& Mesh::operator=(Mesh&&) noexcept = default;
+Mesh::Mesh() = default;
+
+Mesh::Mesh(Mesh&& other) noexcept
+    : Item          {std::move(other)}
+    , layer_id      {other.layer_id}
+    , skin          {std::move(other.skin)}
+    , point_size    {other.point_size}
+    , line_width    {other.line_width}
+    , m_primitives  {std::move(other.m_primitives)}
+    , m_rt_scene    {other.m_rt_scene}
+    , m_rt_primitives{std::move(other.m_rt_primitives)}
+    , m_rt_primitives_dirty{other.m_rt_primitives_dirty}
+{
+    other.m_rt_scene = nullptr;
+    stamp_primitive_owners();
+}
+
+Mesh& Mesh::operator=(Mesh&& other) noexcept
+{
+    if (this != &other) {
+        Item::operator=(std::move(other));
+        layer_id              = other.layer_id;
+        skin                  = std::move(other.skin);
+        point_size            = other.point_size;
+        line_width            = other.line_width;
+        m_primitives          = std::move(other.m_primitives);
+        m_rt_scene            = other.m_rt_scene;
+        m_rt_primitives       = std::move(other.m_rt_primitives);
+        m_rt_primitives_dirty = other.m_rt_primitives_dirty;
+        other.m_rt_scene      = nullptr;
+        stamp_primitive_owners();
+    }
+    return *this;
+}
 
 Mesh::Mesh(const std::string_view name)
     : Item{name}
