@@ -190,6 +190,9 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     }
 
     const bool sealed = first_item.is_sealed(); // D24: a sealed item's rows are read-only
+    // Tinted label: the row is a registered property (D12), telling it
+    // apart from a hand-written row of the same window.
+    constexpr uint32_t c_property_row_label_color = IM_COL32(200, 224, 255, 255);
     editor.add_entry(
         std::move(label),
         [this, items = m_items, sub_object = m_sub_object, &property, &metadata, sealed]() {
@@ -254,7 +257,8 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
             }
             context_menu(property, metadata);
         },
-        std::move(tooltip)
+        std::move(tooltip),
+        c_property_row_label_color
     );
 }
 

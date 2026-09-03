@@ -25,7 +25,11 @@ public:
     void resume             ();
     void push_group         (std::string&& label, ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_None, float indent = 0.0f, bool* open_state = nullptr);
     void pop_group          ();
-    void add_entry          (std::string&& label, std::function<void()> editor, std::string&& tooltip = {});
+    // label_text_color tints the label text (IM_COL32); a row of a
+    // registered property (Dependency_property_rows) is tinted so the
+    // rows still hand-written for an item are told apart at a glance.
+    void add_entry          (std::string&& label, std::function<void()> editor, std::string&& tooltip = {}, std::optional<uint32_t> label_text_color = {});
+    // Axis-style label: a small button in label_background_color.
     void add_entry          (std::string&& label, uint32_t label_text_color, uint32_t label_background_color, std::function<void()> editor);
     void show_entries       (const char* label = "##", ImVec2 cell_padding = ImVec2{0.0f, 0.0f});
     void use_state          (Editor_state* state);

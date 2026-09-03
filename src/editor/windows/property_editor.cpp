@@ -31,9 +31,9 @@ void Property_editor::pop_group()
     m_entries.push_back(Entry{false, true, {}, {}, {}});
 }
 
-void Property_editor::add_entry(std::string&& label, std::function<void()> editor, std::string&& tooltip)
+void Property_editor::add_entry(std::string&& label, std::function<void()> editor, std::string&& tooltip, std::optional<uint32_t> label_text_color)
 {
-    m_entries.push_back(Entry{false, false, std::move(label), std::move(tooltip), {editor}});
+    m_entries.push_back(Entry{false, false, std::move(label), std::move(tooltip), {editor}, ImGuiTreeNodeFlags_None, 0.0f, label_text_color});
 }
 
 void Property_editor::add_entry(std::string&& label, uint32_t label_text_color, uint32_t label_background_color, std::function<void()> editor)
@@ -96,7 +96,7 @@ void Property_editor::show_entries(const char* label, ImVec2 cell_padding)
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, entry.label_background_color.value());
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive,  entry.label_background_color.value());
             }
-            if (entry.label_text_color.has_value() || entry.label_background_color.has_value()) {
+            if (entry.label_background_color.has_value()) {
                 ImGui::PushItemFlag    (ImGuiItemFlags_NoNav, true);
                 //ImGui::SetNextItemWidth(22.0f); // TODO
                 ImVec2 button_size{22.0f, 0.0f};

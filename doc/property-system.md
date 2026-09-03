@@ -282,7 +282,10 @@ table, see D2a), and references to other objects (D28).
   `Property_type`: checkbox, drag int, drag float, drag float2/3/4, quaternion
   as Euler-degree drag with a raw x/y/z/w readout, input text, a combo
   filled from the property's `Enum_info` labels, and for an object
-  property the `item_reference_imgui` field (D28). The `Property_ui` block
+  property the `item_reference_imgui` field (D28). Every such row's
+  label is tinted light blue, so a hand-written row of the same window
+  (state not yet a registered property) is told apart at a glance. The
+  `Property_ui` block
   (D4) selects the widget variant and its limits: `color` draws a color
   edit for vec3 / vec4, `angle_degrees` converts radians to degrees for
   display, `slider` draws a slider within `min` / `max`, `group` collapses
