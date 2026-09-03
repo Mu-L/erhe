@@ -25,11 +25,14 @@ Grid_tool::Grid_tool(
     erhe::imgui::Imgui_renderer& imgui_renderer,
     erhe::imgui::Imgui_windows&  imgui_windows,
     App_context&                 context,
+    Editor_settings_store&       settings_store,
     Icon_set&                    icon_set,
     Tools&                       tools
 )
-    : Tool    {context, tools, Tool_flags::background}
-    , m_window{imgui_renderer, imgui_windows, "Grid", "grid", [this]() { window_imgui(); }}
+    : Tool            {context, tools, Tool_flags::background}
+    , m_window        {imgui_renderer, imgui_windows, "Grid", "grid", [this]() { window_imgui(); }}
+    , m_settings_store{settings_store}
+    , m_property_rows {context}
 {
     ERHE_PROFILE_FUNCTION();
 
@@ -40,6 +43,7 @@ Grid_tool::Grid_tool(
     // TODO Move config to editor ?
     // grid->name        = "Default Grid";
     grid->read_config(grid_config);
+    grid->set_settings_store(&m_settings_store);
 
     m_grids.push_back(grid);
 }
@@ -139,7 +143,16 @@ void Grid_tool::window_imgui()
 
     if (!m_grids.empty()) {
         m_grid_index = std::min(m_grid_index, static_cast<int>(grid_names.size() - 1));
-        changed |= m_grids[m_grid_index]->imgui(m_context);
+        const std::shared_ptr<Grid>& grid = m_grids[m_grid_index];
+        changed |= grid->imgui(m_context);
+        // The grid's registered properties (doc/property-system.md 4.11):
+        // generic rows, undo through Property_set_operation; a change
+        // touches the settings store through the Grid's own callback.
+        m_property_editor.reset();
+        m_property_editor.push_group("Grid", ImGuiTreeNodeFlags_DefaultOpen);
+        m_property_rows.add_rows(m_property_editor, std::vector<std::shared_ptr<erhe::Item_base>>{grid});
+        m_property_editor.pop_group();
+        m_property_editor.show_entries();
     }
 
     ImGui::NewLine();
@@ -150,6 +163,7 @@ void Grid_tool::window_imgui()
     if (add_pressed) {
         std::shared_ptr<Grid> new_grid = std::make_shared<Grid>();
         //new_grid->name = "new grid"; TODO
+        new_grid->set_settings_store(&m_settings_store);
         m_grids.push_back(new_grid);
         changed = true;
     }

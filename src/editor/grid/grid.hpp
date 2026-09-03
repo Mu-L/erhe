@@ -3,6 +3,7 @@
 #include "renderers/render_context.hpp"
 
 #include "erhe_scene/node_attachment.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <glm/glm.hpp>
 
@@ -14,6 +15,7 @@ namespace erhe::renderer { class Line_renderer_set; }
 
 namespace editor {
 
+class Editor_settings_store;
 class Selection_tool;
 
 // TODO Negative half planes
@@ -33,6 +35,8 @@ static constexpr const char* grid_plane_type_strings[] = {
 
 auto get_plane_transform(Grid_plane_type plane_type) -> glm::mat4;
 
+extern const erhe::property::Enum_info c_grid_plane_type_enum_info;
+
 class Grid : public erhe::Item<erhe::Item_base, erhe::scene::Node_attachment, Grid, erhe::Item_kind::clone_using_custom_clone_constructor>
 {
 public:
@@ -41,6 +45,33 @@ public:
     // Implements Item_base
     static constexpr std::string_view static_type_name{"Grid"};
     [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return erhe::Item_type::node_attachment | erhe::Item_type::grid; }
+
+    // Registered properties (erhe::property, doc/property-system.md
+    // section 4.11), member-backed (D18) over the members below. Every
+    // one carries the property_changed callback that asks the settings
+    // store for the autosave; plane_type, center and rotation also
+    // re-derive the grid transform.
+    static const erhe::property::Property<Grid_plane_type> plane_type_property;
+    static const erhe::property::Property<glm::vec3>       center_property;
+    static const erhe::property::Property<float>           rotation_property;
+    static const erhe::property::Property<bool>            intersect_enable_property;
+    static const erhe::property::Property<bool>            snap_enabled_property;
+    static const erhe::property::Property<float>           cell_size_property;
+    static const erhe::property::Property<int>             cell_div_property;
+    static const erhe::property::Property<int>             cell_count_property;
+    static const erhe::property::Property<glm::vec4>       level0_color_property;
+    static const erhe::property::Property<glm::vec4>       level1_color_property;
+    static const erhe::property::Property<glm::vec4>       level2_color_property;
+    static const erhe::property::Property<glm::vec4>       level3_color_property;
+    static const erhe::property::Property<float>           level0_width_property;
+    static const erhe::property::Property<float>           level1_width_property;
+    static const erhe::property::Property<float>           level2_width_property;
+    static const erhe::property::Property<float>           level3_width_property;
+    static const erhe::property::Property<bool>            label_enable_property;
+    static const erhe::property::Property<float>           label_text_fraction_property;
+    static const erhe::property::Property<float>           label_spacing_property;
+    static const erhe::property::Property<float>           label_fade_property;
+    static const erhe::property::Property<glm::vec4>       label_color_property;
 
     // Public API
     [[nodiscard]] auto is_snap_enabled    () const -> bool { return m_snap_enabled; }
@@ -55,18 +86,31 @@ public:
     [[nodiscard]] auto get_cell_size      () const -> float;
 
     void render          (const Render_context& context);
-    // Returns true when any widget edited the grid, so the caller can
-    // schedule the settings autosave.
+    // The rows that are not properties: the name, and the host node
+    // attach / detach of the Node plane type. Returns true when one of them
+    // edited the grid, so the caller can schedule the settings autosave;
+    // the property rows (Dependency_property_rows) schedule it themselves.
     auto imgui           (App_context& context) -> bool;
     void read_config     (const Grid_config& config);
     void write_config    (Grid_config& config) const;
-    void set_snap_enabled(bool snap_enabled) { m_snap_enabled = snap_enabled; }
-    void set_cell_size   (float cell_size) { m_cell_size = cell_size; }
-    void set_cell_div    (int cell_div) { m_cell_div = cell_div; }
-    void set_cell_count  (int cell_count) { m_cell_count = cell_count; }
+    void set_snap_enabled(bool snap_enabled) { set_value(snap_enabled_property, snap_enabled); }
+    void set_cell_size   (float cell_size)   { set_value(cell_size_property, cell_size); }
+    void set_cell_div    (int cell_div)      { set_value(cell_div_property, cell_div); }
+    void set_cell_count  (int cell_count)    { set_value(cell_count_property, cell_count); }
+    // The store whose autosave a property change (and the visibility
+    // flag) touches; the Grid_tool that owns the grid sets it.
+    void set_settings_store(Editor_settings_store* settings_store) { m_settings_store = settings_store; }
+
+    // Overrides Item_base: the visible flag persists with the grid config.
+    void handle_flag_bits_update(uint64_t old_flag_bits, uint64_t new_flag_bits) override;
 
 private:
     void update();
+    // D19: every Grid property change touches the settings store.
+    static void on_grid_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args);
+    void touch_settings();
+
+    Editor_settings_store* m_settings_store{nullptr};
 
     Grid_plane_type m_plane_type      {Grid_plane_type::XZ};
     bool            m_intersect_enable{true};

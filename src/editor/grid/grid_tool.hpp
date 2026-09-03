@@ -2,6 +2,8 @@
 
 #include "tools/tool.hpp"
 #include "tools/tool_window.hpp"
+#include "windows/dependency_property_rows.hpp"
+#include "windows/property_editor.hpp"
 
 #include <glm/glm.hpp>
 
@@ -13,6 +15,7 @@ struct Grid_config;
 
 namespace editor {
 
+class Editor_settings_store;
 class Grid;
 class Icon_set;
 class Tools;
@@ -32,6 +35,7 @@ public:
         erhe::imgui::Imgui_renderer& imgui_renderer,
         erhe::imgui::Imgui_windows&  imgui_windows,
         App_context&                 context,
+        Editor_settings_store&       settings_store,
         Icon_set&                    icon_set,
         Tools&                       tools
     );
@@ -53,6 +57,9 @@ private:
     void window_imgui();
 
     Tool_window                        m_window;
+    Editor_settings_store&             m_settings_store;
+    Property_editor                    m_property_editor;
+    Dependency_property_rows           m_property_rows;
     std::vector<std::shared_ptr<Grid>> m_grids;
     int                                m_grid_index{0};
 };

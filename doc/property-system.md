@@ -1297,6 +1297,39 @@ read the accessors, not the live body. `Properties::node_physics_properties`
 keeps only the diagnostics (body label, position, active state, collision
 shape, local center of mass and inertia).
 
+### 4.11 Grid and Brush_placement
+
+`Grid` (the editor's grid attachment, owned by `Grid_tool` and optionally
+attached to a node) registers its settings as member-backed properties
+(D18): `plane_type` (`Grid_plane_type`, `Enum_info`
+`c_grid_plane_type_enum_info` next to `grid_plane_type_strings`),
+`center` and `rotation` (degrees, `visible_when` the plane is not the
+Node plane; these three re-derive the grid transform in their
+`after_set`), `intersect_enable`, `snap_enabled`, `cell_size`
+(logarithmic 0.01..10), `cell_div` (1..10), `cell_count` (the snap
+region bound, not a UI row before), the four `level<N>_color` and
+`level<N>_width` rows (group `Lines`, accessor lambdas into the two
+arrays) and `label_enable` / `label_text_fraction` / `label_spacing` /
+`label_fade` / `label_color` (group `Axis Labels`). Every Grid property
+carries one `property_changed` callback (D19) that touches the
+`Editor_settings_store` the owning `Grid_tool` handed the grid, so a
+property edit from any writer schedules the settings autosave that
+`Grid_tool::write_config` feeds; the `visible` flag (an `Item_base`
+property) reaches the same store through `handle_flag_bits_update`. The
+Grid window draws the name field and the Node plane's attach / detach
+buttons by hand and everything else as generic rows through its own
+`Property_editor` and `Dependency_property_rows`, so a grid edit is a
+`Property_set_operation` with undo; a grid selected as an item gets the
+same rows in the Properties window.
+
+`Brush_placement` registers `brush` as an object property (D28,
+`reference_item_types` the brush type bit) member-backed over its brush
+pointer, and `facet` and `corner` as developer-only integers bridged
+over the `GEO::index_t` members (`NO_INDEX` reads as -1);
+`set_corner()` writes through the property.
+`Properties::brush_placement_properties` keeps the brush's polygon
+count diagnostics.
+
 ## 5. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -1360,7 +1393,6 @@ style layer is D25.
   - `Animation`: start and end time.
   - `Node_joint`: enable collision, and the connected node as a node-typed
     object reference (D28).
-  - `Brush_placement`, and `Grid`.
   The remaining rows are read-only diagnostics (geometry and buffer mesh
   counts, texture dimensions, raytrace state, skin joints), name and id
   rows, and list editors (attachments, samplers, channels), which are not

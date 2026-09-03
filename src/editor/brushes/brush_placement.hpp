@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_scene/node_attachment.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <geogram/mesh/mesh.h>
 
@@ -26,6 +27,14 @@ public:
 
     // TODO Consider if Brush_placement is clonable or not
     auto clone() const -> std::shared_ptr<erhe::Item_base> override;
+
+    // Registered properties (doc/property-system.md section 4.11):
+    // the brush as an object reference (D28) member-backed over m_brush,
+    // and the facet and corner as developer-only integers bridged over the
+    // GEO::index_t members (NO_INDEX reads as -1).
+    static const erhe::property::Property<erhe::property::Object_reference> brush_property;
+    static const erhe::property::Property<int>                              facet_property;
+    static const erhe::property::Property<int>                              corner_property;
 
     // Public API
     [[nodiscard]] auto get_brush () const -> std::shared_ptr<Brush>;

@@ -696,30 +696,8 @@ void Properties::brush_placement_properties(Brush_placement& brush_placement)
 {
     ERHE_PROFILE_FUNCTION();
 
-    add_entry("Brush", [&](){ ImGui::TextUnformatted(brush_placement.get_brush()->get_name().c_str()); });
-    if (m_context.developer_mode) {
-        add_entry(
-            "Facet",
-            [&]() {
-                if (brush_placement.get_facet() == GEO::NO_FACET) {
-                    ImGui::TextUnformatted("--");
-                } else {
-                    ImGui::Text("%u", brush_placement.get_facet());
-                }
-            }
-        );
-        add_entry(
-            "Corner",
-            [&]() {
-                if (brush_placement.get_corner() == GEO::NO_FACET) {
-                    ImGui::TextUnformatted("--");
-                } else {
-                    ImGui::Text("%u", brush_placement.get_corner());
-                }
-            }
-        );
-    }
-
+    // The brush, facet and corner are generic rows (doc/property-system.md
+    // 4.11); the polygon counts of the brush follow as diagnostics.
     std::shared_ptr<Brush> brush = brush_placement.get_brush();
     if (!brush) {
         return;
