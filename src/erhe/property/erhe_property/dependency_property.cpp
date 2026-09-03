@@ -217,14 +217,61 @@ auto Property_registry::owner_chain(const Owner_type object_type) const -> std::
 
 auto Property_registry::find_for_object(const Owner_type object_type, const std::string_view name) const -> const Dependency_property*
 {
+    const std::size_t dot = name.find('.');
+    if (dot != std::string_view::npos) {
+        const std::optional<Owner_type> owner = find_owner_type(name.substr(0, dot));
+        if (!owner.has_value()) {
+            return nullptr;
+        }
+        const Dependency_property* property = find(owner.value(), name.substr(dot + 1));
+        return ((property != nullptr) && property->is_attached()) ? property : nullptr;
+    }
     for (Owner_type id = object_type; ; id = get_owner_type_parent(id)) {
         const Dependency_property* property = find(id, name);
-        if (property != nullptr) {
+        if ((property != nullptr) && !property->is_attached()) {
             return property;
         }
         if (id == root_owner_type) {
             return nullptr;
         }
+    }
+}
+
+auto Property_registry::find_owner_type(const std::string_view name) const -> std::optional<Owner_type>
+{
+    const std::lock_guard<std::mutex> lock{m_mutex};
+    for (std::size_t id = 0; id < m_owner_types.size(); ++id) {
+        if (m_owner_types[id].name == name) {
+            return static_cast<Owner_type>(id);
+        }
+    }
+    return std::nullopt;
+}
+
+auto Property_registry::qualified_name(const Dependency_property& property) const -> std::string
+{
+    if (!property.is_attached()) {
+        return std::string{property.get_name()};
+    }
+    std::string result{get_owner_name(property.get_owner_type())};
+    result += '.';
+    result += property.get_name();
+    return result;
+}
+
+void Property_registry::for_each_attached_property(const std::function<void(const Dependency_property&)>& callback) const
+{
+    std::vector<const Dependency_property*> attached;
+    {
+        const std::lock_guard<std::mutex> lock{m_mutex};
+        for (const std::unique_ptr<Dependency_property>& property : m_properties) {
+            if (property->is_attached()) {
+                attached.push_back(property.get());
+            }
+        }
+    }
+    for (const Dependency_property* property : attached) {
+        callback(*property);
     }
 }
 

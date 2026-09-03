@@ -66,11 +66,14 @@ inventory (and the owner's design section when the design changed).
   `register_texture_graph_properties`), before the first concurrent
   reader exists; lookups by index, exact by (owner type, name) (`find`),
   by (object, name) through the owner type chain (`find_for_object`, what
-  an object of that class means by the name), and enumeration of the
+  an object of that class means by the name; a qualified `<owner>.<name>`
+  resolves the attached property `name` registered by the owner type
+  `<owner>`, on any object - `qualified_name` produces that form,
+  `find_owner_type` the reverse of `get_owner_name`), enumeration of the
   non-attached properties of an object's class
   (`for_each_property_of_object`: root-first, each level in registration
   order, a shadowed name or a multiply-owned property once at its nearest
-  level).
+  level) and of every attached registration (`for_each_attached_property`).
 - **`Owner_type`** (`owner_type.hpp`, D27) - per-class owner type id with
   a parent link; id 0 is the root every `Dependency_object` belongs to.
   `allocate_owner_type(parent, name)` appends to the registry's id table;

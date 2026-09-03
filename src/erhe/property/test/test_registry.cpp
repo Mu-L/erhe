@@ -210,3 +210,33 @@ TEST(Property_registry, read_only_key)
     o.clear_value(key);
     EXPECT_EQ(o.get_value(p), 10);
 }
+
+TEST(Property_registry, attached_property_resolves_by_qualified_name_on_any_object)
+{
+    Property_registry& registry = Property_registry::get();
+    // Attached: registered by type_c, set on objects of other types (R7).
+    EXPECT_EQ(registry.qualified_name(reg_attached.get()), "type_c.reg_attached");
+    EXPECT_EQ(registry.qualified_name(reg_float.get()), "reg_float");
+    EXPECT_EQ(registry.find_owner_type("type_c"), std::optional<Owner_type>{type_c()});
+    EXPECT_FALSE(registry.find_owner_type("no_such_type").has_value());
+    EXPECT_EQ(registry.find_for_object(type_a(), "type_c.reg_attached"), reg_attached.get_ptr());
+    EXPECT_EQ(registry.find_for_object(type_c(), "type_c.reg_attached"), reg_attached.get_ptr());
+    // The chain walk never returns an attached property, and a qualified
+    // name never resolves a non-attached one.
+    EXPECT_EQ(registry.find_for_object(type_c(), "reg_attached"), nullptr);
+    EXPECT_EQ(registry.find_for_object(type_a(), "type_a.reg_float"), nullptr);
+    EXPECT_EQ(registry.find_for_object(type_a(), "no_such_type.reg_attached"), nullptr);
+
+    std::vector<const Dependency_property*> attached;
+    registry.for_each_attached_property([&](const Dependency_property& p) { attached.push_back(&p); });
+    EXPECT_NE(std::find(attached.begin(), attached.end(), reg_attached.get_ptr()), attached.end());
+    EXPECT_EQ(std::find(attached.begin(), attached.end(), reg_float.get_ptr()), attached.end());
+
+    Test_object a{type_a()};
+    a.set_value(reg_attached, 7);
+    EXPECT_EQ(a.get_value(reg_attached), 7);
+    EXPECT_EQ(a.get_value_source(reg_attached), Value_source::local);
+    std::vector<const Dependency_property*> local;
+    a.for_each_local_value([&](const Dependency_property& p, const Property_value&) { local.push_back(&p); });
+    EXPECT_NE(std::find(local.begin(), local.end(), reg_attached.get_ptr()), local.end());
+}

@@ -9,6 +9,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -109,7 +110,18 @@ public:
     // What an object whose get_property_owner_type() is object_type means
     // by `name`: find() on object_type, then on each ancestor up to the
     // root; the nearest registration wins (WPF derived-DType shadowing).
+    // A qualified name `<owner>.<name>` (WPF `Grid.Row`) resolves to the
+    // attached property `name` registered by the owner type called
+    // `<owner>`, for any object; the chain walk never returns an attached
+    // property and a qualified name never resolves a non-attached one.
     [[nodiscard]] auto find_for_object(Owner_type object_type, std::string_view name) const -> const Dependency_property*;
+    // The owner type called `name`, if one has been allocated.
+    [[nodiscard]] auto find_owner_type(std::string_view name) const -> std::optional<Owner_type>;
+    // `<owner>.<name>` for an attached property, the plain name otherwise:
+    // the name serialization, MCP and row labels use.
+    [[nodiscard]] auto qualified_name (const Dependency_property& property) const -> std::string;
+    // Every attached registration, in registration order (R7 listing).
+    void for_each_attached_property(const std::function<void(const Dependency_property&)>& callback) const;
     [[nodiscard]] auto get      (uint16_t index) const -> const Dependency_property&;
     [[nodiscard]] auto get_count() const -> std::size_t;
 
@@ -279,6 +291,31 @@ public:
                     .owner_type = owner_type,
                     .metadata   = std::move(metadata),
                     .validate   = std::move(validate),
+                    .attached   = true,
+                }
+            )
+        };
+    }
+
+    template <Property_storable U = T>
+        requires Property_enum_type<U>
+    static auto register_attached(
+        std::string_view  name,
+        Owner_type        owner_type,
+        const Enum_info&  enum_info,
+        Property_metadata metadata = {},
+        Validate_callback validate = {}
+    ) -> Property<T>
+    {
+        return Property<T>{
+            &Property_registry::get().register_property(
+                Dependency_property::Registration{
+                    .name       = name,
+                    .type       = Property_type::enumeration,
+                    .owner_type = owner_type,
+                    .metadata   = std::move(metadata),
+                    .validate   = std::move(validate),
+                    .enum_info  = &enum_info,
                     .attached   = true,
                 }
             )

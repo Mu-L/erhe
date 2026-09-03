@@ -26,6 +26,9 @@ const Property<Color_mode> enum_mode = Property<Color_mode>::register_property("
 const Property<Color_mode> enum_mode_default = Property<Color_mode>::register_property(
     "enum_mode_default", type_a(), c_color_mode_info, Property_metadata{.default_value = make_value(Color_mode::gray)}
 );
+const Property<Color_mode> enum_mode_attached = Property<Color_mode>::register_attached(
+    "enum_mode_attached", type_c(), c_color_mode_info, Property_metadata{.default_value = make_value(Color_mode::hsv)}
+);
 
 } // anonymous namespace
 
@@ -70,4 +73,16 @@ TEST(Enum_property, string_conversion_uses_labels)
     EXPECT_EQ(parse_value(enum_mode.get(), "5").value(), make_value(Color_mode::gray));
     EXPECT_FALSE(parse_value(enum_mode.get(), "3").has_value());
     EXPECT_FALSE(parse_value(enum_mode.get(), "Purple").has_value());
+}
+
+TEST(Enum_property, attached_enum_registration)
+{
+    EXPECT_TRUE(enum_mode_attached.get().is_attached());
+    EXPECT_EQ(enum_mode_attached.get().get_type(), Property_type::enumeration);
+    ASSERT_NE(enum_mode_attached.get().get_enum_info(), nullptr);
+    Test_object b{type_b()};
+    EXPECT_EQ(b.get_value(enum_mode_attached), Color_mode::hsv);
+    b.set_value(enum_mode_attached, Color_mode::gray);
+    EXPECT_EQ(b.get_value(enum_mode_attached), Color_mode::gray);
+    EXPECT_EQ(Property_registry::get().find_for_object(type_b(), "type_c.enum_mode_attached"), enum_mode_attached.get_ptr());
 }
