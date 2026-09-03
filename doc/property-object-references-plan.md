@@ -56,6 +56,24 @@ part of this plan.
   mask of the items the row accepts. It is data only, opaque to the
   library, like every other `Property_ui` field; the editor reads it for
   `item_reference_imgui`'s `allowed_types` and for the picker candidates.
+- Member-backed registration. `Property<T>::register_member(name,
+  owner_type, member pointer, metadata, after_set)` registers a bridged
+  property (D18) whose storage is the owner's member: the library builds
+  the `get` / `set` pair from the pointer-to-member, `set` writes the
+  member and then runs the optional `after_set(Owner&)` hook (the
+  consequence a hand-written bridge ran inline: the transform update, a
+  graph node's `mark_dirty`, the primitive's scene-host notify). A
+  `Member_value_traits<Member>` customization converts between the member
+  type and the stored `Property_value`; the library provides the identity
+  for every `Property_storable` type and, for a `std::shared_ptr<U>`
+  member, the `dynamic_pointer_cast` to and from
+  `Object_reference::object` (a non-null value whose pointee is not a `U`
+  is rejected by the registration's validate, which `register_member`
+  supplies for `shared_ptr` members). The semantics are exactly D18's -
+  no second copy of the value exists - so owners no longer spell out a
+  bridge; the existing `make_projection_bridge` (`camera.cpp`) and
+  `make_node_member_bridge` (graph nodes) are candidates to migrate to it
+  as follow-up work outside this plan.
 - Text form (D16). `to_string` of a non-null reference is the pointee's
   `get_reference_path()`, a new virtual on `Dependency_object` that is the
   inverse of `resolve_expression_object`: the library returns an empty
@@ -125,18 +143,16 @@ part of this plan.
 - `Material` registers `base_color_texture`, `metallic_roughness_texture`,
   `normal_texture`, `occlusion_texture` and `emissive_texture` as
   `Property<Object_reference>` on `Material::property_owner_type()`, each
-  bridged (D18) over `data.texture_samplers.<slot>.texture_reference`:
-  `get` returns `std::dynamic_pointer_cast<Dependency_object>` of the slot,
-  `set` stores `std::dynamic_pointer_cast<erhe::graphics::Texture_reference>`
-  of the value (validate has already rejected any other class, so the
-  cast cannot fail for a non-null value). Bridged because the per-frame
+  through `register_member` (D1) over
+  `data.texture_samplers.<slot>.texture_reference`, so the `shared_ptr`
+  traits do the `Dependency_object` / `Texture_reference` conversion and
+  supply the validate. Member-backed (D18) because the per-frame
   readers (`Material_buffer::gather_texture`, `Shader_key::derive`) keep
   reading the member with no variant access, the `Material_create_info`
   designated initializers at every construction site keep working, and
   the `Material_data` snapshot / `Material_change_operation` keeps
   serving the sampler and transform fields of the same slot.
-- Validate accepts null or a pointee that is a
-  `erhe::graphics::Texture_reference`. That cast needs the complete class,
+- The traits' cast to `erhe::graphics::Texture_reference` needs the complete class,
   so `erhe::primitive` links `erhe::graphics` (a new DAG edge:
   `erhe::graphics` depends on `erhe::item` only, and `material.hpp`
   already names `erhe::graphics::Texture_reference` and `Sampler`).
@@ -179,8 +195,9 @@ primitive through its mesh and index.
   a `property_owner_type()` function-local static allocated under the
   root and named `Mesh_primitive`, a `get_property_owner_type()`
   override, and a static `material_property` (`Property<Object_reference>`)
-  bridged over `material`, validate accepting null or an
-  `erhe::primitive::Material`, `reference_item_types = Item_type::material`,
+  registered with `register_member` over `material` (the traits validate
+  the pointee as an `erhe::primitive::Material`; `after_set` is the owner
+  notify below), `reference_item_types = Item_type::material`,
   label `Material`, flags `serialize`. The `Property_ui` reuses the
   Properties picker's behavior: no clear button (`show_clear_button` is a
   new `Property_ui` bool, false here; a primitive keeps a material).
@@ -188,8 +205,8 @@ primitive through its mesh and index.
   `std::size_t index{0}`, stamped by one private
   `Mesh::stamp_primitive_owners()` called from `set_primitives`,
   `add_primitive`, `clear_primitives`, the clone constructor and the move
-  constructor / assignment. The property's D19 `property_changed`
-  callback calls `owner->notify_primitive_material_changed()` (private,
+  constructor / assignment. The registration's `after_set` hook calls
+  `owner->notify_primitive_material_changed()` (private,
   the body of today's `set_primitive_material` after the store: the
   `weak_from_this` lock and `Scene_host::on_mesh_material_changed`).
   `Mesh::set_primitive_material` becomes `m_primitives[i].set_value(
@@ -257,6 +274,8 @@ row for the object type).
   exclusion (`:122`, `:207`, `:361`, `:394`).
 - `property_metadata.hpp`: `Property_ui::reference_item_types`,
   `Property_ui::show_clear_button{true}`.
+- `dependency_property.hpp`: `Member_value_traits` (identity and
+  `shared_ptr` specializations) and `Property<T>::register_member`.
 - Every other `switch (Property_type)` in the library (registry listing,
   validate type check, `Property_set` diff) gets its case.
 - `item.hpp/.cpp`: `Item_base::get_reference_path()` returns the name.
@@ -266,14 +285,16 @@ row for the object type).
   virtual, `parse_value` with a context whose `resolve_expression_object`
   names test objects (found, not found, empty), copy shares the pointee,
   `set_expression` on an object property is rejected, an expression
-  referencing an object property reports the type error.
+  referencing an object property reports the type error;
+  `register_member` over a float member and over a `shared_ptr` member of
+  the test object (read agrees with the member, `set` writes it and runs
+  `after_set`, a wrong-class pointee is rejected).
 
 ### 2. Material texture properties (D3)
 
 - `src/erhe/primitive/CMakeLists.txt`: link `erhe::graphics`.
-- `material.hpp/.cpp`: the five registrations by the D3 recipe (one
-  `make_texture_slot_bridge(member pointer)` helper next to the Camera
-  one), accessors, `Property_ui` groups and `visible_when`.
+- `material.hpp/.cpp`: the five `register_member` registrations,
+  accessors, `Property_ui` groups and `visible_when`.
 - Writers: the five live-material sites listed in D3 call the setters.
 - Test, `src/erhe/primitive/test/test_material_textures.cpp`: bridged
   read agrees with the member after a member write and after a property
