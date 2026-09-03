@@ -6429,7 +6429,7 @@
     "name": "free_undone_loads"
   },
   {
-    "description": "List the registered properties of one item (doc/property-system.md): for each, its name, type (bool, int, float, vec2, vec3, vec4, quat, string, enum), effective value, value source (default, inherited, local), local value (null when the item has no local value), default, read_only, inherits, coerced, consequence flags, and enum_labels for enumerations. Values are strings: 'true'/'false', numbers, space-separated vector components, quaternions as 'x y z w', enumeration labels. Also lists attached properties that have a local value on the item. Identify the item by item_id (unique item id, any scene) or item_name (in scene_name, or the first scene); nodes, node attachments (meshes, lights, cameras, ...) and content-library materials are found. The item carries 'sealed' (lock_edit, writes refused) and 'style' (the name of its style layer or null, see set_item_style); a property's 'source' is one of default, inherited, style, local, expression.",
+    "description": "List the registered properties of one item (doc/property-system.md): for each, its name, type (bool, int, float, vec2, vec3, vec4, quat, string, enum, object), effective value, value source (default, inherited, local), local value (null when the item has no local value), default, read_only, inherits, coerced, consequence flags, and enum_labels for enumerations. Values are strings: 'true'/'false', numbers, space-separated vector components, quaternions as 'x y z w', enumeration labels. Also lists attached properties that have a local value on the item. Identify the item by item_id (unique item id, any scene) or item_name (in scene_name, or the first scene); nodes, node attachments (meshes, lights, cameras, ...) and content-library materials are found. The item carries 'sealed' (lock_edit, writes refused) and 'style' (the name of its style layer or null, see set_item_style); a property's 'source' is one of default, inherited, style, local, expression. An 'object' property references another item: its value is the item name, with reference_id (session item id), reference_type and reference_item_types (the accepted Item_type mask) alongside; a material's texture slots are object properties. 'sub_objects' lists the item's property sub-objects (a mesh's primitives: index, label and their properties, e.g. a primitive's 'material'); write them with set_item_property's sub_object.",
     "inputSchema": {
       "properties": {
         "item_id": {
@@ -6451,7 +6451,7 @@
     "name": "get_item_properties"
   },
   {
-    "description": "Set one registered property of an item as an undoable operation (Property_set_operation). value is the property's string form (see get_item_properties) - 'true'/'false', a number, space- or comma-separated vector components, a quaternion as 'x y z w', or an enumeration label; a JSON number, bool or array of numbers is accepted too. Pass null (or omit value) to clear the local value so the property falls back to its inherited or default value. Rejected values (wrong type, enumeration label not in the table, failed validate) return an error and change nothing. The write is queued on the operation stack and applied on the next frame.",
+    "description": "Set one registered property of an item as an undoable operation (Property_set_operation). value is the property's string form (see get_item_properties) - 'true'/'false', a number, space- or comma-separated vector components, a quaternion as 'x y z w', or an enumeration label; a JSON number, bool or array of numbers is accepted too. Pass null (or omit value) to clear the local value so the property falls back to its inherited or default value. Rejected values (wrong type, enumeration label not in the table, failed validate) return an error and change nothing. The write is queued on the operation stack and applied on the next frame. An object property (a material texture slot, a primitive's material) takes value as the referenced item's name (resolved in the item's scene; empty or null clears) or reference_id as its session item id (disambiguates same-named items); the referenced item must belong to the item's scene or be a cross-scene referenceable asset. Pass sub_object to address one of the item's property sub-objects (a mesh primitive index from get_item_properties sub_objects).",
     "inputSchema": {
       "properties": {
         "item_id": {
@@ -6472,6 +6472,14 @@
         },
         "value": {
           "description": "New value in string form, or null to reset to default"
+        },
+        "reference_id": {
+          "description": "For an object property: session id of the item to reference (alternative to value)",
+          "type": "integer"
+        },
+        "sub_object": {
+          "description": "Index of the item's property sub-object to write (a mesh primitive); omit for the item itself",
+          "type": "integer"
         }
       },
       "required": [

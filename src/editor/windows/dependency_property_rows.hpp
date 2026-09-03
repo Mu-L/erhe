@@ -39,8 +39,20 @@ public:
     // calls show_entries().
     void add_rows(Property_editor& editor, const std::vector<std::shared_ptr<erhe::Item_base>>& items);
 
+    // Rows for the properties of one of the item's property sub-objects
+    // (doc/property-system.md D29, e.g. a mesh primitive): the sub-object's
+    // owner type lists the properties, every write is a Property_set_operation
+    // on (item, index), and the bag entries of the context menu (copy, paste,
+    // style) are not offered. Same push_group() / show_entries() protocol.
+    void add_sub_object_rows(Property_editor& editor, const std::shared_ptr<erhe::Item_base>& item, std::size_t sub_object);
+
 private:
+    void draw_rows(Property_editor& editor);
     void row(Property_editor& editor, const erhe::property::Dependency_property& property);
+
+    // The Dependency_object row i reads and writes: item i itself, or its
+    // m_sub_object (null when the sub-object no longer exists).
+    [[nodiscard]] auto target(std::size_t i) const -> erhe::property::Dependency_object*;
 
     // Returns true when the widget produced a new value this frame.
     // `immediate` is set for widgets that commit on selection (combo)
@@ -75,6 +87,7 @@ private:
     // re-binds m_items before touching it, so a later add_rows() call
     // cannot redirect earlier rows to the wrong item.
     std::shared_ptr<const std::vector<std::shared_ptr<erhe::Item_base>>> m_items;
+    std::optional<std::size_t>                                            m_sub_object; // D29: rows address items' sub-object of this index
 
     // Drag / type session: `before` captured at widget activation, one per
     // item, committed as an operation at deactivation.

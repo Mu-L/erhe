@@ -93,6 +93,55 @@ auto value_json(const erhe::property::Dependency_property& property, const erhe:
     return json(erhe::property::to_string(property, value));
 }
 
+// The registered properties of `object` (an item or one of its sub-objects,
+// D29) as get_item_properties lists them.
+auto properties_json(const erhe::property::Dependency_object& object) -> json
+{
+    json properties = json::array();
+    const erhe::property::Owner_type owner_type = object.get_property_owner_type();
+    erhe::property::Property_registry::get().for_each_property_of_object(
+        owner_type,
+        [&](const erhe::property::Dependency_property& property) {
+            const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
+            const std::optional<erhe::property::Property_value> local      = object.read_local_value(property);
+            const std::optional<std::string_view>               expression = object.get_expression(property);
+            json entry = {
+                {"name",       std::string{property.get_name()}},
+                {"type",       erhe::property::c_str(property.get_type())},
+                {"value",      value_json(property, object.get_value(property))},
+                {"source",     erhe::property::c_str(object.get_value_source(property))},
+                {"local",      local.has_value() ? value_json(property, local.value()) : json(nullptr)},
+                {"expression", expression.has_value() ? json(std::string{expression.value()}) : json(nullptr)},
+                {"default",    value_json(property, metadata.default_value.value())},
+                {"read_only",  property.is_read_only()},
+                {"inherits",   metadata.inherits},
+                {"coerced",    object.is_coerced(property)},
+                {"flags",      metadata.flags}
+            };
+            if (const std::string_view error = object.get_expression_error(property); !error.empty()) {
+                entry["expression_error"] = std::string{error};
+            }
+            if (property.get_type() == erhe::property::Property_type::object) {
+                // D28: the referenced item's session id and type next to its name.
+                const erhe::property::Property_value        value      = object.get_value(property);
+                const std::shared_ptr<erhe::Item_base>      referenced = std::dynamic_pointer_cast<erhe::Item_base>(std::get<erhe::property::Object_reference>(value).object);
+                entry["reference_id"]   = referenced ? json(referenced->get_id()) : json(nullptr);
+                entry["reference_type"] = referenced ? json(std::string{referenced->get_type_name()}) : json(nullptr);
+                entry["reference_item_types"] = metadata.ui.reference_item_types;
+            }
+            if (const erhe::property::Enum_info* info = property.get_enum_info(); info != nullptr) {
+                json labels = json::array();
+                for (const erhe::property::Enum_entry& e : info->get_entries()) {
+                    labels.push_back(std::string{e.label});
+                }
+                entry["enum_labels"] = labels;
+            }
+            properties.push_back(entry);
+        }
+    );
+    return properties;
+}
+
 } // anonymous namespace
 
 auto Mcp_server::query_item_properties(const json& args) -> std::string
@@ -111,48 +160,20 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
         {"sealed", item->is_sealed()}, // lock_edit (D24): writes are refused
         {"style",  item->get_style() ? json(std::string{item->get_style()->get_name()}) : json(nullptr)} // D25
     };
-    json properties = json::array();
-    const erhe::property::Owner_type owner_type = item->get_property_owner_type();
-    erhe::property::Property_registry::get().for_each_property_of_object(
-        owner_type,
-        [&](const erhe::property::Dependency_property& property) {
-            const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
-            const std::optional<erhe::property::Property_value> local      = item->read_local_value(property);
-            const std::optional<std::string_view>               expression = item->get_expression(property);
-            json entry = {
-                {"name",       std::string{property.get_name()}},
-                {"type",       erhe::property::c_str(property.get_type())},
-                {"value",      value_json(property, item->get_value(property))},
-                {"source",     erhe::property::c_str(item->get_value_source(property))},
-                {"local",      local.has_value() ? value_json(property, local.value()) : json(nullptr)},
-                {"expression", expression.has_value() ? json(std::string{expression.value()}) : json(nullptr)},
-                {"default",    value_json(property, metadata.default_value.value())},
-                {"read_only",  property.is_read_only()},
-                {"inherits",   metadata.inherits},
-                {"coerced",    item->is_coerced(property)},
-                {"flags",      metadata.flags}
-            };
-            if (const std::string_view error = item->get_expression_error(property); !error.empty()) {
-                entry["expression_error"] = std::string{error};
-            }
-            if (property.get_type() == erhe::property::Property_type::object) {
-                // D28: the referenced item's session id and type next to its name.
-                const erhe::property::Property_value        value      = item->get_value(property);
-                const std::shared_ptr<erhe::Item_base>      referenced = std::dynamic_pointer_cast<erhe::Item_base>(std::get<erhe::property::Object_reference>(value).object);
-                entry["reference_id"]   = referenced ? json(referenced->get_id()) : json(nullptr);
-                entry["reference_type"] = referenced ? json(std::string{referenced->get_type_name()}) : json(nullptr);
-                entry["reference_item_types"] = metadata.ui.reference_item_types;
-            }
-            if (const erhe::property::Enum_info* info = property.get_enum_info(); info != nullptr) {
-                json labels = json::array();
-                for (const erhe::property::Enum_entry& e : info->get_entries()) {
-                    labels.push_back(std::string{e.label});
-                }
-                entry["enum_labels"] = labels;
-            }
-            properties.push_back(entry);
+    json properties = properties_json(*item);
+    // Property sub-objects (D29): a mesh's primitives.
+    json sub_objects = json::array();
+    for (std::size_t i = 0, end = item->get_property_sub_object_count(); i < end; ++i) {
+        const erhe::property::Dependency_object* sub_object = item->get_property_sub_object(i);
+        if (sub_object == nullptr) {
+            continue;
         }
-    );
+        sub_objects.push_back({
+            {"index",      i},
+            {"label",      item->get_property_sub_object_label(i)},
+            {"properties", properties_json(*sub_object)}
+        });
+    }
     // Attached properties with a local value on this item
     json attached = json::array();
     item->for_each_local_value(
@@ -166,8 +187,9 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
             }
         }
     );
-    result["properties"] = properties;
-    result["attached"]   = attached;
+    result["properties"]  = properties;
+    result["sub_objects"] = sub_objects;
+    result["attached"]    = attached;
     return make_json_content(result).dump();
 }
 
@@ -185,9 +207,23 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
     if (property_name.empty()) {
         return make_error_content("property is required");
     }
-    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(item->get_property_owner_type(), property_name);
+    // D29: an optional sub-object index addresses e.g. a mesh primitive.
+    std::optional<std::size_t>         sub_object;
+    erhe::property::Dependency_object* target = item.get();
+    const auto sub_object_it = args.find("sub_object");
+    if ((sub_object_it != args.end()) && !sub_object_it->is_null()) {
+        if (!sub_object_it->is_number_unsigned()) {
+            return make_error_content("sub_object must be an integer index (see get_item_properties sub_objects)");
+        }
+        sub_object = sub_object_it->get<std::size_t>();
+        target     = item->get_property_sub_object(sub_object.value());
+        if (target == nullptr) {
+            return make_error_content("Item '" + item->get_name() + "' has no sub-object " + std::to_string(sub_object.value()) + " (it has " + std::to_string(item->get_property_sub_object_count()) + ")");
+        }
+    }
+    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(target->get_property_owner_type(), property_name);
     if (property == nullptr) {
-        return make_error_content("Item '" + item->get_name() + "' (" + std::string{item->get_type_name()} + ") has no property '" + property_name + "'");
+        return make_error_content("Item '" + item->get_name() + "' (" + std::string{item->get_type_name()} + ")" + (sub_object.has_value() ? " sub-object " + std::to_string(sub_object.value()) : std::string{}) + " has no property '" + property_name + "'");
     }
     if (property->is_read_only()) {
         return make_error_content("Property '" + property_name + "' is read-only");
@@ -206,9 +242,9 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
         if (!erhe::property::validate_expression_text(*property, text, error)) {
             return make_error_content("expression '" + text + "' rejected for property '" + property_name + "': " + error);
         }
-        const std::optional<erhe::property::Local_state> before = item->read_local_state(*property);
+        const std::optional<erhe::property::Local_state> before = target->read_local_state(*property);
         m_context.operation_stack->queue(
-            std::make_shared<Property_set_operation>(item, *property, before, erhe::property::Local_state{erhe::property::Expression_text{text}})
+            std::make_shared<Property_set_operation>(item, sub_object, *property, before, erhe::property::Local_state{erhe::property::Expression_text{text}})
         );
         json result = {
             {"item",       {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
@@ -279,11 +315,12 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
         }
     }
 
-    const std::optional<erhe::property::Local_state> before = item->read_local_state(*property);
-    m_context.operation_stack->queue(std::make_shared<Property_set_operation>(item, *property, before, to_local_state(after)));
+    const std::optional<erhe::property::Local_state> before = target->read_local_state(*property);
+    m_context.operation_stack->queue(std::make_shared<Property_set_operation>(item, sub_object, *property, before, to_local_state(after)));
 
     json result = {
         {"item",     {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
+        {"sub_object", sub_object.has_value() ? json(sub_object.value()) : json(nullptr)},
         {"property", property_name},
         {"before",   before.has_value() ? json(describe_local_state(*property, before)) : json(nullptr)},
         {"after",    after.has_value() ? value_json(*property, after.value()) : json(nullptr)},

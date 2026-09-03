@@ -575,43 +575,20 @@ void Properties::mesh_properties(erhe::scene::Mesh& mesh)
         skin_properties(*mesh.skin.get());
     }
 
-    auto& material_library = scene_root->get_content_library()->materials;
-
     if (m_context.developer_mode) {
         push_group("Primitives", ImGuiTreeNodeFlags_DefaultOpen, m_indent);
     }
+    const std::shared_ptr<erhe::Item_base> mesh_shared = mesh.shared_from_this();
     int primitive_index = 0;
-    for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh.get_primitives()) { // the material picker queues an undoable assign
+    for (const erhe::scene::Mesh_primitive& mesh_primitive : mesh.get_primitives()) {
         while (m_primitive_labels.size() <= primitive_index) {
             m_primitive_labels.push_back(fmt::format("Primitive {}", m_primitive_labels.size()));
         }
         push_group(m_primitive_labels.at(primitive_index).c_str(), ImGuiTreeNodeFlags_DefaultOpen, m_indent);
-        add_entry("Material", [&](){
-            // Picker candidates: the scene's content-library materials (reused scratch).
-            m_material_candidates.clear();
-            for (const std::shared_ptr<erhe::primitive::Material>& material : material_library->get_all<erhe::primitive::Material>()) {
-                if (material) {
-                    m_material_candidates.push_back(material);
-                }
-            }
-            std::shared_ptr<erhe::Item_base> value = mesh_primitive.material;
-            Item_reference_options options;
-            options.candidates                  = m_material_candidates;
-            options.accept_content_library_node = true;
-            options.show_clear_button           = false; // match the previous combo: a primitive keeps its material
-            if (item_reference_imgui(m_context, "##material", value, erhe::primitive::Material::get_static_type(), options)) {
-                queue_mesh_material_assign(
-                    m_context,
-                    std::static_pointer_cast<erhe::scene::Mesh>(mesh.shared_from_this()),
-                    static_cast<std::size_t>(primitive_index),
-                    std::dynamic_pointer_cast<erhe::primitive::Material>(value)
-                );
-            }
-            // Release the scratch contents (capacity kept): the strong
-            // references would otherwise persist past the last draw and pin
-            // a closed scene's materials.
-            m_material_candidates.clear();
-        });
+        // The primitive's registered properties (its material): generic rows
+        // on the property sub-object (doc/property-system.md D29), undo
+        // through Property_set_operation on (mesh, primitive index).
+        m_dependency_rows.add_sub_object_rows(*this, mesh_shared, static_cast<std::size_t>(primitive_index));
         if (m_context.developer_mode) {
             if (mesh_primitive.material) {
                 // The slot in this mesh's scene root's FORWARD set - the one

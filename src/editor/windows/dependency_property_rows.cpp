@@ -49,20 +49,41 @@ void Dependency_property_rows::add_rows(Property_editor& editor, const std::vect
         }
     }
     m_items = std::make_shared<const std::vector<std::shared_ptr<erhe::Item_base>>>(std::move(snapshot));
+    m_sub_object.reset();
     if (m_items->empty()) {
         return;
     }
+    draw_rows(editor);
+}
 
+void Dependency_property_rows::add_sub_object_rows(Property_editor& editor, const std::shared_ptr<erhe::Item_base>& item, const std::size_t sub_object)
+{
+    if (!item || (item->get_property_sub_object(sub_object) == nullptr)) {
+        return;
+    }
+    m_items      = std::make_shared<const std::vector<std::shared_ptr<erhe::Item_base>>>(std::vector<std::shared_ptr<erhe::Item_base>>{item});
+    m_sub_object = sub_object;
+    draw_rows(editor);
+}
+
+auto Dependency_property_rows::target(const std::size_t i) const -> erhe::property::Dependency_object*
+{
+    erhe::Item_base& item = *(*m_items)[i];
+    return m_sub_object.has_value() ? item.get_property_sub_object(m_sub_object.value()) : &item;
+}
+
+void Dependency_property_rows::draw_rows(Property_editor& editor)
+{
     // Properties common to every selected item's type, in the first item's
     // registration order.
     const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
     std::vector<const Dependency_property*> properties;
     registry.for_each_property_of_object(
-        m_items->front()->get_property_owner_type(),
+        target(0)->get_property_owner_type(),
         [&properties](const Dependency_property& property) { properties.push_back(&property); }
     );
     for (std::size_t i = 1; i < m_items->size(); ++i) {
-        const erhe::property::Owner_type object_type = (*m_items)[i]->get_property_owner_type();
+        const erhe::property::Owner_type object_type = target(i)->get_property_owner_type();
         std::erase_if(
             properties,
             [&registry, object_type](const Dependency_property* property) {
@@ -70,7 +91,7 @@ void Dependency_property_rows::add_rows(Property_editor& editor, const std::vect
             }
         );
     }
-    const erhe::property::Owner_type owner_type = m_items->front()->get_property_owner_type();
+    const erhe::property::Owner_type owner_type = target(0)->get_property_owner_type();
     if (!m_context.developer_mode) {
         std::erase_if(properties, [owner_type](const Dependency_property* property) { return property->get_metadata(owner_type).ui.developer_only; });
     }
@@ -83,8 +104,8 @@ void Dependency_property_rows::add_rows(Property_editor& editor, const std::vect
             if (!visible_when) {
                 return false;
             }
-            for (const std::shared_ptr<erhe::Item_base>& item : *m_items) {
-                if (!visible_when(*item)) {
+            for (std::size_t i = 0; i < m_items->size(); ++i) {
+                if (!visible_when(*target(i))) {
                     return true;
                 }
             }
@@ -120,8 +141,9 @@ void Dependency_property_rows::add_rows(Property_editor& editor, const std::vect
 
 void Dependency_property_rows::row(Property_editor& editor, const Dependency_property& property)
 {
-    const erhe::Item_base&   first    = *m_items->front();
-    const Property_metadata& metadata = property.get_metadata(first.get_property_owner_type());
+    const erhe::Item_base&                    first_item = *m_items->front();
+    const erhe::property::Dependency_object&  first      = *target(0);
+    const Property_metadata&                  metadata   = property.get_metadata(first.get_property_owner_type());
 
     // Label: Property_ui::label or the property name; "*" marks a local
     // value that differs from the default, "=" a property driven by an
@@ -147,7 +169,7 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
         tooltip += first.get_style()->get_name();
         tooltip += ")";
     }
-    if (first.is_sealed()) {
+    if (first_item.is_sealed()) {
         tooltip += "\nSealed (lock_edit)";
     }
     if (expression.has_value()) {
@@ -167,20 +189,24 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
         tooltip += erhe::property::to_string(property, first.get_value(property));
     }
 
-    const bool sealed = first.is_sealed(); // D24: a sealed item's rows are read-only
+    const bool sealed = first_item.is_sealed(); // D24: a sealed item's rows are read-only
     editor.add_entry(
         std::move(label),
-        [this, items = m_items, &property, &metadata, sealed]() {
-            m_items = items; // this row's items; a later add_rows() call has re-pointed m_items
-            if (const std::optional<std::string_view> text = m_items->front()->get_expression(property); text.has_value()) {
+        [this, items = m_items, sub_object = m_sub_object, &property, &metadata, sealed]() {
+            m_items      = items; // this row's items; a later add_rows() call has re-pointed m_items
+            m_sub_object = sub_object;
+            if (target(0) == nullptr) {
+                return; // the sub-object is gone (primitive list rebuilt)
+            }
+            if (const std::optional<std::string_view> text = target(0)->get_expression(property); text.has_value()) {
                 draw_expression(property, text.value());
                 context_menu(property, metadata);
                 return;
             }
-            Property_value value = m_items->front()->get_value(property);
+            Property_value value = target(0)->get_value(property);
             bool mixed = false;
             for (std::size_t i = 1; i < m_items->size(); ++i) {
-                if (!((*m_items)[i]->get_value(property) == value)) {
+                if (!(target(i)->get_value(property) == value)) {
                     mixed = true;
                     break;
                 }
@@ -216,8 +242,8 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
                     if (m_edit_property != &property) {
                         begin_edit(property); // keyboard edits can change without a separate activation frame
                     }
-                    for (const std::shared_ptr<erhe::Item_base>& item : *m_items) {
-                        item->set_value(property, value);
+                    for (std::size_t i = 0; i < m_items->size(); ++i) {
+                        target(i)->set_value(property, value);
                     }
                 }
                 if (ImGui::IsItemDeactivatedAfterEdit()) {
@@ -416,7 +442,7 @@ auto Dependency_property_rows::draw_widget(
 
 void Dependency_property_rows::draw_expression(const Dependency_property& property, const std::string_view text)
 {
-    const std::string_view error   = m_items->front()->get_expression_error(property);
+    const std::string_view error   = target(0)->get_expression_error(property);
     const bool             editing = (m_edit_property == &property);
     // The row mirrors the item's formula until the field is activated;
     // from then on the typed text lives in m_expression_scratch (rows of
@@ -462,8 +488,8 @@ void Dependency_property_rows::begin_edit(const Dependency_property& property)
 {
     m_edit_property = &property;
     m_edit_before.clear();
-    for (const std::shared_ptr<erhe::Item_base>& item : *m_items) {
-        m_edit_before.push_back(item->read_local_state(property));
+    for (std::size_t i = 0; i < m_items->size(); ++i) {
+        m_edit_before.push_back(target(i)->read_local_state(property));
     }
 }
 
@@ -476,12 +502,12 @@ void Dependency_property_rows::end_edit(const Dependency_property& property)
     // session's before / after and re-applies after (idempotent) so the
     // consequence hook runs once per completed edit.
     if (m_items->size() == 1) {
-        queue_set(property, m_items->front()->read_local_state(property));
+        queue_set(property, target(0)->read_local_state(property));
     } else {
         Compound_operation::Parameters parameters;
         for (std::size_t i = 0; i < m_items->size(); ++i) {
             parameters.operations.push_back(
-                std::make_shared<Property_set_operation>((*m_items)[i], property, m_edit_before[i], (*m_items)[i]->read_local_state(property))
+                std::make_shared<Property_set_operation>((*m_items)[i], m_sub_object, property, m_edit_before[i], target(i)->read_local_state(property))
             );
         }
         m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
@@ -497,12 +523,12 @@ void Dependency_property_rows::queue_set(const Dependency_property& property, co
         return;
     }
     if (m_items->size() == 1) {
-        m_context.operation_stack->queue(std::make_shared<Property_set_operation>(m_items->front(), property, m_edit_before.front(), after));
+        m_context.operation_stack->queue(std::make_shared<Property_set_operation>(m_items->front(), m_sub_object, property, m_edit_before.front(), after));
         return;
     }
     Compound_operation::Parameters parameters;
     for (std::size_t i = 0; i < m_items->size(); ++i) {
-        parameters.operations.push_back(std::make_shared<Property_set_operation>((*m_items)[i], property, m_edit_before[i], after));
+        parameters.operations.push_back(std::make_shared<Property_set_operation>((*m_items)[i], m_sub_object, property, m_edit_before[i], after));
     }
     m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
 }
@@ -514,20 +540,24 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
         return;
     }
     bool any_local = false;
-    for (const std::shared_ptr<erhe::Item_base>& item : *m_items) {
-        any_local = any_local || item->has_local_value(property);
+    for (std::size_t i = 0; i < m_items->size(); ++i) {
+        any_local = any_local || target(i)->has_local_value(property);
     }
     const bool writable = !property.is_read_only() && !m_items->front()->is_sealed(); // D24
     if (ImGui::MenuItem("Reset to default", nullptr, false, any_local && writable)) {
         reset_to_default(property);
     }
-    const bool driven      = m_items->front()->get_expression(property).has_value();
+    const bool driven      = target(0)->get_expression(property).has_value();
     const bool can_drive   = !driven && writable && (property.get_type() != Property_type::string) && (property.get_type() != Property_type::object);
     if (ImGui::MenuItem("Edit as expression", nullptr, false, can_drive)) {
         edit_as_expression(property);
     }
     if (ImGui::MenuItem("Remove expression", nullptr, false, driven && writable)) {
         remove_expression(property);
+    }
+    if (m_sub_object.has_value()) {
+        ImGui::EndPopup(); // the bag entries below act on the item, not its sub-object
+        return;
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Copy Properties", nullptr, false, (m_items->size() == 1) && (m_context.clipboard != nullptr))) {
@@ -564,7 +594,7 @@ void Dependency_property_rows::reset_to_default(const Dependency_property& prope
 // row turns into an editable expression that evaluates to the same value.
 void Dependency_property_rows::edit_as_expression(const Dependency_property& property)
 {
-    const Property_value value = m_items->front()->get_value(property);
+    const Property_value value = target(0)->get_value(property);
     std::string text;
     const auto number = [](const float f) { return erhe::property::to_string(Property_value{f}); };
     switch (property.get_type()) {
@@ -591,7 +621,7 @@ void Dependency_property_rows::edit_as_expression(const Dependency_property& pro
 void Dependency_property_rows::remove_expression(const Dependency_property& property)
 {
     begin_edit(property);
-    queue_set(property, erhe::property::Local_state{m_items->front()->get_value(property)});
+    queue_set(property, erhe::property::Local_state{target(0)->get_value(property)});
     m_edit_property = nullptr;
 }
 

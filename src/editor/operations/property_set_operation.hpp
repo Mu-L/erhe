@@ -25,12 +25,21 @@ class App_context;
 // cleared property or the formula a value replaced, not merely the previous
 // effective value. After each apply the operation runs
 // App_context::on_item_property_changed so the property's consequence flags
-// take effect.
+// take effect. With a sub-object index (D29) the target is
+// item->get_property_sub_object(index) - a mesh primitive - and the item
+// stays the one the operation names and seals against.
 class Property_set_operation : public Operation
 {
 public:
     Property_set_operation(
         const std::shared_ptr<erhe::Item_base>&      item,
+        const erhe::property::Dependency_property&   property,
+        std::optional<erhe::property::Local_state>   before,
+        std::optional<erhe::property::Local_state>   after
+    );
+    Property_set_operation(
+        const std::shared_ptr<erhe::Item_base>&      item,
+        std::optional<std::size_t>                   sub_object,
         const erhe::property::Dependency_property&   property,
         std::optional<erhe::property::Local_state>   before,
         std::optional<erhe::property::Local_state>   after
@@ -48,14 +57,16 @@ public:
     void undo   (App_context& context) override;
     void collect_item_references(std::unordered_set<const erhe::Item_base*>& out_items) const override;
 
-    [[nodiscard]] auto get_item    () const -> const std::shared_ptr<erhe::Item_base>&    { return m_item; }
-    [[nodiscard]] auto get_property() const -> const erhe::property::Dependency_property& { return m_property; }
+    [[nodiscard]] auto get_item      () const -> const std::shared_ptr<erhe::Item_base>&    { return m_item; }
+    [[nodiscard]] auto get_sub_object() const -> const std::optional<std::size_t>&           { return m_sub_object; }
+    [[nodiscard]] auto get_property  () const -> const erhe::property::Dependency_property& { return m_property; }
 
 private:
     void apply(App_context& context, const std::optional<erhe::property::Local_state>& state);
     void adopt_userships(App_context& context);
 
     std::shared_ptr<erhe::Item_base>            m_item;
+    std::optional<std::size_t>                  m_sub_object;
     const erhe::property::Dependency_property&  m_property;
     std::optional<erhe::property::Local_state>  m_before;
     std::optional<erhe::property::Local_state>  m_after;
@@ -107,6 +118,17 @@ private:
 void apply_item_property(
     App_context&                                       context,
     erhe::Item_base&                                   item,
+    const erhe::property::Dependency_property&         property,
+    const std::optional<erhe::property::Local_state>&  state
+);
+
+// The same for a property of one of the item's sub-objects (D29):
+// `target` is item.get_property_sub_object(index); a sealed item refuses
+// the write, and the consequence hook runs with the item.
+void apply_item_property(
+    App_context&                                       context,
+    erhe::Item_base&                                   item,
+    erhe::property::Dependency_object&                 target,
     const erhe::property::Dependency_property&         property,
     const std::optional<erhe::property::Local_state>&  state
 );

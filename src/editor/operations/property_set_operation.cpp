@@ -85,10 +85,26 @@ void apply_item_property(
     const std::optional<erhe::property::Local_state>&  state
 )
 {
+    apply_item_property(context, item, item, property, state);
+}
+
+void apply_item_property(
+    App_context&                                       context,
+    erhe::Item_base&                                   item,
+    erhe::property::Dependency_object&                 target,
+    const erhe::property::Dependency_property&         property,
+    const std::optional<erhe::property::Local_state>&  state
+)
+{
+    if ((&target != &item) && item.is_sealed()) {
+        // D24: a sub-object of a sealed item is as sealed as the item.
+        log_operations->warn("property '{}' on a sub-object of sealed '{}' not applied", property.get_name(), item.get_name());
+        return;
+    }
     if (const std::shared_ptr<erhe::Item_base> referenced = referenced_item(state); referenced && !is_reference_allowed(context, item, *referenced)) {
         return;
     }
-    if (!item.apply_local_state(property, state)) {
+    if (!target.apply_local_state(property, state)) {
         // Sealed item (D24) or a rejected value: the store logged why.
         log_operations->warn("property '{}' on '{}' not applied", property.get_name(), item.get_name());
         return;
@@ -121,16 +137,29 @@ Property_set_operation::Property_set_operation(
     std::optional<erhe::property::Local_state>   before,
     std::optional<erhe::property::Local_state>   after
 )
-    : m_item    {item}
-    , m_property{property}
-    , m_before  {std::move(before)}
-    , m_after   {std::move(after)}
+    : Property_set_operation{item, std::nullopt, property, std::move(before), std::move(after)}
+{
+}
+
+Property_set_operation::Property_set_operation(
+    const std::shared_ptr<erhe::Item_base>&      item,
+    std::optional<std::size_t>                   sub_object,
+    const erhe::property::Dependency_property&   property,
+    std::optional<erhe::property::Local_state>   before,
+    std::optional<erhe::property::Local_state>   after
+)
+    : m_item      {item}
+    , m_sub_object{sub_object}
+    , m_property  {property}
+    , m_before    {std::move(before)}
+    , m_after     {std::move(after)}
 {
     set_description(
         fmt::format(
-            "Set {} '{}' {} = {}",
+            "Set {} '{}'{} {} = {}",
             item->get_type_name(),
             item->get_name(),
+            sub_object.has_value() ? fmt::format(" [{}]", item->get_property_sub_object_label(sub_object.value())) : std::string{},
             property.get_name(),
             describe_local_state(property, m_after)
         )
@@ -177,7 +206,16 @@ void Property_set_operation::apply(App_context& context, const std::optional<erh
     if (!m_item) {
         return;
     }
-    apply_item_property(context, *m_item, m_property, state);
+    if (!m_sub_object.has_value()) {
+        apply_item_property(context, *m_item, m_property, state);
+        return;
+    }
+    erhe::property::Dependency_object* target = m_item->get_property_sub_object(m_sub_object.value());
+    if (target == nullptr) {
+        log_operations->warn("property '{}' on '{}': sub-object {} no longer exists, not applied", m_property.get_name(), m_item->get_name(), m_sub_object.value());
+        return;
+    }
+    apply_item_property(context, *m_item, *target, m_property, state);
 }
 
 void Property_set_operation::collect_item_references(std::unordered_set<const erhe::Item_base*>& out_items) const

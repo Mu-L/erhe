@@ -3505,13 +3505,26 @@ public:
         const bool has_value = (args_obj->find_field_unordered("value").get_string().get(value_sv) == simdjson::SUCCESS);
         std::string_view expression_sv;
         const bool has_expression = (args_obj->find_field_unordered("expression").get_string().get(expression_sv) == simdjson::SUCCESS);
+        uint64_t sub_object_index = 0;
+        const bool has_sub_object = (args_obj->find_field_unordered("sub_object").get_uint64().get(sub_object_index) == simdjson::SUCCESS);
 
         const std::shared_ptr<erhe::Item_base> item = find_item_in_scene_by_name(*m_default_scene, item_sv);
         if (!item) {
             log_startup->warn("commands.json: scene.set_property: item '{}' not found", item_sv);
             return;
         }
-        const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(item->get_property_owner_type(), property_sv);
+        // D29: an optional sub-object index (a mesh primitive).
+        std::optional<std::size_t>         sub_object;
+        erhe::property::Dependency_object* target = item.get();
+        if (has_sub_object) {
+            sub_object = static_cast<std::size_t>(sub_object_index);
+            target     = item->get_property_sub_object(sub_object.value());
+            if (target == nullptr) {
+                log_startup->warn("commands.json: scene.set_property: '{}' has no sub-object {}", item->get_name(), sub_object.value());
+                return;
+            }
+        }
+        const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(target->get_property_owner_type(), property_sv);
         if (property == nullptr) {
             log_startup->warn("commands.json: scene.set_property: {} '{}' has no property '{}'", item->get_type_name(), item->get_name(), property_sv);
             return;
@@ -3538,7 +3551,7 @@ public:
         }
         log_startup->info("commands.json: scene.set_property {} '{}' {} = {}", item->get_type_name(), item->get_name(), property_sv, describe_local_state(*property, after));
         m_app_context.operation_stack->queue(
-            std::make_shared<Property_set_operation>(item, *property, item->read_local_state(*property), after)
+            std::make_shared<Property_set_operation>(item, sub_object, *property, target->read_local_state(*property), after)
         );
     }
 
