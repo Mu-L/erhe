@@ -1,6 +1,10 @@
 #include "operations/property_set_operation.hpp"
 #include "app_context.hpp"
+#include "assets/asset_key.hpp"
+#include "assets/asset_manager.hpp"
 #include "editor_log.hpp"
+#include "scene/item_lookup.hpp"
+#include "scene/scene_root.hpp"
 
 #include "erhe_item/item.hpp"
 #include "erhe_property/dependency_property.hpp"
@@ -10,6 +14,70 @@
 
 namespace editor {
 
+namespace {
+
+// The item an object value names, or null (not an object value, null
+// reference, an expression, no local state).
+auto referenced_item(const std::optional<erhe::property::Local_state>& state) -> std::shared_ptr<erhe::Item_base>
+{
+    if (!state.has_value()) {
+        return {};
+    }
+    const erhe::property::Property_value* value = std::get_if<erhe::property::Property_value>(&state.value());
+    if (value == nullptr) {
+        return {};
+    }
+    const erhe::property::Object_reference* reference = std::get_if<erhe::property::Object_reference>(value);
+    if ((reference == nullptr) || !reference->object) {
+        return {};
+    }
+    return std::dynamic_pointer_cast<erhe::Item_base>(reference->object);
+}
+
+auto referenced_item(const std::optional<erhe::property::Property_value>& value) -> std::shared_ptr<erhe::Item_base>
+{
+    return referenced_item(to_local_state(value));
+}
+
+// D28 host check: same scene, or a cross-scene referenceable asset. An item
+// whose scene cannot be determined (previews, unhosted test items) passes.
+auto is_reference_allowed(App_context& context, const erhe::Item_base& target, const erhe::Item_base& referenced) -> bool
+{
+    Scene_root* const target_scene     = find_scene_root_for_item(context, target);
+    Scene_root* const referenced_scene = find_scene_root_for_item(context, referenced);
+    if ((target_scene == nullptr) || (referenced_scene == nullptr) || (target_scene == referenced_scene)) {
+        return true;
+    }
+    if ((context.asset_manager != nullptr) && context.asset_manager->is_cross_scene_referenceable(referenced)) {
+        return true;
+    }
+    log_operations->warn(
+        "property write refused: '{}' ({}) of scene '{}' cannot reference '{}' ({}) of scene '{}' (not a cross-scene referenceable asset)",
+        target.get_name(), target.get_type_name(), target_scene->get_name(),
+        referenced.get_name(), referenced.get_type_name(), referenced_scene->get_name()
+    );
+    return false;
+}
+
+// Asset-manager plan R5.4: an operation holding a managed asset declares
+// the usership. One entry per distinct asset.
+void adopt_reference_usership(App_context& context, std::vector<Asset_reference>& userships, const std::shared_ptr<erhe::Item_base>& item)
+{
+    if (!item || (context.asset_manager == nullptr) || (asset_type_from_item(*item) == Asset_type::none)) {
+        return;
+    }
+    for (const Asset_reference& usership : userships) {
+        if (usership.get().get() == item.get()) {
+            return;
+        }
+    }
+    Asset_reference& usership = userships.emplace_back();
+    usership.set_user_label("undo stack: property set");
+    usership.adopt(*context.asset_manager, item);
+}
+
+} // anonymous namespace
+
 void apply_item_property(
     App_context&                                       context,
     erhe::Item_base&                                   item,
@@ -17,6 +85,9 @@ void apply_item_property(
     const std::optional<erhe::property::Local_state>&  state
 )
 {
+    if (const std::shared_ptr<erhe::Item_base> referenced = referenced_item(state); referenced && !is_reference_allowed(context, item, *referenced)) {
+        return;
+    }
     if (!item.apply_local_state(property, state)) {
         // Sealed item (D24) or a rejected value: the store logged why.
         log_operations->warn("property '{}' on '{}' not applied", property.get_name(), item.get_name());
@@ -81,7 +152,18 @@ Property_set_operation::~Property_set_operation() noexcept = default;
 void Property_set_operation::execute(App_context& context)
 {
     log_operations->trace("Op Execute {}", describe());
+    adopt_userships(context);
     apply(context, m_after);
+}
+
+void Property_set_operation::adopt_userships(App_context& context)
+{
+    if (m_userships_adopted || (context.asset_manager == nullptr)) {
+        return;
+    }
+    m_userships_adopted = true;
+    adopt_reference_usership(context, m_userships, referenced_item(m_before));
+    adopt_reference_usership(context, m_userships, referenced_item(m_after));
 }
 
 void Property_set_operation::undo(App_context& context)
@@ -102,6 +184,11 @@ void Property_set_operation::collect_item_references(std::unordered_set<const er
 {
     if (m_item) {
         out_items.insert(m_item.get());
+    }
+    for (const std::optional<erhe::property::Local_state>* state : {&m_before, &m_after}) {
+        if (const std::shared_ptr<erhe::Item_base> referenced = referenced_item(*state); referenced) {
+            out_items.insert(referenced.get());
+        }
     }
 }
 
@@ -130,9 +217,26 @@ Property_set_apply_operation::Property_set_apply_operation(
 
 Property_set_apply_operation::~Property_set_apply_operation() noexcept = default;
 
+void Property_set_apply_operation::adopt_userships(App_context& context)
+{
+    if (m_userships_adopted || (context.asset_manager == nullptr)) {
+        return;
+    }
+    m_userships_adopted = true;
+    for (const erhe::property::Property_set::Entry& entry : m_values.entries()) {
+        adopt_reference_usership(context, m_userships, referenced_item(std::optional<erhe::property::Property_value>{entry.value}));
+    }
+    for (const Target& target : m_targets) {
+        for (const std::optional<erhe::property::Property_value>& before : target.before) {
+            adopt_reference_usership(context, m_userships, referenced_item(before));
+        }
+    }
+}
+
 void Property_set_apply_operation::execute(App_context& context)
 {
     log_operations->trace("Op Execute {}", describe());
+    adopt_userships(context);
     for (const Target& target : m_targets) {
         const erhe::property::Dependency_object::Change_batch batch{*target.item};
         for (const erhe::property::Property_set::Entry& entry : m_values.entries()) {
@@ -157,6 +261,16 @@ void Property_set_apply_operation::collect_item_references(std::unordered_set<co
 {
     for (const Target& target : m_targets) {
         out_items.insert(target.item.get());
+        for (const std::optional<erhe::property::Property_value>& before : target.before) {
+            if (const std::shared_ptr<erhe::Item_base> referenced = referenced_item(before); referenced) {
+                out_items.insert(referenced.get());
+            }
+        }
+    }
+    for (const erhe::property::Property_set::Entry& entry : m_values.entries()) {
+        if (const std::shared_ptr<erhe::Item_base> referenced = referenced_item(std::optional<erhe::property::Property_value>{entry.value}); referenced) {
+            out_items.insert(referenced.get());
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 #include "windows/dependency_property_rows.hpp"
+#include "windows/item_reference.hpp"
 #include "windows/property_editor.hpp"
 
 #include "app_context.hpp"
@@ -7,6 +8,7 @@
 #include "operations/operation_stack.hpp"
 #include "operations/property_set_operation.hpp"
 #include "operations/style_set_operation.hpp"
+#include "scene/item_lookup.hpp"
 #include "tools/clipboard.hpp"
 
 #include "erhe_item/item.hpp"
@@ -345,9 +347,21 @@ auto Dependency_property_rows::draw_widget(
             return changed;
         }
         case Property_type::object: {
-            // Widget lands with the editor side of the object reference work.
-            ImGui::TextUnformatted(erhe::property::to_string(value).c_str());
-            return false;
+            // D28: a drop target / picker for an item; commits on selection.
+            immediate = true;
+            std::shared_ptr<erhe::Item_base> current = std::dynamic_pointer_cast<erhe::Item_base>(std::get<erhe::property::Object_reference>(value).object);
+            const uint64_t allowed_types = (ui.reference_item_types != 0) ? ui.reference_item_types : ~uint64_t{0};
+            collect_reference_candidates(m_context, *m_items->front(), allowed_types, m_reference_candidates);
+            Item_reference_options options;
+            options.candidates                  = m_reference_candidates;
+            options.accept_content_library_node = true;
+            options.show_clear_button           = ui.show_clear_button;
+            const bool changed = item_reference_imgui(m_context, "##", current, allowed_types, options);
+            m_reference_candidates.clear(); // strong references must not outlive the draw
+            if (changed) {
+                value = erhe::property::Object_reference{std::move(current)};
+            }
+            return changed;
         }
         case Property_type::ivec2: {
             glm::ivec2 v = std::get<glm::ivec2>(value);

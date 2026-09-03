@@ -3529,7 +3529,7 @@ public:
             }
             after = erhe::property::Local_state{erhe::property::Expression_text{std::string{expression_sv}}};
         } else if (has_value) {
-            std::optional<erhe::property::Property_value> value = erhe::property::parse_value(*property, value_sv);
+            std::optional<erhe::property::Property_value> value = erhe::property::parse_value(*item, *property, value_sv);
             if (!value.has_value()) {
                 log_startup->warn("commands.json: scene.set_property: '{}' is not a valid {} for '{}'", value_sv, erhe::property::c_str(property->get_type()), property_sv);
                 return;

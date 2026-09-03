@@ -135,6 +135,14 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
             if (const std::string_view error = item->get_expression_error(property); !error.empty()) {
                 entry["expression_error"] = std::string{error};
             }
+            if (property.get_type() == erhe::property::Property_type::object) {
+                // D28: the referenced item's session id and type next to its name.
+                const erhe::property::Property_value        value      = item->get_value(property);
+                const std::shared_ptr<erhe::Item_base>      referenced = std::dynamic_pointer_cast<erhe::Item_base>(std::get<erhe::property::Object_reference>(value).object);
+                entry["reference_id"]   = referenced ? json(referenced->get_id()) : json(nullptr);
+                entry["reference_type"] = referenced ? json(std::string{referenced->get_type_name()}) : json(nullptr);
+                entry["reference_item_types"] = metadata.ui.reference_item_types;
+            }
             if (const erhe::property::Enum_info* info = property.get_enum_info(); info != nullptr) {
                 json labels = json::array();
                 for (const erhe::property::Enum_entry& e : info->get_entries()) {
@@ -213,9 +221,30 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
     }
 
     std::optional<erhe::property::Property_value> after;
-    const auto value_it = args.find("value");
-    const bool clear = (value_it == args.end()) || value_it->is_null();
-    if (!clear) {
+    const auto value_it        = args.find("value");
+    const auto reference_id_it = args.find("reference_id");
+    const bool has_reference_id = (reference_id_it != args.end()) && !reference_id_it->is_null();
+    const bool clear = !has_reference_id && ((value_it == args.end()) || value_it->is_null());
+    if (has_reference_id) {
+        // D28: an object reference by the referenced item's session id,
+        // which disambiguates same-named items.
+        if (property->get_type() != erhe::property::Property_type::object) {
+            return make_error_content("reference_id applies to object properties only; '" + property_name + "' is " + erhe::property::c_str(property->get_type()));
+        }
+        if (!reference_id_it->is_number_unsigned()) {
+            return make_error_content("reference_id must be an integer item id");
+        }
+        json id_args = json::object();
+        id_args["item_id"] = reference_id_it->get<std::size_t>();
+        const std::shared_ptr<erhe::Item_base> referenced = resolve_item(m_context, id_args, error);
+        if (!referenced) {
+            return make_error_content("reference_id: " + error);
+        }
+        after = erhe::property::Object_reference{referenced};
+        if (!property->validate(after.value())) {
+            return make_error_content("'" + referenced->get_name() + "' (" + std::string{referenced->get_type_name()} + ") was rejected by property '" + property_name + "' validation");
+        }
+    } else if (!clear) {
         // Accept a string in property_string form, or a JSON number / bool /
         // array of numbers, which is rendered to that form first.
         std::string text;
@@ -238,8 +267,11 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
         } else {
             return make_error_content("value must be a string, number, bool, array of numbers, or null (reset to default)");
         }
-        after = erhe::property::parse_value(*property, text);
+        after = erhe::property::parse_value(*item, *property, text);
         if (!after.has_value()) {
+            if (property->get_type() == erhe::property::Property_type::object) {
+                return make_error_content("'" + text + "' does not name an item reachable from '" + item->get_name() + "' (use reference_id for an item id)");
+            }
             return make_error_content("'" + text + "' is not a valid " + erhe::property::c_str(property->get_type()) + " for property '" + property_name + "'");
         }
         if (!property->validate(after.value())) {

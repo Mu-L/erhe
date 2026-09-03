@@ -1,4 +1,7 @@
 #include "scene/item_lookup.hpp"
+#include "app_context.hpp"
+#include "app_scenes.hpp"
+#include "assets/asset_manager.hpp"
 #include "content_library/content_library.hpp"
 #include "geometry_graph/graph_mesh.hpp"
 #include "geometry_graph/geometry_graph_node.hpp"
@@ -107,6 +110,62 @@ auto find_item_in_scene_by_id(Scene_root& scene_root, const std::size_t id) -> s
 auto find_item_in_scene_by_name(Scene_root& scene_root, const std::string_view name) -> std::shared_ptr<erhe::Item_base>
 {
     return find_item_in_scene(scene_root, [name](const erhe::Item_base& item) { return item.get_name() == name; });
+}
+
+auto find_scene_root_for_item(App_context& context, const erhe::Item_base& item) -> Scene_root*
+{
+    if (context.app_scenes == nullptr) {
+        return nullptr;
+    }
+    const erhe::Item_host* const host = item.get_item_host();
+    for (const std::shared_ptr<Scene_root>& scene_root : context.app_scenes->get_scene_roots()) {
+        if (!scene_root) {
+            continue;
+        }
+        const erhe::Item_host* const candidate = scene_root.get();
+        if (host != nullptr) {
+            if (host == candidate) {
+                return scene_root.get();
+            }
+        } else if ((context.asset_manager != nullptr) && context.asset_manager->is_defined_by(item, candidate)) {
+            return scene_root.get();
+        }
+    }
+    return nullptr;
+}
+
+void collect_reference_candidates(
+    App_context&                                   context,
+    const erhe::Item_base&                         target,
+    const uint64_t                                 item_types,
+    std::vector<std::shared_ptr<erhe::Item_base>>& out
+)
+{
+    out.clear();
+    Scene_root* const scene_root = find_scene_root_for_item(context, target);
+    if (scene_root == nullptr) {
+        return;
+    }
+    const std::shared_ptr<Content_library>& library = scene_root->get_content_library();
+    if (!library || !library->root) {
+        return;
+    }
+    const bool developer_mode = context.developer_mode;
+    library->root->for_each_const<Content_library_node>(
+        [&out, item_types, developer_mode](const Content_library_node& node) -> bool {
+            const std::shared_ptr<erhe::Item_base>& item = node.item;
+            if (!item || ((item->get_type() & item_types) == 0)) {
+                return true; // continue
+            }
+            const bool shown =
+                item->is_shown_in_ui() ||
+                (developer_mode && ((item->get_flag_bits() & erhe::Item_flags::show_in_developer_ui) != 0));
+            if (shown) {
+                out.push_back(item);
+            }
+            return true;
+        }
+    );
 }
 
 }

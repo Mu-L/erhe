@@ -1613,14 +1613,35 @@ void Properties::dependency_properties(const std::shared_ptr<erhe::Item_base>& i
     m_dependency_rows.add_rows(*this, std::vector<std::shared_ptr<erhe::Item_base>>{item});
 }
 
+namespace {
+
+// The slot textures are registered properties with their own undo
+// (Property_set_operation, doc/property-system.md D28), so the material
+// inspect snapshot covers only the sampler and transform fields: `base`
+// with the texture references of `textures`.
+auto with_textures_of(erhe::primitive::Material_data base, const erhe::primitive::Material_data& textures) -> erhe::primitive::Material_data
+{
+    base.texture_samplers.base_color.texture_reference         = textures.texture_samplers.base_color.texture_reference;
+    base.texture_samplers.metallic_roughness.texture_reference = textures.texture_samplers.metallic_roughness.texture_reference;
+    base.texture_samplers.normal.texture_reference             = textures.texture_samplers.normal.texture_reference;
+    base.texture_samplers.occlusion.texture_reference          = textures.texture_samplers.occlusion.texture_reference;
+    base.texture_samplers.emissive.texture_reference           = textures.texture_samplers.emissive.texture_reference;
+    return base;
+}
+
+} // anonymous namespace
+
 void Properties::end_material_inspect()
 {
-    if (m_inspected_material && (m_inspected_material->data != m_inspected_material_initial_state)) {
+    if (!m_inspected_material) {
+        m_material_state = Editor_state::clean;
+        return;
+    }
+    const erhe::primitive::Material_data before = with_textures_of(m_inspected_material_initial_state, m_inspected_material->data);
+    if (m_inspected_material->data != before) {
         log_operations->info("end_material_inspect - material changed");
         m_context.operation_stack->queue(
-            std::make_shared<Material_change_operation>(
-                m_inspected_material, m_inspected_material_initial_state, m_inspected_material->data
-            )
+            std::make_shared<Material_change_operation>(m_inspected_material, before, m_inspected_material->data)
         );
         m_inspected_material_initial_state = m_inspected_material->data;
     } else {
@@ -1704,16 +1725,13 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
     if (scene_root != nullptr) {
         const std::shared_ptr<Content_library>& content_library = scene_root->get_content_library();
         if (content_library) {
-            // Each slot holds a single texture_reference which can be a plain
-            // texture or a Graph Texture asset; one combo lists both. The
-            // transform rows are shown whenever the slot is bound - the shader
-            // applies them regardless of which source provided the texture.
-            Content_library* library = content_library.get();
-            auto add_texture_slot_entries = [this, library](const std::string& label, const char* combo_id, erhe::primitive::Material_texture_sampler* sampler) {
-                add_entry(label + " Texture", [this, library, combo_id, sampler]() {
-                    library->texture_reference_combo(m_context, combo_id, sampler->texture_reference, true);
-                });
+            // A slot's texture is a generic row (the Textures group above,
+            // doc/property-system.md D28). The transform and sampler rows of
+            // a bound slot follow here - the shader applies them regardless
+            // of which source provided the texture.
+            auto add_texture_slot_entries = [this](const std::string& label, erhe::primitive::Material_texture_sampler* sampler) {
                 if (sampler->texture_reference) {
+                    push_group(label + " Texture", ImGuiTreeNodeFlags_None, m_indent);
                     push_group("Transform", ImGuiTreeNodeFlags_None, m_indent);
                     add_entry("Texgen",   [sampler]() {
                         int current = static_cast<int>(sampler->texgen_mode);
@@ -1793,17 +1811,18 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
                         }
                     });
                     pop_group();
+                    pop_group();
                 }
             };
-            add_texture_slot_entries("Base Color",         "##base_color_texture",         &samplers.base_color);
+            add_texture_slot_entries("Base Color",         &samplers.base_color);
             if (selected_material->get_bxdf_model() != erhe::primitive::Bxdf_model::unlit) {
-                add_texture_slot_entries("Metallic Roughness", "##metallic_roughness_texture", &samplers.metallic_roughness);
+                add_texture_slot_entries("Metallic Roughness", &samplers.metallic_roughness);
             }
-            add_texture_slot_entries("Normal",             "##normal_texture",             &samplers.normal);
+            add_texture_slot_entries("Normal",             &samplers.normal);
             if (selected_material->get_bxdf_model() != erhe::primitive::Bxdf_model::unlit) {
-                add_texture_slot_entries("Occlusion",          "##occlusion_texture",          &samplers.occlusion);
+                add_texture_slot_entries("Occlusion",          &samplers.occlusion);
             }
-            add_texture_slot_entries("Emissive",           "##emissive_texture",           &samplers.emissive);
+            add_texture_slot_entries("Emissive",           &samplers.emissive);
         }
     }
 

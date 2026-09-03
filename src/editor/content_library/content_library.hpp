@@ -26,10 +26,6 @@ namespace erhe::gltf {
     class Gltf_image_source;
 }
 
-namespace erhe::graphics {
-    class Texture_reference;
-}
-
 namespace erhe::scene {
     class Animation;
     class Camera;
@@ -211,17 +207,6 @@ public:
     // palette) - those walks touch only the items' hosts, as before.
     void set_asset_manager(Asset_manager* asset_manager);
     [[nodiscard]] auto get_asset_manager() const -> Asset_manager*;
-
-    // One combo listing both plain textures and Graph Texture assets - the two
-    // sources a Material_texture_sampler::texture_reference can hold. Both
-    // erhe::graphics::Texture and Graph_texture derive from Texture_reference,
-    // so the selection is stored as the common interface.
-    auto texture_reference_combo(
-        App_context&                                        context,
-        const char*                                         label,
-        std::shared_ptr<erhe::graphics::Texture_reference>& in_out_reference,
-        bool                                                empty_option
-    ) const -> bool;
 
     std::shared_ptr<Content_library_node> root;
     std::shared_ptr<Content_library_node> brushes;

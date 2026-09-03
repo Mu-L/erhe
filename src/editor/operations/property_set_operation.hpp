@@ -1,5 +1,6 @@
 #pragma once
 
+#include "assets/asset_reference.hpp"
 #include "operations/operation.hpp"
 
 #include "erhe_property/expression.hpp"
@@ -52,11 +53,18 @@ public:
 
 private:
     void apply(App_context& context, const std::optional<erhe::property::Local_state>& state);
+    void adopt_userships(App_context& context);
 
     std::shared_ptr<erhe::Item_base>            m_item;
     const erhe::property::Dependency_property&  m_property;
     std::optional<erhe::property::Local_state>  m_before;
     std::optional<erhe::property::Local_state>  m_after;
+    // An object property (D28) naming a managed asset: while recorded, this
+    // operation is a declared user of the asset in either state (undo puts
+    // the other one back). Adopted at first execute, as
+    // Mesh_material_assign_operation does.
+    std::vector<Asset_reference>                m_userships;
+    bool                                        m_userships_adopted{false};
 };
 
 // Applies a Property_set to several items (paste, multi-selection edit) as
@@ -82,15 +90,20 @@ private:
         std::shared_ptr<erhe::Item_base>                           item;
         std::vector<std::optional<erhe::property::Property_value>> before; // one per m_values entry
     };
+    void adopt_userships(App_context& context);
 
     std::vector<Target>          m_targets;
     erhe::property::Property_set m_values;
+    std::vector<Asset_reference> m_userships; // as Property_set_operation
+    bool                         m_userships_adopted{false};
 };
 
 // Applies `state` (a value, an expression, or nullopt = clear) as the
 // item's local layer and runs the editor consequence hook. Shared by the
 // operations above and by direct (non-undoable) callers such as the startup
-// script.
+// script. An object value (D28) is applied only when the referenced item
+// belongs to the target's scene or is a cross-scene referenceable asset;
+// otherwise a warning names both items and nothing changes.
 void apply_item_property(
     App_context&                                       context,
     erhe::Item_base&                                   item,

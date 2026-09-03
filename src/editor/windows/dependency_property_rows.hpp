@@ -82,6 +82,7 @@ private:
     std::vector<std::optional<erhe::property::Local_state>>  m_edit_before;
     glm::vec3                                                m_edit_euler_degrees{0.0f}; // quaternion rows edit in Euler space
     std::string                                              m_text_scratch;
+    std::vector<std::shared_ptr<erhe::Item_base>>            m_reference_candidates; // object rows: picker candidates, cleared after each draw
     std::string                                              m_expression_scratch; // the formula being typed in the active expression row
 };
 

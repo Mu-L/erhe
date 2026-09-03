@@ -155,7 +155,7 @@ auto apply_item_local_property(erhe::Item_base& item, const std::string_view nam
         log_gltf->warn("'{}': no property '{}' on {}", item.get_name(), name, item.get_type_name());
         return false;
     }
-    const std::optional<erhe::property::Property_value> parsed = erhe::property::parse_value(*property, value);
+    const std::optional<erhe::property::Property_value> parsed = erhe::property::parse_value(item, *property, value);
     if (!parsed.has_value()) {
         log_gltf->warn("'{}': property '{}' value '{}' does not parse", item.get_name(), name, value);
         return false;
