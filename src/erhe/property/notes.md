@@ -171,9 +171,11 @@ Observers, pending batches and inherited state are not copied.
 
 ## Threading
 
-The registry is written during static initialization and read lock-free
-afterwards. Property values are item state guarded by the item's host mutex,
-like the rest of the item.
+The registry is written during static initialization and the
+single-threaded startup registrations; its lookups (`find`,
+`find_for_object`, `for_each_property_of_object`, the owner type table)
+take the registry mutex, uncontended after that window. Property values are
+item state guarded by the item's host mutex, like the rest of the item.
 
 ## Tests
 
