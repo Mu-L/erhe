@@ -289,11 +289,12 @@ public:
     // the storage, reached through `access` (a callable returning a
     // reference to the member from an Owner&, const or not - a generic
     // lambda `[](auto& o) -> auto& { return o.a.b.c; }` or the
-    // pointer-to-member overload below). `set` writes the member through
+    // pointer-to-member overloads below). `set` writes the member through
     // Member_value_traits and then runs `after_set(owner)`, the consequence
     // a hand-written bridge ran inline; a write of the value the member
     // already holds does neither (R4: consequences follow effective changes
-    // only). The traits' validate is combined with `validate`.
+    // only). The traits' validate is combined with `validate`. An
+    // enumeration member takes the Enum_info the way register_property does.
     template <typename Owner, typename Member, typename Accessor>
         requires (!Property_enum_type<T>) && std::is_same_v<typename Member_value_traits<Member>::stored_type, T>
     static auto register_member(
@@ -305,37 +306,22 @@ public:
         Validate_callback           validate  = {}
     ) -> Property<T>
     {
-        using Traits = Member_value_traits<Member>;
-        metadata.bridge = Property_bridge{
-            .get = [access](const Dependency_object& object) -> Property_value {
-                const Owner& owner = static_cast<const Owner&>(object);
-                return Traits::to_value(access(owner));
-            },
-            .set = [access, after_set](Dependency_object& object, const Property_value& value) {
-                Owner& owner = static_cast<Owner&>(object);
-                if (Traits::to_value(access(owner)) == value) {
-                    return;
-                }
-                access(owner) = Traits::from_value(value);
-                if (after_set) {
-                    after_set(owner);
-                }
-            }
-        };
-        Validate_callback combined = [validate = std::move(validate)](const Property_value& value) -> bool {
-            return Traits::validate(value) && ((!validate) || validate(value));
-        };
-        return Property<T>{
-            &Property_registry::get().register_property(
-                Dependency_property::Registration{
-                    .name       = name,
-                    .type       = property_type_of<T>(),
-                    .owner_type = owner_type,
-                    .metadata   = std::move(metadata),
-                    .validate   = std::move(combined),
-                }
-            )
-        };
+        return register_member_impl<Owner, Member>(name, owner_type, nullptr, std::move(access), std::move(metadata), std::move(after_set), std::move(validate));
+    }
+
+    template <typename Owner, typename Member, typename Accessor>
+        requires Property_enum_type<T> && std::is_same_v<typename Member_value_traits<Member>::stored_type, T>
+    static auto register_member(
+        std::string_view            name,
+        Owner_type                  owner_type,
+        const Enum_info&            enum_info,
+        Accessor                    access,
+        Property_metadata           metadata  = {},
+        std::type_identity_t<std::function<void(Owner&)>> after_set = {},
+        Validate_callback           validate  = {}
+    ) -> Property<T>
+    {
+        return register_member_impl<Owner, Member>(name, owner_type, &enum_info, std::move(access), std::move(metadata), std::move(after_set), std::move(validate));
     }
 
     template <typename Owner, typename Member>
@@ -349,8 +335,27 @@ public:
         Validate_callback           validate  = {}
     ) -> Property<T>
     {
-        return register_member<Owner, Member>(
-            name, owner_type,
+        return register_member_impl<Owner, Member>(
+            name, owner_type, nullptr,
+            [member](auto& owner) -> auto& { return owner.*member; },
+            std::move(metadata), std::move(after_set), std::move(validate)
+        );
+    }
+
+    template <typename Owner, typename Member>
+        requires Property_enum_type<T> && std::is_same_v<typename Member_value_traits<Member>::stored_type, T>
+    static auto register_member(
+        std::string_view            name,
+        Owner_type                  owner_type,
+        const Enum_info&            enum_info,
+        Member Owner::*             member,
+        Property_metadata           metadata  = {},
+        std::type_identity_t<std::function<void(Owner&)>> after_set = {},
+        Validate_callback           validate  = {}
+    ) -> Property<T>
+    {
+        return register_member_impl<Owner, Member>(
+            name, owner_type, &enum_info,
             [member](auto& owner) -> auto& { return owner.*member; },
             std::move(metadata), std::move(after_set), std::move(validate)
         );
@@ -409,6 +414,51 @@ public:
     }
 
 private:
+    template <typename Owner, typename Member, typename Accessor>
+    static auto register_member_impl(
+        std::string_view                  name,
+        Owner_type                        owner_type,
+        const Enum_info*                  enum_info,
+        Accessor                          access,
+        Property_metadata                 metadata,
+        std::function<void(Owner&)>       after_set,
+        Validate_callback                 validate
+    ) -> Property<T>
+    {
+        using Traits = Member_value_traits<Member>;
+        metadata.bridge = Property_bridge{
+            .get = [access](const Dependency_object& object) -> Property_value {
+                const Owner& owner = static_cast<const Owner&>(object);
+                return Traits::to_value(access(owner));
+            },
+            .set = [access, after_set](Dependency_object& object, const Property_value& value) {
+                Owner& owner = static_cast<Owner&>(object);
+                if (Traits::to_value(access(owner)) == value) {
+                    return;
+                }
+                access(owner) = Traits::from_value(value);
+                if (after_set) {
+                    after_set(owner);
+                }
+            }
+        };
+        Validate_callback combined = [validate = std::move(validate)](const Property_value& value) -> bool {
+            return Traits::validate(value) && ((!validate) || validate(value));
+        };
+        return Property<T>{
+            &Property_registry::get().register_property(
+                Dependency_property::Registration{
+                    .name       = name,
+                    .type       = property_type_of<T>(),
+                    .owner_type = owner_type,
+                    .metadata   = std::move(metadata),
+                    .validate   = std::move(combined),
+                    .enum_info  = enum_info,
+                }
+            )
+        };
+    }
+
     const Dependency_property* m_property{nullptr};
 };
 

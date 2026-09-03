@@ -12,7 +12,6 @@ namespace {
 
 using erhe::property::Dependency_object;
 using erhe::property::Property;
-using erhe::property::Property_bridge;
 using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 using erhe::property::Property_value;
@@ -21,23 +20,13 @@ using Type = Projection::Type;
 const erhe::property::Owner_type c_owner = Camera::property_owner_type();
 constexpr std::string_view c_group = "Projection";
 
-// D18: the property reads and writes the Projection member directly, so
-// Camera::projection() writers and property writers see one state.
+// D18: every projection property is member-backed (register_member) over
+// the Projection field the accessor reaches through Camera::projection(),
+// so projection() writers and property writers see one state.
 template <typename T>
-auto make_projection_bridge(T Projection::*member) -> Property_bridge
+auto projection_member(T Projection::*member)
 {
-    return Property_bridge{
-        .get = [member](const Dependency_object& object) -> Property_value {
-            return erhe::property::make_value(static_cast<const Camera&>(object).projection()->*member);
-        },
-        .set = [member](Dependency_object& object, const Property_value& value) {
-            if constexpr (std::is_enum_v<T>) {
-                static_cast<Camera&>(object).projection()->*member = static_cast<T>(std::get<erhe::property::Enum_value>(value).value);
-            } else {
-                static_cast<Camera&>(object).projection()->*member = std::get<T>(value);
-            }
-        }
-    };
+    return [member](auto& camera) -> auto& { return camera.projection()->*member; };
 }
 
 auto projection_type_of(const Dependency_object& object) -> Type
@@ -58,22 +47,26 @@ auto uses_height   (const Dependency_object& object) -> bool { const Type t = pr
 auto uses_corner   (const Dependency_object& object) -> bool { return projection_type_of(object) == Type::orthogonal_rectangle; }
 auto uses_frustum  (const Dependency_object& object) -> bool { return projection_type_of(object) == Type::generic_frustum; }
 
-auto angle(float Projection::*member, const float min, const float max, const std::string_view label, const Property_ui::Visible_when visible_when) -> Property_metadata
+auto angle(const std::string_view name, float Projection::*member, const float min, const float max, const std::string_view label, const Property_ui::Visible_when visible_when) -> Property<float>
 {
-    return Property_metadata{
-        .default_value = Projection{}.*member,
-        .ui            = Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::angle_degrees, .group = c_group, .label = label, .visible_when = visible_when},
-        .bridge        = make_projection_bridge<float>(member)
-    };
+    return Property<float>::register_member<Camera, float>(
+        name, c_owner, projection_member(member),
+        Property_metadata{
+            .default_value = Projection{}.*member,
+            .ui            = Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::angle_degrees, .group = c_group, .label = label, .visible_when = visible_when}
+        }
+    );
 }
 
-auto extent(float Projection::*member, const std::string_view label, const Property_ui::Visible_when visible_when, const std::string_view tooltip = {}) -> Property_metadata
+auto extent(const std::string_view name, float Projection::*member, const std::string_view label, const Property_ui::Visible_when visible_when, const std::string_view tooltip = {}) -> Property<float>
 {
-    return Property_metadata{
-        .default_value = Projection{}.*member,
-        .ui            = Property_ui{.min = 0.0f, .max = 1000.0f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_group, .tooltip = tooltip, .label = label, .visible_when = visible_when},
-        .bridge        = make_projection_bridge<float>(member)
-    };
+    return Property<float>::register_member<Camera, float>(
+        name, c_owner, projection_member(member),
+        Property_metadata{
+            .default_value = Projection{}.*member,
+            .ui            = Property_ui{.min = 0.0f, .max = 1000.0f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_group, .tooltip = tooltip, .label = label, .visible_when = visible_when}
+        }
+    );
 }
 
 auto log_slider(const float min, const float max, const std::string_view label, const std::string_view tooltip = {}) -> Property_ui
@@ -86,36 +79,34 @@ constexpr float c_half_pi = glm::half_pi<float>();
 
 } // anonymous namespace
 
-const Property<Type> Camera::projection_type_property = Property<Type>::register_property(
-    "projection_type", c_owner, c_projection_type_enum_info,
+const Property<Type> Camera::projection_type_property = Property<Type>::register_member<Camera, Type>(
+    "projection_type", c_owner, c_projection_type_enum_info, projection_member(&Projection::projection_type),
     Property_metadata{
         .default_value = erhe::property::make_value(Projection{}.projection_type),
-        .ui            = Property_ui{.group = c_group, .label = "Type"},
-        .bridge        = make_projection_bridge<Type>(&Projection::projection_type)
+        .ui            = Property_ui{.group = c_group, .label = "Type"}
     }
 );
-const Property<float> Camera::fov_x_property     = Property<float>::register_property("fov_x",     c_owner, angle(&Projection::fov_x,     0.0f,       c_pi,      "Fov X",     uses_fov_x));
-const Property<float> Camera::fov_y_property     = Property<float>::register_property("fov_y",     c_owner, angle(&Projection::fov_y,     0.0f,       c_pi,      "Fov Y",     uses_fov_y));
-const Property<float> Camera::fov_left_property  = Property<float>::register_property("fov_left",  c_owner, angle(&Projection::fov_left,  -c_half_pi, c_half_pi, "Fov Left",  uses_fov_sides));
-const Property<float> Camera::fov_right_property = Property<float>::register_property("fov_right", c_owner, angle(&Projection::fov_right, -c_half_pi, c_half_pi, "Fov Right", uses_fov_sides));
-const Property<float> Camera::fov_up_property    = Property<float>::register_property("fov_up",    c_owner, angle(&Projection::fov_up,    -c_half_pi, c_half_pi, "Fov Up",    uses_fov_sides));
-const Property<float> Camera::fov_down_property  = Property<float>::register_property("fov_down",  c_owner, angle(&Projection::fov_down,  -c_half_pi, c_half_pi, "Fov Down",  uses_fov_sides));
-const Property<float> Camera::ortho_left_property     = Property<float>::register_property("ortho_left",     c_owner, extent(&Projection::ortho_left,     "Left",   uses_corner));
-const Property<float> Camera::ortho_width_property    = Property<float>::register_property("ortho_width",    c_owner, extent(&Projection::ortho_width,    "Width",  uses_width));
-const Property<float> Camera::ortho_bottom_property   = Property<float>::register_property("ortho_bottom",   c_owner, extent(&Projection::ortho_bottom,   "Bottom", uses_corner));
-const Property<float> Camera::ortho_height_property   = Property<float>::register_property("ortho_height",   c_owner, extent(&Projection::ortho_height,   "Height", uses_height));
-const Property<float> Camera::frustum_left_property   = Property<float>::register_property("frustum_left",   c_owner, extent(&Projection::frustum_left,   "Frustum Left",   uses_frustum));
-const Property<float> Camera::frustum_right_property  = Property<float>::register_property("frustum_right",  c_owner, extent(&Projection::frustum_right,  "Frustum Right",  uses_frustum));
-const Property<float> Camera::frustum_bottom_property = Property<float>::register_property("frustum_bottom", c_owner, extent(&Projection::frustum_bottom, "Frustum Bottom", uses_frustum));
-const Property<float> Camera::frustum_top_property    = Property<float>::register_property("frustum_top",    c_owner, extent(&Projection::frustum_top,    "Frustum Top",    uses_frustum));
-const Property<float> Camera::z_near_property = Property<float>::register_property("z_near", c_owner, extent(&Projection::z_near, "Z Near", {}));
-const Property<float> Camera::z_far_property  = Property<float>::register_property("z_far",  c_owner, extent(&Projection::z_far,  "Z Far",  {}, "Stays the depth hint for shadow fitting and the gizmo while Infinite Z Far is set"));
-const Property<bool> Camera::infinite_z_far_property = Property<bool>::register_property(
-    "infinite_z_far", c_owner,
+const Property<float> Camera::fov_x_property     = angle("fov_x", &Projection::fov_x, 0.0f,       c_pi,      "Fov X",     uses_fov_x);
+const Property<float> Camera::fov_y_property     = angle("fov_y", &Projection::fov_y, 0.0f,       c_pi,      "Fov Y",     uses_fov_y);
+const Property<float> Camera::fov_left_property  = angle("fov_left", &Projection::fov_left, -c_half_pi, c_half_pi, "Fov Left",  uses_fov_sides);
+const Property<float> Camera::fov_right_property = angle("fov_right", &Projection::fov_right, -c_half_pi, c_half_pi, "Fov Right", uses_fov_sides);
+const Property<float> Camera::fov_up_property    = angle("fov_up", &Projection::fov_up, -c_half_pi, c_half_pi, "Fov Up",    uses_fov_sides);
+const Property<float> Camera::fov_down_property  = angle("fov_down", &Projection::fov_down, -c_half_pi, c_half_pi, "Fov Down",  uses_fov_sides);
+const Property<float> Camera::ortho_left_property     = extent("ortho_left", &Projection::ortho_left, "Left",   uses_corner);
+const Property<float> Camera::ortho_width_property    = extent("ortho_width", &Projection::ortho_width, "Width",  uses_width);
+const Property<float> Camera::ortho_bottom_property   = extent("ortho_bottom", &Projection::ortho_bottom, "Bottom", uses_corner);
+const Property<float> Camera::ortho_height_property   = extent("ortho_height", &Projection::ortho_height, "Height", uses_height);
+const Property<float> Camera::frustum_left_property   = extent("frustum_left", &Projection::frustum_left, "Frustum Left",   uses_frustum);
+const Property<float> Camera::frustum_right_property  = extent("frustum_right", &Projection::frustum_right, "Frustum Right",  uses_frustum);
+const Property<float> Camera::frustum_bottom_property = extent("frustum_bottom", &Projection::frustum_bottom, "Frustum Bottom", uses_frustum);
+const Property<float> Camera::frustum_top_property    = extent("frustum_top", &Projection::frustum_top, "Frustum Top",    uses_frustum);
+const Property<float> Camera::z_near_property = extent("z_near", &Projection::z_near, "Z Near", {});
+const Property<float> Camera::z_far_property  = extent("z_far", &Projection::z_far, "Z Far",  {}, "Stays the depth hint for shadow fitting and the gizmo while Infinite Z Far is set");
+const Property<bool> Camera::infinite_z_far_property = Property<bool>::register_member<Camera, bool>(
+    "infinite_z_far", c_owner, projection_member(&Projection::infinite_z_far),
     Property_metadata{
         .default_value = false,
-        .ui            = Property_ui{.group = c_group, .tooltip = "Far plane at infinity (perspective projections only)", .label = "Infinite Z Far", .visible_when = is_perspective},
-        .bridge        = make_projection_bridge<bool>(&Projection::infinite_z_far)
+        .ui            = Property_ui{.group = c_group, .tooltip = "Far plane at infinity (perspective projections only)", .label = "Infinite Z Far", .visible_when = is_perspective}
     }
 );
 const Property<float> Camera::exposure_property = Property<float>::register_property(
