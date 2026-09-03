@@ -515,7 +515,7 @@ table, see D2a).
     text or `null`) and `expression_error`; `set_item_property` and
     `scene.set_property` accept `expression` instead of `value`.
   - Serialization stays with D14: formulas are session state until the
-    extras work lands (section 6).
+    property serialization work of section 6 lands.
 
 - D23 Inherited flags (`visible`, `shadow_cast`, `lightmapped`).
   - Before the change. `Item_flags::visible` was a self bit; the only
@@ -1092,12 +1092,15 @@ style layer is D25.
   keying (`doc/animation-keyframing-plan.md`) reads the local value as the
   authored pose. No prerequisites; the keyframing plan and non-destructive
   playback of generalized animation channels (below) both wait on it.
-- Expression serialization: the formula text of a driven property (D22)
-  written to glTF extras and restored on import; until then formulas are
-  session state. The extras carrier it depends on (D14) exists for nodes,
-  meshes, lights and cameras (the `properties` objects carry values only,
-  the format needs an expression form); a formula on a material property
-  additionally waits on the material extras work (below).
+- Property serialization to glTF: expression text of driven properties
+  (D22), material local values (today materials export field by field and
+  a round trip bakes effective values into local ones), and one carrier
+  per item type in place of the `properties` / `mesh_properties` members
+  scattered across `ERHE_node`, `ERHE_light` and `ERHE_camera` (D14,
+  D23). Future work that is not yet fully planned:
+  `doc/gltf-properties-extension-plan.md` is the draft, explicitly
+  incomplete and not ready to implement; the decisions it records so far
+  live there and nowhere else.
 - Style users beyond the material library (D25): the graphics presets once
   `Graphics_settings` is an item with registered properties, per-instance
   prefab overrides once `doc/gltf-prefabs-plan.md` phase 6 takes them on,
@@ -1127,11 +1130,6 @@ style layer is D25.
   item tree expansion, sheet-window formulas. Shares the attached-property
   enumeration need with the `Layout` item above (whichever lands first
   builds it).
-- glTF extras serialization of local values for materials (D14): nodes,
-  meshes, lights and cameras carry `properties` objects (D23); materials
-  still export field-by-field (native glTF fields plus `ERHE_material`),
-  so a material round trip bakes effective values into local ones and
-  loses the local / default distinction the other item types keep.
 - Animation channels targeting arbitrary properties (not only node TRS),
   which becomes possible once `Animation_channel` stores a
   `Dependency_property` index instead of `Animation_path`. For playback
