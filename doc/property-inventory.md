@@ -4,13 +4,13 @@ The status of every editor-visible item field with respect to the
 property system (`erhe::property`, design record `doc/property-system.md`):
 which fields are registered properties, how each is stored, and which
 fields the Properties window still draws by hand. This document is the
-owner of that status; the design record's sections 4.1 to 4.12 own the
+owner of that status; the design record's sections 4.1 to 4.13 own the
 design of each migration and refer here for the per-field list.
 
 Update this document in the same commit as any registration added,
 removed or changed in storage kind, and whenever a hand-written row is
 migrated or added. The same commit updates the owner's subsection in
-`doc/property-system.md` (4.1 to 4.12) when the design changed, and
+`doc/property-system.md` (4.1 to 4.13) when the design changed, and
 `src/erhe/property/notes.md` when a library mechanism changed; the design
 record's "Document roles" paragraph states the split.
 
@@ -122,6 +122,16 @@ Every Grid property's property_changed touches the settings store.
 | static_friction, dynamic_friction, restitution | entry | bodies re-snapshot through the Node_physics observer |
 | friction_combine, restitution_combine | entry | enumerations |
 
+### Layout (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13)
+
+| Property | Storage | Notes |
+|---|---|---|
+| type, primary, secondary, tertiary | member | enumerations |
+| volume_min, volume_max | member | accessor lambdas into the Aabb |
+| gap, grid_track_count | member | track count validated to at least 1 per axis, visible for grid |
+
+Not properties: the per-axis grid track extent lists.
+
 ### Brush_placement (`src/editor/brushes/brush_placement.cpp`, section 4.11)
 
 | Property | Storage | Notes |
@@ -180,7 +190,6 @@ migration priority order. Each migration follows the Material recipe
 | Owner | Fields | Notes |
 |---|---|---|
 | Physics_joint_settings | limits, drives | lists; no `Property_value` form, stay hand-written |
-| Layout | type, volume min and max, primary / secondary / tertiary axis, gap, grid tracks | |
 | Layout_item | align x / y / z, margin min and max, auto cell, grid cell, grid span | first attached-property user (design record section 6) |
 | Light | flux, blackbody temperature | derived rows over intensity and temperature |
 | Scene | ambient light | the per-scene overrides stay a settings block |

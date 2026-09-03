@@ -1395,8 +1395,8 @@ void Debug_visualizations::layout_visualization(const Render_context& render_con
     line_renderer.add_cube(
         node.world_from_node(),
         style.layout_line_color,
-        layout.volume.min,
-        layout.volume.max
+        layout.get_volume().min,
+        layout.get_volume().max
     );
 }
 

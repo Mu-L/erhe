@@ -24,7 +24,7 @@ inventory for what is and is not a property yet.
 
 Updating together. A change to a registration touches all three: the
 code, the inventory's row for it, and this document's section for the
-owner (4.1 to 4.12) when the design changes; a new mechanism in
+owner (4.1 to 4.13) when the design changes; a new mechanism in
 `erhe::property` touches the notes and the design decision here. A
 migration of a hand-written row moves it from the inventory's "Not yet
 migrated" table to the owner's table in the same commit.
@@ -1378,6 +1378,29 @@ material edit from any writer - Properties row, `Property_set_operation`,
 MCP `edit_physics_material` or `set_item_property`, glTF import - reaches
 every live body through the `IRigid_body` interface. The Properties
 window draws the material as generic rows only.
+
+### 4.13 Layout
+
+`Layout` (`erhe::scene`, the node attachment that arranges its node's
+children inside a volume) registers its parameters as member-backed
+properties (D18, owner type `Layout::property_owner_type()`, UI group
+`Layout`): the members are what `Layout::update()` reads each frame, so
+they stay the storage and a write has no other consequence (no
+`after_set`). `type` (`Layout_type`, `Enum_info` `c_layout_type_enum_info`
+next to the enumeration in `erhe_scene/layout.hpp`, defined in
+`layout.cpp`), `volume_min` and `volume_max` (accessor lambdas into the
+`Aabb` member), `primary`, `secondary` and `tertiary` (`Axis_direction`,
+`Enum_info` `c_axis_direction_enum_info`, signed axis labels `+X` .. `-Z`),
+`gap` (0..10000 per component) and `grid_track_count` (1..1000,
+validated to at least 1 per axis, `visible_when` the type is grid). The
+members are private; `get_layout_type()`, `set_layout_type()` and the
+other typed accessors write through the properties, so the glTF
+`ERHE_layout` import, the export and any editor writer notify. The
+accessor is named `get_layout_type()` because `get_type()` is the
+`Item_base` virtual item type. The per-track extent lists
+(`get_grid_track_extent(axis)`) are not properties: the Properties
+window keeps their custom / per-track rows and draws everything else as
+generic rows.
 
 ## 5. Out of scope
 

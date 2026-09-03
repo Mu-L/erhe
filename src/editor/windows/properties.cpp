@@ -310,39 +310,22 @@ void Properties::layout_properties(erhe::scene::Layout& layout)
 {
     ERHE_PROFILE_FUNCTION();
 
-    add_entry("Type", [&layout]() {
-        erhe::imgui::make_combo(
-            "##",
-            layout.type,
-            erhe::scene::Layout::c_type_strings,
-            IM_ARRAYSIZE(erhe::scene::Layout::c_type_strings)
-        );
-    });
-    add_entry("Volume Min", [&layout]() { ImGui::DragFloat3("##", &layout.volume.min.x, 0.01f); });
-    add_entry("Volume Max", [&layout]() { ImGui::DragFloat3("##", &layout.volume.max.x, 0.01f); });
-    add_entry("Primary", [&layout]() {
-        erhe::imgui::make_combo("##", layout.primary, erhe::scene::Layout::c_axis_direction_strings, IM_ARRAYSIZE(erhe::scene::Layout::c_axis_direction_strings));
-    });
-    add_entry("Secondary", [&layout]() {
-        erhe::imgui::make_combo("##", layout.secondary, erhe::scene::Layout::c_axis_direction_strings, IM_ARRAYSIZE(erhe::scene::Layout::c_axis_direction_strings));
-    });
-    add_entry("Tertiary", [&layout]() {
-        erhe::imgui::make_combo("##", layout.tertiary, erhe::scene::Layout::c_axis_direction_strings, IM_ARRAYSIZE(erhe::scene::Layout::c_axis_direction_strings));
-    });
-    add_entry("Gap", [&layout]() { ImGui::DragFloat3("##", &layout.gap.x, 0.01f, 0.0f, 10000.0f); });
-
-    if (layout.type == erhe::scene::Layout_type::grid) {
-        add_entry("Grid Tracks", [&layout]() { ImGui::DragInt3("##", &layout.grid_track_count.x, 0.1f, 1, 1000); });
-
+    // The authored layout parameters (type, volume, axes, gap, grid track
+    // count) are drawn by the generic property rows (Dependency_property_rows,
+    // doc/property-system.md section 4.13). Only the per-track extent lists
+    // remain here.
+    if (layout.get_layout_type() == erhe::scene::Layout_type::grid) {
         static const char* const c_grid_size_labels[] = { "Sizes X", "Sizes Y", "Sizes Z" };
         for (int axis = 0; axis < 3; ++axis) {
             add_entry(c_grid_size_labels[axis], [&layout, axis]() {
-                std::vector<float>& extents = layout.grid_track_extent[static_cast<std::size_t>(axis)];
-                const int count = (layout.grid_track_count[axis] > 1) ? layout.grid_track_count[axis] : 1;
+                std::vector<float>& extents = layout.get_grid_track_extent(axis);
+                const int track_count = layout.get_grid_track_count()[axis];
+                const int count = (track_count > 1) ? track_count : 1;
                 bool custom = !extents.empty();
                 if (ImGui::Checkbox("Custom", &custom)) {
                     if (custom) {
-                        const float total = layout.volume.max[axis] - layout.volume.min[axis];
+                        const erhe::math::Aabb& volume = layout.get_volume();
+                        const float total = volume.max[axis] - volume.min[axis];
                         const float per   = (total > 0.0f) ? (total / static_cast<float>(count)) : 0.0f;
                         extents.assign(static_cast<std::size_t>(count), per);
                     } else {

@@ -187,21 +187,21 @@ void import_layouts(const erhe::gltf::Gltf_data& gltf_data)
         if ((layout_it != payload.end()) && layout_it->is_object()) {
             const nlohmann::json& lj = *layout_it;
             auto layout = std::make_shared<erhe::scene::Layout>(lj.value("name", std::string{"Layout"}));
-            layout->type             = layout_type_from_name(lj.value("type", std::string{"stack"}));
-            layout->volume.min       = to_vec3(lj.value("volume_min", nlohmann::json{}), layout->volume.min);
-            layout->volume.max       = to_vec3(lj.value("volume_max", nlohmann::json{}), layout->volume.max);
-            layout->primary          = axis_direction_from_name(lj.value("primary",   std::string{"pos_x"}));
-            layout->secondary        = axis_direction_from_name(lj.value("secondary", std::string{"pos_y"}));
-            layout->tertiary         = axis_direction_from_name(lj.value("tertiary",  std::string{"pos_z"}));
-            layout->gap              = to_vec3(lj.value("gap", nlohmann::json{}), layout->gap);
-            layout->grid_track_count = to_ivec3(lj.value("grid_track_count", nlohmann::json{}), layout->grid_track_count);
+            layout->set_layout_type     (layout_type_from_name(lj.value("type", std::string{"stack"})));
+            layout->set_volume_min      (to_vec3(lj.value("volume_min", nlohmann::json{}), layout->get_volume().min));
+            layout->set_volume_max      (to_vec3(lj.value("volume_max", nlohmann::json{}), layout->get_volume().max));
+            layout->set_primary         (axis_direction_from_name(lj.value("primary",   std::string{"pos_x"})));
+            layout->set_secondary       (axis_direction_from_name(lj.value("secondary", std::string{"pos_y"})));
+            layout->set_tertiary        (axis_direction_from_name(lj.value("tertiary",  std::string{"pos_z"})));
+            layout->set_gap             (to_vec3(lj.value("gap", nlohmann::json{}), layout->get_gap()));
+            layout->set_grid_track_count(to_ivec3(lj.value("grid_track_count", nlohmann::json{}), layout->get_grid_track_count()));
             const char* extent_keys[3] = {"grid_track_extent_x", "grid_track_extent_y", "grid_track_extent_z"};
             for (int axis = 0; axis < 3; ++axis) {
                 const auto extent_it = lj.find(extent_keys[axis]);
                 if ((extent_it != lj.end()) && extent_it->is_array()) {
                     for (const nlohmann::json& extent : *extent_it) {
                         if (extent.is_number()) {
-                            layout->grid_track_extent[static_cast<std::size_t>(axis)].push_back(extent.get<float>());
+                            layout->get_grid_track_extent(axis).push_back(extent.get<float>());
                         }
                     }
                 }

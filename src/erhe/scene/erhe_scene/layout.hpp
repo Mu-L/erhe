@@ -2,6 +2,7 @@
 
 #include "erhe_scene/node_attachment.hpp"
 #include "erhe_math/aabb.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <glm/glm.hpp>
 
@@ -35,6 +36,9 @@ enum class Axis_direction : unsigned int {
 [[nodiscard]] auto axis_index (Axis_direction direction) -> int;       // 0, 1, 2
 [[nodiscard]] auto axis_sign  (Axis_direction direction) -> float;     // +1.0f / -1.0f
 [[nodiscard]] auto axis_vector(Axis_direction direction) -> glm::vec3; // signed unit vector
+
+extern const erhe::property::Enum_info c_layout_type_enum_info;
+extern const erhe::property::Enum_info c_axis_direction_enum_info;
 
 // A Layout is a Node_attachment that owns a volume (an axis-aligned box in the
 // node's local space) and computes the local transform of each direct child
@@ -80,20 +84,53 @@ public:
     // deliberately left for later; recomputing each frame is simple and correct.
     void update();
 
-    // Parameters (kept serialization-friendly: POD / glm / enum / vector)
-    Type             type     {Type::stack};
-    erhe::math::Aabb volume   {glm::vec3{-0.5f, -0.5f, -0.5f}, glm::vec3{0.5f, 0.5f, 0.5f}};
-    Axis_direction   primary  {Axis_direction::pos_x};
-    Axis_direction   secondary{Axis_direction::pos_y};
-    Axis_direction   tertiary {Axis_direction::pos_z};
-    glm::vec3        gap      {0.0f, 0.0f, 0.0f}; // spacing per level (primary, secondary, tertiary)
-    glm::ivec3       grid_track_count{1, 1, 1};
-    std::array<std::vector<float>, 3> grid_track_extent{}; // grid: per-track extents; empty => uniform
+    // Registered properties (erhe::property, doc/property-system.md
+    // section 4.13), member-backed (D18) over the parameters below; update()
+    // reads the members each frame, so a write has no other consequence.
+    // The accessors write through the properties, so every writer notifies.
+    static const erhe::property::Property<Type>           type_property;
+    static const erhe::property::Property<glm::vec3>      volume_min_property;
+    static const erhe::property::Property<glm::vec3>      volume_max_property;
+    static const erhe::property::Property<Axis_direction> primary_property;
+    static const erhe::property::Property<Axis_direction> secondary_property;
+    static const erhe::property::Property<Axis_direction> tertiary_property;
+    static const erhe::property::Property<glm::vec3>      gap_property;
+    static const erhe::property::Property<glm::ivec3>     grid_track_count_property;
+
+    [[nodiscard]] auto get_layout_type     () const -> Type                    { return m_type; }
+    [[nodiscard]] auto get_volume          () const -> const erhe::math::Aabb& { return m_volume; }
+    [[nodiscard]] auto get_primary         () const -> Axis_direction          { return m_primary; }
+    [[nodiscard]] auto get_secondary       () const -> Axis_direction          { return m_secondary; }
+    [[nodiscard]] auto get_tertiary        () const -> Axis_direction          { return m_tertiary; }
+    [[nodiscard]] auto get_gap             () const -> const glm::vec3&        { return m_gap; }
+    [[nodiscard]] auto get_grid_track_count() const -> const glm::ivec3&       { return m_grid_track_count; }
+    void set_layout_type     (Type value);
+    void set_volume_min      (const glm::vec3& value);
+    void set_volume_max      (const glm::vec3& value);
+    void set_primary         (Axis_direction value);
+    void set_secondary       (Axis_direction value);
+    void set_tertiary        (Axis_direction value);
+    void set_gap             (const glm::vec3& value);
+    void set_grid_track_count(const glm::ivec3& value);
+
+    // Grid: per-track extents per axis; empty = uniform tracks. A list, not
+    // a property; edited in place.
+    [[nodiscard]] auto get_grid_track_extent(int axis) -> std::vector<float>&             { return m_grid_track_extent[static_cast<std::size_t>(axis)]; }
+    [[nodiscard]] auto get_grid_track_extent(int axis) const -> const std::vector<float>& { return m_grid_track_extent[static_cast<std::size_t>(axis)]; }
 
 private:
     void layout_stack(Node& layout_node);
     void layout_grid (Node& layout_node);
     void layout_flow (Node& layout_node);
+
+    Type             m_type     {Type::stack};
+    erhe::math::Aabb m_volume   {glm::vec3{-0.5f, -0.5f, -0.5f}, glm::vec3{0.5f, 0.5f, 0.5f}};
+    Axis_direction   m_primary  {Axis_direction::pos_x};
+    Axis_direction   m_secondary{Axis_direction::pos_y};
+    Axis_direction   m_tertiary {Axis_direction::pos_z};
+    glm::vec3        m_gap      {0.0f, 0.0f, 0.0f}; // spacing per level (primary, secondary, tertiary)
+    glm::ivec3       m_grid_track_count{1, 1, 1};
+    std::array<std::vector<float>, 3> m_grid_track_extent{}; // grid: per-track extents; empty => uniform
 };
 
 // Content bounding box of a node expressed in that node's own local space:

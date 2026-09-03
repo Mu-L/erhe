@@ -146,7 +146,7 @@ namespace {
 {
     const std::shared_ptr<Layout> child_layout = get_attachment<Layout>(&child);
     if (child_layout) {
-        return child_layout->volume;
+        return child_layout->get_volume();
     }
     return compute_content_local_aabb(child);
 }
@@ -272,6 +272,89 @@ auto compute_content_local_aabb(const Node& node) -> erhe::math::Aabb
     return aabb;
 }
 
+namespace {
+
+using erhe::property::Property;
+using erhe::property::Property_metadata;
+using erhe::property::Property_ui;
+using erhe::property::Property_value;
+
+constexpr erhe::property::Enum_entry c_layout_type_entries[] = {
+    {"Stack", static_cast<int32_t>(Layout_type::stack)},
+    {"Grid",  static_cast<int32_t>(Layout_type::grid)},
+    {"Flow",  static_cast<int32_t>(Layout_type::flow)},
+};
+
+constexpr erhe::property::Enum_entry c_axis_direction_entries[] = {
+    {"+X", static_cast<int32_t>(Axis_direction::pos_x)},
+    {"-X", static_cast<int32_t>(Axis_direction::neg_x)},
+    {"+Y", static_cast<int32_t>(Axis_direction::pos_y)},
+    {"-Y", static_cast<int32_t>(Axis_direction::neg_y)},
+    {"+Z", static_cast<int32_t>(Axis_direction::pos_z)},
+    {"-Z", static_cast<int32_t>(Axis_direction::neg_z)},
+};
+
+constexpr std::string_view c_group = "Layout";
+
+auto is_grid(const erhe::property::Dependency_object& object) -> bool
+{
+    return static_cast<const Layout&>(object).get_layout_type() == Layout_type::grid;
+}
+
+auto positive_tracks(const Property_value& value) -> bool
+{
+    const glm::ivec3 v = std::get<glm::ivec3>(value);
+    return (v.x >= 1) && (v.y >= 1) && (v.z >= 1);
+}
+
+} // anonymous namespace
+
+const erhe::property::Enum_info c_layout_type_enum_info   {"Layout_type",    c_layout_type_entries};
+const erhe::property::Enum_info c_axis_direction_enum_info{"Axis_direction", c_axis_direction_entries};
+
+const Property<Layout_type> Layout::type_property = Property<Layout_type>::register_member(
+    "type", Layout::property_owner_type(), c_layout_type_enum_info, &Layout::m_type,
+    Property_metadata{.default_value = erhe::property::make_value(Layout_type::stack), .ui = Property_ui{.group = c_group, .tooltip = "Stack along the primary axis, an explicit cell grid, or lines wrapped into sheets", .label = "Type"}}
+);
+const Property<glm::vec3> Layout::volume_min_property = Property<glm::vec3>::register_member<Layout, glm::vec3>(
+    "volume_min", Layout::property_owner_type(), [](auto& layout) -> auto& { return layout.m_volume.min; },
+    Property_metadata{.default_value = glm::vec3{-0.5f, -0.5f, -0.5f}, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "Local-space box the children are arranged in", .label = "Volume Min"}}
+);
+const Property<glm::vec3> Layout::volume_max_property = Property<glm::vec3>::register_member<Layout, glm::vec3>(
+    "volume_max", Layout::property_owner_type(), [](auto& layout) -> auto& { return layout.m_volume.max; },
+    Property_metadata{.default_value = glm::vec3{0.5f, 0.5f, 0.5f}, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "Local-space box the children are arranged in", .label = "Volume Max"}}
+);
+const Property<Axis_direction> Layout::primary_property = Property<Axis_direction>::register_member(
+    "primary", Layout::property_owner_type(), c_axis_direction_enum_info, &Layout::m_primary,
+    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_x), .ui = Property_ui{.group = c_group, .tooltip = "Signed axis the children advance along", .label = "Primary"}}
+);
+const Property<Axis_direction> Layout::secondary_property = Property<Axis_direction>::register_member(
+    "secondary", Layout::property_owner_type(), c_axis_direction_enum_info, &Layout::m_secondary,
+    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_y), .ui = Property_ui{.group = c_group, .tooltip = "Signed axis lines wrap into (grid and flow)", .label = "Secondary"}}
+);
+const Property<Axis_direction> Layout::tertiary_property = Property<Axis_direction>::register_member(
+    "tertiary", Layout::property_owner_type(), c_axis_direction_enum_info, &Layout::m_tertiary,
+    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_z), .ui = Property_ui{.group = c_group, .tooltip = "Signed axis sheets stack along (grid and flow)", .label = "Tertiary"}}
+);
+const Property<glm::vec3> Layout::gap_property = Property<glm::vec3>::register_member(
+    "gap", Layout::property_owner_type(), &Layout::m_gap,
+    Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.min = 0.0f, .max = 10000.0f, .step = 0.01f, .group = c_group, .tooltip = "Spacing per level: primary, secondary, tertiary", .label = "Gap"}}
+);
+const Property<glm::ivec3> Layout::grid_track_count_property = Property<glm::ivec3>::register_member(
+    "grid_track_count", Layout::property_owner_type(), &Layout::m_grid_track_count,
+    Property_metadata{.default_value = glm::ivec3{1, 1, 1}, .ui = Property_ui{.min = 1.0f, .max = 1000.0f, .step = 0.1f, .group = c_group, .tooltip = "Grid: cells per axis", .label = "Grid Tracks", .visible_when = is_grid}},
+    {}, positive_tracks
+);
+
+void Layout::set_layout_type     (const Type value)           { set_value(type_property, value); }
+void Layout::set_volume_min      (const glm::vec3& value)     { set_value(volume_min_property, value); }
+void Layout::set_volume_max      (const glm::vec3& value)     { set_value(volume_max_property, value); }
+void Layout::set_primary         (const Axis_direction value) { set_value(primary_property, value); }
+void Layout::set_secondary       (const Axis_direction value) { set_value(secondary_property, value); }
+void Layout::set_tertiary        (const Axis_direction value) { set_value(tertiary_property, value); }
+void Layout::set_gap             (const glm::vec3& value)     { set_value(gap_property, value); }
+void Layout::set_grid_track_count(const glm::ivec3& value)    { set_value(grid_track_count_property, value); }
+
 Layout::Layout(const Layout&) = default;
 Layout::~Layout() noexcept    = default;
 
@@ -282,14 +365,14 @@ Layout::Layout(const std::string_view name)
 
 Layout::Layout(const Layout& src, erhe::for_clone)
     : Item             {src, erhe::for_clone{}}
-    , type             {src.type             }
-    , volume           {src.volume           }
-    , primary          {src.primary          }
-    , secondary        {src.secondary        }
-    , tertiary         {src.tertiary         }
-    , gap              {src.gap              }
-    , grid_track_count {src.grid_track_count }
-    , grid_track_extent{src.grid_track_extent}
+    , m_type             {src.m_type             }
+    , m_volume           {src.m_volume           }
+    , m_primary          {src.m_primary          }
+    , m_secondary        {src.m_secondary        }
+    , m_tertiary         {src.m_tertiary         }
+    , m_gap              {src.m_gap              }
+    , m_grid_track_count {src.m_grid_track_count }
+    , m_grid_track_extent{src.m_grid_track_extent}
 {
 }
 
@@ -315,7 +398,7 @@ void Layout::update()
         return;
     }
 
-    switch (type) {
+    switch (m_type) {
         case Type::stack: {
             layout_stack(*layout_node);
             break;
@@ -336,11 +419,11 @@ void Layout::update()
 
 void Layout::layout_stack(Node& layout_node)
 {
-    const int   primary_axis = axis_index(primary);
-    const float primary_sign = axis_sign(primary);
-    const float primary_gap  = gap[primary_axis];
+    const int   primary_axis = axis_index(m_primary);
+    const float primary_sign = axis_sign(m_primary);
+    const float primary_gap  = m_gap[primary_axis];
 
-    float cursor = (primary_sign > 0.0f) ? volume.min[primary_axis] : volume.max[primary_axis];
+    float cursor = (primary_sign > 0.0f) ? m_volume.min[primary_axis] : m_volume.max[primary_axis];
 
     for (const std::shared_ptr<erhe::Hierarchy>& child_item : layout_node.get_children()) {
         const std::shared_ptr<Node> child = std::dynamic_pointer_cast<Node>(child_item);
@@ -360,7 +443,7 @@ void Layout::layout_stack(Node& layout_node)
         // A Layout_item margin on the primary axis therefore shifts the child
         // within its slice but does not reserve extra space between neighbours;
         // inter-child spacing on the primary axis is controlled by 'gap'.
-        erhe::math::Aabb cell = volume;
+        erhe::math::Aabb cell = m_volume;
         if (primary_sign > 0.0f) {
             cell.min[primary_axis] = cursor;
             cell.max[primary_axis] = cursor + extent;
@@ -379,9 +462,9 @@ void Layout::layout_stack(Node& layout_node)
 
 void Layout::layout_grid(Node& layout_node)
 {
-    const std::vector<float> edges_x = build_track_edges(volume.min.x, volume.max.x, grid_track_count.x, grid_track_extent[0]);
-    const std::vector<float> edges_y = build_track_edges(volume.min.y, volume.max.y, grid_track_count.y, grid_track_extent[1]);
-    const std::vector<float> edges_z = build_track_edges(volume.min.z, volume.max.z, grid_track_count.z, grid_track_extent[2]);
+    const std::vector<float> edges_x = build_track_edges(m_volume.min.x, m_volume.max.x, m_grid_track_count.x, m_grid_track_extent[0]);
+    const std::vector<float> edges_y = build_track_edges(m_volume.min.y, m_volume.max.y, m_grid_track_count.y, m_grid_track_extent[1]);
+    const std::vector<float> edges_z = build_track_edges(m_volume.min.z, m_volume.max.z, m_grid_track_count.z, m_grid_track_extent[2]);
     const int track_count_x = static_cast<int>(edges_x.size()) - 1;
     const int track_count_y = static_cast<int>(edges_y.size()) - 1;
     const int track_count_z = static_cast<int>(edges_z.size()) - 1;
@@ -396,9 +479,9 @@ void Layout::layout_grid(Node& layout_node)
     // seen in the completed row/sheet. Explicitly placed children do not move
     // the cursor and are not tracked for occupancy, so mixing explicit and
     // auto children can overlap.
-    const int p_axis  = axis_index(primary);
-    const int s_axis  = axis_index(secondary);
-    const int t_axis  = axis_index(tertiary);
+    const int p_axis  = axis_index(m_primary);
+    const int s_axis  = axis_index(m_secondary);
+    const int t_axis  = axis_index(m_tertiary);
     glm::ivec3 logical_cursor{0, 0, 0}; // (primary, secondary, tertiary) positions, sign-independent
     int row_advance_s  = 1; // secondary advance when the current row wraps
     int sheet_advance_t = 1; // tertiary advance when the current sheet wraps
@@ -442,9 +525,9 @@ void Layout::layout_grid(Node& layout_node)
             const auto to_cell = [](const Axis_direction direction, const int logical, const int span, const int count) -> int {
                 return (axis_sign(direction) > 0.0f) ? logical : (count - logical - span);
             };
-            child_cell[p_axis] = to_cell(primary,   logical_cursor[0], span_p, track_count[p_axis]);
-            child_cell[s_axis] = to_cell(secondary, logical_cursor[1], span_s, track_count[s_axis]);
-            child_cell[t_axis] = to_cell(tertiary,  logical_cursor[2], span_t, track_count[t_axis]);
+            child_cell[p_axis] = to_cell(m_primary,   logical_cursor[0], span_p, track_count[p_axis]);
+            child_cell[s_axis] = to_cell(m_secondary, logical_cursor[1], span_s, track_count[s_axis]);
+            child_cell[t_axis] = to_cell(m_tertiary,  logical_cursor[2], span_t, track_count[t_axis]);
             row_advance_s      = std::max(row_advance_s,   span_s);
             sheet_advance_t    = std::max(sheet_advance_t, span_t);
             logical_cursor[0] += span_p;
@@ -480,17 +563,17 @@ void Layout::layout_flow(Node& layout_node)
     // primary / secondary / tertiary should select three distinct axes. The cell
     // is seeded from the full volume so a misconfiguration (duplicate axis) leaves
     // the unset axis at full extent rather than producing an invalid cell.
-    const int   primary_axis   = axis_index(primary);
-    const int   secondary_axis = axis_index(secondary);
-    const int   tertiary_axis  = axis_index(tertiary);
-    const float primary_sign   = axis_sign(primary);
-    const float secondary_sign = axis_sign(secondary);
-    const float tertiary_sign  = axis_sign(tertiary);
-    const float primary_gap    = gap[primary_axis];
-    const float secondary_gap  = gap[secondary_axis];
-    const float tertiary_gap   = gap[tertiary_axis];
-    const float cap_primary    = volume.max[primary_axis]   - volume.min[primary_axis];
-    const float cap_secondary  = volume.max[secondary_axis] - volume.min[secondary_axis];
+    const int   primary_axis   = axis_index(m_primary);
+    const int   secondary_axis = axis_index(m_secondary);
+    const int   tertiary_axis  = axis_index(m_tertiary);
+    const float primary_sign   = axis_sign(m_primary);
+    const float secondary_sign = axis_sign(m_secondary);
+    const float tertiary_sign  = axis_sign(m_tertiary);
+    const float primary_gap    = m_gap[primary_axis];
+    const float secondary_gap  = m_gap[secondary_axis];
+    const float tertiary_gap   = m_gap[tertiary_axis];
+    const float cap_primary    = m_volume.max[primary_axis]   - m_volume.min[primary_axis];
+    const float cap_secondary  = m_volume.max[secondary_axis] - m_volume.min[secondary_axis];
     const float epsilon        = 1.0e-4f;
 
     // Collect direct Node children with their measured content boxes.
@@ -553,19 +636,19 @@ void Layout::layout_flow(Node& layout_node)
 
     // Pass 2: assign each child a cell and place it. Sheets stack along the
     // tertiary axis (no further wrapping; overflow past the volume is allowed).
-    float tertiary_cursor = (tertiary_sign > 0.0f) ? volume.min[tertiary_axis] : volume.max[tertiary_axis];
+    float tertiary_cursor = (tertiary_sign > 0.0f) ? m_volume.min[tertiary_axis] : m_volume.max[tertiary_axis];
     for (const Flow_sheet& sheet : sheets) {
         const std::pair<float, float> tertiary_interval = advance(tertiary_cursor, tertiary_sign, sheet.cross_t);
-        float secondary_cursor = (secondary_sign > 0.0f) ? volume.min[secondary_axis] : volume.max[secondary_axis];
+        float secondary_cursor = (secondary_sign > 0.0f) ? m_volume.min[secondary_axis] : m_volume.max[secondary_axis];
         for (const std::size_t line_index : sheet.line_indices) {
             const Flow_line& line = lines[line_index];
             const std::pair<float, float> secondary_interval = advance(secondary_cursor, secondary_sign, line.cross_s);
-            float primary_cursor = (primary_sign > 0.0f) ? volume.min[primary_axis] : volume.max[primary_axis];
+            float primary_cursor = (primary_sign > 0.0f) ? m_volume.min[primary_axis] : m_volume.max[primary_axis];
             for (const std::size_t i : line.members) {
                 const float primary_len = contents[i].max[primary_axis] - contents[i].min[primary_axis];
                 const std::pair<float, float> primary_interval = advance(primary_cursor, primary_sign, primary_len);
 
-                erhe::math::Aabb cell = volume;
+                erhe::math::Aabb cell = m_volume;
                 cell.min[primary_axis]   = primary_interval.first;   cell.max[primary_axis]   = primary_interval.second;
                 cell.min[secondary_axis] = secondary_interval.first; cell.max[secondary_axis] = secondary_interval.second;
                 cell.min[tertiary_axis]  = tertiary_interval.first;  cell.max[tertiary_axis]  = tertiary_interval.second;
