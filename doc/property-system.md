@@ -1422,7 +1422,6 @@ live body. `motion_mode` (`erhe::physics::Motion_mode`, `Enum_info` table
 `c_motion_mode_enum_info` next to `c_motion_mode_strings` in
 `erhe_physics/irigid_body.hpp`, the four authorable modes) re-derives the
 effective mode and sets it on the body; `is_trigger` recreates the body;
-`friction` and `restitution` (validated to [0, 1]) set the body's;
 `linear_damping` and `angular_damping` ([0, 1], `visible_when` the mode is
 not static) set the body's damping while the body is not static;
 `gravity_factor` (0..2, `visible_when` not static) likewise;
@@ -1432,7 +1431,10 @@ space, applied at (re)creation) have no live consequence.
 `reference_item_types` the physics material and collision filter type
 bits; `find_item_in_scene` walks the content library's physics materials
 and collision filters so a name resolves) whose hook sets the body's
-material or filter;
+material or filter. The material is the only carrier of friction and
+restitution (section 4.12): the attachment, the create info and
+`ERHE_physics` hold no scalar of their own, and a body without a
+material behaves like one with the material defaults;
 `reapply_physics_material()` / `reapply_collision_filter()` push the
 current one again after the referenced item itself was edited, because a
 write of the pointer the member already holds is a no-op (R4): the
@@ -1448,11 +1450,13 @@ wrapper around the collision shape; the set rewraps and recreates the
 body).
 
 The typed accessors (`set_motion_mode()`, `set_trigger()`, `set_mass()`,
-`set_friction()`, ... `set_collision_filter()`) write through the
+`set_linear_damping()`, ... `set_collision_filter()`) write through the
 properties, so the MCP `edit_physics_body` tool, the glTF physics import
 overrides, the geometry graph mesh binding and the Properties rows all
 notify; the physics tool's drag-time overrides of friction, damping and
-gravity go to the rigid body only and are transient. The glTF exporters
+gravity go to the rigid body only and are transient (a body's own
+friction takes part in contact resolution only while it has no
+material). The glTF exporters
 read the accessors, not the live body. `Properties::node_physics_properties`
 keeps only the diagnostics (body label, position, active state, collision
 shape, local center of mass and inertia).
@@ -1493,9 +1497,16 @@ count diagnostics.
 ### 4.12 Physics_material
 
 `Physics_material` (`erhe::physics`, the KHR_physics_rigid_bodies material
-item) registers its five fields as entry-stored properties (owner type
-`Physics_material::property_owner_type()`) with the spec defaults as the
-property defaults: `static_friction` and `dynamic_friction` (0.6,
+item; the content library's Physics Materials category holds them, with
+"Create Physics Material" on the folder, the Operations window and the
+MCP `create_physics_material` making new ones and the "Default" item
+`add_default_physics_materials` adds to every scene) registers its five
+fields as entry-stored, inheriting properties (owner type
+`Physics_material::property_owner_type()`, so a folder or a style holds
+them, D30) with the spec defaults (`c_default_friction`,
+`c_default_restitution`, also what the Jolt backend gives a body without
+a material) as the property defaults: `static_friction` and
+`dynamic_friction` (0.6,
 validated non-negative; the extension and the physics sense set no upper
 bound, so a file value above the 0..1 slider still loads), `restitution`
 (0, validated to [0, 1]) and the enumerations `friction_combine` and
@@ -1507,7 +1518,9 @@ read and write the store, and every reader - the Jolt body snapshot, the
 glTF physics import and export, the MCP physics tools, the default
 library material - uses them.
 
-The consequence of an edit stays backend-neutral. A backend may snapshot
+The material is the only carrier of friction and restitution: neither
+`Node_physics` nor `IRigid_body_create_info` holds a scalar of its own
+(section 4.10). The consequence of an edit stays backend-neutral. A backend may snapshot
 the material per body at `IRigid_body::set_physics_material()` (Jolt
 does, so its contact listener reads the values without locks), and the
 material does not know the bodies that reference it, so the holder of

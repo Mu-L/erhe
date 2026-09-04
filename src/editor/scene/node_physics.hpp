@@ -51,8 +51,6 @@ public:
     static const erhe::property::Property<erhe::physics::Motion_mode>      motion_mode_property;
     static const erhe::property::Property<bool>                            is_trigger_property;
     static const erhe::property::Property<float>                           mass_property;
-    static const erhe::property::Property<float>                           friction_property;
-    static const erhe::property::Property<float>                           restitution_property;
     static const erhe::property::Property<float>                           linear_damping_property;
     static const erhe::property::Property<float>                           angular_damping_property;
     static const erhe::property::Property<float>                           gravity_factor_property;
@@ -103,17 +101,14 @@ public:
     // overrides go to the body only and are not seen here.
     [[nodiscard]] auto get_mass           () const -> float; // the create info's mass, else the live body's (0 when neither)
     void               set_mass           (float mass);      // scales the local inertia with the mass
-    [[nodiscard]] auto get_friction       () const -> float;
-    void               set_friction       (float friction);
-    [[nodiscard]] auto get_restitution    () const -> float;
-    void               set_restitution    (float restitution);
     [[nodiscard]] auto get_linear_damping () const -> float;
     void               set_linear_damping (float linear_damping);
     [[nodiscard]] auto get_angular_damping() const -> float;
     void               set_angular_damping(float angular_damping);
 
-    // Shared physics material; updates both create info and the live rigid
-    // body. The attachment observes the material's properties (doc/
+    // Shared physics material (the carrier of friction and restitution;
+    // none = the material defaults); updates both create info and the live
+    // rigid body. The attachment observes the material's properties (doc/
     // property-system.md section 4.12) and reapply_physics_material() pushes
     // the current material to the body again when one changes, so the
     // backend re-snapshots the values.
@@ -187,8 +182,6 @@ private:
     // hand-written bridge sets): the member already holds the new value.
     void apply_motion_mode          ();
     void apply_mass                 (float mass);
-    void apply_friction             ();
-    void apply_restitution          ();
     void apply_damping              ();
     void apply_gravity_factor       ();
     void apply_center_of_mass_offset(const glm::vec3& offset);

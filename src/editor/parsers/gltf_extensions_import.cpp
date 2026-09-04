@@ -129,8 +129,6 @@ auto parse_gltf_physics_overrides(const erhe::gltf::Gltf_data& gltf_data)
         if (payload.contains("motion_mode") && payload["motion_mode"].is_string()) {
             entry.motion_mode = motion_mode_from_name(payload["motion_mode"].get<std::string>());
         }
-        if (payload.contains("friction")        && payload["friction"].is_number())        { entry.friction        = payload["friction"].get<float>(); }
-        if (payload.contains("restitution")     && payload["restitution"].is_number())     { entry.restitution     = payload["restitution"].get<float>(); }
         if (payload.contains("linear_damping")  && payload["linear_damping"].is_number())  { entry.linear_damping  = payload["linear_damping"].get<float>(); }
         if (payload.contains("angular_damping") && payload["angular_damping"].is_number()) { entry.angular_damping = payload["angular_damping"].get<float>(); }
         if (payload.contains("wind_receptivity") && payload["wind_receptivity"].is_number()) { entry.wind_receptivity = payload["wind_receptivity"].get<float>(); }
@@ -166,6 +164,31 @@ auto parse_gltf_scene_state(const erhe::gltf::Gltf_data& gltf_data) -> std::opti
         state.settings_json = payload["settings"].dump();
     }
     return state;
+}
+
+auto parse_gltf_physics_item_names(const erhe::gltf::Gltf_data& gltf_data) -> Gltf_physics_item_names
+{
+    Gltf_physics_item_names names{};
+    const std::string* extension_json = find_extension(gltf_data.scene_extensions, "ERHE_scene");
+    if (extension_json == nullptr) {
+        return names;
+    }
+    const nlohmann::json payload = parse_extension_object(*extension_json, "ERHE_scene", "scene");
+    if (!payload.is_object()) {
+        return names;
+    }
+    const auto read_names = [&payload](const char* key, std::vector<std::string>& out) {
+        const auto it = payload.find(key);
+        if ((it == payload.end()) || !it->is_array()) {
+            return;
+        }
+        for (const nlohmann::json& entry : *it) {
+            out.push_back(entry.is_string() ? entry.get<std::string>() : std::string{});
+        }
+    };
+    read_names("physics_material_names", names.physics_materials);
+    read_names("collision_filter_names", names.collision_filters);
+    return names;
 }
 
 namespace {

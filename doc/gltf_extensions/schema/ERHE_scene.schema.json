@@ -26,6 +26,8 @@
                 "required": ["name"]
             }
         },
+        "physics_material_names": {"type": "array", "items": {"type": "string"}, "description": "Names of the KHR_physics_rigid_bodies physicsMaterials entries, by index"},
+        "collision_filter_names": {"type": "array", "items": {"type": "string"}, "description": "Names of the KHR_physics_rigid_bodies collisionFilters entries, by index"},
         "library_folders": {
             "type": "array",
             "items": {

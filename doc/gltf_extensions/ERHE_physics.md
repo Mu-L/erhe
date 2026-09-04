@@ -18,10 +18,11 @@ for:
 - `motion_mode`: erhe's four motion modes. KHR has a single `isKinematic`
   bool, which cannot distinguish `kinematic_non_physical` from
   `kinematic_physical`, and static bodies have no motion object at all.
-- `friction`, `restitution`: per-BODY values. KHR only carries them on
-  shared physics materials; erhe bodies have them even with no material
-  assigned.
 - `linear_damping`, `angular_damping`: no KHR carrier at all.
+
+Friction and restitution are not here: they belong to the shared physics
+material the body's `KHR_physics_rigid_bodies` collider references, and a
+body without a material behaves like one with the material defaults.
 
 All fields are written for every exported body so the round-trip is exact.
 
@@ -30,8 +31,6 @@ All fields are written for every exported body so the round-trip is exact.
 ```json
 {
     "motion_mode": "dynamic",
-    "friction": 0.5,
-    "restitution": 0.2,
     "linear_damping": 0.05,
     "angular_damping": 0.05
 }

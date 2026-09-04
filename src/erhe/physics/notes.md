@@ -13,7 +13,7 @@ a specific engine.
   enable/disable via `set_collision_enabled()` (joint enableCollision = false)
 - `IRigid_body` -- rigid body with mass, velocity, damping, motion mode, transform, shared
   physics material / collision filter assignment
-- `IRigid_body_create_info` -- parameters for creating a rigid body (shape, mass/density, friction,
+- `IRigid_body_create_info` -- parameters for creating a rigid body (shape, mass/density, physics material,
   initial velocities, gravity factor, sensor flag, shared material / filter, etc.); explicit mass 0
   means infinite mass (KHR_physics_rigid_bodies convention)
 - `ICollision_shape` -- factory for shapes: box, sphere, capsule, tapered capsule, cylinder,

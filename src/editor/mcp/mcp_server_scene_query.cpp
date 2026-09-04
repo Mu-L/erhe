@@ -558,8 +558,6 @@ auto Mcp_server::query_node_details(const json& args) -> std::string
             const erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
             if (rigid_body != nullptr) {
                 att_json["mass"]        = rigid_body->get_mass();
-                att_json["friction"]    = rigid_body->get_friction();
-                att_json["restitution"] = rigid_body->get_restitution();
                 att_json["is_active"]   = rigid_body->is_active();
             }
         }

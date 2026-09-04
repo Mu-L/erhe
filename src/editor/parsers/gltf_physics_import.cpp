@@ -317,8 +317,6 @@ void import_gltf_physics(
         }
         const Gltf_physics_overrides& overrides = it->second;
         if (overrides.motion_mode.has_value())     { create_info.motion_mode     = overrides.motion_mode.value(); }
-        if (overrides.friction.has_value())        { create_info.friction        = overrides.friction.value(); }
-        if (overrides.restitution.has_value())     { create_info.restitution     = overrides.restitution.value(); }
         if (overrides.linear_damping.has_value())  { create_info.linear_damping  = overrides.linear_damping.value(); }
         if (overrides.angular_damping.has_value()) { create_info.angular_damping = overrides.angular_damping.value(); }
     };
@@ -337,10 +335,19 @@ void import_gltf_physics(
 
     // 1. Shared content-library items (1:1 with the glTF top-level arrays),
     //    attached through undoable operations like materials / textures.
+    //    Names come from ERHE_scene (an erhe-authored file), else from the
+    //    description, else are synthesized.
+    const Gltf_physics_item_names item_names = parse_gltf_physics_item_names(gltf_data);
+    const auto item_name = [](const std::vector<std::string>& names, const std::size_t i, const std::string& description_name, const char* fallback) -> std::string {
+        if ((i < names.size()) && !names[i].empty()) {
+            return names[i];
+        }
+        return description_name.empty() ? fmt::format("{} {}", fallback, i) : description_name;
+    };
     importer.material_items.reserve(physics.materials.size());
     for (std::size_t i = 0; i < physics.materials.size(); ++i) {
         const erhe::gltf::Physics_material_description& description = physics.materials[i];
-        const std::string name = description.name.empty() ? fmt::format("Physics material {}", i) : description.name;
+        const std::string name = item_name(item_names.physics_materials, i, description.name, "Physics material");
         auto item = std::make_shared<erhe::physics::Physics_material>(name);
         item->set_static_friction    (description.static_friction);
         item->set_dynamic_friction   (description.dynamic_friction);
@@ -366,7 +373,7 @@ void import_gltf_physics(
     importer.filter_items.reserve(physics.collision_filters.size());
     for (std::size_t i = 0; i < physics.collision_filters.size(); ++i) {
         const erhe::gltf::Physics_collision_filter_description& description = physics.collision_filters[i];
-        const std::string name = description.name.empty() ? fmt::format("Collision filter {}", i) : description.name;
+        const std::string name = item_name(item_names.collision_filters, i, description.name, "Collision filter");
         auto item = std::make_shared<erhe::physics::Collision_filter>(name);
         item->collision_systems        = description.collision_systems;
         item->collide_with_systems     = description.collide_with_systems;

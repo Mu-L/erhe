@@ -258,8 +258,6 @@ auto Mcp_server::action_create_physics_body(const json& args) -> std::string
     if (args.contains("mass")) {
         create_info.mass = args["mass"].get<float>();
     }
-    create_info.friction         = args.value("friction",        create_info.friction);
-    create_info.restitution      = args.value("restitution",     create_info.restitution);
     create_info.linear_damping   = args.value("linear_damping",  create_info.linear_damping);
     create_info.angular_damping  = args.value("angular_damping", create_info.angular_damping);
     create_info.gravity_factor   = args.value("gravity_factor",  create_info.gravity_factor);
@@ -414,14 +412,6 @@ auto Mcp_server::action_edit_physics_body(const json& args) -> std::string
     if (args.contains("mass")) {
         node_physics->set_mass(args["mass"].get<float>());
         applied.push_back("mass");
-    }
-    if (args.contains("friction")) {
-        node_physics->set_friction(args["friction"].get<float>());
-        applied.push_back("friction");
-    }
-    if (args.contains("restitution")) {
-        node_physics->set_restitution(args["restitution"].get<float>());
-        applied.push_back("restitution");
     }
     if (args.contains("linear_damping")) {
         node_physics->set_linear_damping(args["linear_damping"].get<float>());

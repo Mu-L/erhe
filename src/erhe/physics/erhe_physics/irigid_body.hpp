@@ -50,8 +50,6 @@ class Physics_material;
 class IRigid_body_create_info
 {
 public:
-    float                             friction         {0.5f};
-    float                             restitution      {0.2f};
     float                             linear_damping   {0.05f};
     float                             angular_damping  {0.05f};
     std::shared_ptr<ICollision_shape> collision_shape  {};
@@ -67,7 +65,7 @@ public:
     glm::vec3                         angular_velocity {0.0f, 0.0f, 0.0f}; // world space, applied at creation
     float                             gravity_factor   {1.0f};
     bool                              is_sensor        {false};
-    std::shared_ptr<Physics_material> physics_material {}; // shared material; overrides scalar friction / restitution in contact resolution
+    std::shared_ptr<Physics_material> physics_material {}; // shared material, the carrier of friction and restitution; none = the material defaults
     std::shared_ptr<Collision_filter> collision_filter {}; // shared collision-system filter
 };
 

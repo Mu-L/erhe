@@ -73,16 +73,6 @@ const Property<float> Node_physics::mass_property = Property<float>::register_pr
     },
     [](const Property_value& value) -> bool { return std::get<float>(value) > 0.0f; }
 );
-const Property<float> Node_physics::friction_property = Property<float>::register_member<Node_physics, float>(
-    "friction", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.friction; },
-    Property_metadata{.default_value = 0.5f, .ui = slider(0.0f, 1.0f, "Friction", "Overridden by the physics material in contact resolution while one is set")},
-    [](Node_physics& node_physics) { node_physics.apply_friction(); }, unit_range
-);
-const Property<float> Node_physics::restitution_property = Property<float>::register_member<Node_physics, float>(
-    "restitution", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.restitution; },
-    Property_metadata{.default_value = 0.2f, .ui = slider(0.0f, 1.0f, "Restitution", "Overridden by the physics material in contact resolution while one is set")},
-    [](Node_physics& node_physics) { node_physics.apply_restitution(); }, unit_range
-);
 const Property<float> Node_physics::linear_damping_property = Property<float>::register_member<Node_physics, float>(
     "linear_damping", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.linear_damping; },
     Property_metadata{.default_value = 0.05f, .ui = slider(0.0f, 1.0f, "Linear Damping", {}, is_movable)},
@@ -122,7 +112,7 @@ const Property<glm::vec3> Node_physics::center_of_mass_offset_property = Propert
 );
 const Property<Object_reference> Node_physics::physics_material_property = Property<Object_reference>::register_member<Node_physics, std::shared_ptr<erhe::physics::Physics_material>>(
     "physics_material", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.physics_material; },
-    Property_metadata{.ui = Property_ui{.group = c_group, .tooltip = "Shared material; its friction and restitution override the scalar ones in contact resolution", .label = "Physics Material", .reference_item_types = erhe::Item_type::physics_material}},
+    Property_metadata{.ui = Property_ui{.group = c_group, .tooltip = "Shared material carrying friction and restitution; none behaves like the material defaults", .label = "Physics Material", .reference_item_types = erhe::Item_type::physics_material}},
     [](Node_physics& node_physics) { node_physics.observe_physics_material(); node_physics.reapply_physics_material(); }
 );
 const Property<Object_reference> Node_physics::collision_filter_property = Property<Object_reference>::register_member<Node_physics, std::shared_ptr<erhe::physics::Collision_filter>>(
@@ -376,40 +366,6 @@ void Node_physics::apply_mass(const float mass)
             inertia = glm::mat4{glm::mat3{inertia} * (mass / old_mass)};
         }
         rigid_body->set_mass_properties(mass, inertia);
-    }
-}
-
-auto Node_physics::get_friction() const -> float
-{
-    return m_create_info.friction;
-}
-
-void Node_physics::set_friction(const float friction)
-{
-    set_value(friction_property, friction);
-}
-
-void Node_physics::apply_friction()
-{
-    if (m_rigid_body) {
-        m_rigid_body->set_friction(m_create_info.friction);
-    }
-}
-
-auto Node_physics::get_restitution() const -> float
-{
-    return m_create_info.restitution;
-}
-
-void Node_physics::set_restitution(const float restitution)
-{
-    set_value(restitution_property, restitution);
-}
-
-void Node_physics::apply_restitution()
-{
-    if (m_rigid_body) {
-        m_rigid_body->set_restitution(m_create_info.restitution);
     }
 }
 

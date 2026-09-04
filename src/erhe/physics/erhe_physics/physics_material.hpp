@@ -30,9 +30,17 @@ extern const erhe::property::Enum_info c_combine_mode_enum_info;
 // given combine mode.
 [[nodiscard]] auto combine_values(Combine_mode mode, float a, float b) -> float;
 
+// The KHR_physics_rigid_bodies material defaults: the property defaults of
+// Physics_material, and what a body with no material behaves like.
+constexpr float c_default_friction    = 0.6f;
+constexpr float c_default_restitution = 0.0f;
+
 // Shared physics material asset (KHR_physics_rigid_bodies physicsMaterials
-// entry). Referenced by rigid bodies via IRigid_body_create_info /
-// IRigid_body::set_physics_material(). A backend may snapshot the values
+// entry), an item of the editor's content library (its Physics Materials
+// category). It is the only carrier of friction and restitution: a rigid
+// body references one through IRigid_body_create_info /
+// IRigid_body::set_physics_material(), and a body without a material
+// behaves like one with the defaults. A backend may snapshot the values
 // per body at set_physics_material(); the holder of the reference (the
 // editor's Node_physics) observes the material's properties and pushes it
 // to the body again on a change (doc/property-system.md section 4.12).

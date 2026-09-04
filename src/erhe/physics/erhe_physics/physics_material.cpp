@@ -45,28 +45,30 @@ constexpr std::string_view c_combine_tooltip = "Contact pair precedence: average
 
 const erhe::property::Enum_info c_combine_mode_enum_info{"Combine_mode", c_combine_mode_entries};
 
+// Every value inherits (doc/property-system.md D30): a Physics Materials
+// folder or a style holds them for the materials below it.
 const Property<float> Physics_material::static_friction_property = Property<float>::register_property(
     "static_friction", c_owner,
-    Property_metadata{.default_value = 0.6f, .ui = slider(0.0f, 1.0f, "Static Friction", "Combined with the other body's material by the friction combine mode")},
+    Property_metadata{.default_value = c_default_friction, .inherits = true, .ui = slider(0.0f, 1.0f, "Static Friction", "Combined with the other body's material by the friction combine mode")},
     non_negative
 );
 const Property<float> Physics_material::dynamic_friction_property = Property<float>::register_property(
     "dynamic_friction", c_owner,
-    Property_metadata{.default_value = 0.6f, .ui = slider(0.0f, 1.0f, "Dynamic Friction", "Combined with the other body's material by the friction combine mode")},
+    Property_metadata{.default_value = c_default_friction, .inherits = true, .ui = slider(0.0f, 1.0f, "Dynamic Friction", "Combined with the other body's material by the friction combine mode")},
     non_negative
 );
 const Property<float> Physics_material::restitution_property = Property<float>::register_property(
     "restitution", c_owner,
-    Property_metadata{.default_value = 0.0f, .ui = slider(0.0f, 1.0f, "Restitution", "Bounciness; combined with the other body's material by the restitution combine mode")},
+    Property_metadata{.default_value = c_default_restitution, .inherits = true, .ui = slider(0.0f, 1.0f, "Restitution", "Bounciness; combined with the other body's material by the restitution combine mode")},
     unit_range
 );
 const Property<Combine_mode> Physics_material::friction_combine_property = Property<Combine_mode>::register_property(
     "friction_combine", c_owner, c_combine_mode_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Combine_mode::e_average), .ui = Property_ui{.tooltip = c_combine_tooltip, .label = "Friction Combine"}}
+    Property_metadata{.default_value = erhe::property::make_value(Combine_mode::e_average), .inherits = true, .ui = Property_ui{.tooltip = c_combine_tooltip, .label = "Friction Combine"}}
 );
 const Property<Combine_mode> Physics_material::restitution_combine_property = Property<Combine_mode>::register_property(
     "restitution_combine", c_owner, c_combine_mode_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Combine_mode::e_average), .ui = Property_ui{.tooltip = c_combine_tooltip, .label = "Restitution Combine"}}
+    Property_metadata{.default_value = erhe::property::make_value(Combine_mode::e_average), .inherits = true, .ui = Property_ui{.tooltip = c_combine_tooltip, .label = "Restitution Combine"}}
 );
 
 auto combine(const Combine_mode a, const Combine_mode b) -> Combine_mode

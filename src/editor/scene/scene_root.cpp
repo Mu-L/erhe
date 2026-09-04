@@ -41,6 +41,7 @@
 #include "erhe_imgui/imgui_windows.hpp"
 #include "erhe_physics/iworld.hpp"
 #include "erhe_physics/irigid_body.hpp"
+#include "erhe_physics/physics_material.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_raytrace/iscene.hpp"
 #include "erhe_scene/camera.hpp"
@@ -862,6 +863,30 @@ auto Scene_root::make_browser_window(
                                     .context = *context_ptr,
                                     .item    = new_node,
                                     .parent  = materials,
+                                    .mode    = Item_insert_remove_operation::Mode::insert
+                                }
+                            );
+                            context_ptr->operation_stack->queue(op);
+                        }
+                    );
+                    close = true;
+                }
+            }
+            // "Create Physics Material" on the Physics Materials folder
+            // (doc/property-system.md section 4.12).
+            if (is_folder && (content_node->type_code == erhe::Item_type::physics_material)) {
+                auto         physics_materials = get_content_library()->physics_materials;
+                App_context* context_ptr       = &context;
+                if (ImGui::MenuItem("Create Physics Material")) {
+                    deferred_operations.push_back(
+                        [context_ptr, physics_materials]() {
+                            auto new_material = std::make_shared<erhe::physics::Physics_material>("New Physics Material");
+                            auto new_node     = std::make_shared<Content_library_node>(new_material);
+                            auto op = std::make_shared<Item_insert_remove_operation>(
+                                Item_insert_remove_operation::Parameters{
+                                    .context = *context_ptr,
+                                    .item    = new_node,
+                                    .parent  = physics_materials,
                                     .mode    = Item_insert_remove_operation::Mode::insert
                                 }
                             );

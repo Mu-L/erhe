@@ -8,10 +8,8 @@
             "type": "string",
             "enum": ["static", "kinematic_non_physical", "kinematic_physical", "dynamic"]
         },
-        "friction":        {"type": "number"},
-        "restitution":     {"type": "number"},
         "linear_damping":  {"type": "number"},
         "angular_damping": {"type": "number"}
     },
-    "required": ["motion_mode", "friction", "restitution", "linear_damping", "angular_damping"]
+    "required": ["motion_mode", "linear_damping", "angular_damping"]
 }

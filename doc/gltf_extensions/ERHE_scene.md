@@ -24,6 +24,11 @@ plain interchange exports never do.
   keyed by qualified name such as `Material.roughness` or `Light.color`;
   omitted when empty). A `target` member of older files is ignored. Loaded before anything that names a style. Omitted when the
   library has no styles.
+- `physics_material_names`, `collision_filter_names` (optional): the names
+  of the `KHR_physics_rigid_bodies` `physicsMaterials` and
+  `collisionFilters` entries, by index (the KHR entries carry no name),
+  so the content library's physics materials and collision filters keep
+  their names across a save and reload. Omitted when the file has none.
 - `library_folders` (optional): the content library's folders below its
   category folders (`doc/content-library-folders.md` D5), parents before
   their subfolders. Each entry has `path` (slash-separated from the

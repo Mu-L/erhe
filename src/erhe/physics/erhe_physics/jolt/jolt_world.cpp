@@ -777,8 +777,9 @@ namespace {
 // Physics_material_snapshots per KHR_physics_rigid_bodies (combine mode
 // precedence: average > minimum > maximum > multiply). Only overrides
 // ioSettings when at least one body has a material; a material-less body
-// contributes its legacy scalar friction / restitution values (as both
-// static and dynamic friction) with e_average combine mode. Friction uses
+// contributes the body's own friction / restitution (the material defaults
+// at creation, or a transient override such as the physics tool's) as
+// both static and dynamic friction with e_average combine mode. Friction uses
 // dynamic friction only for now (documented approximation; static friction
 // selection by tangential velocity is a follow-up).
 //

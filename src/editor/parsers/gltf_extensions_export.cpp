@@ -20,6 +20,7 @@
 #include "scene/generated/scene_settings_serialization.hpp"
 
 #include "erhe_gltf/gltf_item_flags.hpp"
+#include "erhe_gltf/gltf_physics.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_physics/irigid_body.hpp"
 #include "erhe_primitive/material.hpp"
@@ -314,8 +315,6 @@ void add_gltf_editor_state(
         if (node_physics) {
             nlohmann::json physics_json{
                 {"motion_mode",     motion_mode_name(node_physics->get_motion_mode())},
-                {"friction",        json_float(node_physics->get_friction())},
-                {"restitution",     json_float(node_physics->get_restitution())},
                 {"linear_damping",  json_float(node_physics->get_linear_damping())},
                 {"angular_damping", json_float(node_physics->get_angular_damping())},
             };
@@ -404,6 +403,25 @@ void add_gltf_editor_state(
             }
             if (!styles.empty()) {
                 scene_json["styles"] = std::move(styles);
+            }
+        }
+        // physics_material_names / collision_filter_names: the names of the
+        // KHR_physics_rigid_bodies entries by index (the KHR entries carry
+        // none), so the library items keep their names across a reload.
+        if (arguments.physics_data != nullptr) {
+            if (!arguments.physics_data->materials.empty()) {
+                nlohmann::json names = nlohmann::json::array();
+                for (const erhe::gltf::Physics_material_description& material : arguments.physics_data->materials) {
+                    names.push_back(material.name);
+                }
+                scene_json["physics_material_names"] = std::move(names);
+            }
+            if (!arguments.physics_data->collision_filters.empty()) {
+                nlohmann::json names = nlohmann::json::array();
+                for (const erhe::gltf::Physics_collision_filter_description& filter : arguments.physics_data->collision_filters) {
+                    names.push_back(filter.name);
+                }
+                scene_json["collision_filter_names"] = std::move(names);
             }
         }
         // library_folders (doc/content-library-folders.md D5): every folder

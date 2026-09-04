@@ -6,6 +6,7 @@
 #include "erhe_physics/jolt/jolt_collision_shape.hpp"
 #include "erhe_physics/jolt/jolt_world.hpp"
 #include "erhe_physics/physics_log.hpp"
+#include "erhe_physics/physics_material.hpp"
 #include "erhe_physics/transform.hpp"
 
 #include <Jolt/Jolt.h>
@@ -102,8 +103,11 @@ Jolt_rigid_body::Jolt_rigid_body(
     }
 
     creation_settings.mAllowDynamicOrKinematic = true;
-    creation_settings.mFriction                = create_info.friction;
-    creation_settings.mRestitution             = create_info.restitution;
+    // The body's own friction / restitution matter only while it has no
+    // material (combine_contact_material): the material defaults, so a
+    // material-less body behaves like one with a default material.
+    creation_settings.mFriction                = c_default_friction;
+    creation_settings.mRestitution             = c_default_restitution;
     creation_settings.mOverrideMassProperties  = JPH::EOverrideMassProperties::MassAndInertiaProvided; //EOverrideMassProperties::CalculateMassAndInertia; // JPH::EOverrideMassProperties::MassAndInertiaProvided;
     creation_settings.mMassPropertiesOverride  = m_mass_properties;
     creation_settings.mLinearDamping           = create_info.linear_damping;

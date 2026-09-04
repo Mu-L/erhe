@@ -3220,10 +3220,6 @@
           "description": "Collision filter name from the content library (empty string clears)",
           "type": "string"
         },
-        "friction": {
-          "description": "Scalar friction (overridden by a physics material)",
-          "type": "number"
-        },
         "gravity_factor": {
           "description": "Gravity factor (default 1.0)",
           "type": "number"
@@ -3286,10 +3282,6 @@
         },
         "radius": {
           "description": "Sphere / capsule radius (default 0.5)",
-          "type": "number"
-        },
-        "restitution": {
-          "description": "Scalar restitution (overridden by a physics material)",
           "type": "number"
         },
         "scene_name": {
@@ -3374,10 +3366,6 @@
           "description": "Collision filter name from the content library (empty string clears)",
           "type": "string"
         },
-        "friction": {
-          "description": "Scalar friction (overridden by a physics material)",
-          "type": "number"
-        },
         "gravity_factor": {
           "description": "Gravity factor (default 1.0)",
           "type": "number"
@@ -3440,10 +3428,6 @@
         },
         "radius": {
           "description": "Sphere / capsule radius (default 0.5)",
-          "type": "number"
-        },
-        "restitution": {
-          "description": "Scalar restitution (overridden by a physics material)",
           "type": "number"
         },
         "scene_name": {

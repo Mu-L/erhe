@@ -5,6 +5,7 @@
 ✓node-holds-attachment-values+Light-inherits+Create-Style/create_style+node-style-persistence{ff0f28de6..8d1b12a57}
 ✓style-holds-any-class{no-target}
 ✓Camera-props-entry-store+inherits{node/style-hold-Camera.*}
+✓physics-material-only-friction-carrier+names-persist{ERHE_scene}
 ?user-interactive-verify
 
 [TASK::content-library-folders]{DONE-2026-09-04}
