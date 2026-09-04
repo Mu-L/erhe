@@ -223,6 +223,10 @@ public:
     std::vector<std::shared_ptr<erhe::scene::Skin>>         skins;
     std::vector<std::shared_ptr<erhe::scene::Node>>         nodes;
     std::vector<std::shared_ptr<erhe::primitive::Material>> materials;
+    // Parallel to materials (sized on first use): the ERHE_material "style"
+    // name of each material, empty for none. The editor assigns the style
+    // item of that name once its library holds it (doc/style-library.md D4).
+    std::vector<std::string>                                material_style_names;
     std::vector<std::shared_ptr<erhe::graphics::Texture>>   images;
     // Parallel to images: the retained encoded source stream of each loaded
     // image (null for images that failed to load or were never referenced).

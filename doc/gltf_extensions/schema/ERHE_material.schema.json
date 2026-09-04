@@ -25,6 +25,7 @@
         },
         "use_circular_brushed_metal":         {"type": "boolean"},
         "use_aniso_control":                  {"type": "boolean"},
+        "style":                              {"type": "string"},
         "circular_brushed_metal_texgen_mode": {"$ref": "#/$defs/texgen_mode"},
         "base_color_texgen_mode":             {"$ref": "#/$defs/texgen_mode"},
         "metallic_roughness_texgen_mode":     {"$ref": "#/$defs/texgen_mode"},

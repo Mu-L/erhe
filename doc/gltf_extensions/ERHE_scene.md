@@ -18,13 +18,21 @@ plain interchange exports never do.
   `src/editor/scene/definitions/scene_settings.py`; each absent / null
   field means "use the editor-global default"). Omitted entirely when no
   override is engaged.
+- `styles` (optional): the content library's style items
+  (`doc/style-library.md` D4): `name`, `target` (the owner type name of
+  the class the style holds values of, e.g. `"Material"`) and
+  `properties` (the style's local values as a name to text map, the form
+  of `ERHE_node` `properties`, keyed by qualified name; omitted when
+  empty). Loaded before anything that names a style. Omitted when the
+  library has no styles.
 - `library_folders` (optional): the content library's folders below its
   category folders (`doc/content-library-folders.md` D5), parents before
   their subfolders. Each entry has `path` (slash-separated from the
   library root, starting with the category folder's name), `properties`
   (the folder's local property values as a name to text map, the form of
   `ERHE_node` `properties`; omitted when empty) and `items` (the names of
-  the entries directly in the folder; omitted when empty). An entry no
+  the entries directly in the folder; omitted when empty) and `style`
+  (the name of the style item the folder uses; omitted when none). An entry no
   folder names loads into its category folder. Omitted when the library
   has no folders.
 
@@ -38,8 +46,11 @@ plain interchange exports never do.
         "post_processing": false,
         "clear_color": [0, 0, 0, 1]
     },
+    "styles": [
+        {"name": "Brushed metal", "target": "Material", "properties": {"Material.roughness": "0.34 0.2", "Material.metallic": "1"}}
+    ],
     "library_folders": [
-        {"path": "Materials/Metals", "properties": {"visible": "false"}, "items": ["Gold", "Copper"]},
+        {"path": "Materials/Metals", "properties": {"visible": "false"}, "items": ["Gold", "Copper"], "style": "Brushed metal"},
         {"path": "Brushes/Platonic Solids", "items": ["Cube", "Octahedron"]}
     ]
 }

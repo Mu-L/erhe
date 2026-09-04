@@ -6,6 +6,7 @@
 #include "assets/asset_paths.hpp"
 #include "brushes/brush.hpp"
 #include "content_library/content_library.hpp"
+#include "content_library/style.hpp"
 #include "editor_log.hpp"
 #include "geometry_graph/geometry_graph_mesh.hpp"
 #include "geometry_graph/graph_mesh.hpp"
@@ -386,6 +387,28 @@ void add_gltf_editor_state(
                 log_parsers->error("add_gltf_editor_state: Scene_settings serialization did not parse - settings not exported");
             }
         }
+        // styles (doc/style-library.md D4): every style item with its target
+        // class and local values, before the folders that may name them.
+        if (content_library && content_library->styles) {
+            nlohmann::json styles = nlohmann::json::array();
+            for (const std::shared_ptr<Style>& style : content_library->styles->get_all<Style>()) {
+                if (!style) {
+                    continue;
+                }
+                nlohmann::json entry{
+                    {"name",   style->get_name()},
+                    {"target", std::string{erhe::property::Property_registry::get().get_owner_name(style->get_target_owner_type())}},
+                };
+                const nlohmann::json properties = json_properties(*style);
+                if (properties.is_object() && !properties.empty()) {
+                    entry["properties"] = properties;
+                }
+                styles.push_back(std::move(entry));
+            }
+            if (!styles.empty()) {
+                scene_json["styles"] = std::move(styles);
+            }
+        }
         // library_folders (doc/content-library-folders.md D5): every folder
         // below a category folder, depth first, with its local property
         // values and the names of the entries directly in it.
@@ -410,6 +433,9 @@ void add_gltf_editor_state(
                         const nlohmann::json properties = json_properties(folder_node);
                         if (properties.is_object() && !properties.empty()) {
                             entry["properties"] = properties;
+                        }
+                        if (folder_node.get_style()) {
+                            entry["style"] = folder_node.get_style()->get_reference_path();
                         }
                         if (!items.empty()) {
                             entry["items"] = items;

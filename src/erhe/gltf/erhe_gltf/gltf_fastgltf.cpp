@@ -3907,6 +3907,12 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                     material->set_roughness(glm::vec2{material->get_roughness().x, float_value});
                 }
                 std::string_view string_value;
+                if (extension_object.at_key("style").get_string().get(string_value) == simdjson::SUCCESS) {
+                    if (result.material_style_names.size() < result.materials.size()) {
+                        result.material_style_names.resize(result.materials.size());
+                    }
+                    result.material_style_names[i] = std::string{string_value};
+                }
                 if (extension_object.at_key("bxdf_model").get_string().get(string_value) == simdjson::SUCCESS) {
                     if (const auto parsed = bxdf_model_from_string(string_value); parsed.has_value()) {
                         material->set_bxdf_model(parsed.value());
@@ -4840,13 +4846,16 @@ private:
         const bool emit_normalmap_encoding =
             data.normalmap_encoding != erhe::primitive::Normalmap_encoding::right_handed_three_channel;
 
+        const bool emit_style = static_cast<bool>(material.get_style());
+
         if (!emit_roughness_y &&
             !emit_bxdf_model &&
             !emit_blending_mode &&
             !emit_sampler_texgen &&
             !emit_normalmap_encoding &&
             !data.use_circular_brushed_metal &&
-            !data.use_aniso_control)
+            !data.use_aniso_control &&
+            !emit_style)
         {
             return;
         }
@@ -4897,6 +4906,19 @@ private:
         }
         if (data.use_aniso_control) {
             fields += fmt::format("{}\"use_aniso_control\":true", separator);
+            separator = ",";
+        }
+        if (emit_style) {
+            // The style item's name (doc/style-library.md D4); quotes and
+            // backslashes escaped, the only characters a JSON string needs.
+            std::string escaped;
+            for (const char c : material.get_style()->get_reference_path()) {
+                if ((c == '"') || (c == '\\')) {
+                    escaped += '\\';
+                }
+                escaped += c;
+            }
+            fields += fmt::format("{}\"style\":\"{}\"", separator, escaped);
             separator = ",";
         }
         m_internal_material_extensions.emplace(gltf_material_index, fmt::format("\"ERHE_material\":{{{}}}", fields));

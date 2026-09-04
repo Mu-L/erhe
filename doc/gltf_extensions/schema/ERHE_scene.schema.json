@@ -15,6 +15,18 @@
             "type": "object",
             "description": "Scene_settings object (erhe_codegen schema, src/editor/scene/definitions/scene_settings.py)"
         },
+        "styles": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "target": {"type": "string", "description": "Owner type name of the class the style holds values of"},
+                    "properties": {"type": "object", "additionalProperties": {"type": "string"}}
+                },
+                "required": ["name", "target"]
+            }
+        },
         "library_folders": {
             "type": "array",
             "items": {
@@ -22,7 +34,8 @@
                 "properties": {
                     "path": {"type": "string", "description": "Slash-separated folder path from the library root, starting with the category folder name"},
                     "properties": {"type": "object", "additionalProperties": {"type": "string"}},
-                    "items": {"type": "array", "items": {"type": "string"}}
+                    "items": {"type": "array", "items": {"type": "string"}},
+                    "style": {"type": "string", "description": "Name of the style item the folder uses"}
                 },
                 "required": ["path"]
             }

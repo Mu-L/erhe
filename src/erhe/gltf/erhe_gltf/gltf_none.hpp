@@ -110,6 +110,7 @@ public:
     std::vector<std::shared_ptr<erhe::scene::Skin>>         skins;
     std::vector<std::shared_ptr<erhe::scene::Node>>         nodes;
     std::vector<std::shared_ptr<erhe::primitive::Material>> materials;
+    std::vector<std::string>                                material_style_names;
     std::vector<std::shared_ptr<erhe::graphics::Texture>>   images;
     std::vector<std::shared_ptr<Gltf_image_source>>         image_sources;
     Gltf_image_residency                                    image_residency;
