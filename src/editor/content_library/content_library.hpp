@@ -108,6 +108,13 @@ public:
     // adopt).
     [[nodiscard]] auto has_item(const erhe::Item_base& item) const -> bool;
 
+    // The entry node (owning or reference) anywhere in this subtree that
+    // wraps the given item, or null. An item is listed once per library
+    // (doc/content-library-folders.md R1: folders are subtrees of their
+    // category), so add() / remove() on a category folder find an entry
+    // that sits in one of its folders.
+    [[nodiscard]] auto find_entry(const erhe::Item_base& item) const -> std::shared_ptr<Content_library_node>;
+
     // template <typename T>
     // [[nodiscard]] auto get_all() -> std::vector<std::shared_ptr<T>> {
     //     std::vector<std::shared_ptr<T>> result;
@@ -177,11 +184,9 @@ public:
     std::shared_ptr<erhe::gltf::Gltf_image_source> image_source;
 
 private:
-    template <typename T>
-    void invalidate_cache()
-    {
-        m_cache.erase(T::get_static_type());
-    }
+    // Clears the get_all() caches of this node and every ancestor: a cache
+    // covers the whole subtree, so a change anywhere below a node stales it.
+    void invalidate_caches_up_to_root();
 
     friend class Content_library;
 
@@ -348,46 +353,22 @@ template <typename T>
 void Content_library_node::add(const std::shared_ptr<T>& entry)
 {
     ERHE_VERIFY(entry);
-    const auto i = std::find_if(
-        m_children.begin(),
-        m_children.end(),
-        [&entry](const std::shared_ptr<Hierarchy>& hierarchy) {
-            std::shared_ptr<Content_library_node> node = std::dynamic_pointer_cast<Content_library_node>(hierarchy);
-            if (!node) {
-                return false;
-            }
-            return std::dynamic_pointer_cast<T>(node->item) == entry;
-        }
-    );
-    if (i != m_children.end()) {
+    const std::shared_ptr<Content_library_node> existing = find_entry(*entry);
+    if (existing) {
         return;
     }
     auto node = std::make_shared<Content_library_node>(entry);
     node->set_parent(this);
-    invalidate_cache<T>();
 }
 
 template <typename T>
 void Content_library_node::add_reference(const std::shared_ptr<T>& entry, const std::optional<Asset_key>& asset_key)
 {
     ERHE_VERIFY(entry);
-    const auto i = std::find_if(
-        m_children.begin(),
-        m_children.end(),
-        [&entry](const std::shared_ptr<Hierarchy>& hierarchy) {
-            std::shared_ptr<Content_library_node> node = std::dynamic_pointer_cast<Content_library_node>(hierarchy);
-            if (!node) {
-                return false;
-            }
-            return std::dynamic_pointer_cast<T>(node->item) == entry;
-        }
-    );
-    if (i != m_children.end()) {
-        if (asset_key.has_value()) {
-            std::shared_ptr<Content_library_node> existing = std::dynamic_pointer_cast<Content_library_node>(*i);
-            if (existing && !existing->asset_key.has_value()) {
-                existing->asset_key = asset_key;
-            }
+    const std::shared_ptr<Content_library_node> existing = find_entry(*entry);
+    if (existing) {
+        if (asset_key.has_value() && !existing->asset_key.has_value()) {
+            existing->asset_key = asset_key;
         }
         return;
     }
@@ -397,7 +378,6 @@ void Content_library_node::add_reference(const std::shared_ptr<T>& entry, const 
     node->is_reference = true;
     node->asset_key    = asset_key;
     node->set_parent(this);
-    invalidate_cache<T>();
 }
 
 template <typename T>
@@ -410,27 +390,14 @@ void Content_library_node::add(
 )
 {
     ERHE_VERIFY(entry);
-    const auto i = std::find_if(
-        m_children.begin(),
-        m_children.end(),
-        [&entry](const std::shared_ptr<Hierarchy>& hierarchy) {
-            std::shared_ptr<Content_library_node> node = std::dynamic_pointer_cast<Content_library_node>(hierarchy);
-            if (!node) {
-                return false;
-            }
-            return std::dynamic_pointer_cast<T>(node->item) == entry;
+    const std::shared_ptr<Content_library_node> existing = find_entry(*entry);
+    if (existing) {
+        existing->gltf_source = gltf_source;
+        if (image_source) {
+            existing->image_source = image_source;
         }
-    );
-    if (i != m_children.end()) {
-        std::shared_ptr<Content_library_node> existing = std::dynamic_pointer_cast<Content_library_node>(*i);
-        if (existing) {
-            existing->gltf_source = gltf_source;
-            if (image_source) {
-                existing->image_source = image_source;
-            }
-            if (asset_key.has_value()) {
-                existing->asset_key = asset_key;
-            }
+        if (asset_key.has_value()) {
+            existing->asset_key = asset_key;
         }
         return;
     }
@@ -442,30 +409,17 @@ void Content_library_node::add(
     node->image_source = image_source;
     node->asset_key    = asset_key;
     node->set_parent(this);
-    invalidate_cache<T>();
 }
 
 template <typename T>
 auto Content_library_node::remove(const std::shared_ptr<T>& entry) -> bool
 {
     ERHE_VERIFY(entry);
-    const auto i = std::find_if(
-        m_children.begin(),
-        m_children.end(),
-        [&entry](const std::shared_ptr<Hierarchy>& hierarchy) {
-            std::shared_ptr<Content_library_node> node = std::dynamic_pointer_cast<Content_library_node>(hierarchy);
-            if (!node) {
-                return false;
-            }
-            return std::dynamic_pointer_cast<T>(node->item) == entry;
-        }
-    );
-    if (i == m_children.end()) {
+    const std::shared_ptr<Content_library_node> existing = find_entry(*entry);
+    if (!existing) {
         return false;
     }
-    std::shared_ptr<Hierarchy> hierarchy = *i;
-    hierarchy->remove();
-    invalidate_cache<T>();
+    existing->erhe::Hierarchy::remove();
     return true;
 }
 

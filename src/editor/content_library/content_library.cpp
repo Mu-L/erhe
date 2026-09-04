@@ -152,7 +152,7 @@ auto Content_library_node::get_library() const -> Content_library*
 void Content_library_node::handle_add_child(const std::shared_ptr<erhe::Hierarchy>& child_node, std::size_t position)
 {
     Hierarchy::handle_add_child(child_node, position);
-    m_cache.clear();
+    invalidate_caches_up_to_root();
 
     const std::shared_ptr<Content_library_node> child = std::dynamic_pointer_cast<Content_library_node>(child_node);
 
@@ -183,7 +183,7 @@ void Content_library_node::for_each_inheritance_child(const std::function<void(e
 void Content_library_node::handle_remove_child(erhe::Hierarchy* child_node)
 {
     Hierarchy::handle_remove_child(child_node);
-    m_cache.clear();
+    invalidate_caches_up_to_root();
 
     Content_library* const library = get_library();
     erhe::Item_host* const owner   = (library != nullptr) ? library->get_owner() : nullptr;
@@ -193,6 +193,31 @@ void Content_library_node::handle_remove_child(erhe::Hierarchy* child_node)
             release_host_for_subtree(*child, owner, library->get_asset_manager());
         }
     }
+}
+
+void Content_library_node::invalidate_caches_up_to_root()
+{
+    Content_library_node* node = this;
+    while (node != nullptr) {
+        node->m_cache.clear();
+        const std::shared_ptr<erhe::Hierarchy> parent = node->get_parent().lock();
+        node = dynamic_cast<Content_library_node*>(parent.get());
+    }
+}
+
+auto Content_library_node::find_entry(const erhe::Item_base& queried_item) const -> std::shared_ptr<Content_library_node>
+{
+    std::shared_ptr<Content_library_node> found{};
+    for_each_const<Content_library_node>(
+        [&found, &queried_item](const Content_library_node& node) -> bool {
+            if (node.item.get() == &queried_item) {
+                found = std::dynamic_pointer_cast<Content_library_node>(const_cast<Content_library_node&>(node).shared_from_this());
+                return false; // in for_each() lambda - found, stop
+            }
+            return true; // in for_each() lambda - continue to children
+        }
+    );
+    return found;
 }
 
 auto Content_library_node::has_item(const erhe::Item_base& queried_item) const -> bool
