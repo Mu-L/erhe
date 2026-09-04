@@ -101,6 +101,7 @@ Icon_set::Icon_set(
     type_icons[erhe::Item_type::index_physics_material      ] = { .code = icons.material, .color = glm::vec4{0.2f, 0.5f, 1.0f, 1.0f}};
     type_icons[erhe::Item_type::index_collision_filter      ] = { .code = icons.physics,  .color = glm::vec4{0.5f, 0.8f, 0.5f, 1.0f}};
     type_icons[erhe::Item_type::index_physics_joint_settings] = { .code = icons.physics,  .color = glm::vec4{1.0f, 0.8f, 0.2f, 1.0f}};
+    type_icons[erhe::Item_type::index_style                 ] = { .code = icons.material, .color = glm::vec4{0.9f, 0.5f, 0.9f, 1.0f}};
 
 }
 

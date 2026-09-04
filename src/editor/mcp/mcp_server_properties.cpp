@@ -11,6 +11,7 @@
 #include "app_scenes.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/property_set_operation.hpp"
+#include "operations/compound_operation.hpp"
 #include "operations/style_set_operation.hpp"
 #include "scene/item_lookup.hpp"
 #include "scene/scene_root.hpp"
@@ -426,31 +427,20 @@ auto Mcp_server::action_set_item_style(const json& args) -> std::string
     if (item->is_sealed()) {
         return make_error_content("Item '" + item->get_name() + "' is sealed (lock_edit): unlock_items first");
     }
-    // Only the properties the target's type has (by identity), as paste.
-    const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
-    erhe::property::Property_set values;
     const erhe::property::Property_set source_values = erhe::property::Property_set::read_local_values(*source);
-    for (const erhe::property::Property_set::Entry& entry : source_values.entries()) {
-        if (entry.property->is_read_only()) {
-            continue;
-        }
-        if (registry.find_for_object(item->get_property_owner_type(), entry.property->get_name()) == entry.property) {
-            values.set(*entry.property, entry.value);
-        }
-    }
-    if (values.empty()) {
-        return make_error_content("Item '" + source->get_name() + "' has no local values that '" + item->get_name() + "' (" + std::string{item->get_type_name()} + ") could use");
+    const std::shared_ptr<Compound_operation> compound = make_style_from_values(m_context, {item}, source_values, source->get_name());
+    if (!compound) {
+        return make_error_content("Item '" + source->get_name() + "' has no local values that '" + item->get_name() + "' (" + std::string{item->get_type_name()} + ") could use, or the item is in no scene");
     }
     json names = json::array();
-    for (const erhe::property::Property_set::Entry& entry : values.entries()) {
+    for (const erhe::property::Property_set::Entry& entry : source_values.entries()) {
         names.push_back(std::string{entry.property->get_name()});
     }
-    const std::shared_ptr<const erhe::property::Property_style> style = std::make_shared<const erhe::property::Property_style>(source->get_name(), std::move(values));
-    m_context.operation_stack->queue(std::make_shared<Style_set_operation>(item, item->get_style(), style));
+    m_context.operation_stack->queue(compound);
     return make_json_content(
         json{
             {"item",       {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
-            {"style",      std::string{style->get_name()}},
+            {"style",      source->get_name()},
             {"properties", names},
             {"before",     item->get_style() ? json(item->get_style()->get_reference_path()) : json(nullptr)},
             {"queued",     true}

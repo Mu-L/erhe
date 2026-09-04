@@ -902,38 +902,15 @@ void Dependency_property_rows::paste_properties_as_style()
     if ((m_context.clipboard == nullptr) || !m_context.clipboard->has_property_contents()) {
         return;
     }
-    const erhe::property::Property_set&      source   = m_context.clipboard->get_property_contents();
-    const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
-    Compound_operation::Parameters parameters;
-    for (const std::shared_ptr<erhe::Item_base>& item : *m_items) {
-        if (item->is_sealed()) {
-            continue;
-        }
-        // Only the properties this item's type has (by identity), as paste.
-        erhe::property::Property_set filtered;
-        for (const erhe::property::Property_set::Entry& entry : source.entries()) {
-            if (entry.property->is_read_only()) {
-                continue;
-            }
-            if (registry.find_for_object(item->get_property_owner_type(), registry.qualified_name(*entry.property)) == entry.property) {
-                filtered.set(*entry.property, entry.value);
-            }
-        }
-        if (filtered.empty()) {
-            continue;
-        }
-        parameters.operations.push_back(
-            std::make_shared<Style_set_operation>(
-                item,
-                item->get_style(),
-                std::make_shared<const erhe::property::Property_style>(m_context.clipboard->get_property_contents_name(), std::move(filtered))
-            )
-        );
+    const std::shared_ptr<Compound_operation> compound = make_style_from_values(
+        m_context,
+        *m_items,
+        m_context.clipboard->get_property_contents(),
+        m_context.clipboard->get_property_contents_name()
+    );
+    if (compound) {
+        m_context.operation_stack->queue(compound);
     }
-    if (parameters.operations.empty()) {
-        return;
-    }
-    m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
 }
 
 void Dependency_property_rows::clear_style()

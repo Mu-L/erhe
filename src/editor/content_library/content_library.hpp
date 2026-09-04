@@ -240,6 +240,7 @@ public:
     std::shared_ptr<Content_library_node> physics_materials;
     std::shared_ptr<Content_library_node> collision_filters;
     std::shared_ptr<Content_library_node> physics_joints;
+    std::shared_ptr<Content_library_node> styles; // doc/style-library.md D2
 
     ERHE_PROFILE_MUTEX(std::mutex, mutex);
 

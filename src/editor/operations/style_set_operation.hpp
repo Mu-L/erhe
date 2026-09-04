@@ -5,8 +5,11 @@
 #include "erhe_property/dependency_object.hpp"
 
 #include <memory>
+#include <string_view>
+#include <vector>
 
-namespace erhe { class Item_base; }
+namespace erhe           { class Item_base; }
+namespace erhe::property { class Property_set; }
 
 namespace editor {
 
@@ -35,5 +38,20 @@ private:
     std::shared_ptr<const erhe::property::Dependency_object> m_before;
     std::shared_ptr<const erhe::property::Dependency_object> m_after;
 };
+
+class App_context;
+class Compound_operation;
+
+// A style item from a bag of values (doc/style-library.md R3): a Style
+// named `name` (made unique in the folder) targeting the first item's
+// class, inserted into the Styles folder of the first item's scene library
+// and assigned to every unsealed item of that class - one undo entry.
+// Null when no item takes it or the bag holds nothing the class has.
+[[nodiscard]] auto make_style_from_values(
+    App_context&                                         context,
+    const std::vector<std::shared_ptr<erhe::Item_base>>& items,
+    const erhe::property::Property_set&                  values,
+    std::string_view                                     name
+) -> std::shared_ptr<Compound_operation>;
 
 } // namespace editor

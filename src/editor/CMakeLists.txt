@@ -144,6 +144,8 @@ erhe_target_sources_grouped(
     content_library/content_library.hpp
     content_library/material_library.cpp
     content_library/material_library.hpp
+    content_library/style.cpp
+    content_library/style.hpp
     create/create.cpp
     create/create.hpp
     create/create_box.cpp

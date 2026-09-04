@@ -3,6 +3,7 @@
 #include "app_scenes.hpp"
 #include "assets/asset_manager.hpp"
 #include "content_library/content_library.hpp"
+#include "content_library/style.hpp"
 #include "geometry_graph/graph_mesh.hpp"
 #include "geometry_graph/geometry_graph_node.hpp"
 #include "scene/scene_root.hpp"
@@ -64,6 +65,14 @@ auto find_item_in_scene(Scene_root& scene_root, Predicate&& matches) -> std::sha
         for (const std::shared_ptr<erhe::primitive::Material>& material : library->materials->get_all<erhe::primitive::Material>()) {
             if (material && matches(*material)) {
                 return material;
+            }
+        }
+    }
+    // Styles: the targets of every item's style property (doc/style-library.md D3).
+    if (library && library->styles) {
+        for (const std::shared_ptr<Style>& style : library->styles->get_all<Style>()) {
+            if (style && matches(*style)) {
+                return style;
             }
         }
     }

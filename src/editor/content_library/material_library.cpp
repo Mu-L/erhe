@@ -1,23 +1,22 @@
 #include "content_library/content_library.hpp"
+#include "content_library/style.hpp"
 
 #include "erhe_physics/physics_material.hpp"
 #include "erhe_primitive/material.hpp"
-#include "erhe_property/property_style.hpp"
 #include "erhe_profile/profile.hpp"
 
 namespace editor {
 
-auto make_brushed_metal_style() -> std::shared_ptr<const erhe::property::Property_style>
+auto make_brushed_metal_style() -> std::shared_ptr<Style>
 {
     using erhe::primitive::Material;
-    using erhe::property::Property_value;
-    erhe::property::Property_set values;
-    values.set(Material::roughness_property.get(),                  Property_value{glm::vec2{0.34f, 0.20f}});
-    values.set(Material::metallic_property.get(),                   Property_value{1.0f});
-    values.set(Material::bxdf_model_property.get(),                 Property_value{erhe::property::Enum_value{static_cast<int32_t>(erhe::primitive::Bxdf_model::anisotropic_brdf)}});
-    values.set(Material::use_circular_brushed_metal_property.get(), Property_value{true});
-    values.set(Material::use_aniso_control_property.get(),          Property_value{true});
-    return std::make_shared<const erhe::property::Property_style>("Brushed metal", std::move(values));
+    std::shared_ptr<Style> style = std::make_shared<Style>("Brushed metal", Material::property_owner_type());
+    style->set_value(Material::roughness_property,                  glm::vec2{0.34f, 0.20f});
+    style->set_value(Material::metallic_property,                   1.0f);
+    style->set_value(Material::bxdf_model_property,                 erhe::primitive::Bxdf_model::anisotropic_brdf);
+    style->set_value(Material::use_circular_brushed_metal_property, true);
+    style->set_value(Material::use_aniso_control_property,          true);
+    return style;
 }
 
 void add_default_materials(Content_library& library)
@@ -29,9 +28,10 @@ void add_default_materials(Content_library& library)
     // The traits the metals share are one style (doc/property-system.md
     // D25): each material carries only its base color as a local value, so
     // an edited trait stays a local override when the style is swapped.
-    const std::shared_ptr<const erhe::property::Property_style> brushed_metal = make_brushed_metal_style();
+    const std::shared_ptr<Style> brushed_metal = make_brushed_metal_style();
+    library.styles->add(brushed_metal);
 
-    auto& materials = *library.materials.get(); 
+    auto& materials = *library.materials.get();
 
     auto make = [&materials, &brushed_metal](const char* name, float r, float g, float b)
     {

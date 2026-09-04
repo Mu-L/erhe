@@ -1,4 +1,5 @@
 #include "content_library/content_library.hpp"
+#include "content_library/style.hpp"
 
 #include "assets/asset_manager.hpp"
 #include "assets/asset_reference.hpp"
@@ -293,6 +294,7 @@ Content_library::Content_library()
     physics_materials = std::make_shared<Content_library_node>("Physics Materials", erhe::Item_type::physics_material,       "Physics_material",       erhe::physics::Physics_material::property_owner_type());
     collision_filters = std::make_shared<Content_library_node>("Collision Filters", erhe::Item_type::collision_filter,       "Collision_filter",       erhe::physics::Collision_filter::property_owner_type());
     physics_joints    = std::make_shared<Content_library_node>("Physics Joints",    erhe::Item_type::physics_joint_settings, "Physics_joint_settings", erhe::physics::Physics_joint_settings::property_owner_type());
+    styles            = std::make_shared<Content_library_node>("Styles",            erhe::Item_type::style,                  "Style",                  Style::property_owner_type());
 
     brushes          ->set_parent(root.get());
     animations       ->set_parent(root.get());
@@ -304,6 +306,7 @@ Content_library::Content_library()
     physics_materials->set_parent(root.get());
     collision_filters->set_parent(root.get());
     physics_joints   ->set_parent(root.get());
+    styles           ->set_parent(root.get());
 }
 
 Content_library::~Content_library() noexcept
@@ -405,6 +408,7 @@ auto copy_library_item_to_library(const std::shared_ptr<erhe::Item_base>& item, 
     else if ((type & erhe::Item_type::physics_material)       != 0) { folder = target_library.physics_materials; }
     else if ((type & erhe::Item_type::collision_filter)       != 0) { folder = target_library.collision_filters; }
     else if ((type & erhe::Item_type::physics_joint_settings) != 0) { folder = target_library.physics_joints;    }
+    else if ((type & erhe::Item_type::style)                  != 0) { folder = target_library.styles;            }
     if (!folder) {
         return {};
     }
@@ -438,6 +442,26 @@ auto copy_library_item_to_library(const std::shared_ptr<erhe::Item_base>& item, 
 
     std::shared_ptr<Content_library_node> node = std::make_shared<Content_library_node>(copy);
     node->set_parent(folder.get());
+
+    // The copy's style must not point into the source scene: a style of
+    // the same name in the target library, else a copy of the style
+    // (doc/style-library.md D2).
+    if (copy->get_style() && target_library.styles) {
+        const std::shared_ptr<const erhe::Item_base> source_style = std::dynamic_pointer_cast<const erhe::Item_base>(copy->get_style());
+        std::shared_ptr<erhe::Item_base> target_style{};
+        if (source_style) {
+            for (const std::shared_ptr<Style>& candidate : target_library.styles->get_all<Style>()) {
+                if (candidate && (candidate->get_name() == source_style->get_name())) {
+                    target_style = candidate;
+                    break;
+                }
+            }
+            if (!target_style) {
+                target_style = copy_library_item_to_library(std::const_pointer_cast<erhe::Item_base>(source_style), target_library);
+            }
+        }
+        copy->set_style(target_style);
+    }
     return copy;
 }
 

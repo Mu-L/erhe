@@ -2,15 +2,14 @@
 
 #include <memory>
 
-namespace erhe::property { class Property_style; }
-
 namespace editor {
 
 class Content_library;
+class Style;
 
-// The style the default metals share (doc/property-system.md D25):
+// The style item the default metals share (doc/style-library.md D5):
 // roughness, metallic, BxDF model and the brushed metal flags.
-[[nodiscard]] auto make_brushed_metal_style() -> std::shared_ptr<const erhe::property::Property_style>;
+[[nodiscard]] auto make_brushed_metal_style() -> std::shared_ptr<Style>;
 
 void add_default_materials        (Content_library& library);
 void add_default_physics_materials(Content_library& library);

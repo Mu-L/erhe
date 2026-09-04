@@ -112,6 +112,44 @@ const erhe::property::Property<bool> Item_base::lightmapped_property = erhe::pro
     erhe::property::Property_metadata{.default_value = false, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Lightmapped"}}
 );
 
+const erhe::property::Property<erhe::property::Object_reference> Item_base::style_property = erhe::property::Property<erhe::property::Object_reference>::register_property(
+    "style", Item_base::property_owner_type(),
+    erhe::property::Property_metadata{
+        // A style can carry partition- and variant-affecting values, so an
+        // assignment through Property_set_operation rebuilds the draw
+        // lists (D11); serialize marks the item's container dirty.
+        .flags  = erhe::property::Property_flags::serialize | erhe::property::Property_flags::affects_draw_list_partition | erhe::property::Property_flags::affects_shader_variant,
+        .ui     = erhe::property::Property_ui{.label = "Style", .reference_item_types = Item_type::style, .show_clear_button = true},
+        .bridge = erhe::property::Property_bridge{
+            .get = [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+                return erhe::property::Object_reference{std::const_pointer_cast<erhe::property::Dependency_object>(object.get_style())};
+            },
+            .set = [](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
+                const std::shared_ptr<erhe::property::Dependency_object>& source = std::get<erhe::property::Object_reference>(value).object;
+                if (source) {
+                    const std::optional<erhe::property::Owner_type> target = source->get_secondary_property_owner_type();
+                    const bool applies =
+                        target.has_value() &&
+                        (
+                            erhe::property::is_owner_type_or_descendant(object.get_property_owner_type(), target.value()) ||
+                            (object.get_secondary_property_owner_type() == target)
+                        );
+                    if (!applies) {
+                        erhe::item::log->error(
+                            "style '{}' targets '{}', which a {} cannot use",
+                            source->get_reference_path(),
+                            target.has_value() ? erhe::property::get_owner_type_name(target.value()) : std::string_view{"(no target)"},
+                            erhe::property::get_owner_type_name(object.get_property_owner_type())
+                        );
+                        return;
+                    }
+                }
+                object.set_style(source);
+            }
+        }
+    }
+);
+
 void Item_base::on_flag_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args)
 {
     Item_base& item = static_cast<Item_base&>(object);
