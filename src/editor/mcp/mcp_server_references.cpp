@@ -4,6 +4,8 @@
 //   get_editor_references     - every cross-frame reference the editor parts
 //                               cache, so "did this window let go?" is
 //                               answerable headless.
+//   create_library_folder     - creates a content-library folder
+//                               (doc/content-library-folders.md D7).
 //   move_library_item         - moves a content-library entry between folders,
 //                               the detach-then-attach that must NOT be
 //                               announced as a removal.
@@ -31,6 +33,9 @@
 #include "create/create.hpp"
 #include "geometry_graph/geometry_graph_window.hpp"
 #include "geometry_graph/graph_mesh.hpp"
+#include "operations/compound_operation.hpp"
+#include "operations/content_library_move_operation.hpp"
+#include "operations/item_insert_remove_operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/operations_window.hpp"
 #include "physics/physics_tool.hpp"
@@ -343,13 +348,123 @@ auto Mcp_server::action_free_undone_loads(const json& args) -> std::string
     }).dump();
 }
 
+namespace {
+
+// Walks a category-rooted, slash-separated folder path
+// (doc/content-library-folders.md D7: "Materials/Metals") from the library
+// root without creating anything. Returns the deepest existing folder in
+// out_folder and the first missing component's name in out_missing (empty
+// when the whole path exists); false when the first component names no
+// category folder.
+auto walk_library_folder_path(
+    const Content_library&                 library,
+    const std::string&                     folder_path,
+    std::shared_ptr<Content_library_node>& out_folder,
+    std::string&                           out_missing,
+    std::string&                           out_rest
+) -> bool
+{
+    out_folder.reset();
+    out_missing.clear();
+    out_rest.clear();
+    std::shared_ptr<Content_library_node> current = library.root;
+    std::size_t start = 0;
+    bool first = true;
+    while (start < folder_path.size()) {
+        const std::size_t slash = folder_path.find('/', start);
+        const std::string name  = (slash == std::string::npos) ? folder_path.substr(start) : folder_path.substr(start, slash - start);
+        start = (slash == std::string::npos) ? folder_path.size() : slash + 1;
+        if (name.empty()) {
+            continue;
+        }
+        std::shared_ptr<Content_library_node> found{};
+        for (const std::shared_ptr<erhe::Hierarchy>& child_hierarchy : current->get_children()) {
+            const std::shared_ptr<Content_library_node> child = std::dynamic_pointer_cast<Content_library_node>(child_hierarchy);
+            if (child && !child->item && (child->get_name() == name)) {
+                found = child;
+                break;
+            }
+        }
+        if (!found) {
+            if (first) {
+                return false;
+            }
+            out_folder  = current;
+            out_missing = name;
+            out_rest    = (start < folder_path.size()) ? folder_path.substr(start) : std::string{};
+            return true;
+        }
+        first   = false;
+        current = found;
+    }
+    out_folder = current;
+    return !first;
+}
+
+} // anonymous namespace
+
+auto Mcp_server::action_create_library_folder(const json& args) -> std::string
+{
+    const std::string scene_name  = args.value("scene_name", "");
+    const std::string folder_path = args.value("folder_path", "");
+    if (folder_path.empty()) {
+        return make_error_content("'folder_path' is required");
+    }
+
+    Scene_root* const scene_root = find_scene(scene_name);
+    if (scene_root == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    const std::shared_ptr<Content_library> library = scene_root->get_content_library();
+    if (!library) {
+        return make_error_content("Scene has no content library");
+    }
+
+    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{library->mutex};
+
+    std::shared_ptr<Content_library_node> parent{};
+    std::string                           missing{};
+    std::string                           rest{};
+    if (!walk_library_folder_path(*library, folder_path, parent, missing, rest)) {
+        return make_error_content("Folder path does not start with a category folder: " + folder_path);
+    }
+    if (missing.empty()) {
+        return make_error_content("Folder already exists: " + folder_path);
+    }
+    if (!rest.empty()) {
+        return make_error_content("Parent folder does not exist for: " + folder_path);
+    }
+    if (parent == library->root) {
+        return make_error_content("A folder cannot be created directly under the library root: " + folder_path);
+    }
+
+    auto new_folder = std::make_shared<Content_library_node>(missing, parent->type_code, parent->type_name);
+    m_context.operation_stack->queue(
+        std::make_shared<Item_insert_remove_operation>(
+            Item_insert_remove_operation::Parameters{
+                .context = m_context,
+                .item    = new_folder,
+                .parent  = parent,
+                .mode    = Item_insert_remove_operation::Mode::insert
+            }
+        )
+    );
+
+    return make_json_content({
+        {"folder",    folder_path},
+        {"folder_id", new_folder->get_id()},
+        {"scene",     scene_root->get_name()}
+    }).dump();
+}
+
 auto Mcp_server::action_move_library_item(const json& args) -> std::string
 {
     const std::string scene_name  = args.value("scene_name", "");
     const std::string item_name   = args.value("item_name", "");
     const std::string folder_name = args.value("folder_name", "");
-    if (item_name.empty() || folder_name.empty()) {
-        return make_error_content("'item_name' and 'folder_name' are required");
+    const std::string folder_path = args.value("folder_path", "");
+    if (item_name.empty() || (folder_name.empty() && folder_path.empty())) {
+        return make_error_content("'item_name' and one of 'folder_name' / 'folder_path' are required");
     }
 
     Scene_root* const scene_root = find_scene(scene_name);
@@ -375,7 +490,7 @@ auto Mcp_server::action_move_library_item(const json& args) -> std::string
                 ++match_count;
             }
             // A folder entry carries no item, only a name.
-            if (!node.item && (node.get_name() == folder_name) && !folder_node) {
+            if (!folder_name.empty() && !node.item && (node.get_name() == folder_name) && !folder_node) {
                 folder_node = std::dynamic_pointer_cast<Content_library_node>(node.shared_from_this());
             }
             return true;
@@ -389,29 +504,58 @@ auto Mcp_server::action_move_library_item(const json& args) -> std::string
             "Item name '" + item_name + "' matches " + std::to_string(match_count) + " library entries"
         );
     }
-    if (!folder_node) {
-        // Create the destination folder under the moved entry's own top-level
-        // section, so a move never has to invent a type mapping.
-        const std::shared_ptr<erhe::Hierarchy> parent = found_node->get_parent().lock();
-        const auto parent_node = std::dynamic_pointer_cast<Content_library_node>(parent);
-        if (!parent_node) {
-            return make_error_content("Library item has no parent folder: " + item_name);
-        }
-        folder_node = parent_node->make_folder(folder_name);
-    }
-    if (!folder_node) {
-        return make_error_content("Could not resolve destination folder: " + folder_name);
+    const std::shared_ptr<Content_library_node> parent_node = std::dynamic_pointer_cast<Content_library_node>(found_node->get_parent().lock());
+    if (!parent_node) {
+        return make_error_content("Library item has no parent folder: " + item_name);
     }
 
-    // One set_parent: erhe::Hierarchy detaches from the old parent and attaches
-    // to the new one inside this single call, so the removal note the detach
-    // records is cancelled by the attach before the frame's flush - a move must
-    // not read as a removal.
-    found_node->set_parent(folder_node);
+    std::vector<std::shared_ptr<Operation>> operations;
+    if (!folder_path.empty()) {
+        std::string missing{};
+        std::string rest{};
+        if (!walk_library_folder_path(*library, folder_path, folder_node, missing, rest) || !missing.empty() || !folder_node) {
+            return make_error_content("Folder path does not exist: " + folder_path);
+        }
+    } else if (!folder_node) {
+        // Create the destination folder under the moved entry's own parent,
+        // so a move never has to invent a type mapping; the insert and the
+        // move undo together.
+        folder_node = std::make_shared<Content_library_node>(folder_name, parent_node->type_code, parent_node->type_name);
+        operations.push_back(
+            std::make_shared<Item_insert_remove_operation>(
+                Item_insert_remove_operation::Parameters{
+                    .context = m_context,
+                    .item    = folder_node,
+                    .parent  = parent_node,
+                    .mode    = Item_insert_remove_operation::Mode::insert
+                }
+            )
+        );
+    }
+    // A leaf entry carries no type_code of its own; its category is its parent's.
+    if (folder_node->type_code != parent_node->type_code) {
+        return make_error_content("Destination folder is of another category: " + folder_node->get_name());
+    }
+    if ((folder_node.get() == found_node.get()) || folder_node->is_ancestor(found_node.get())) {
+        return make_error_content("Destination folder is inside the moved entry: " + folder_node->get_name());
+    }
+
+    // The move is one set_parent: erhe::Hierarchy detaches from the old
+    // parent and attaches to the new one inside the call, so the removal
+    // note the detach records is cancelled by the attach before the frame's
+    // flush - a move must not read as a removal.
+    operations.push_back(std::make_shared<Content_library_move_operation>(library, found_node, folder_node, folder_node->get_child_count()));
+    if (operations.size() == 1) {
+        m_context.operation_stack->queue(operations.front());
+    } else {
+        m_context.operation_stack->queue(
+            std::make_shared<Compound_operation>(Compound_operation::Parameters{.operations = std::move(operations)})
+        );
+    }
 
     return make_json_content({
         {"item",   item_name},
-        {"folder", folder_name},
+        {"folder", folder_node->get_name()},
         {"scene",  scene_root->get_name()}
     }).dump();
 }

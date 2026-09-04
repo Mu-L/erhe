@@ -124,6 +124,25 @@ auto find_item_in_scene(Scene_root& scene_root, Predicate&& matches) -> std::sha
             }
         }
     }
+    // Content-library nodes themselves - folders above all
+    // (doc/content-library-folders.md D7), so the property tools address a
+    // folder by id or name; an entry node shares its item's name, and the
+    // item is found first above.
+    if (library && library->root) {
+        std::shared_ptr<erhe::Item_base> found_node{};
+        library->root->for_each<Content_library_node>(
+            [&found_node, &matches](Content_library_node& node) -> bool {
+                if (matches(node)) {
+                    found_node = node.shared_from_this();
+                    return false;
+                }
+                return true;
+            }
+        );
+        if (found_node) {
+            return found_node;
+        }
+    }
     return {};
 }
 

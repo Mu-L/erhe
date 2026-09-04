@@ -6362,7 +6362,27 @@
     "name": "get_editor_references"
   },
   {
-    "description": "Move a content library entry into another folder of the same library, creating the folder under the entry's current parent when it does not exist. A move is a detach immediately followed by an attach and must NOT read as a removal, which is what this exercises.",
+    "description": "Create a content library folder (doc/content-library-folders.md D7) from a category-rooted, slash-separated path, e.g. 'Materials/Metals' or 'Brushes/Solids/Big'. Every component but the last must exist (the first is a category folder: Brushes, Animations, Skins, Materials, Textures, Graph Textures, Graph Meshes, Physics Materials, Collision Filters, Physics Joints). Queues one undoable insert; returns the new folder's item id, usable with get_item_properties / set_item_property / get_addable_item_properties. Folders are selectable, show in the Properties window and pass inherits-flagged property values (e.g. visible) to the entries below them.",
+    "inputSchema": {
+      "properties": {
+        "scene_name": {
+          "description": "Scene whose content library gets the folder (optional, the first scene by default)",
+          "type": "string"
+        },
+        "folder_path": {
+          "description": "Folder path from the library root, starting with the category folder name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "folder_path"
+      ],
+      "type": "object"
+    },
+    "name": "create_library_folder"
+  },
+  {
+    "description": "Move a content library entry into another folder of its category (doc/content-library-folders.md D7), as one undoable operation. Give either folder_path (category-rooted, e.g. 'Materials/Metals'; must exist - see create_library_folder) or folder_name (a folder anywhere in the library found by name; created under the entry's current parent when missing, in the same undo entry). The move is a detach immediately followed by an attach and must NOT read as a removal.",
     "inputSchema": {
       "properties": {
         "scene_name": {
@@ -6374,13 +6394,16 @@
           "type": "string"
         },
         "folder_name": {
-          "description": "Destination folder name; created under the item's current parent when missing",
+          "description": "Destination folder name, found anywhere in the library; created under the item's current parent when missing",
+          "type": "string"
+        },
+        "folder_path": {
+          "description": "Destination folder path from the library root, starting with the category folder name (e.g. 'Materials/Metals'); must exist",
           "type": "string"
         }
       },
       "required": [
-        "item_name",
-        "folder_name"
+        "item_name"
       ],
       "type": "object"
     },
