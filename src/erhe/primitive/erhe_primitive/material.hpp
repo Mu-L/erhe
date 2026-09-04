@@ -162,7 +162,8 @@ public:
     static const erhe::property::Property<bool>                   use_circular_brushed_metal_property;
     static const erhe::property::Property<Texgen_mode>            circular_brushed_metal_texgen_mode_property;
     static const erhe::property::Property<bool>                   use_aniso_control_property;
-    // The texture slots (member-backed over data.texture_samplers): an
+    // The texture slots (entry-store references that inherit, mirrored
+    // into data.texture_samplers by on_property_changed): an
     // Object_reference whose pointee is a Texture_reference (a Texture, a
     // Graph_texture, a Rendergraph_node).
     static const erhe::property::Property<erhe::property::Object_reference> base_color_texture_property;
@@ -242,8 +243,9 @@ public:
     void set_emissive_texture                  (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
 
     // Whole Material_data in: the texture references and the slot
-    // transforms go through their properties (one change batch), the
-    // samplers are assigned. The way undo applies a Material_data snapshot.
+    // transforms go through their properties (one change batch; an unbound
+    // slot clears its local value), the samplers are assigned. The way undo
+    // applies a Material_data snapshot.
     void set_data(const Material_data& new_data);
     // The texture of one of this material's own slots (data.texture_samplers.*),
     // for a caller holding the slot by pointer; a slot of another material
@@ -268,6 +270,14 @@ public:
     // it belongs to, and a single mutable field here is what made "slot 7"
     // mean different materials in different passes.
     Material_data           data;
+
+protected:
+    // Overrides Dependency_object: keeps the Material_data slot mirrors of
+    // the slot properties current (a local, inherited or default change).
+    void on_property_changed(const erhe::property::Property_changed_args& args) override;
+
+private:
+    void seed_slot_values_from_data();
 };
 
 [[nodiscard]] auto operator==(const Material_data& lhs, const Material_data& rhs) -> bool;

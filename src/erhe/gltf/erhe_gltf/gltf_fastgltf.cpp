@@ -3425,7 +3425,7 @@ void Gltf_image_residency::bind_material_textures(Gltf_data& data) const
         }
         erhe::primitive::Material_texture_sampler& slot = get_material_texture_slot(material->data.texture_samplers, binding.slot);
         if (binding.image_index < data.images.size()) {
-            slot.texture_reference = data.images[binding.image_index];
+            material->set_slot_texture(slot, data.images[binding.image_index]);
         }
         if (binding.sampler_index < data.samplers.size()) {
             slot.sampler = data.samplers[binding.sampler_index];

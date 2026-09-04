@@ -11,6 +11,9 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>
+#include <vector>
+
 #include <memory>
 
 using erhe::primitive::Material;
@@ -33,31 +36,81 @@ public:
 
 } // anonymous namespace
 
-TEST(Material_textures, member_is_the_value_and_property_notifies)
+TEST(Material_textures, property_is_the_value_and_the_member_mirrors_it)
 {
     std::shared_ptr<Material>     material = std::make_shared<Material>("m");
     std::shared_ptr<Fake_texture> texture  = std::make_shared<Fake_texture>("t");
 
     EXPECT_FALSE(material->get_value(Material::base_color_texture_property).object);
-    EXPECT_EQ(material->get_value_source(Material::base_color_texture_property.get()), Value_source::local); // member-backed
+    EXPECT_EQ(material->get_value_source(Material::base_color_texture_property.get()), Value_source::default_value);
 
-    // A member write (construction / import time) is what the property reads.
-    material->data.texture_samplers.base_color.texture_reference = texture;
-    EXPECT_EQ(material->get_value(Material::base_color_texture_property).object.get(), static_cast<erhe::Item_base*>(texture.get()));
-    EXPECT_EQ(to_string(Material::base_color_texture_property.get(), material->get_value(Material::base_color_texture_property)), "t");
-
-    // A property write reaches the member and observers.
+    // A property write reaches the member mirror and observers.
     int notifications = 0;
     const Observer_token token = material->add_observer([&notifications](Dependency_object&, const Property_changed_args&) { ++notifications; });
     material->set_normal_texture(texture);
+    EXPECT_EQ(material->get_value_source(Material::normal_texture_property.get()), Value_source::local);
     EXPECT_EQ(material->data.texture_samplers.normal.texture_reference.get(), static_cast<erhe::graphics::Texture_reference*>(texture.get()));
     EXPECT_EQ(material->get_normal_texture().get(), static_cast<erhe::graphics::Texture_reference*>(texture.get()));
+    EXPECT_EQ(to_string(Material::normal_texture_property.get(), material->get_value(Material::normal_texture_property)), "t");
     EXPECT_EQ(notifications, 1);
     material->set_normal_texture(texture); // unchanged: no notification
     EXPECT_EQ(notifications, 1);
     material->set_normal_texture({});
     EXPECT_FALSE(material->data.texture_samplers.normal.texture_reference);
     EXPECT_EQ(notifications, 2);
+
+    // A create-info slot fill seeds a local value; an unset slot stays default.
+    erhe::primitive::Material_create_info create_info{.name = "c"};
+    create_info.data.texture_samplers.emissive.texture_reference = texture;
+    create_info.data.texture_samplers.emissive.scale             = glm::vec2{3.0f, 3.0f};
+    std::shared_ptr<Material> seeded = std::make_shared<Material>(create_info);
+    EXPECT_EQ(seeded->get_value_source(Material::emissive_texture_property.get()),          Value_source::local);
+    EXPECT_EQ(seeded->get_value_source(Material::emissive_texture_uv_scale_property.get()), Value_source::local);
+    EXPECT_EQ(seeded->get_value_source(Material::base_color_texture_property.get()),        Value_source::default_value);
+    EXPECT_EQ(seeded->get_emissive_texture().get(), static_cast<erhe::graphics::Texture_reference*>(texture.get()));
+}
+
+namespace {
+
+// A holder of Material properties above a material (a content-library
+// folder, doc/property-system.md D30): the material is its inheritance child.
+class Folder : public erhe::property::Dependency_object
+{
+public:
+    std::vector<Material*> materials;
+    auto get_secondary_property_owner_type() const -> std::optional<Owner_type> override { return Material::property_owner_type(); }
+    void for_each_inheritance_child(const std::function<void(Dependency_object&)>& callback) override
+    {
+        for (Material* material : materials) {
+            callback(*material);
+        }
+    }
+};
+
+} // anonymous namespace
+
+TEST(Material_textures, slot_inherits_from_a_folder_and_mirrors)
+{
+    Folder                        folder;
+    std::shared_ptr<Material>     material = std::make_shared<Material>("m");
+    std::shared_ptr<Fake_texture> texture  = std::make_shared<Fake_texture>("t");
+    folder.materials.push_back(material.get());
+    material->set_inheritance_container(&folder);
+
+    folder.set_value(Material::base_color_texture_property, Object_reference{texture});
+    EXPECT_EQ(material->get_value_source(Material::base_color_texture_property.get()), Value_source::inherited);
+    EXPECT_EQ(material->get_base_color_texture().get(), static_cast<erhe::graphics::Texture_reference*>(texture.get()));
+    folder.set_value(Material::base_color_texture_uv_scale_property, glm::vec2{2.0f, 2.0f});
+    EXPECT_EQ(material->data.texture_samplers.base_color.scale, (glm::vec2{2.0f, 2.0f}));
+
+    // A local value shadows the folder; clearing it re-reads the folder.
+    material->set_base_color_texture({});
+    EXPECT_FALSE(material->get_base_color_texture());
+    material->clear_value(Material::base_color_texture_property);
+    EXPECT_EQ(material->get_base_color_texture().get(), static_cast<erhe::graphics::Texture_reference*>(texture.get()));
+    folder.clear_value(Material::base_color_texture_property);
+    EXPECT_FALSE(material->get_base_color_texture());
+    material->set_inheritance_container(nullptr);
 }
 
 TEST(Material_textures, traits_reject_a_material_as_a_texture)

@@ -129,11 +129,15 @@ const Property<bool> Material::use_aniso_control_property = Property<bool>::regi
     "use_aniso_control", c_owner, Property_metadata{.default_value = false, .inherits = true, .flags = c_partition | c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only", .label = "Aniso Control", .visible_when = is_anisotropic}}
 );
 
-// Texture slots (D28): member-backed over the Material_data slot. A bound
-// slot selects the texture-using shader variant and a normal texture's
-// two-component flag rides the texture (Shader_key), so a change is a
-// shader variant change.
+// Texture slots (D28): entry-store object references that inherit (a
+// content-library folder can hold them for the materials below it,
+// doc/property-system.md D30); Material::on_property_changed mirrors the
+// effective value into the Material_data slot the per-frame readers use.
+// A bound slot selects the texture-using shader variant and a normal
+// texture's two-component flag rides the texture (Shader_key), so a change
+// is a shader variant change.
 using Texture_slot = std::shared_ptr<erhe::graphics::Texture_reference>;
+using Slot_traits  = erhe::property::Member_value_traits<Texture_slot>;
 constexpr uint64_t c_texture_types = erhe::Item_type::texture | erhe::Item_type::graph_texture;
 
 auto texture_ui(const std::string_view label, const Property_ui::Visible_when visible_when = {}) -> Property_ui
@@ -141,41 +145,31 @@ auto texture_ui(const std::string_view label, const Property_ui::Visible_when vi
     return Property_ui{.group = "Textures", .label = label, .visible_when = visible_when, .reference_item_types = c_texture_types};
 }
 
-const Property<Object_reference> Material::base_color_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
-    "base_color_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.base_color.texture_reference; },
-    Property_metadata{.flags = c_variant, .ui = texture_ui("Base Color Texture")}
+const Property<Object_reference> Material::base_color_texture_property = Property<Object_reference>::register_property(
+    "base_color_texture", c_owner, Property_metadata{.inherits = true, .flags = c_variant, .ui = texture_ui("Base Color Texture")}, Slot_traits::validate
 );
-const Property<Object_reference> Material::metallic_roughness_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
-    "metallic_roughness_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.metallic_roughness.texture_reference; },
-    Property_metadata{.flags = c_variant, .ui = texture_ui("Metallic Roughness Texture", is_lit)}
+const Property<Object_reference> Material::metallic_roughness_texture_property = Property<Object_reference>::register_property(
+    "metallic_roughness_texture", c_owner, Property_metadata{.inherits = true, .flags = c_variant, .ui = texture_ui("Metallic Roughness Texture", is_lit)}, Slot_traits::validate
 );
-const Property<Object_reference> Material::normal_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
-    "normal_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.normal.texture_reference; },
-    Property_metadata{.flags = c_variant, .ui = texture_ui("Normal Texture", is_lit)}
+const Property<Object_reference> Material::normal_texture_property = Property<Object_reference>::register_property(
+    "normal_texture", c_owner, Property_metadata{.inherits = true, .flags = c_variant, .ui = texture_ui("Normal Texture", is_lit)}, Slot_traits::validate
 );
-const Property<Object_reference> Material::occlusion_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
-    "occlusion_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.occlusion.texture_reference; },
-    Property_metadata{.flags = c_variant, .ui = texture_ui("Occlusion Texture", is_lit)}
+const Property<Object_reference> Material::occlusion_texture_property = Property<Object_reference>::register_property(
+    "occlusion_texture", c_owner, Property_metadata{.inherits = true, .flags = c_variant, .ui = texture_ui("Occlusion Texture", is_lit)}, Slot_traits::validate
 );
-const Property<Object_reference> Material::emissive_texture_property = Property<Object_reference>::register_member<Material, Texture_slot>(
-    "emissive_texture", c_owner, [](auto& m) -> auto& { return m.data.texture_samplers.emissive.texture_reference; },
-    Property_metadata{.flags = c_variant, .ui = texture_ui("Emissive Texture")}
+const Property<Object_reference> Material::emissive_texture_property = Property<Object_reference>::register_property(
+    "emissive_texture", c_owner, Property_metadata{.inherits = true, .flags = c_variant, .ui = texture_ui("Emissive Texture")}, Slot_traits::validate
 );
 
 namespace {
 
-// Slot transforms (D18): member-backed over the same slot's texgen_mode,
-// rotation, offset and scale; the rows show while the slot is bound (the
-// PBR slots also only while lit, as the slot texture itself). The texgen
-// source selects a shader variant (Shader_key), the UV transform is a
-// uniform.
+// Slot transforms: entry-store properties that inherit like the slot
+// texture, mirrored into the same slot's texgen_mode, rotation, offset and
+// scale by Material::on_property_changed; the rows show while the slot is
+// bound (the PBR slots also only while lit, as the slot texture itself).
+// The texgen source selects a shader variant (Shader_key), the UV
+// transform is a uniform.
 using Slot_pointer = Material_texture_sampler Material_texture_samplers::*;
-
-template <typename T>
-auto slot_field(const Slot_pointer slot, T Material_texture_sampler::*field)
-{
-    return [slot, field](auto& material) -> auto& { return (material.data.texture_samplers.*slot).*field; };
-}
 
 enum class Slot_lighting : unsigned int { any = 0, lit = 1 };
 
@@ -190,10 +184,11 @@ auto slot_visible(const Slot_pointer slot, const Slot_lighting lighting) -> Prop
 
 auto slot_texgen(const std::string_view name, const Slot_pointer slot, const std::string_view group, const Slot_lighting lighting) -> Property<Texgen_mode>
 {
-    return Property<Texgen_mode>::register_member<Material, Texgen_mode>(
-        name, c_owner, c_texgen_mode_enum_info, slot_field(slot, &Material_texture_sampler::texgen_mode),
+    return Property<Texgen_mode>::register_property(
+        name, c_owner, c_texgen_mode_enum_info,
         Property_metadata{
             .default_value = erhe::property::make_value(Texgen_mode::uv0),
+            .inherits      = true,
             .flags         = c_variant,
             .ui            = Property_ui{.group = group, .tooltip = "Texture coordinate source of the slot", .label = "Texgen", .visible_when = slot_visible(slot, lighting)}
         }
@@ -202,10 +197,11 @@ auto slot_texgen(const std::string_view name, const Slot_pointer slot, const std
 
 auto slot_rotation(const std::string_view name, const Slot_pointer slot, const std::string_view group, const Slot_lighting lighting) -> Property<float>
 {
-    return Property<float>::register_member<Material, float>(
-        name, c_owner, slot_field(slot, &Material_texture_sampler::rotation),
+    return Property<float>::register_property(
+        name, c_owner,
         Property_metadata{
             .default_value = 0.0f,
+            .inherits      = true,
             .ui            = Property_ui{.min = -glm::two_pi<float>(), .max = glm::two_pi<float>(), .presentation = Property_ui::Presentation::angle_degrees, .group = group, .label = "UV Rotation", .visible_when = slot_visible(slot, lighting)}
         }
     );
@@ -213,10 +209,11 @@ auto slot_rotation(const std::string_view name, const Slot_pointer slot, const s
 
 auto slot_offset(const std::string_view name, const Slot_pointer slot, const std::string_view group, const Slot_lighting lighting) -> Property<glm::vec2>
 {
-    return Property<glm::vec2>::register_member<Material, glm::vec2>(
-        name, c_owner, slot_field(slot, &Material_texture_sampler::offset),
+    return Property<glm::vec2>::register_property(
+        name, c_owner,
         Property_metadata{
             .default_value = glm::vec2{0.0f, 0.0f},
+            .inherits      = true,
             .ui            = Property_ui{.min = -10.0f, .max = 10.0f, .step = 0.01f, .group = group, .label = "UV Offset", .visible_when = slot_visible(slot, lighting)}
         }
     );
@@ -224,10 +221,11 @@ auto slot_offset(const std::string_view name, const Slot_pointer slot, const std
 
 auto slot_scale(const std::string_view name, const Slot_pointer slot, const std::string_view group, const Slot_lighting lighting) -> Property<glm::vec2>
 {
-    return Property<glm::vec2>::register_member<Material, glm::vec2>(
-        name, c_owner, slot_field(slot, &Material_texture_sampler::scale),
+    return Property<glm::vec2>::register_property(
+        name, c_owner,
         Property_metadata{
             .default_value = glm::vec2{1.0f, 1.0f},
+            .inherits      = true,
             .ui            = Property_ui{.min = -10.0f, .max = 10.0f, .step = 0.01f, .group = group, .label = "UV Scale", .visible_when = slot_visible(slot, lighting)}
         }
     );
@@ -266,7 +264,61 @@ Material::Material(const Material_create_info& create_info)
     , data{create_info.data}
 {
     set_values(create_info.values);
+    seed_slot_values_from_data();
     enable_flag_bits(erhe::Item_flags::show_in_ui);
+}
+
+// The slot fields of data (a Material_create_info fill) become local
+// values; a slot left at its default stays unset, so it can inherit.
+void Material::seed_slot_values_from_data()
+{
+    const erhe::property::Dependency_object::Change_batch batch{*this};
+    const auto seed_slot = [this](
+        const Material_texture_sampler&   slot,
+        const Property<Object_reference>& texture_property,
+        const Property<Texgen_mode>&      texgen_mode_property,
+        const Property<float>&            rotation_property,
+        const Property<glm::vec2>&        offset_property,
+        const Property<glm::vec2>&        scale_property
+    ) {
+        if (slot.texture_reference)                      { set_value(texture_property,     Slot_traits::to_value(slot.texture_reference)); }
+        if (slot.texgen_mode != Texgen_mode::uv0)        { set_value(texgen_mode_property, slot.texgen_mode); }
+        if (slot.rotation != 0.0f)                       { set_value(rotation_property,    slot.rotation); }
+        if (slot.offset != glm::vec2{0.0f, 0.0f})        { set_value(offset_property,      slot.offset); }
+        if (slot.scale  != glm::vec2{1.0f, 1.0f})        { set_value(scale_property,       slot.scale); }
+    };
+    seed_slot(data.texture_samplers.base_color,         base_color_texture_property,         base_color_texture_texgen_mode_property,         base_color_texture_uv_rotation_property,         base_color_texture_uv_offset_property,         base_color_texture_uv_scale_property);
+    seed_slot(data.texture_samplers.metallic_roughness, metallic_roughness_texture_property, metallic_roughness_texture_texgen_mode_property, metallic_roughness_texture_uv_rotation_property, metallic_roughness_texture_uv_offset_property, metallic_roughness_texture_uv_scale_property);
+    seed_slot(data.texture_samplers.normal,             normal_texture_property,             normal_texture_texgen_mode_property,             normal_texture_uv_rotation_property,             normal_texture_uv_offset_property,             normal_texture_uv_scale_property);
+    seed_slot(data.texture_samplers.occlusion,          occlusion_texture_property,          occlusion_texture_texgen_mode_property,          occlusion_texture_uv_rotation_property,          occlusion_texture_uv_offset_property,          occlusion_texture_uv_scale_property);
+    seed_slot(data.texture_samplers.emissive,           emissive_texture_property,           emissive_texture_texgen_mode_property,           emissive_texture_uv_rotation_property,           emissive_texture_uv_offset_property,           emissive_texture_uv_scale_property);
+}
+
+// Mirrors a changed slot property's effective value (local, inherited or
+// default) into the Material_data slot the per-frame readers use.
+void Material::on_property_changed(const erhe::property::Property_changed_args& args)
+{
+    const erhe::property::Dependency_property* const changed = &args.property;
+    const auto mirror_slot = [this, changed](
+        Material_texture_sampler&         slot,
+        const Property<Object_reference>& texture_property,
+        const Property<Texgen_mode>&      texgen_mode_property,
+        const Property<float>&            rotation_property,
+        const Property<glm::vec2>&        offset_property,
+        const Property<glm::vec2>&        scale_property
+    ) -> bool {
+        if (changed == texture_property.get_ptr())     { slot.texture_reference = Slot_traits::from_value(get_value(texture_property)); return true; }
+        if (changed == texgen_mode_property.get_ptr()) { slot.texgen_mode       = get_value(texgen_mode_property); return true; }
+        if (changed == rotation_property.get_ptr())    { slot.rotation          = get_value(rotation_property);    return true; }
+        if (changed == offset_property.get_ptr())      { slot.offset            = get_value(offset_property);      return true; }
+        if (changed == scale_property.get_ptr())       { slot.scale             = get_value(scale_property);       return true; }
+        return false;
+    };
+    if (mirror_slot(data.texture_samplers.base_color,         base_color_texture_property,         base_color_texture_texgen_mode_property,         base_color_texture_uv_rotation_property,         base_color_texture_uv_offset_property,         base_color_texture_uv_scale_property)) { return; }
+    if (mirror_slot(data.texture_samplers.metallic_roughness, metallic_roughness_texture_property, metallic_roughness_texture_texgen_mode_property, metallic_roughness_texture_uv_rotation_property, metallic_roughness_texture_uv_offset_property, metallic_roughness_texture_uv_scale_property)) { return; }
+    if (mirror_slot(data.texture_samplers.normal,             normal_texture_property,             normal_texture_texgen_mode_property,             normal_texture_uv_rotation_property,             normal_texture_uv_offset_property,             normal_texture_uv_scale_property)) { return; }
+    if (mirror_slot(data.texture_samplers.occlusion,          occlusion_texture_property,          occlusion_texture_texgen_mode_property,          occlusion_texture_uv_rotation_property,          occlusion_texture_uv_offset_property,          occlusion_texture_uv_scale_property)) { return; }
+    if (mirror_slot(data.texture_samplers.emissive,           emissive_texture_property,           emissive_texture_texgen_mode_property,           emissive_texture_uv_rotation_property,           emissive_texture_uv_offset_property,           emissive_texture_uv_scale_property)) { return; }
 }
 
 Material::Material(const std::string_view name)
@@ -323,11 +375,19 @@ void Material::set_data(const Material_data& new_data)
         const Property<glm::vec2>&        offset_property,
         const Property<glm::vec2>&        scale_property
     ) {
-        set_value(texture_property,     to_reference(new_slot.texture_reference));
-        set_value(texgen_mode_property, new_slot.texgen_mode);
-        set_value(rotation_property,    new_slot.rotation);
-        set_value(offset_property,      new_slot.offset);
-        set_value(scale_property,       new_slot.scale);
+        // A snapshot cannot say "inherit": a slot field at its default
+        // (an unbound texture, an identity transform) clears the local value
+        // so a folder value shows through; any other value becomes local.
+        // The same rule seeds a material from its create info.
+        if (new_slot.texture_reference) {
+            set_value(texture_property, to_reference(new_slot.texture_reference));
+        } else {
+            clear_value(texture_property);
+        }
+        if (new_slot.texgen_mode != Texgen_mode::uv0) { set_value(texgen_mode_property, new_slot.texgen_mode); } else { clear_value(texgen_mode_property); }
+        if (new_slot.rotation != 0.0f)                { set_value(rotation_property,    new_slot.rotation);    } else { clear_value(rotation_property);    }
+        if (new_slot.offset != glm::vec2{0.0f, 0.0f}) { set_value(offset_property,      new_slot.offset);      } else { clear_value(offset_property);      }
+        if (new_slot.scale  != glm::vec2{1.0f, 1.0f}) { set_value(scale_property,       new_slot.scale);       } else { clear_value(scale_property);       }
         slot.sampler = new_slot.sampler;
     };
     apply_slot(data.texture_samplers.base_color,           new_data.texture_samplers.base_color,               base_color_texture_property,            base_color_texture_texgen_mode_property,            base_color_texture_uv_rotation_property,           base_color_texture_uv_offset_property,           base_color_texture_uv_scale_property);
