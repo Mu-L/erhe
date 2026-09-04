@@ -8,6 +8,13 @@
   D4::ERHE_scene.styles{name,target,properties}+ERHE_material.style+library_folders.style;import order:styles→...→material-styles→folders
   D5::add_default_materials→"Brushed metal"-Style-item;make_style_from_values{paste-as-style+MCP-set_item_style}
   verify✓headless{scratchpad-verify_styles.py:live-edit,clear/reassign-by-name,folder-style-inherit(after-clearing-local),paste-as-style+undo,save/open,close-clean}|?user-interactive
+@node-holds-attachment-values::D30-generalized✓2026-09-04{ff0f28de6+62b80d7fd+8d1b12a57;user-report:"cannot add light properties to empty node / to style"}
+  D30::secondary-covers-descendant-types{is_secondary_property:secondary|ancestor|descendant;¬bridged+¬computed;deliver-skips-property_changed-metadata-callback-on-holder{callback-casts-to-registering-class→was-UB}}
+  Node::secondary=Node_attachment{offers-Light.*/Camera.*/...;Light-props-all-inherits}|Item_base::style_applies{target-on-chain||target-descends-from-object-secondary}|candidates-filtered
+  editor::Create-Style-submenu{Styles-folder;collect_style_target_owner_types=every-type-with-own-value-props≈40-incl-graph-node-kinds}+MCP-create_style{name,target;defaults-first-scene}|listing-rule=has_own_value{style-provided-secondary-listed;x-clears-local-only}
+  persistence::ERHE_node.style{Item_style_by_name_operation}+ERHE_light.properties=complete-local-set{loader-clears-unlisted-KHR-baked-values→light-keeps-inheriting-after-reload}
+  trap-hit::Mesh.world_bounds_*-computed-listed-as-secondary-on-node→compute(node)-cast-to-Mesh→crash{fixed-by-¬computed-rule}|find_scene("")¬first-scene{create_library_folder-schema-claims-default}
+  verify✓headless{scratchpad-verify_light_inherit.py;doc/style-library.md-step-6}|?user-interactive{Create-Style>Light,Add-Property-on-empty-node}
 @folder-category-properties::D30{secondary-owner-type}✓2026-09-04{5ff73f41b+59dd60042+34d66432b}
   Content_library_node.category_owner_type→get_secondary_property_owner_type{folders-only};Material-value-props-inherits=true;Add-Property-offers-"Material.<name>"-on-Materials-folder;listing=is_extra_property_listed+collect_addable_properties
   trap::Material-visible_when-lambdas-static_cast-to-Material→NEVER-evaluate-on-a-folder{secondary-listed-by-local-value-only}
@@ -29,7 +36,8 @@
 prompt_queue.txt::items-0-4-unchanged{folders-task-was-a-direct-request}
 
 [OPEN]
-?user-interactive-check{folders+category-props+texture-slots+styles}→expect-fixes;then-migrations{Light-derived-rows}
+?user-interactive-check{folders+category-props+texture-slots+styles+node-attachment-values}→expect-fixes;then-migrations{Light-derived-rows}
+?material-reload-limitation-still-open::ERHE_material-bakes-effective→local{lights-fixed-via-ERHE_light.properties-rule;same-rule-for-materials=candidate}
 ?inherits-registration-check::third-form-added{secondary-owner-type}→still-unimplemented
 ?startup-log-error::"property 'lightmapped': object is sealed"{pre-existing,at-startup,unrelated}
 ?inherits-registration-check{doc/property-system.md-section-6}

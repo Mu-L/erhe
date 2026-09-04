@@ -2,6 +2,7 @@
 
 [TASK::style-library]{DONE-2026-09-04}
 ✓style-source-generalization{9132674f2}+Style-item+style-property{a88dd405c}+persistence+docs
+✓node-holds-attachment-values+Light-inherits+Create-Style/create_style+node-style-persistence{ff0f28de6..8d1b12a57}
 ?user-interactive-verify
 
 [TASK::content-library-folders]{DONE-2026-09-04}
