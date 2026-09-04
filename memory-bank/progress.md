@@ -19,7 +19,7 @@
 
 [TASK::property-migrations]{ONGOING}
 ✓Material+Node+Light+Camera{entry-store-since-2026-09-04}+graph-nodes+Mesh_primitive+Node_physics+Grid+Brush_placement+Physics_material+Layout+Layout-hints{attached}
-?next::Light-derived-rows{flux+blackbody}→Rendertarget_mesh→Animation{see-doc/property-inventory.md}
+?next::Node_physics→Light-derived-rows→Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes{doc/property-migration-handoff.md}
 
 [NOTES]
 !headless-recipe::build_vs2026_vulkan_headless-editor→ERHE_AI_DRIVER=1-launch-hidden→mcp_call.py-b64-args{get_item_properties/set_item_property/get_addable_item_properties/undo;ids-reshuffle-per-launch;scene_name-required-for-create_node/select_items/get_node_details}

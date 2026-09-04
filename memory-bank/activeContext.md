@@ -36,6 +36,8 @@
 @property-system::erhe::property{doc/property-system.md=design-record;doc/property-inventory.md=per-field-status;src/erhe/property/notes.md=library-reference}
   >2026-09-04::Add/Remove-Property-UI{940aeccbb..3a2318199}✓|?user-interactive
 
+@next::property-migrations{doc/property-migration-handoff.md=order+recipe+verify;Node_physics-first→Light-derived-rows→Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes}
+
 [STATE]
 @branch::main{#28-commits-unpushed;user-pushes-themselves}
 prompt_queue.txt::items-0-4-unchanged{folders-task-was-a-direct-request}

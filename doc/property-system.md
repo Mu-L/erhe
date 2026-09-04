@@ -1618,7 +1618,9 @@ style layer is D25.
 - Further item migrations, each reusing the Material recipe (section 4.1).
   `doc/property-inventory.md` owns the per-field status: every registered
   property with its storage kind, and the hand-written Properties rows
-  left to migrate in priority order.
+  left to migrate; `doc/property-migration-handoff.md` owns the order in
+  which the remaining migrations (this item and the next) are worked and
+  the verification each passes.
 - Entry storage for the member-backed registrations (D18) whose values a
   node or a style should hold and a descendant inherit (D30): a bridged
   property is always local, so it is neither offered on a holder nor
