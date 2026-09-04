@@ -152,8 +152,14 @@ TEST(Light_properties, clone_copies_values_and_bag_round_trips)
     EXPECT_EQ(clone->layer_id, 3u);
     EXPECT_EQ(clone->get_value_source(Light::intensity_property), Value_source::default_value);
 
+    // The three local values plus the bridged Item_base style property
+    // (a bridge is always a local value).
     const Property_set bag = Property_set::read_local_values(*light);
-    EXPECT_EQ(bag.size(), 3u);
+    EXPECT_EQ(bag.size(), 4u);
+    EXPECT_TRUE(bag.contains(Light::light_type_property));
+    EXPECT_TRUE(bag.contains(Light::color_property));
+    EXPECT_TRUE(bag.contains(Light::range_property));
+    EXPECT_TRUE(bag.contains(erhe::Item_base::style_property));
     auto other = std::make_shared<Light>("o");
     bag.apply(*other);
     EXPECT_EQ(Property_set::read_local_values(*other), bag);

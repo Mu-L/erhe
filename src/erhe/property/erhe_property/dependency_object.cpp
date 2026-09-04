@@ -535,6 +535,13 @@ void Dependency_object::for_each_local_value(const std::function<void(const Depe
             }
         }
     );
+    // for_each_property_of_object visits the chain root first, and the
+    // registration order across translation units is not the chain order:
+    // sort by index so the merge below holds.
+    std::sort(
+        bridged.begin(), bridged.end(),
+        [](const Dependency_property* lhs, const Dependency_property* rhs) { return lhs->get_index() < rhs->get_index(); }
+    );
     std::size_t b = 0;
     for (const Effective_value_entry& entry : m_entries) {
         while ((b < bridged.size()) && (bridged[b]->get_index() < entry.index)) {
