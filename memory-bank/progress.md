@@ -1,5 +1,9 @@
 §MBEL:5.0
 
+[TASK::content-library-folders]{DONE-2026-09-04}
+✓D1-inheritance-link{48518c02f}+UI{ac5126944}+ERHE_scene.library_folders{e0704b0f0}+subtree-dedup-fix{9e768b4e0}+MCP{7993068f6}+docs
+?user-interactive-verify
+
 [TASK::Add/Remove-Property-UI]{DONE-3a2318199-2026-09-04}
 ✓shared-listing-rule{940aeccbb}+Add-Property-row{93153dcf9}+Remove-Property{5ea6655e8}+rows-m_items-leak-fix{4e496b984}+MCP-tool{75ca1498c}+docs-D12/D13{3a2318199;plan-doc-deleted}
 ?user-interactive-verify

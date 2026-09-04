@@ -263,7 +263,11 @@ table, see D2a), and references to other objects (D28).
   `virtual auto get_inheritance_parent() const -> const Dependency_object*`
   returning `nullptr` and `virtual void for_each_inheritance_child(const
   std::function<void(Dependency_object&)>&)` doing nothing. `Hierarchy`
-  overrides both with its parent and children. An inherits-flagged property
+  overrides both with its parent and children; `Item_base` returns as
+  parent the container set on it (`set_inheritance_container`), which the
+  editor's content-library node maintains so a library folder's values
+  reach the materials and brushes below it
+  (`doc/content-library-folders.md` D1). An inherits-flagged property
   with no local value on an object reads the effective value from the
   closest ancestor that has one on every read (no cached copy: the walk is
   as deep as the tree and a cache would need tree-change invalidation).

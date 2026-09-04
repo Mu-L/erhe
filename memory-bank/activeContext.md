@@ -1,24 +1,24 @@
 §MBEL:5.0
 
 [FOCUS]
-@property-system::erhe::property{WPF-dependency-property-port;doc/property-system.md=design-record{D-numbers};doc/property-inventory.md=per-field-status;src/erhe/property/notes.md=library-reference}
->2026-09-03::object-refs{D28/D29}+migrations{Node_physics+Grid+Brush_placement+Physics_material+Layout}+Owner_type-registry{D27}+attached-properties{D3;qualified-"<Owner>.<name>";Layout.align_x..grid_span-on-child-Node}✓
->2026-09-04::Add/Remove-Property-UI{940aeccbb..3a2318199}✓
-  windows/attached_property_listing.{hpp,cpp}::D12-listing-rule+addable-candidates{rows+MCP-share-it}
-  Properties-section-ends-with-"Add Property"-row{filterable-popup;candidates=attached-registrations-not-listed;add-writes-effective-value-local→row-appears,undo-removes}
-  attached-rows::"Remove Property"-context-menu+inline-"x"-when-listed-only-by-local-value
-  MCP::get_addable_item_properties;add=set_item_property-qualified-name;remove=value-null
-  trap-fixed{4e496b984}::Dependency_property_rows-kept-m_items-across-frames=scene-close-leak-holder→snapshot-bound-only-in-add_rows+each-row-lambda
-  verify✓headless{node+cube-mesh-attachment;floor-mesh-is-sealed;close-scene-clean-132-released}|?user-interactive{filter-typing,Ctrl+Z,multi-select,locked-item-disabled}
+@content-library-folders::doc/content-library-folders.md{R1-R6,D1-D7}✓2026-09-04{5-commits-48518c02f..7993068f6+follow-ups}
+  D1::Item_base.m_inheritance_container{set-by-Content_library_node::handle_add_child;cleared-in-dtor;for_each_inheritance_child-visits-item;reference-entries-never}
+  D2/D3::Create-Folder-menu{scene_root.cpp}+drag-onto-folder{Content_library_move_operation}
+  D5/D6::ERHE_scene.library_folders{path+properties+items;brushes-folder_path-read-only}+Content_library_folders_operation{last-in-import_gltf_editor_state}
+  D7::MCP-create_library_folder+move_library_item{folder_path,undoable}+find_item_in_scene-visits-library-nodes
+  trap-fixed::add/remove-scanned-direct-children-only→duplicate-node-per-item-after-folder-move{find_entry-subtree;get_all-caches-cleared-up-to-root}
+  verify✓headless{scratchpad-recipe:create→move-Copper→set-visible-false→inherited→undo/redo→save/open→local+inherited→close-clean;undo_reference_clearing_smoke_test-45/45}|?user-interactive{Create-Folder,rename,drag-drop,Ctrl+Z}
+@property-system::erhe::property{doc/property-system.md=design-record;doc/property-inventory.md=per-field-status;src/erhe/property/notes.md=library-reference}
+  >2026-09-04::Add/Remove-Property-UI{940aeccbb..3a2318199}✓|?user-interactive
 
 [STATE]
-@branch::main{#10-commits-unpushed;user-pushes-themselves}
-prompt_queue.txt::item0=next-migration{Light-derived-rows}|items1-4-unchanged
-memory-bank-files-of-July{asset-manager-R1/R2}→history{superseded-by-this-focus}
+@branch::main{#16-commits-unpushed;user-pushes-themselves}
+prompt_queue.txt::items-0-4-unchanged{folders-task-was-a-direct-request}
 
 [OPEN]
-?inherits-registration-check{inherits⇒attached||root-owner;doc-section-6;when-first-inheritable-attached-property-appears}
-?Light-derived-rows→Rendertarget_mesh→Animation{doc/property-inventory.md-"Not yet migrated"-order}
+?startup-log-error::"property 'lightmapped': object is sealed"{pre-existing,at-startup,unrelated}
+?inherits-registration-check{doc/property-system.md-section-6}
+?Light-derived-rows→Rendertarget_mesh→Animation{doc/property-inventory.md}
 
 [BLOCKERS]
 none

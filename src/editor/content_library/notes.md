@@ -9,15 +9,31 @@ Provides a hierarchical container for reusable editor assets: materials, brushes
 - **`Content_library`** -- Top-level container with a root `Content_library_node` and category folders (brushes, animations, skins, materials, textures, graph textures/meshes, physics items). Each `Scene_root` has its own `Content_library` and OWNS it: `Scene_root` calls `set_owner(this)`, and every owning entry's wrapped item reports that `Scene_root` from `erhe::Item_base::get_item_host()` (see `doc/content-library-ownership-plan.md`). An item is an owning member of exactly one library; `ERHE_VERIFY` enforces this on add. `Scene_builder`'s template library is never owned - scenes seed their own libraries with copies (`copy_content_library_folder`, `Brush::make_shared_payload_copy` shares the expensive payload). Prefab template textures/materials are the exception: they enter instancing scenes' libraries as REFERENCE entries (`Content_library_node::is_reference`) that never claim the item's host, because GPU textures cannot be duplicated per scene. `copy_library_item_to_library` copies a single item across libraries (also exposed as the `copy_library_item` MCP tool and the "Copy to Scene" context menu).
 
 - **`Content_library_node`** -- Extends `erhe::Hierarchy`. Each node wraps an `erhe::Item_base` (e.g., a material or brush) or serves as a folder (no item, but has `type_code` and `type_name`). Features:
-  - Typed `get_all<T>()` with internal caching (invalidated on add/remove)
+  - Typed `get_all<T>()` with internal caching; a cache covers the node's whole subtree, so an add or remove anywhere below a node clears the caches of that node and every ancestor
   - `combo<T>()` for ImGui combo boxes with drag-and-drop support
-  - `add<T>()` / `remove<T>()` template methods
+  - `add<T>()` / `remove<T>()` template methods; both find an existing entry anywhere in the subtree (`find_entry`), so an item is listed once per library no matter which folder holds it and a category folder removes an entry sitting in one of its folders
   - `make<T>()` to create and add a new item in one step
   - `make_folder()` to create sub-folders
 
 - **`Material_library`** (`material_library.hpp`) -- Helper functions for populating default materials in a content library.
 
 - **`Content_library_window`** (`content_library_window.hpp`) -- Owns an `Item_tree_window` displaying a `Content_library`. Wires up the "Create Material" context menu and cross-library material drag-drop. Constructed by callers (editor.cpp, asset_browser.cpp, operations_window.cpp) alongside a `Scene_root`; not owned by `Scene_root` itself.
+
+## Folders
+
+Folders below a category folder (`doc/content-library-folders.md`) are
+`Content_library_node`s without an item that carry the category's
+`type_code` / `type_name`. They are selectable, the Properties window shows
+them as items (name row, class-chain properties, Add Property), and their
+`inherits`-flagged property values reach the entries below them: the parent
+folder's `handle_add_child` makes an owning entry node the inheritance
+container of its item (`erhe::Item_base::set_inheritance_container`), the
+node's destructor clears it, and `for_each_inheritance_child` visits the
+item after the hierarchy children. A reference entry never becomes a
+container - its item is owned by another scene. The editor creates folders
+("Create Folder", `create_library_folder`), moves entries between them
+(drag onto a folder, `move_library_item`; `Content_library_move_operation`)
+and persists them through `ERHE_scene` `library_folders`.
 
 ## Importing texture files
 

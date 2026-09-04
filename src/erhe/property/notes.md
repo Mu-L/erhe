@@ -177,8 +177,11 @@ seal to `Item_flags::lock_edit`.
 `inherits` metadata makes a property without a local value read the closest
 ancestor's effective value through two virtuals the object provides
 (`get_inheritance_parent`, `for_each_inheritance_child`; `erhe::Hierarchy`
-implements them, `erhe::scene::Node` adds its attachments as children and
-`Node_attachment` names its node as parent). Inherited values are not cached: a read walks up until an
+implements them, `erhe::scene::Node` adds its attachments as children,
+`Node_attachment` names its node as parent, and an `Item_base` with no
+structural parent names the container that holds it -
+`set_inheritance_container`, maintained by the editor's content-library
+node, which visits the item as a child). Inherited values are not cached: a read walks up until an
 ancestor with a local value. A set or clear on an inherits property notifies
 every descendant without a local value, stopping at descendants that have
 one. A tree change uses `capture_inheritance_snapshot` before and

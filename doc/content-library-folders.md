@@ -13,7 +13,10 @@ the wire format is `doc/gltf_extensions/ERHE_scene.md`.
 - R1 Folder tree. A category folder holds entries and folders to any depth.
   A folder is a `Content_library_node` without an item, carrying its
   category's `type_code` / `type_name`; every entry under it belongs to that
-  category. The library root holds only the category folders.
+  category. The library root holds only the category folders. An item is
+  listed once per library: `add` on a category folder finds the entry in
+  whichever folder holds it, `remove` removes it from there, and a
+  `get_all` cache covers the subtree below the node it was built on.
 - R2 Editing. The Scene Hierarchy's nested Content Library offers "Create
   Folder" on a category folder and on a folder inside it; a folder is
   renamed from the Properties window name row, deleted with the tree's
@@ -116,7 +119,9 @@ Headless, over `scripts/mcp_call.py` on a fresh editor:
    both.
 3. `save_scene` and reopen: the folder, its `visible` local value and the
    moved material are back, and `logs/log.txt` has no
-   `library_folders` warning.
+   `library folder` warning. Use a material a mesh uses (`Copper`): the
+   scene file never carries unused library materials, so an unused one is
+   reported as not held by the category on reload.
 4. `close_scene`, wait, grep `logs/log.txt` for `scene-close leak`: clean.
 
 Interactive: "Create Folder" from the context menu, rename in Properties,
