@@ -337,11 +337,14 @@ table, see D2a), and references to other objects (D28).
   (a clear). Drag edits follow the existing
   begin-edit-snapshot / commit-on-release pattern used by material editing
   (`m_material_state`), producing exactly one `Property_set_operation` per
-  completed drag. With several items selected the section shows the
-  properties common to all selected types, marks a row whose values differ
-  across the items as mixed, and a commit writes the edited property to
-  every item through one `Compound_operation` of per-item
-  `Property_set_operation`s (D11). The
+  completed drag. With several items selected the window draws one
+  section per selected property owner type (a physics material and a
+  body selected together keep their full row sets), in the order the
+  types first appear; within a section the items of that type share the
+  rows, a row whose values differ across them is marked mixed, and a
+  commit writes the edited property to every item of the section through
+  one `Compound_operation` of per-item `Property_set_operation`s (D11).
+  The
   section's context menu offers Copy Properties (reads a `Property_set` of
   the item's local values into an editor clipboard) and Paste Properties
   (applies it to the selection through `Property_set_apply_operation`,

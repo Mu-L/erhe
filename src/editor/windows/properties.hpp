@@ -149,6 +149,11 @@ private:
     std::weak_ptr<erhe::Item_base>                m_target;
     std::vector<std::shared_ptr<erhe::Item_base>> m_target_items;
 
+    // Multi-selection: the selected items partitioned by property owner
+    // type, one row set per group (scratch, cleared each frame with the
+    // capacity kept).
+    std::vector<std::vector<std::shared_ptr<erhe::Item_base>>> m_type_groups;
+
     Editor_state                               m_material_state{Editor_state::clean};
     std::shared_ptr<erhe::primitive::Material> m_inspected_material;
     erhe::primitive::Material_data             m_inspected_material_initial_state;

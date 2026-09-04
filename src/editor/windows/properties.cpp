@@ -1637,11 +1637,46 @@ void Properties::imgui()
         item_properties(item);
     }
     if (items.size() > 1) {
-        // Multi-selection: one row set for the properties every selected
-        // type has, with mixed-value display and one operation per edit.
-        push_group(fmt::format("Properties ({} items)", items.size()), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed, m_indent);
-        m_dependency_rows.add_rows(*this, items);
-        pop_group();
+        // Multi-selection: one row set per selected property owner type
+        // (the items of one type edit together, with mixed-value display
+        // and one operation per edit), in the order the types first appear,
+        // so an item of a different type never hides another's rows.
+        for (std::vector<std::shared_ptr<erhe::Item_base>>& group : m_type_groups) {
+            group.clear();
+        }
+        std::size_t group_count = 0;
+        for (const std::shared_ptr<erhe::Item_base>& item : items) {
+            const erhe::property::Owner_type owner_type = item->get_property_owner_type();
+            std::size_t group_index = 0;
+            while ((group_index < group_count) && (m_type_groups[group_index].front()->get_property_owner_type() != owner_type)) {
+                ++group_index;
+            }
+            if (group_index == group_count) {
+                if (m_type_groups.size() == group_count) {
+                    m_type_groups.emplace_back();
+                }
+                ++group_count;
+            }
+            m_type_groups[group_index].push_back(item);
+        }
+        for (std::size_t group_index = 0; group_index < group_count; ++group_index) {
+            const std::vector<std::shared_ptr<erhe::Item_base>>& group = m_type_groups[group_index];
+            // The rows carry their own ImGui ids (the first item's id).
+            push_group(
+                (group_count == 1)
+                    ? fmt::format("Properties ({} items)", group.size())
+                    : fmt::format("{} Properties ({} item{})", group.front()->get_type_name(), group.size(), (group.size() == 1) ? "" : "s"),
+                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed,
+                m_indent
+            );
+            m_dependency_rows.add_rows(*this, group);
+            pop_group();
+        }
+        // The rows hold their own snapshot; the scratch must not pin the
+        // items between frames (scene-close leak class).
+        for (std::vector<std::shared_ptr<erhe::Item_base>>& group : m_type_groups) {
+            group.clear();
+        }
     }
 
     const auto selected_animation = get<erhe::scene::Animation>(items);
