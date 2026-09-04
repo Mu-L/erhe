@@ -33,9 +33,10 @@ runtime.
 ```
 
 - `name`: brush name.
-- `folder_path` (optional): slash-separated content-library folder path
-  relative to the Brushes root; omitted for top-level brushes. Preserves
-  the library folder hierarchy.
+- `folder_path` (optional, read only): slash-separated content-library
+  folder path relative to the Brushes root, honored when loading older
+  files. The writer places brushes through `ERHE_scene` `library_folders`
+  ([ERHE_scene.md](ERHE_scene.md)) and does not write this field.
 - `mesh`: glTF mesh index of the (node-unreferenced) geometry carrier.
 - `material` (optional): glTF material index of the brush material.
 - `density`: physical density used for mass computation.

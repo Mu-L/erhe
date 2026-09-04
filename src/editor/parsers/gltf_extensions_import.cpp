@@ -30,6 +30,8 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
+#include <mutex>
+
 #include <geogram/mesh/mesh.h>
 
 namespace editor {
@@ -405,6 +407,8 @@ void import_brushes(
         if (material) {
             brush->set_material(material);
         }
+        // folder_path is read from older files only; the writer places
+        // brushes through ERHE_scene library_folders (D5).
         const std::shared_ptr<Content_library_node> folder = resolve_library_folder(content_library->brushes, entry.value("folder_path", std::string{}));
         operations.push_back(
             std::make_shared<Content_library_attach_operation<Brush>>(
@@ -606,6 +610,223 @@ void import_node_graphs(
     }
 }
 
+// One saved library folder (ERHE_scene library_folders,
+// doc/content-library-folders.md D5).
+class Library_folder_record
+{
+public:
+    std::string                                      path;       // category-rooted, "Materials/Metals"
+    std::vector<std::pair<std::string, std::string>> properties; // local values, name -> text
+    std::vector<std::string>                         items;      // names of the entries directly in the folder
+};
+
+// Recreates the saved folders, applies their local property values and
+// places the named entries (D6). Runs after every attach operation of the
+// same import, so the entries exist. Properties apply only to folders this
+// operation creates: an existing folder of the same path (an import into
+// a scene that already has it) keeps its values. Undo moves the entries
+// back and removes the created folders.
+class Content_library_folders_operation : public Operation
+{
+public:
+    Content_library_folders_operation(std::shared_ptr<Content_library> content_library, std::vector<Library_folder_record> folders)
+        : m_content_library{std::move(content_library)}
+        , m_folders        {std::move(folders)}
+    {
+        set_description(fmt::format("[{}] Content_library_folders ({} folders)", get_serial(), m_folders.size()));
+    }
+
+    void execute(App_context&) override
+    {
+        std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_content_library->mutex};
+        m_created_folders.clear();
+        m_moves.clear();
+        for (const Library_folder_record& record : m_folders) {
+            std::shared_ptr<Content_library_node> category{};
+            std::shared_ptr<Content_library_node> folder{};
+            bool created = false;
+            resolve_folder(record.path, category, folder, created);
+            if (!folder) {
+                log_parsers->warn("glTF editor state: library folder '{}' names no category - folder dropped", record.path);
+                continue;
+            }
+            if (created) {
+                for (const std::pair<std::string, std::string>& property : record.properties) {
+                    erhe::gltf::apply_item_local_property(*folder, property.first, property.second);
+                }
+            } else if (!record.properties.empty()) {
+                log_parsers->info("glTF editor state: library folder '{}' exists - its saved property values are not applied", record.path);
+            }
+            for (const std::string& item_name : record.items) {
+                place_item(*category, folder, record.path, item_name);
+            }
+        }
+    }
+
+    void undo(App_context&) override
+    {
+        std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_content_library->mutex};
+        for (auto it = m_moves.rbegin(); it != m_moves.rend(); ++it) {
+            it->node->set_parent(it->before_parent, it->before_index);
+        }
+        m_moves.clear();
+        for (auto it = m_created_folders.rbegin(); it != m_created_folders.rend(); ++it) {
+            (*it)->remove();
+        }
+        m_created_folders.clear();
+    }
+
+private:
+    class Move
+    {
+    public:
+        std::shared_ptr<Content_library_node> node;
+        std::shared_ptr<Content_library_node> before_parent;
+        std::size_t                           before_index;
+    };
+
+    // Walks the category-rooted path; the first component names the
+    // category folder (never created), every missing folder below it is
+    // created and recorded for undo. out_created is true when the last
+    // component was created by this call.
+    void resolve_folder(
+        const std::string&                     path,
+        std::shared_ptr<Content_library_node>& out_category,
+        std::shared_ptr<Content_library_node>& out_folder,
+        bool&                                  out_created
+    )
+    {
+        out_category.reset();
+        out_folder.reset();
+        out_created = false;
+        std::shared_ptr<Content_library_node> current = m_content_library->root;
+        std::size_t start = 0;
+        bool first = true;
+        while (start < path.size()) {
+            const std::size_t slash = path.find('/', start);
+            const std::string name  = (slash == std::string::npos) ? path.substr(start) : path.substr(start, slash - start);
+            start = (slash == std::string::npos) ? path.size() : slash + 1;
+            if (name.empty()) {
+                continue;
+            }
+            std::shared_ptr<Content_library_node> found{};
+            for (const std::shared_ptr<erhe::Hierarchy>& child_hierarchy : current->get_children()) {
+                const std::shared_ptr<Content_library_node> child = std::dynamic_pointer_cast<Content_library_node>(child_hierarchy);
+                if (child && !child->item && (child->get_name() == name)) {
+                    found = child;
+                    break;
+                }
+            }
+            out_created = false;
+            if (!found) {
+                if (first) {
+                    return; // no such category
+                }
+                found = current->make_folder(name);
+                m_created_folders.push_back(found);
+                out_created = true;
+            }
+            if (first) {
+                out_category = found;
+                first = false;
+            }
+            current = found;
+        }
+        if (out_category && (current != out_category)) {
+            out_folder = current;
+        }
+    }
+
+    void place_item(
+        Content_library_node&                        category,
+        const std::shared_ptr<Content_library_node>& folder,
+        const std::string&                           folder_path,
+        const std::string&                           item_name
+    )
+    {
+        std::shared_ptr<Content_library_node> found{};
+        std::size_t                           match_count = 0;
+        category.for_each<Content_library_node>(
+            [&found, &match_count, &item_name](Content_library_node& node) -> bool {
+                if (node.item && (node.item->get_name() == item_name)) {
+                    if (!found) {
+                        found = std::dynamic_pointer_cast<Content_library_node>(node.shared_from_this());
+                    }
+                    ++match_count;
+                }
+                return true;
+            }
+        );
+        if (!found) {
+            log_parsers->warn("glTF editor state: library folder '{}' lists '{}', which the category does not hold - not placed", folder_path, item_name);
+            return;
+        }
+        if (match_count > 1) {
+            log_parsers->warn("glTF editor state: library folder '{}' lists '{}', which matches {} entries - the first is placed", folder_path, item_name, match_count);
+        }
+        const std::shared_ptr<Content_library_node> before_parent = std::dynamic_pointer_cast<Content_library_node>(found->get_parent().lock());
+        if (before_parent == folder) {
+            return;
+        }
+        m_moves.push_back(Move{.node = found, .before_parent = before_parent, .before_index = found->get_index_in_parent()});
+        found->set_parent(folder);
+    }
+
+    std::shared_ptr<Content_library>                   m_content_library;
+    std::vector<Library_folder_record>                 m_folders;
+    std::vector<std::shared_ptr<Content_library_node>> m_created_folders;
+    std::vector<Move>                                  m_moves;
+};
+
+void import_library_folders(
+    const erhe::gltf::Gltf_data&             gltf_data,
+    const std::shared_ptr<Content_library>&  content_library,
+    std::vector<std::shared_ptr<Operation>>& operations
+)
+{
+    const std::string* extension_json = find_extension(gltf_data.scene_extensions, "ERHE_scene");
+    if ((extension_json == nullptr) || !content_library) {
+        return;
+    }
+    const nlohmann::json payload = parse_extension_object(*extension_json, "ERHE_scene", "scene");
+    if (payload.is_null()) {
+        return;
+    }
+    const auto folders_it = payload.find("library_folders");
+    if ((folders_it == payload.end()) || !folders_it->is_array()) {
+        return;
+    }
+    std::vector<Library_folder_record> records;
+    for (const nlohmann::json& entry : *folders_it) {
+        if (!entry.is_object() || !entry.contains("path") || !entry["path"].is_string()) {
+            log_parsers->warn("glTF editor state: library_folders entry without a path - skipped");
+            continue;
+        }
+        Library_folder_record record{.path = entry["path"].get<std::string>()};
+        const auto properties_it = entry.find("properties");
+        if ((properties_it != entry.end()) && properties_it->is_object()) {
+            for (const auto& [name, value] : properties_it->items()) {
+                if (value.is_string()) {
+                    record.properties.emplace_back(name, value.get<std::string>());
+                }
+            }
+        }
+        const auto items_it = entry.find("items");
+        if ((items_it != entry.end()) && items_it->is_array()) {
+            for (const nlohmann::json& item : *items_it) {
+                if (item.is_string()) {
+                    record.items.push_back(item.get<std::string>());
+                }
+            }
+        }
+        records.push_back(std::move(record));
+    }
+    if (records.empty()) {
+        return;
+    }
+    operations.push_back(std::make_shared<Content_library_folders_operation>(content_library, std::move(records)));
+}
+
 } // anonymous namespace
 
 void import_gltf_editor_state(
@@ -623,6 +844,8 @@ void import_gltf_editor_state(
     import_collections(gltf_data);
     import_brushes(context, gltf_data, content_library, gltf_path_str, operations);
     import_node_graphs(context, gltf_data, content_library, gltf_path_str, operations);
+    // Last: the folders operation places entries the operations above attach.
+    import_library_folders(gltf_data, content_library, operations);
 }
 
 }

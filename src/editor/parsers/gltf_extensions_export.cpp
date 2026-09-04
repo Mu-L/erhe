@@ -125,7 +125,6 @@ class Brush_record
 {
 public:
     std::string                      name;
-    std::string                      folder_path;
     std::size_t                      extra_mesh; // index into Gltf_export_arguments::extra_meshes
     const erhe::primitive::Material* material{nullptr};
     float                            density{1.0f};
@@ -387,6 +386,53 @@ void add_gltf_editor_state(
                 log_parsers->error("add_gltf_editor_state: Scene_settings serialization did not parse - settings not exported");
             }
         }
+        // library_folders (doc/content-library-folders.md D5): every folder
+        // below a category folder, depth first, with its local property
+        // values and the names of the entries directly in it.
+        if (content_library && content_library->root) {
+            nlohmann::json library_folders = nlohmann::json::array();
+            const std::function<void(const Content_library_node&, const std::string&)> collect_folder =
+                [&](const Content_library_node& folder_node, const std::string& folder_path) -> void
+                {
+                    const std::shared_ptr<erhe::Hierarchy> parent = folder_node.get_parent().lock();
+                    const bool is_category = (parent.get() == content_library->root.get());
+                    // A category folder is not listed: its entries are where a
+                    // load puts the ones no folder names.
+                    if (!is_category) {
+                        nlohmann::json items = nlohmann::json::array();
+                        for (const std::shared_ptr<erhe::Hierarchy>& child_hierarchy : folder_node.get_children()) {
+                            const std::shared_ptr<Content_library_node> child = std::dynamic_pointer_cast<Content_library_node>(child_hierarchy);
+                            if (child && child->item) {
+                                items.push_back(child->item->get_name());
+                            }
+                        }
+                        nlohmann::json entry{{"path", folder_path}};
+                        const nlohmann::json properties = json_properties(folder_node);
+                        if (properties.is_object() && !properties.empty()) {
+                            entry["properties"] = properties;
+                        }
+                        if (!items.empty()) {
+                            entry["items"] = items;
+                        }
+                        library_folders.push_back(std::move(entry));
+                    }
+                    for (const std::shared_ptr<erhe::Hierarchy>& child_hierarchy : folder_node.get_children()) {
+                        const std::shared_ptr<Content_library_node> child = std::dynamic_pointer_cast<Content_library_node>(child_hierarchy);
+                        if (child && !child->item) {
+                            collect_folder(*child, fmt::format("{}/{}", folder_path, child->get_name()));
+                        }
+                    }
+                };
+            for (const std::shared_ptr<erhe::Hierarchy>& category_hierarchy : content_library->root->get_children()) {
+                const std::shared_ptr<Content_library_node> category = std::dynamic_pointer_cast<Content_library_node>(category_hierarchy);
+                if (category && !category->item) {
+                    collect_folder(*category, category->get_name());
+                }
+            }
+            if (!library_folders.empty()) {
+                scene_json["library_folders"] = std::move(library_folders);
+            }
+        }
         append_members(arguments.extension_payloads.scene, fmt::format("\"ERHE_scene\":{}", scene_json.dump()));
         arguments.extensions_used.push_back("ERHE_scene");
     }
@@ -423,7 +469,6 @@ void add_gltf_editor_state(
                     data->brushes.push_back(
                         Brush_record{
                             .name         = brush->get_name(),
-                            .folder_path  = folder_path,
                             .extra_mesh   = arguments.extra_meshes.size(),
                             .material     = brush->get_material().get(),
                             .density      = brush->get_density(),
@@ -581,9 +626,6 @@ void add_gltf_editor_state(
                         {"density",      json_float(record.density)},
                         {"normal_style", normal_style_name(record.normal_style)},
                     };
-                    if (!record.folder_path.empty()) {
-                        entry["folder_path"] = record.folder_path;
-                    }
                     if (record.material != nullptr) {
                         const auto material_it = lookup.material_indices.find(record.material);
                         if (material_it != lookup.material_indices.end()) {

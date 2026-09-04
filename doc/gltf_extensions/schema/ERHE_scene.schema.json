@@ -14,6 +14,18 @@
         "settings": {
             "type": "object",
             "description": "Scene_settings object (erhe_codegen schema, src/editor/scene/definitions/scene_settings.py)"
+        },
+        "library_folders": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Slash-separated folder path from the library root, starting with the category folder name"},
+                    "properties": {"type": "object", "additionalProperties": {"type": "string"}},
+                    "items": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["path"]
+            }
         }
     },
     "required": ["ambient_light", "enable_physics"]
