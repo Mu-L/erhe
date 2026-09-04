@@ -350,9 +350,10 @@ table, see D2a), and references to other objects (D28).
   `visible_when` holds for it, or when the object holds a local value for
   it (a stale hint stays visible and resettable); with several items
   selected, for every one of them. The rule is
-  `is_attached_property_listed` in
+  `is_extra_property_listed` in
   `src/editor/windows/attached_property_listing.{hpp,cpp}`, shared with
-  D13. Its row label is `Property_ui::label`
+  D13; the same function lists a secondary property (D30) by the
+  object's own value. Its row label is `Property_ui::label`
   or the qualified name (D3), under its group like any other row.
 
   Add Property. Every item section (not a sub-object's, D29) ends with an
@@ -771,8 +772,9 @@ table, see D2a), and references to other objects (D28).
     (`Graphics_preset_entry` inside `Graphics_settings`) that the Settings
     window edits in place, with no local-override concept to preserve; they
     stay as they are until `Graphics_settings` is an item (section 6). The
-    layer is generic for every item type; its users are the material
-    library's style items (`doc/style-library.md`).
+    layer is generic for every item type; its users are the content
+    library's style items (`doc/style-library.md`), which any item,
+    node or folder can take.
   - Library. A style source is a `Dependency_object` whose LOCAL values
     are the style: `Dependency_object::set_style(std::shared_ptr<const
     Dependency_object>)` / `get_style()` install one source per object.
@@ -781,8 +783,7 @@ table, see D2a), and references to other objects (D28).
     style items are their own sources (`doc/style-library.md` D2). R3 is
     coerced > local (a stored value or an expression) > style > inherited
     > default, with `Value_source::style`. A bridged property (D18) is
-    always local and ignores a style entry (the transform, the
-    projection). A style entry for an inherits-flagged property is the
+    always local and ignores a style entry (the node transform). A style entry for an inherits-flagged property is the
     object's effective value and so flows to descendants exactly as a
     local value would: the inheritance walk, the descendant notification
     and the tree-change snapshot treat "has a local value" as "has a local
@@ -1592,7 +1593,7 @@ style layer is D25.
   `doc/gltf-properties-extension-plan.md` is the draft, explicitly
   incomplete and not ready to implement; the decisions it records so far
   live there and nowhere else.
-- Style users beyond the material library (D25): the graphics presets once
+- Style users beyond the content library's style items (D25): the graphics presets once
   `Graphics_settings` is an item with registered properties, and
   per-instance prefab overrides once `doc/gltf-prefabs-plan.md` phase 6
   takes them on.

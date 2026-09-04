@@ -99,8 +99,8 @@ the wire format is `doc/gltf_extensions/ERHE_scene.md`.
   lists the textures of the library's scene (`find_scene_root_for_item`
   knows a library node's scene).
 - D9 Folder style. A folder carries a style like any item
-  (`doc/style-library.md` R4): the `style` row takes a style of the
-  folder's category, the style's values are the folder's effective values
+  (`doc/style-library.md` R4): the `style` row takes any style, the
+  style's values of the category's class are the folder's effective values
   and so reach the entries below it through R4, and `library_folders`
   saves the style by name (D5).
 - D4 Properties window. `Properties::item_properties` already unwraps a
