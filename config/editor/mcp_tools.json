@@ -6451,6 +6451,32 @@
     "name": "get_item_properties"
   },
   {
+    "description": "List the attached properties the Properties window's Add Property picker offers for one item (doc/property-system.md R7, D12): every attached registration not already listed for the item, that is, the registering type's visible_when does not hold for it and it holds no local value. Each entry has the fields get_item_properties uses (name is the qualified '<Owner>.<name>', attached true, type, value = the effective value an add would make local, default, label, group, enum_labels). To add one, call set_item_property with that qualified name (any value, or the listed value to change nothing but the layer); to remove it again, set_item_property with a null value. Identify the item by item_id or item_name (in scene_name, or the first scene). include_developer_only lists developer_only registrations too.",
+    "inputSchema": {
+      "properties": {
+        "include_developer_only": {
+          "description": "Also list developer_only registrations (default false)",
+          "type": "boolean"
+        },
+        "item_id": {
+          "description": "Unique item id (from get_scene_items / the item tree)",
+          "type": "integer"
+        },
+        "item_name": {
+          "description": "Item name, looked up in scene_name (or the first scene)",
+          "type": "string"
+        },
+        "scene_name": {
+          "description": "Scene to look item_name up in (optional)",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_addable_item_properties"
+  },
+  {
     "description": "Set one registered property of an item as an undoable operation (Property_set_operation). value is the property's string form (see get_item_properties) - 'true'/'false', a number, space- or comma-separated vector components, a quaternion as 'x y z w', or an enumeration label; a JSON number, bool or array of numbers is accepted too. Pass null (or omit value) to clear the local value so the property falls back to its inherited or default value. Rejected values (wrong type, enumeration label not in the table, failed validate) return an error and change nothing. The write is queued on the operation stack and applied on the next frame. An object property (a material texture slot, a primitive's material) takes value as the referenced item's name (resolved in the item's scene; empty or null clears) or reference_id as its session item id (disambiguates same-named items); the referenced item must belong to the item's scene or be a cross-scene referenceable asset. Pass sub_object to address one of the item's property sub-objects (a mesh primitive index from get_item_properties sub_objects).",
     "inputSchema": {
       "properties": {

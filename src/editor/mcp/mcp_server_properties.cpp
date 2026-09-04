@@ -1,4 +1,5 @@
-// Mcp_server item property tools (get_item_properties, set_item_property):
+// Mcp_server item property tools (get_item_properties, set_item_property,
+// get_addable_item_properties):
 // the generic erhe::property view of any item (doc/property-system.md
 // D13). Values travel as strings through erhe_property/property_string.hpp,
 // so enumerations travel as their labels.
@@ -94,14 +95,13 @@ auto value_json(const erhe::property::Dependency_property& property, const erhe:
     return json(erhe::property::to_string(property, value));
 }
 
-// The registered properties of `object` (an item or one of its sub-objects,
-// D29) as get_item_properties lists them.
-auto properties_json(const erhe::property::Dependency_object& object) -> json
+// One property of `object` as get_item_properties and
+// get_addable_item_properties list it.
+auto property_json(const erhe::property::Dependency_object& object, const erhe::property::Dependency_property& property) -> json
 {
-    json properties = json::array();
     const erhe::property::Owner_type         owner_type = object.get_property_owner_type();
     const erhe::property::Property_registry& registry   = erhe::property::Property_registry::get();
-    const auto add = [&](const erhe::property::Dependency_property& property) {
+    {
         const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
         const std::optional<erhe::property::Property_value> local      = object.read_local_value(property);
         const std::optional<std::string_view>               expression = object.get_expression(property);
@@ -137,7 +137,25 @@ auto properties_json(const erhe::property::Dependency_object& object) -> json
             }
             entry["enum_labels"] = labels;
         }
-        properties.push_back(entry);
+        if (!metadata.ui.label.empty()) {
+            entry["label"] = std::string{metadata.ui.label};
+        }
+        if (!metadata.ui.group.empty()) {
+            entry["group"] = std::string{metadata.ui.group};
+        }
+        return entry;
+    }
+}
+
+// The registered properties of `object` (an item or one of its sub-objects,
+// D29) as get_item_properties lists them.
+auto properties_json(const erhe::property::Dependency_object& object) -> json
+{
+    json properties = json::array();
+    const erhe::property::Owner_type         owner_type = object.get_property_owner_type();
+    const erhe::property::Property_registry& registry   = erhe::property::Property_registry::get();
+    const auto add = [&](const erhe::property::Dependency_property& property) {
+        properties.push_back(property_json(object, property));
     };
     registry.for_each_property_of_object(owner_type, add);
     // Attached properties: the D12 listing rule.
@@ -197,6 +215,36 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
     result["properties"]  = properties;
     result["sub_objects"] = sub_objects;
     result["attached"]    = attached;
+    return make_json_content(result).dump();
+}
+
+// The attached properties "Add Property" offers for the item
+// (doc/property-add-ui-plan.md R6): every attached registration the D12
+// rule does not list for it. `value` is the effective value the add would
+// make local.
+auto Mcp_server::query_addable_item_properties(const json& args) -> std::string
+{
+    std::string error;
+    const std::shared_ptr<erhe::Item_base> item = resolve_item(m_context, args, error);
+    if (!item) {
+        return make_error_content(error);
+    }
+    const Developer_mode developer_mode = args.value("include_developer_only", false) ? Developer_mode::shown : Developer_mode::hidden;
+    std::vector<const erhe::property::Dependency_property*> candidates;
+    collect_addable_attached_properties(*item, developer_mode, candidates);
+
+    json result;
+    result["item"] = {
+        {"id",     item->get_id()},
+        {"name",   item->get_name()},
+        {"type",   std::string{item->get_type_name()}},
+        {"sealed", item->is_sealed()}
+    };
+    json properties = json::array();
+    for (const erhe::property::Dependency_property* property : candidates) {
+        properties.push_back(property_json(*item, *property));
+    }
+    result["properties"] = properties;
     return make_json_content(result).dump();
 }
 
