@@ -445,6 +445,16 @@ public:
     // graph asset to its nodes).
     virtual void set_item_host(Item_host* item_host);
 
+    // Inheritance container (doc/content-library-folders.md D1): the object
+    // an item with no structural parent inherits property values from - the
+    // content-library node wrapping it. Maintained by the container; null
+    // outside one; not copied by copy / clone. Classes whose parent comes
+    // from scene structure (Hierarchy, Node_attachment) override
+    // get_inheritance_parent() themselves and never read it.
+    void set_inheritance_container(erhe::property::Dependency_object* container);
+    [[nodiscard]] auto get_inheritance_container() const -> erhe::property::Dependency_object*;
+    [[nodiscard]] auto get_inheritance_parent   () const -> const erhe::property::Dependency_object* override;
+
     virtual void handle_flag_bits_update(const uint64_t old_flag_bits, const uint64_t new_flag_bits) {
         static_cast<void>(old_flag_bits);
         static_cast<void>(new_flag_bits);
@@ -504,6 +514,7 @@ private:
 protected:
     // Not copied: a copy / clone starts outside any owning container.
     Item_host*                             m_item_host  {nullptr};
+    erhe::property::Dependency_object*     m_inheritance_container{nullptr};
     Unique_id<Item_base>                   m_id         {};
     uint64_t                               m_flag_bits  {Item_flags::visible}; // derived bits start at the property defaults
     std::string                            m_name       {};

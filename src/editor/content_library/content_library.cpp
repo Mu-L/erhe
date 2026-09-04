@@ -34,7 +34,15 @@ Content_library_node& Content_library_node::operator=(const Content_library_node
     return *this;
 }
 
-Content_library_node::~Content_library_node() noexcept = default;
+Content_library_node::~Content_library_node() noexcept
+{
+    // The wrapped item can outlive its node (a mesh keeps its material, the
+    // clipboard keeps a cut entry): drop the inheritance link before the
+    // node's storage goes away.
+    if (item && (item->get_inheritance_container() == this)) {
+        item->set_inheritance_container(nullptr);
+    }
+}
 
 Content_library_node::Content_library_node(std::string_view folder_name, uint64_t type_code, std::string_view type_name)
     : Item     {folder_name}
@@ -146,13 +154,29 @@ void Content_library_node::handle_add_child(const std::shared_ptr<erhe::Hierarch
     Hierarchy::handle_add_child(child_node, position);
     m_cache.clear();
 
+    const std::shared_ptr<Content_library_node> child = std::dynamic_pointer_cast<Content_library_node>(child_node);
+
+    // D1: an owning entry's item inherits from the entry node. Set here,
+    // between Hierarchy::set_parent's snapshot capture and apply, so the
+    // item is notified of the values it now inherits. A reference entry
+    // lists an item owned by another scene, which this library's folders
+    // must not affect.
+    if (child && child->item && !child->is_reference) {
+        child->item->set_inheritance_container(child.get());
+    }
+
     Content_library* const library = get_library();
     erhe::Item_host* const owner   = (library != nullptr) ? library->get_owner() : nullptr;
-    if (owner != nullptr) {
-        const std::shared_ptr<Content_library_node> child = std::dynamic_pointer_cast<Content_library_node>(child_node);
-        if (child) {
-            claim_host_for_subtree(*child.get(), owner, library->get_asset_manager());
-        }
+    if ((owner != nullptr) && child) {
+        claim_host_for_subtree(*child.get(), owner, library->get_asset_manager());
+    }
+}
+
+void Content_library_node::for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback)
+{
+    Hierarchy::for_each_inheritance_child(callback);
+    if (item && (item->get_inheritance_container() == this)) {
+        callback(*item);
     }
 }
 

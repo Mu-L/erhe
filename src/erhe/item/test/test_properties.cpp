@@ -171,3 +171,88 @@ TEST(Item_properties, clone_keeps_local_values_only)
     clone->set_parent(root);
     EXPECT_EQ(clone->get_value(widget_tint), 0.5f);
 }
+
+namespace {
+
+// A non-hierarchy item whose inheritance parent is the container that
+// wraps it (Item_base::set_inheritance_container), the way an editor
+// content-library node wraps a material.
+class Leaf : public erhe::Item<erhe::Item_base, erhe::Item_base, Leaf>
+{
+public:
+    explicit Leaf(const std::string_view name) : Item{name} {}
+    explicit Leaf(const Leaf& other) = default;
+    static constexpr std::string_view static_type_name{"Leaf"};
+    [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return uint64_t{1} << 57; }
+
+    std::vector<std::string> changed_names;
+
+protected:
+    void on_property_changed(const Property_changed_args& args) override
+    {
+        changed_names.emplace_back(args.property.get_name());
+    }
+};
+
+class Wrapper : public erhe::Item<erhe::Item_base, erhe::Hierarchy, Wrapper>
+{
+public:
+    explicit Wrapper(const std::string_view name) : Item{name} {}
+    explicit Wrapper(const Wrapper& other) = default;
+    static constexpr std::string_view static_type_name{"Wrapper"};
+    [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return uint64_t{1} << 58; }
+
+    std::shared_ptr<Leaf> item;
+
+    void handle_add_child(const std::shared_ptr<erhe::Hierarchy>& child_node, const std::size_t position) override
+    {
+        Hierarchy::handle_add_child(child_node, position);
+        Wrapper* const child = dynamic_cast<Wrapper*>(child_node.get());
+        if ((child != nullptr) && child->item) {
+            child->item->set_inheritance_container(child);
+        }
+    }
+
+    void for_each_inheritance_child(const std::function<void(Dependency_object&)>& callback) override
+    {
+        Hierarchy::for_each_inheritance_child(callback);
+        if (item) {
+            callback(*item);
+        }
+    }
+};
+
+} // anonymous namespace
+
+TEST(Item_properties, container_link_inherits_and_notifies)
+{
+    auto folder = std::make_shared<Wrapper>("folder");
+    auto entry  = std::make_shared<Wrapper>("entry");
+    auto leaf   = std::make_shared<Leaf>("leaf");
+    entry->item = leaf;
+
+    // Outside a container the leaf has no inheritance parent.
+    EXPECT_EQ(leaf->get_inheritance_parent(), nullptr);
+    EXPECT_EQ(leaf->get_inheritance_container(), nullptr);
+
+    // Attaching under a folder that already holds a local value notifies
+    // the leaf of the value it now inherits (the set_parent snapshot).
+    folder->set_value(erhe::Item_base::visible_property, false);
+    entry->set_parent(folder);
+    EXPECT_EQ(leaf->get_inheritance_parent(), entry.get());
+    EXPECT_FALSE(leaf->get_value(erhe::Item_base::visible_property));
+    EXPECT_EQ(leaf->get_value_source(erhe::Item_base::visible_property.get()), Value_source::inherited);
+    EXPECT_FALSE(leaf->is_visible());
+    ASSERT_EQ(leaf->changed_names.size(), std::size_t{1});
+    EXPECT_EQ(leaf->changed_names[0], "visible");
+
+    // A folder set / clear reaches the leaf through the entry node.
+    folder->clear_value(erhe::Item_base::visible_property);
+    EXPECT_TRUE(leaf->get_value(erhe::Item_base::visible_property));
+    EXPECT_EQ(leaf->changed_names.size(), std::size_t{2});
+
+    // The clone of the leaf starts outside any container.
+    auto clone = std::dynamic_pointer_cast<Leaf>(leaf->clone());
+    ASSERT_TRUE(clone);
+    EXPECT_EQ(clone->get_inheritance_container(), nullptr);
+}

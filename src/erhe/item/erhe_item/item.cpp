@@ -416,6 +416,21 @@ auto Item_base::get_id() const -> std::size_t
     return m_id.get_id();
 }
 
+void Item_base::set_inheritance_container(erhe::property::Dependency_object* const container)
+{
+    m_inheritance_container = container;
+}
+
+auto Item_base::get_inheritance_container() const -> erhe::property::Dependency_object*
+{
+    return m_inheritance_container;
+}
+
+auto Item_base::get_inheritance_parent() const -> const erhe::property::Dependency_object*
+{
+    return m_inheritance_container;
+}
+
 void Item_base::set_item_host(Item_host* const item_host)
 {
     m_item_host = item_host;

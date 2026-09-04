@@ -60,6 +60,11 @@ public:
     void handle_add_child   (const std::shared_ptr<erhe::Hierarchy>& child_node, std::size_t position) override;
     void handle_remove_child(erhe::Hierarchy* child_node) override;
 
+    // Overrides Dependency_object (doc/content-library-folders.md D1): the
+    // hierarchy children, then the owning entry's wrapped item, so a folder's
+    // inheritable values reach the items and a move notifies them.
+    void for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback) override;
+
     // Walks up the node hierarchy to the root, which carries the back-pointer
     // to the owning Content_library. Null for nodes not (yet) in a library.
     [[nodiscard]] auto get_library() const -> Content_library*;
