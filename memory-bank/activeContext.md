@@ -40,12 +40,11 @@
 
 [STATE]
 @branch::main{#28-commits-unpushed;user-pushes-themselves}
-prompt_queue.txt::items-0-4-unchanged{folders-task-was-a-direct-request}
+prompt_queue.txt::item-0=property-migrations{doc/property-migration-handoff.md};items-1-4-unchanged
 
 [OPEN]
-?user-interactive-check{folders+category-props+texture-slots+styles+node-attachment-values+camera}→expect-fixes;then-migrations{Light-derived-rows}
+?user-interactive-check{folders+category-props+texture-slots+styles+node-attachment-values+camera+physics-materials}→expect-fixes;then-migrations{Node_physics-first}
 ?material-reload-limitation-still-open::ERHE_material-bakes-effective→local{lights-fixed-via-ERHE_light.properties-rule;same-rule-for-materials=candidate}
-?inherits-registration-check::third-form-added{secondary-owner-type}→still-unimplemented
 ?startup-log-error::"property 'lightmapped': object is sealed"{pre-existing,at-startup,unrelated}
 ?inherits-registration-check{doc/property-system.md-section-6}
 ?Light-derived-rows→Rendertarget_mesh→Animation{doc/property-inventory.md}
