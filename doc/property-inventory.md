@@ -29,7 +29,9 @@ record's "Document roles" paragraph states the split.
 - **computed** - read-only, `register_computed` (D26).
 - **attached** - `register_attached` (D3): registered by one type, set on
   objects of another, listed by the D12 rule under its qualified
-  `<owner>.<name>`. Layout's per-child hints (section 4.14).
+  `<owner>.<name>`; any item can take one through the Properties
+  window's Add Property picker and drop it again with Remove Property
+  (D12). Layout's per-child hints (section 4.14).
 
 The Properties window tints a row's label by its value source (D12):
 member and bridge rows are blue, entry rows green / gray / cyan / orange /

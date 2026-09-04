@@ -345,9 +345,35 @@ table, see D2a), and references to other objects (D28).
   property is listed on an object when the registering type's
   `visible_when` holds for it, or when the object holds a local value for
   it (a stale hint stays visible and resettable); with several items
-  selected, for every one of them. Its row label is `Property_ui::label`
+  selected, for every one of them. The rule is
+  `is_attached_property_listed` in
+  `src/editor/windows/attached_property_listing.{hpp,cpp}`, shared with
+  D13. Its row label is `Property_ui::label`
   or the qualified name (D3), under its group like any other row.
-- D13 MCP. Two tools in `src/editor/mcp/`: `get_item_properties(item)` lists
+
+  Add Property. Every item section (not a sub-object's, D29) ends with an
+  "Add Property" row whose button opens a popup with a text filter
+  (focused on open) over the candidates: the attached registrations the
+  listing rule does not list for the item
+  (`collect_addable_attached_properties`; `developer_only` ones in
+  developer mode only; with several items selected, the union over
+  them), grouped by the registering owner type's name and matched
+  case-insensitively against the qualified name and the label. Choosing
+  one queues a `Property_set_operation` (D11) per item without a local
+  value whose `after` is the item's current effective value, so the add
+  changes nothing but the layer and the row appears; undo removes the row
+  again. The button is disabled on a sealed item (D24) and when nothing is
+  addable.
+
+  Remove Property. An attached row's context menu offers "Remove
+  Property" next to "Reset to default", enabled when a selected item holds
+  a local value and the item is writable; a row listed only because of
+  its local value (`visible_when` does not hold) also shows an "x" button
+  after its widget, since removing it makes the row disappear. Both are
+  the "Reset to default" clear, so undo brings the row back. A
+  class-chain row keeps "Reset to default" as its only clear, because
+  clearing it never removes the row.
+- D13 MCP. Three tools in `src/editor/mcp/`: `get_item_properties(item)` lists
   (name, type, effective value, source, local value) and
   `set_item_property(item, name, value)` writes through
   `Property_set_operation`. Values travel as strings through D16, so
@@ -357,7 +383,11 @@ table, see D2a), and references to other objects (D28).
   `reference_id`. The listing has `sub_objects` and the write takes
   `sub_object` (D29). An attached property (R7) is listed by
   its qualified name (D3) with `attached` true, under the D12 listing
-  rule, and is written by that name. A `scene.set_property` command
+  rule, and is written by that name. `get_addable_item_properties(item)`
+  lists the D12 Add Property candidates with the same per-property
+  fields (`include_developer_only` adds the `developer_only` ones); an
+  add is `set_item_property` with the qualified name, a remove is
+  `set_item_property` with a `null` value. A `scene.set_property` command
   (`config/editor/commands.json`, `doc/command_script.md`) with args
   `item`, `property`, `value` (and `sub_object`) uses the same conversion,
   so startup scripts can author properties.
@@ -1491,6 +1521,10 @@ style layer is D25.
   operations at all; migrating it starts with adopting the
   `Graph_editor_node` base (or retiring the prototype), not with
   registrations.
+- A registration-time check that an `inherits` property is either
+  attached or registered on the root owner type, the rule that keeps its
+  inheritance walk reachable from the Add Property picker (D12); wanted
+  when the first inheritable attached property is registered.
 - Editor per-item state as attached properties registered by the editor:
   item tree expansion, sheet-window formulas. The naming, lookup and
   listing side exists (D3, D12, section 4.14); each needs its own

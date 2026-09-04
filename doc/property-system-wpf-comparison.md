@@ -58,7 +58,7 @@ counterpart).
 |---|---|---|---|
 | `DependencyProperty.Register(name, type, ownerType, metadata, validate)` | `Property<T>::register_property(name, owner_type, metadata)` (+ validate overloads) | ported | Static-member registration in both. erhe also registers from a single-threaded startup window (`register_texture_graph_properties`). |
 | `RegisterReadOnly` -> `DependencyPropertyKey` | `Property_key<T>::register_read_only` | ported | Same key-as-write-permission model. Nothing in erhe registers one yet; read-only candidates became computed properties (D26). |
-| `RegisterAttached`, `RegisterAttachedReadOnly` | `Property<T>::register_attached` | adapted | Library side exists; no user yet, and `for_each_property_of_type` skips attached properties, so rows and MCP cannot list them. `AttachedPropertyBrowsable*` attributes omitted. |
+| `RegisterAttached`, `RegisterAttachedReadOnly` | `Property<T>::register_attached` | adapted | Qualified `<Owner>.<name>` lookup, D12 listing rule (`visible_when` or a local value), the Properties window's Add Property picker and Remove Property, MCP listing by qualified name (D3, D12, D13); first user the layout hints (section 4.14). `AttachedPropertyBrowsable*` attributes omitted: the registering type's `visible_when` plays that role. |
 | `AddOwner(ownerType, metadata)` | `Dependency_property::add_owner(owner_type, metadata)` | ported | erhe registers the (owner, name) alias in the registry like WPF. |
 | `OverrideMetadata(forType, metadata[, key])` | `override_metadata(owner_type, metadata)` | adapted | WPF `Merge`: unset default falls back to base, `PropertyChangedCallback` delegates are *chained* (base first), coerce replaced. erhe: unset default falls back to base, everything else *replaces*; no callback chaining. WPF seals metadata once used (`TypeMetadataCannotChangeAfterUse`); erhe relies on the startup write window. |
 | Unique (name, owner) enforced (`PropertyAlreadyRegistered`) | `ERHE_FATAL` on duplicate (owner type, name) | ported | |
@@ -360,7 +360,7 @@ choice recorded in `doc/property-system.md`; the D-numbers point there.
 | Omitted (section 5) | Not yet (section 6) |
 |---|---|
 | Templates, triggers, theme and implicit styles, resources | Animated value layer (`IsAnimated`, `GetAnimationBaseValue`) |
-| Two-way / one-way-to-source bindings, `UpdateSourceTrigger`, validation rules, converters | Attached-property enumeration and UI (first user: layout hints) |
+| Two-way / one-way-to-source bindings, `UpdateSourceTrigger`, validation rules, converters | |
 | Dispatcher thread affinity | Serialized expressions and styles (`ERHE_*_properties` extension) |
 | `UncommonField`, `DeferredReference`, `DefaultValueFactory` | Animation channels on arbitrary properties |
 | `AttachedPropertyBrowsable*` attributes, `TypeDescriptor` integration | Metadata callback chaining, if a derived-type override ever needs it |

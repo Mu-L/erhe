@@ -33,7 +33,7 @@ class Property_editor;
 // effective value local so the row appears. An attached row offers
 // "Remove Property" in its context menu, and an "x" after its widget when
 // the local value is the only reason it is listed; both clear the local
-// value (doc/property-add-ui-plan.md).
+// value (doc/property-system.md D12).
 class Dependency_property_rows
 {
 public:
@@ -80,7 +80,7 @@ private:
     void reset_to_default  (const erhe::property::Dependency_property& property);
     void edit_as_expression(const erhe::property::Dependency_property& property);
     void remove_expression (const erhe::property::Dependency_property& property);
-    // The "Add Property" row and its picker (doc/property-add-ui-plan.md):
+    // The "Add Property" row and its picker (doc/property-system.md D12):
     // the candidates are collect_addable_attached_properties over the
     // items, the add is one Property_set_operation per item without a
     // local value, writing its current effective value.

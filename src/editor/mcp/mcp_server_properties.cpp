@@ -219,7 +219,7 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
 }
 
 // The attached properties "Add Property" offers for the item
-// (doc/property-add-ui-plan.md R6): every attached registration the D12
+// (doc/property-system.md D13): every attached registration the D12
 // rule does not list for it. `value` is the effective value the add would
 // make local.
 auto Mcp_server::query_addable_item_properties(const json& args) -> std::string
