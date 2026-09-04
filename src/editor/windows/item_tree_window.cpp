@@ -637,7 +637,7 @@ auto Item_tree::drag_and_drop_target(const std::shared_ptr<erhe::Item_base>& ite
             (payload_node != nullptr) &&
             (payload_parent_node != nullptr) &&
             (payload_parent_node->type_code != erhe::Item_type::content_library_node) && // not a category folder
-            (payload_node->type_code == target_cl_node->type_code) &&
+            (payload_parent_node->type_code == target_cl_node->type_code) && // a leaf entry carries no type_code; its category is its parent's
             (payload_node != target_cl_node.get()) &&
             (payload_parent_node != target_cl_node.get()) &&
             !target_cl_node->is_ancestor(payload_node) &&
