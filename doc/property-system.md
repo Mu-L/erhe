@@ -1584,7 +1584,10 @@ style layer is D25.
   playback of generalized animation channels (below) both wait on it.
 - Property serialization to glTF: expression text of driven properties
   (D22), material local values (today materials export field by field and
-  a round trip bakes effective values into local ones), and one carrier
+  a round trip bakes effective values into local ones; `ERHE_light` and
+  `ERHE_camera` already avoid this by treating their `properties` map as
+  the item's complete local set, the rule `ERHE_material` should adopt),
+  and one carrier
   per item type in place of the `properties` / `mesh_properties` members
   scattered across `ERHE_node`, `ERHE_light` and `ERHE_camera` (D14,
   D23); the object properties of D28 keep riding their native carriers
@@ -1603,17 +1606,21 @@ style layer is D25.
   `doc/property-inventory.md` owns the per-field status: every registered
   property with its storage kind, and the hand-written Properties rows
   left to migrate in priority order.
+- Entry storage for the member-backed registrations (D18) whose values a
+  node or a style should hold and a descendant inherit (D30): a bridged
+  property is always local, so it is neither offered on a holder nor
+  inherited. In the order the holding is wanted: `Node_physics` (a
+  physics style or a folder value for friction, damping, motion mode),
+  `Layout`, `Grid`, `Brush_placement`, then the graph node parameters.
+  The Light and Camera migrations (sections 4.3, 4.4) are the recipe:
+  keep the engineered struct as a mirror refreshed from
+  `on_property_changed`, route the writers through setters. `Node`'s
+  transform stays bridged for the reasons D18 gives.
 - Shader graph (`src/editor/graph/`) node parameters as properties. The
   oldest graph editor has no parameter serialization and no undo
   operations at all; migrating it starts with adopting the
   `Graph_editor_node` base (or retiring the prototype), not with
   registrations.
-- A registration-time check that an `inherits` property is attached,
-  registered on the root owner type, or registered on a type some object
-  names as its secondary owner type (D30), the rule that keeps its
-  inheritance walk reachable from the Add Property picker (D12); the
-  `Material` registrations of section 4.1 satisfy the third form through
-  the content-library folder.
 - Editor per-item state as attached properties registered by the editor:
   item tree expansion, sheet-window formulas. The naming, lookup and
   listing side exists (D3, D12, section 4.14); each needs its own
