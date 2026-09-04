@@ -106,7 +106,7 @@ auto property_json(const erhe::property::Dependency_object& object, const erhe::
         const std::optional<erhe::property::Property_value> local      = object.read_local_value(property);
         const std::optional<std::string_view>               expression = object.get_expression(property);
         json entry = {
-            {"name",       registry.qualified_name(property)}, // an attached property by its qualified name (D3)
+            {"name",       registry.qualified_name(object, property)}, // an attached or secondary property by its qualified name (D3, D30)
             {"attached",   property.is_attached()},
             {"type",       erhe::property::c_str(property.get_type())},
             {"value",      value_json(property, object.get_value(property))},
@@ -160,7 +160,13 @@ auto properties_json(const erhe::property::Dependency_object& object) -> json
     registry.for_each_property_of_object(owner_type, add);
     // Attached properties: the D12 listing rule.
     registry.for_each_attached_property([&](const erhe::property::Dependency_property& property) {
-        if (is_attached_property_listed(object, property)) {
+        if (is_extra_property_listed(object, property)) {
+            add(property);
+        }
+    });
+    // Secondary properties (D30): the same rule.
+    registry.for_each_secondary_property(object, [&](const erhe::property::Dependency_property& property) {
+        if (is_extra_property_listed(object, property)) {
             add(property);
         }
     });
@@ -231,7 +237,7 @@ auto Mcp_server::query_addable_item_properties(const json& args) -> std::string
     }
     const Developer_mode developer_mode = args.value("include_developer_only", false) ? Developer_mode::shown : Developer_mode::hidden;
     std::vector<const erhe::property::Dependency_property*> candidates;
-    collect_addable_attached_properties(*item, developer_mode, candidates);
+    collect_addable_properties(*item, developer_mode, candidates);
 
     json result;
     result["item"] = {
@@ -276,7 +282,7 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
             return make_error_content("Item '" + item->get_name() + "' has no sub-object " + std::to_string(sub_object.value()) + " (it has " + std::to_string(item->get_property_sub_object_count()) + ")");
         }
     }
-    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(target->get_property_owner_type(), property_name);
+    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(*target, property_name);
     if (property == nullptr) {
         return make_error_content("Item '" + item->get_name() + "' (" + std::string{item->get_type_name()} + ")" + (sub_object.has_value() ? " sub-object " + std::to_string(sub_object.value()) : std::string{}) + " has no property '" + property_name + "'");
     }

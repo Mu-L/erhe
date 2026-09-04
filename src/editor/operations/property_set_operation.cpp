@@ -171,7 +171,7 @@ Property_set_operation::Property_set_operation(
             item->get_type_name(),
             item->get_name(),
             sub_object.has_value() ? fmt::format(" [{}]", item->get_property_sub_object_label(sub_object.value())) : std::string{},
-            erhe::property::Property_registry::get().qualified_name(property), // an attached property by its qualified name (D3)
+            erhe::property::Property_registry::get().qualified_name(*item, property), // an attached or secondary property by its qualified name (D3, D30)
             describe_local_state(property, m_after)
         )
     );

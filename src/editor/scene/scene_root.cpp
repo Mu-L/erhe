@@ -823,7 +823,7 @@ auto Scene_root::make_browser_window(
                 if (ImGui::MenuItem("Create Folder")) {
                     deferred_operations.push_back(
                         [context_ptr, content_node]() {
-                            auto new_folder = std::make_shared<Content_library_node>("New Folder", content_node->type_code, content_node->type_name);
+                            auto new_folder = std::make_shared<Content_library_node>("New Folder", content_node->type_code, content_node->type_name, content_node->category_owner_type);
                             auto op = std::make_shared<Item_insert_remove_operation>(
                                 Item_insert_remove_operation::Parameters{
                                     .context = *context_ptr,

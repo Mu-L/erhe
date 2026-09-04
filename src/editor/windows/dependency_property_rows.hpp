@@ -81,7 +81,7 @@ private:
     void edit_as_expression(const erhe::property::Dependency_property& property);
     void remove_expression (const erhe::property::Dependency_property& property);
     // The "Add Property" row and its picker (doc/property-system.md D12):
-    // the candidates are collect_addable_attached_properties over the
+    // the candidates are collect_addable_properties over the
     // items, the add is one Property_set_operation per item without a
     // local value, writing its current effective value.
     void add_property_row       (Property_editor& editor);

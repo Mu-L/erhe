@@ -3,17 +3,25 @@
 #include "assets/asset_manager.hpp"
 #include "assets/asset_reference.hpp"
 #include "brushes/brush.hpp"
+#include "geometry_graph/graph_mesh.hpp"
 #include "texture_graph/graph_texture.hpp"
 
 #include "erhe_graphics/texture.hpp"
+#include "erhe_physics/collision_filter.hpp"
+#include "erhe_physics/physics_joint_settings.hpp"
+#include "erhe_physics/physics_material.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_scene/animation.hpp"
+#include "erhe_scene/skin.hpp"
 
 namespace editor {
 
 Content_library_node::Content_library_node(const Content_library_node& other)
-    : Item     {other}
-    , type_code{other.type_code}
-    , type_name{other.type_name}
-    , item     {other.item ? other.item->clone() : std::shared_ptr<erhe::Item_base>{}}
+    : Item               {other}
+    , type_code          {other.type_code}
+    , type_name          {other.type_name}
+    , category_owner_type{other.category_owner_type}
+    , item               {other.item ? other.item->clone() : std::shared_ptr<erhe::Item_base>{}}
 {
 }
 
@@ -27,9 +35,10 @@ Content_library_node& Content_library_node::operator=(const Content_library_node
         return *this;
     }
     Item::operator=(other);
-    type_code = other.type_code;
-    type_name = other.type_name;
-    item      = other.item ? other.item->clone() : std::shared_ptr<erhe::Item_base>{};
+    type_code           = other.type_code;
+    type_name           = other.type_name;
+    category_owner_type = other.category_owner_type;
+    item                = other.item ? other.item->clone() : std::shared_ptr<erhe::Item_base>{};
     asset_usership.reset();
     return *this;
 }
@@ -44,10 +53,16 @@ Content_library_node::~Content_library_node() noexcept
     }
 }
 
-Content_library_node::Content_library_node(std::string_view folder_name, uint64_t type_code, std::string_view type_name)
-    : Item     {folder_name}
-    , type_code{type_code}
-    , type_name{type_name}
+Content_library_node::Content_library_node(
+    const std::string_view                          folder_name,
+    const uint64_t                                  type_code,
+    const std::string_view                          type_name,
+    const std::optional<erhe::property::Owner_type> category_owner_type
+)
+    : Item               {folder_name}
+    , type_code          {type_code}
+    , type_name          {type_name}
+    , category_owner_type{category_owner_type}
 {
     // Folders default closed in the tree (recursively - type folders and
     // their subfolders alike); only the library root opens by default, see
@@ -180,6 +195,11 @@ void Content_library_node::for_each_inheritance_child(const std::function<void(e
     }
 }
 
+auto Content_library_node::get_secondary_property_owner_type() const -> std::optional<erhe::property::Owner_type>
+{
+    return item ? std::nullopt : category_owner_type;
+}
+
 void Content_library_node::handle_remove_child(erhe::Hierarchy* child_node)
 {
     Hierarchy::handle_remove_child(child_node);
@@ -237,7 +257,7 @@ auto Content_library_node::has_item(const erhe::Item_base& queried_item) const -
 
 auto Content_library_node::make_folder(const std::string_view folder_name) -> std::shared_ptr<Content_library_node>
 {
-    auto new_folder_node = std::make_shared<Content_library_node>(folder_name, type_code, type_name);
+    auto new_folder_node = std::make_shared<Content_library_node>(folder_name, type_code, type_name, category_owner_type);
     new_folder_node->set_parent(this);
     return new_folder_node;
 }
@@ -250,16 +270,19 @@ Content_library::Content_library()
     // themselves default closed (see the folder constructor).
     root->enable_flag_bits(erhe::Item_flags::expand);
 
-    brushes           = std::make_shared<Content_library_node>("Brushes",           erhe::Item_type::brush,                  "Brush"                 );
-    animations        = std::make_shared<Content_library_node>("Animations",        erhe::Item_type::animation,              "Animation"             );
-    skins             = std::make_shared<Content_library_node>("Skins",             erhe::Item_type::skin,                   "Skin"                  );
-    materials         = std::make_shared<Content_library_node>("Materials",         erhe::Item_type::material,               "Material"              );
-    textures          = std::make_shared<Content_library_node>("Textures",          erhe::Item_type::texture,                "Texture"               );
-    graph_textures    = std::make_shared<Content_library_node>("Graph Textures",    erhe::Item_type::graph_texture,          "Graph_texture"         );
-    graph_meshes      = std::make_shared<Content_library_node>("Graph Meshes",      erhe::Item_type::graph_mesh,             "Graph_mesh"            );
-    physics_materials = std::make_shared<Content_library_node>("Physics Materials", erhe::Item_type::physics_material,       "Physics_material"      );
-    collision_filters = std::make_shared<Content_library_node>("Collision Filters", erhe::Item_type::collision_filter,       "Collision_filter"      );
-    physics_joints    = std::make_shared<Content_library_node>("Physics Joints",    erhe::Item_type::physics_joint_settings, "Physics_joint_settings");
+    // Each category folder names its item class as the category owner
+    // type, so folders below it hold that class's properties for their
+    // entries to inherit (doc/content-library-folders.md D8).
+    brushes           = std::make_shared<Content_library_node>("Brushes",           erhe::Item_type::brush,                  "Brush",                  Brush::property_owner_type());
+    animations        = std::make_shared<Content_library_node>("Animations",        erhe::Item_type::animation,              "Animation",              erhe::scene::Animation::property_owner_type());
+    skins             = std::make_shared<Content_library_node>("Skins",             erhe::Item_type::skin,                   "Skin",                   erhe::scene::Skin::property_owner_type());
+    materials         = std::make_shared<Content_library_node>("Materials",         erhe::Item_type::material,               "Material",               erhe::primitive::Material::property_owner_type());
+    textures          = std::make_shared<Content_library_node>("Textures",          erhe::Item_type::texture,                "Texture",                erhe::graphics::Texture::property_owner_type());
+    graph_textures    = std::make_shared<Content_library_node>("Graph Textures",    erhe::Item_type::graph_texture,          "Graph_texture",          Graph_texture::property_owner_type());
+    graph_meshes      = std::make_shared<Content_library_node>("Graph Meshes",      erhe::Item_type::graph_mesh,             "Graph_mesh",             Graph_mesh::property_owner_type());
+    physics_materials = std::make_shared<Content_library_node>("Physics Materials", erhe::Item_type::physics_material,       "Physics_material",       erhe::physics::Physics_material::property_owner_type());
+    collision_filters = std::make_shared<Content_library_node>("Collision Filters", erhe::Item_type::collision_filter,       "Collision_filter",       erhe::physics::Collision_filter::property_owner_type());
+    physics_joints    = std::make_shared<Content_library_node>("Physics Joints",    erhe::Item_type::physics_joint_settings, "Physics_joint_settings", erhe::physics::Physics_joint_settings::property_owner_type());
 
     brushes          ->set_parent(root.get());
     animations       ->set_parent(root.get());

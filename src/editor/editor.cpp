@@ -3525,7 +3525,7 @@ public:
                 return;
             }
         }
-        const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(target->get_property_owner_type(), property_sv);
+        const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(*target, property_sv);
         if (property == nullptr) {
             log_startup->warn("commands.json: scene.set_property: {} '{}' has no property '{}'", item->get_type_name(), item->get_name(), property_sv);
             return;

@@ -438,7 +438,7 @@ auto Mcp_server::action_create_library_folder(const json& args) -> std::string
         return make_error_content("A folder cannot be created directly under the library root: " + folder_path);
     }
 
-    auto new_folder = std::make_shared<Content_library_node>(missing, parent->type_code, parent->type_name);
+    auto new_folder = std::make_shared<Content_library_node>(missing, parent->type_code, parent->type_name, parent->category_owner_type);
     m_context.operation_stack->queue(
         std::make_shared<Item_insert_remove_operation>(
             Item_insert_remove_operation::Parameters{
@@ -520,7 +520,7 @@ auto Mcp_server::action_move_library_item(const json& args) -> std::string
         // Create the destination folder under the moved entry's own parent,
         // so a move never has to invent a type mapping; the insert and the
         // move undo together.
-        folder_node = std::make_shared<Content_library_node>(folder_name, parent_node->type_code, parent_node->type_name);
+        folder_node = std::make_shared<Content_library_node>(folder_name, parent_node->type_code, parent_node->type_name, parent_node->category_owner_type);
         operations.push_back(
             std::make_shared<Item_insert_remove_operation>(
                 Item_insert_remove_operation::Parameters{

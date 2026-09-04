@@ -148,7 +148,7 @@ void Dependency_property_rows::draw_rows(Property_editor& editor)
         }
     );
     // Attached properties (R7): listed when the D12 listing rule
-    // (is_attached_property_listed) holds for every selected item.
+    // (is_extra_property_listed) holds for every selected item.
     // Multi-select needs no owner-chain check: an attached property
     // applies to any object.
     registry.for_each_attached_property(
@@ -157,7 +157,23 @@ void Dependency_property_rows::draw_rows(Property_editor& editor)
                 return;
             }
             for (std::size_t i = 0; i < m_items->size(); ++i) {
-                if (!is_attached_property_listed(*target(i), property)) {
+                if (!is_extra_property_listed(*target(i), property)) {
+                    return;
+                }
+            }
+            properties.push_back(&property);
+        }
+    );
+    // Secondary properties (D30, a content-library folder's category
+    // properties): listed when every selected item holds a local value.
+    registry.for_each_secondary_property(
+        *target(0),
+        [this, &properties, owner_type](const Dependency_property& property) {
+            if (!m_context.developer_mode && property.get_metadata(owner_type).ui.developer_only) {
+                return;
+            }
+            for (std::size_t i = 0; i < m_items->size(); ++i) {
+                if (!is_extra_property_listed(*target(i), property)) {
                     return;
                 }
             }
@@ -205,10 +221,10 @@ void Dependency_property_rows::add_property_row(Property_editor& editor)
             // type so the picker can group them, registry order within.
             const Developer_mode developer_mode = m_context.developer_mode ? Developer_mode::shown : Developer_mode::hidden;
             m_add_candidates.clear();
-            collect_addable_attached_properties(*target(0), developer_mode, m_add_candidates);
+            collect_addable_properties(*target(0), developer_mode, m_add_candidates);
             for (std::size_t i = 1; i < m_items->size(); ++i) {
                 m_add_scratch.clear();
-                collect_addable_attached_properties(*target(i), developer_mode, m_add_scratch);
+                collect_addable_properties(*target(i), developer_mode, m_add_scratch);
                 for (const Dependency_property* candidate : m_add_scratch) {
                     if (std::find(m_add_candidates.begin(), m_add_candidates.end(), candidate) == m_add_candidates.end()) {
                         m_add_candidates.push_back(candidate);
@@ -273,7 +289,7 @@ void Dependency_property_rows::draw_add_property_popup()
             header_pending = true;
         }
         const Property_metadata& metadata = candidate->get_metadata(target(0)->get_property_owner_type());
-        m_text_scratch = registry.qualified_name(*candidate);
+        m_text_scratch = registry.qualified_name(*target(0), *candidate);
         if (!metadata.ui.label.empty()) {
             m_text_scratch += "  (";
             m_text_scratch += metadata.ui.label;
@@ -341,7 +357,7 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     // expression (D22).
     const std::optional<std::string_view> expression = first.get_expression(property);
     const bool             differs_from_default = first.has_local_value(property) && !(first.get_value(property) == metadata.default_value.value());
-    const std::string      qualified            = erhe::property::Property_registry::get().qualified_name(property);
+    const std::string      qualified            = erhe::property::Property_registry::get().qualified_name(first, property);
     const std::string_view label_text           = metadata.ui.label.empty() ? std::string_view{qualified} : metadata.ui.label;
     std::string label = expression.has_value()
         ? std::string{"= "} + std::string{label_text}
@@ -471,8 +487,13 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
 
 auto Dependency_property_rows::inline_remove_offered(const Dependency_property& property, const Property_metadata& metadata) const -> bool
 {
-    if (!property.is_attached() || property.is_read_only()) {
+    if (property.is_read_only()) {
         return false;
+    }
+    if (!property.is_attached()) {
+        // A secondary property (D30) is listed only because of its local
+        // value; its visible_when is never evaluated on this object.
+        return erhe::property::Property_registry::get().is_secondary_property(*target(0), property);
     }
     const Property_ui::Visible_when& visible_when = metadata.ui.visible_when;
     return !(visible_when && visible_when(*target(0)));
@@ -785,7 +806,8 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
     if (ImGui::MenuItem("Reset to default", nullptr, false, any_local && writable)) {
         reset_to_default(property);
     }
-    if (property.is_attached() && ImGui::MenuItem("Remove Property", nullptr, false, any_local && writable)) {
+    const bool removable = property.is_attached() || erhe::property::Property_registry::get().is_secondary_property(*target(0), property);
+    if (removable && ImGui::MenuItem("Remove Property", nullptr, false, any_local && writable)) {
         remove_property(property);
     }
     const bool driven      = target(0)->get_expression(property).has_value();

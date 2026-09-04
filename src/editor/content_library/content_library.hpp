@@ -50,7 +50,10 @@ public:
     ~Content_library_node() noexcept override;
 
     explicit Content_library_node(const std::shared_ptr<erhe::Item_base>& item);
-    Content_library_node(std::string_view folder_name, uint64_t type, std::string_view type_name);
+    // A folder: category_owner_type is the owner type of the category's
+    // item class (doc/content-library-folders.md D8), the secondary owner
+    // type of the folder and of every folder made below it.
+    Content_library_node(std::string_view folder_name, uint64_t type, std::string_view type_name, std::optional<erhe::property::Owner_type> category_owner_type = {});
 
     // Implements Item_base
     static constexpr std::string_view static_type_name{"Content_library_node"};
@@ -64,6 +67,9 @@ public:
     // hierarchy children, then the owning entry's wrapped item, so a folder's
     // inheritable values reach the items and a move notifies them.
     void for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback) override;
+    // A folder holds its category's item properties (D8); an entry node
+    // holds none.
+    [[nodiscard]] auto get_secondary_property_owner_type() const -> std::optional<erhe::property::Owner_type> override;
 
     // Walks up the node hierarchy to the root, which carries the back-pointer
     // to the owning Content_library. Null for nodes not (yet) in a library.
@@ -157,6 +163,7 @@ public:
     }
     uint64_t                                  type_code{};
     std::string                               type_name{};
+    std::optional<erhe::property::Owner_type> category_owner_type{};
     std::shared_ptr<erhe::Item_base>          item;
     // A reference entry lists an item owned elsewhere (e.g. a prefab
     // template's texture / material, shared by every instancing scene
