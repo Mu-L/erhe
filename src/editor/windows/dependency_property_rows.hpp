@@ -101,11 +101,13 @@ private:
 
     App_context& m_context;
 
-    // Items the currently executing code operates on. add_rows() can be
-    // called more than once per frame (the node and each of its
-    // attachments); every row lambda captures its own call's snapshot and
-    // re-binds m_items before touching it, so a later add_rows() call
-    // cannot redirect earlier rows to the wrong item.
+    // Items the currently executing code operates on, bound only while
+    // add_rows() / add_sub_object_rows() build the rows and while a row
+    // lambda runs, and null in between: add_rows() can be called more than
+    // once per frame (the node and each of its attachments), so every row
+    // lambda captures its own call's snapshot and re-binds m_items from it;
+    // and a snapshot kept past the draw would hold the items of a closed
+    // scene alive (the scene-close leak class, AGENTS.md).
     std::shared_ptr<const std::vector<std::shared_ptr<erhe::Item_base>>> m_items;
     std::optional<std::size_t>                                            m_sub_object; // D29: rows address items' sub-object of this index
 

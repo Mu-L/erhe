@@ -83,6 +83,7 @@ void Dependency_property_rows::add_rows(Property_editor& editor, const std::vect
     }
     m_items = std::make_shared<const std::vector<std::shared_ptr<erhe::Item_base>>>(std::move(snapshot));
     m_sub_object.reset();
+    ERHE_DEFER( m_items.reset(); ); // the snapshot lives in the row lambdas, not in this object (scene-close leak class)
     if (m_items->empty()) {
         return;
     }
@@ -96,6 +97,7 @@ void Dependency_property_rows::add_sub_object_rows(Property_editor& editor, cons
     }
     m_items      = std::make_shared<const std::vector<std::shared_ptr<erhe::Item_base>>>(std::vector<std::shared_ptr<erhe::Item_base>>{item});
     m_sub_object = sub_object;
+    ERHE_DEFER( m_items.reset(); );
     draw_rows(editor);
 }
 
@@ -193,8 +195,9 @@ void Dependency_property_rows::add_property_row(Property_editor& editor)
     editor.add_entry(
         "Add Property",
         [this, items = m_items]() {
-            m_items = items; // this row's items; a later add_rows() call has re-pointed m_items
+            m_items = items; // this row's items, bound for this lambda only
             m_sub_object.reset();
+            ERHE_DEFER( m_items.reset(); );
             ImGui::PushID(static_cast<int>(m_items->front()->get_id()));
             ERHE_DEFER( ImGui::PopID(); );
 
@@ -389,8 +392,9 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     editor.add_entry(
         std::move(label),
         [this, items = m_items, sub_object = m_sub_object, &property, &metadata, sealed]() {
-            m_items      = items; // this row's items; a later add_rows() call has re-pointed m_items
+            m_items      = items; // this row's items, bound for this lambda only
             m_sub_object = sub_object;
+            ERHE_DEFER( m_items.reset(); );
             if (target(0) == nullptr) {
                 return; // the sub-object is gone (primitive list rebuilt)
             }
