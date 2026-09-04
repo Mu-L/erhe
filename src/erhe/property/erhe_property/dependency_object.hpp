@@ -83,6 +83,15 @@ public:
     // id.
     [[nodiscard]] virtual auto get_property_owner_type() const -> Owner_type { return root_owner_type; }
 
+    // A second owner type whose properties this object may hold as local
+    // values for its inheritance descendants to read (D30): the editor's
+    // content-library folder names its category's item class, so a
+    // Materials folder holds Material values that the materials below it
+    // inherit. Such a property is addressed on the object by its qualified
+    // name and never bridged (Property_registry::is_secondary_property).
+    // nullopt: none (the default).
+    [[nodiscard]] virtual auto get_secondary_property_owner_type() const -> std::optional<Owner_type> { return std::nullopt; }
+
     // Tree for inherits-flagged properties (Hierarchy overrides both).
     [[nodiscard]] virtual auto get_inheritance_parent() const -> const Dependency_object* { return nullptr; }
     virtual void for_each_inheritance_child(const std::function<void(Dependency_object&)>& callback) { static_cast<void>(callback); }

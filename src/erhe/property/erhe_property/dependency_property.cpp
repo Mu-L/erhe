@@ -1,4 +1,5 @@
 #include "erhe_property/dependency_property.hpp"
+#include "erhe_property/dependency_object.hpp"
 #include "erhe_property/property_log.hpp"
 #include "erhe_verify/verify.hpp"
 
@@ -237,6 +238,53 @@ auto Property_registry::find_for_object(const Owner_type object_type, const std:
     }
 }
 
+auto Property_registry::find_for_object(const Dependency_object& object, const std::string_view name) const -> const Dependency_property*
+{
+    const Dependency_property* property = find_for_object(object.get_property_owner_type(), name);
+    if (property != nullptr) {
+        return property;
+    }
+    const std::size_t dot = name.find('.');
+    if (dot == std::string_view::npos) {
+        return nullptr;
+    }
+    const std::optional<Owner_type> owner = find_owner_type(name.substr(0, dot));
+    if (!owner.has_value()) {
+        return nullptr;
+    }
+    property = find(owner.value(), name.substr(dot + 1));
+    return ((property != nullptr) && is_secondary_property(object, *property)) ? property : nullptr;
+}
+
+auto Property_registry::is_secondary_property(const Dependency_object& object, const Dependency_property& property) const -> bool
+{
+    const std::optional<Owner_type> secondary = object.get_secondary_property_owner_type();
+    if (!secondary.has_value() || property.is_attached()) {
+        return false;
+    }
+    const Owner_type owner = property.get_owner_type();
+    return
+        is_owner_type_or_descendant(secondary.value(), owner) &&
+        !is_owner_type_or_descendant(object.get_property_owner_type(), owner) &&
+        !property.get_metadata(object.get_property_owner_type()).bridge.is_bound();
+}
+
+void Property_registry::for_each_secondary_property(const Dependency_object& object, const std::function<void(const Dependency_property&)>& callback) const
+{
+    const std::optional<Owner_type> secondary = object.get_secondary_property_owner_type();
+    if (!secondary.has_value()) {
+        return;
+    }
+    for_each_property_of_object(
+        secondary.value(),
+        [this, &object, &callback](const Dependency_property& property) {
+            if (is_secondary_property(object, property)) {
+                callback(property);
+            }
+        }
+    );
+}
+
 auto Property_registry::find_owner_type(const std::string_view name) const -> std::optional<Owner_type>
 {
     const std::lock_guard<std::mutex> lock{m_mutex};
@@ -251,6 +299,17 @@ auto Property_registry::find_owner_type(const std::string_view name) const -> st
 auto Property_registry::qualified_name(const Dependency_property& property) const -> std::string
 {
     if (!property.is_attached()) {
+        return std::string{property.get_name()};
+    }
+    std::string result{get_owner_name(property.get_owner_type())};
+    result += '.';
+    result += property.get_name();
+    return result;
+}
+
+auto Property_registry::qualified_name(const Dependency_object& object, const Dependency_property& property) const -> std::string
+{
+    if (!property.is_attached() && !is_secondary_property(object, property)) {
         return std::string{property.get_name()};
     }
     std::string result{get_owner_name(property.get_owner_type())};

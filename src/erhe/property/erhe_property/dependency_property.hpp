@@ -19,6 +19,7 @@
 
 namespace erhe::property {
 
+class Dependency_object;
 class Property_registry;
 
 // One registered property: immutable after registration except for
@@ -115,11 +116,27 @@ public:
     // `<owner>`, for any object; the chain walk never returns an attached
     // property and a qualified name never resolves a non-attached one.
     [[nodiscard]] auto find_for_object(Owner_type object_type, std::string_view name) const -> const Dependency_property*;
+    // The object form: the owner-type walk above, then a qualified name
+    // that names a secondary property of the object (D30).
+    [[nodiscard]] auto find_for_object(const Dependency_object& object, std::string_view name) const -> const Dependency_property*;
+    // True when the object may hold `property` through its secondary owner
+    // type (Dependency_object::get_secondary_property_owner_type, D30): the
+    // property is not attached, is registered on the secondary type or one
+    // of its ancestors, is not on the object's own owner chain, and is not
+    // bridged for the object.
+    [[nodiscard]] auto is_secondary_property(const Dependency_object& object, const Dependency_property& property) const -> bool;
+    // Every secondary property of the object, in the order
+    // for_each_property_of_object lists them for the secondary type.
+    void for_each_secondary_property(const Dependency_object& object, const std::function<void(const Dependency_property&)>& callback) const;
     // The owner type called `name`, if one has been allocated.
     [[nodiscard]] auto find_owner_type(std::string_view name) const -> std::optional<Owner_type>;
     // `<owner>.<name>` for an attached property, the plain name otherwise:
     // the name serialization, MCP and row labels use.
     [[nodiscard]] auto qualified_name (const Dependency_property& property) const -> std::string;
+    // The name `object` addresses `property` by: `<owner>.<name>` for an
+    // attached property and for a secondary one (D30), the plain name
+    // otherwise.
+    [[nodiscard]] auto qualified_name (const Dependency_object& object, const Dependency_property& property) const -> std::string;
     // Every attached registration, in registration order (R7 listing).
     void for_each_attached_property(const std::function<void(const Dependency_property&)>& callback) const;
     [[nodiscard]] auto get      (uint16_t index) const -> const Dependency_property&;

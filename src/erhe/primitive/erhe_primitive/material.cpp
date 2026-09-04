@@ -66,66 +66,67 @@ auto is_alpha_test(const erhe::property::Dependency_object& object) -> bool
 } // anonymous namespace
 
 const Property<glm::vec3> Material::base_color_property = Property<glm::vec3>::register_property(
-    "base_color", c_owner, Property_metadata{.default_value = glm::vec3{1.0f, 1.0f, 1.0f}, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .label = "Base Color"}}
+    "base_color", c_owner, Property_metadata{.default_value = glm::vec3{1.0f, 1.0f, 1.0f}, .inherits = true, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .label = "Base Color"}}
 );
 const Property<float> Material::opacity_property = Property<float>::register_property(
-    "opacity", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f, "Opacity")}, unit_range
+    "opacity", c_owner, Property_metadata{.default_value = 1.0f, .inherits = true, .ui = slider(0.0f, 1.0f, "Opacity")}, unit_range
 );
 const Property<glm::vec2> Material::roughness_property = Property<glm::vec2>::register_property(
-    "roughness", c_owner, Property_metadata{.default_value = glm::vec2{0.5f, 0.5f}, .ui = Property_ui{.min = 0.001f, .max = 1.0f, .step = 0.005f, .tooltip = "X and Y roughness; Y is used by anisotropic BxDF models", .label = "Roughness", .visible_when = is_lit}}
+    "roughness", c_owner, Property_metadata{.default_value = glm::vec2{0.5f, 0.5f}, .inherits = true, .ui = Property_ui{.min = 0.001f, .max = 1.0f, .step = 0.005f, .tooltip = "X and Y roughness; Y is used by anisotropic BxDF models", .label = "Roughness", .visible_when = is_lit}}
 );
 const Property<float> Material::metallic_property = Property<float>::register_property(
-    "metallic", c_owner, Property_metadata{.default_value = 0.0f, .ui = slider(0.0f, 1.0f, "Metallic", {}, is_lit)}, unit_range
+    "metallic", c_owner, Property_metadata{.default_value = 0.0f, .inherits = true, .ui = slider(0.0f, 1.0f, "Metallic", {}, is_lit)}, unit_range
 );
 const Property<float> Material::reflectance_property = Property<float>::register_property(
-    "reflectance", c_owner, Property_metadata{.default_value = 0.5f, .ui = slider(0.35f, 1.0f, "Reflectance", {}, is_lit)}
+    "reflectance", c_owner, Property_metadata{.default_value = 0.5f, .inherits = true, .ui = slider(0.35f, 1.0f, "Reflectance", {}, is_lit)}
 );
 const Property<glm::vec3> Material::emissive_property = Property<glm::vec3>::register_property(
-    "emissive", c_owner, Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .label = "Emissive"}}
+    "emissive", c_owner, Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .inherits = true, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .label = "Emissive"}}
 );
 const Property<float> Material::ior_property = Property<float>::register_property(
-    "ior", c_owner, Property_metadata{.default_value = 1.5f, .ui = slider(1.0f, 3.0f, "IOR", "Index of refraction", is_lit)}
+    "ior", c_owner, Property_metadata{.default_value = 1.5f, .inherits = true, .ui = slider(1.0f, 3.0f, "IOR", "Index of refraction", is_lit)}
 );
 const Property<float> Material::transmission_property = Property<float>::register_property(
-    "transmission", c_owner, Property_metadata{.default_value = 0.0f, .ui = slider(0.0f, 1.0f, "Transmission", {}, is_lit)}, unit_range
+    "transmission", c_owner, Property_metadata{.default_value = 0.0f, .inherits = true, .ui = slider(0.0f, 1.0f, "Transmission", {}, is_lit)}, unit_range
 );
 const Property<float> Material::normal_texture_scale_property = Property<float>::register_property(
-    "normal_texture_scale", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f, "Normal Map Scale", "Strength of the bound normal texture")}
+    "normal_texture_scale", c_owner, Property_metadata{.default_value = 1.0f, .inherits = true, .ui = slider(0.0f, 1.0f, "Normal Map Scale", "Strength of the bound normal texture")}
 );
 const Property<Normalmap_encoding> Material::normalmap_encoding_property = Property<Normalmap_encoding>::register_property(
     "normalmap_encoding", c_owner, c_normalmap_encoding_enum_info,
     Property_metadata{
         .default_value = erhe::property::make_value(Normalmap_encoding::right_handed_three_channel),
+        .inherits      = true,
         .flags         = c_variant,
         .ui            = Property_ui{.tooltip = "Storage encoding of the bound normal texture. A KTX2 normal-mode texture overrides the channel layout; the handedness is always honored", .label = "Normal Map Encoding"}
     }
 );
 const Property<float> Material::occlusion_texture_strength_property = Property<float>::register_property(
-    "occlusion_texture_strength", c_owner, Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 1.0f, "Occlusion Strength")}, unit_range
+    "occlusion_texture_strength", c_owner, Property_metadata{.default_value = 1.0f, .inherits = true, .ui = slider(0.0f, 1.0f, "Occlusion Strength")}, unit_range
 );
 const Property<Bxdf_model> Material::bxdf_model_property = Property<Bxdf_model>::register_property(
     "bxdf_model", c_owner, c_bxdf_model_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Bxdf_model::isotropic_brdf), .flags = c_partition | c_variant, .ui = Property_ui{.label = "BxDF Model"}}
+    Property_metadata{.default_value = erhe::property::make_value(Bxdf_model::isotropic_brdf), .inherits = true, .flags = c_partition | c_variant, .ui = Property_ui{.label = "BxDF Model"}}
 );
 const Property<Material_blending_mode> Material::blending_mode_property = Property<Material_blending_mode>::register_property(
     "blending_mode", c_owner, c_material_blending_mode_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Material_blending_mode::opaque), .flags = c_partition | c_variant, .ui = Property_ui{.label = "Blending Mode"}}
+    Property_metadata{.default_value = erhe::property::make_value(Material_blending_mode::opaque), .inherits = true, .flags = c_partition | c_variant, .ui = Property_ui{.label = "Blending Mode"}}
 );
 const Property<bool> Material::double_sided_property = Property<bool>::register_property(
-    "double_sided", c_owner, Property_metadata{.default_value = false, .flags = c_partition, .ui = Property_ui{.label = "Double Sided"}}
+    "double_sided", c_owner, Property_metadata{.default_value = false, .inherits = true, .flags = c_partition, .ui = Property_ui{.label = "Double Sided"}}
 );
 const Property<float> Material::alpha_cutoff_property = Property<float>::register_property(
-    "alpha_cutoff", c_owner, Property_metadata{.default_value = 0.5f, .ui = slider(0.0f, 1.0f, "Alpha Cutoff", "Used by the Alpha Test blending mode", is_alpha_test)}, unit_range
+    "alpha_cutoff", c_owner, Property_metadata{.default_value = 0.5f, .inherits = true, .ui = slider(0.0f, 1.0f, "Alpha Cutoff", "Used by the Alpha Test blending mode", is_alpha_test)}, unit_range
 );
 const Property<bool> Material::use_circular_brushed_metal_property = Property<bool>::register_property(
-    "use_circular_brushed_metal", c_owner, Property_metadata{.default_value = false, .flags = c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only", .label = "Circular Brushed Metal", .visible_when = is_anisotropic}}
+    "use_circular_brushed_metal", c_owner, Property_metadata{.default_value = false, .inherits = true, .flags = c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only", .label = "Circular Brushed Metal", .visible_when = is_anisotropic}}
 );
 const Property<Texgen_mode> Material::circular_brushed_metal_texgen_mode_property = Property<Texgen_mode>::register_property(
     "circular_brushed_metal_texgen_mode", c_owner, c_texgen_mode_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Texgen_mode::uv1), .flags = c_variant, .ui = Property_ui{.tooltip = "Texgen source for the circular brushed metal block", .label = "Brushed Metal Texgen", .visible_when = is_brushed_metal}}
+    Property_metadata{.default_value = erhe::property::make_value(Texgen_mode::uv1), .inherits = true, .flags = c_variant, .ui = Property_ui{.tooltip = "Texgen source for the circular brushed metal block", .label = "Brushed Metal Texgen", .visible_when = is_brushed_metal}}
 );
 const Property<bool> Material::use_aniso_control_property = Property<bool>::register_property(
-    "use_aniso_control", c_owner, Property_metadata{.default_value = false, .flags = c_partition | c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only", .label = "Aniso Control", .visible_when = is_anisotropic}}
+    "use_aniso_control", c_owner, Property_metadata{.default_value = false, .inherits = true, .flags = c_partition | c_variant, .ui = Property_ui{.tooltip = "Anisotropic BxDF models only", .label = "Aniso Control", .visible_when = is_anisotropic}}
 );
 
 // Texture slots (D28): member-backed over the Material_data slot. A bound
