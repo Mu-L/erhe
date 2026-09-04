@@ -394,9 +394,16 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
             if (target(0) == nullptr) {
                 return; // the sub-object is gone (primitive list rebuilt)
             }
+            const bool inline_remove = !sealed && inline_remove_offered(property, metadata);
+            if (inline_remove) { // leave room for the "x" after the widget
+                ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x));
+            }
             if (const std::optional<std::string_view> text = target(0)->get_expression(property); text.has_value()) {
                 draw_expression(property, text.value());
                 context_menu(property, metadata);
+                if (inline_remove) {
+                    draw_inline_remove(property);
+                }
                 return;
             }
             Property_value value = target(0)->get_value(property);
@@ -449,10 +456,40 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
                 }
             }
             context_menu(property, metadata);
+            if (inline_remove) {
+                draw_inline_remove(property);
+            }
         },
         std::move(tooltip),
         c_property_row_label_color
     );
+}
+
+auto Dependency_property_rows::inline_remove_offered(const Dependency_property& property, const Property_metadata& metadata) const -> bool
+{
+    if (!property.is_attached() || property.is_read_only()) {
+        return false;
+    }
+    const Property_ui::Visible_when& visible_when = metadata.ui.visible_when;
+    return !(visible_when && visible_when(*target(0)));
+}
+
+void Dependency_property_rows::draw_inline_remove(const Dependency_property& property)
+{
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::PushID(&property);
+    if (ImGui::Button("x", ImVec2{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()})) {
+        remove_property(property);
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Remove this property from the item (undoable)");
+    }
+    ImGui::PopID();
+}
+
+void Dependency_property_rows::remove_property(const Dependency_property& property)
+{
+    reset_to_default(property);
 }
 
 auto Dependency_property_rows::draw_widget(
@@ -743,6 +780,9 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
     const bool writable = !property.is_read_only() && !m_items->front()->is_sealed(); // D24
     if (ImGui::MenuItem("Reset to default", nullptr, false, any_local && writable)) {
         reset_to_default(property);
+    }
+    if (property.is_attached() && ImGui::MenuItem("Remove Property", nullptr, false, any_local && writable)) {
+        remove_property(property);
     }
     const bool driven      = target(0)->get_expression(property).has_value();
     const bool can_drive   = !driven && writable && (property.get_type() != Property_type::string) && (property.get_type() != Property_type::object);

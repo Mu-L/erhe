@@ -30,7 +30,10 @@ class Property_editor;
 // context menu. Each item section ends with an "Add Property" row whose
 // button opens a filterable picker of the attached properties (R7) the
 // D12 rule does not list for the items; choosing one makes the item's
-// effective value local so the row appears (doc/property-add-ui-plan.md).
+// effective value local so the row appears. An attached row offers
+// "Remove Property" in its context menu, and an "x" after its widget when
+// the local value is the only reason it is listed; both clear the local
+// value (doc/property-add-ui-plan.md).
 class Dependency_property_rows
 {
 public:
@@ -84,6 +87,13 @@ private:
     void add_property_row       (Property_editor& editor);
     void draw_add_property_popup();
     void queue_add              (const erhe::property::Dependency_property& property);
+    // Remove Property (R7): the clear of reset_to_default under the name
+    // of what it does to an attached row. `inline_remove_offered` is true
+    // when the first item's attached row is listed only because of its
+    // local value, so removing it makes the row disappear.
+    void remove_property        (const erhe::property::Dependency_property& property);
+    [[nodiscard]] auto inline_remove_offered(const erhe::property::Dependency_property& property, const erhe::property::Property_metadata& metadata) const -> bool;
+    void draw_inline_remove     (const erhe::property::Dependency_property& property);
     void copy_properties ();
     void paste_properties();
     void paste_properties_as_style(); // D25
