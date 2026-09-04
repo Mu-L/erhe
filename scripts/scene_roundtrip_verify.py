@@ -692,12 +692,18 @@ def section_build_scene():
         check(S, "import_gltf skinned+animated asset", bool(imported) and imported.get("imported"), str(imported))
 
     def block_physics():
-        # Physics: tune one body's serialized fields, join the two bodies.
-        edited = mutate("edit_physics_body", {
-            "scene_name": scene, "node_name": "P6 Box",
-            "friction": 0.4, "restitution": 0.25, "linear_damping": 0.05, "angular_damping": 0.07,
+        # Physics: a material carrying the serialized scalars (ERHE_scene
+        # physics_materials), one body using it, join the two bodies.
+        material = mutate("create_physics_material", {
+            "scene_name": scene, "name": "Roundtrip rubber",
+            "static_friction": 0.4, "dynamic_friction": 0.4, "restitution": 0.25,
+            "linear_damping": 0.05, "angular_damping": 0.07, "wind_receptivity": 0.5, "density": 2.0,
         })
-        check(S, "edit_physics_body (ERHE_physics fields)", bool(edited) and "friction" in edited.get("applied", []), str(edited))
+        check(S, "create_physics_material", bool(material) and material.get("created"), str(material))
+        edited = mutate("edit_physics_body", {
+            "scene_name": scene, "node_name": "P6 Box", "material_name": "Roundtrip rubber",
+        })
+        check(S, "edit_physics_body (material_name)", bool(edited) and "material_name" in edited.get("applied", []), str(edited))
         joint = mutate("create_physics_joint", {
             "scene_name": scene, "node_name": "P6 Sphere", "connected_node_name": "P6 Box",
         })

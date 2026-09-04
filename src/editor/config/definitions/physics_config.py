@@ -43,7 +43,7 @@ struct("Physics_config",
             added_in=1,
             default="false",
             short_desc="Wind Enable",
-            long_desc="Apply wind forces to wind-receptive rigid bodies (Node_physics wind_receptivity > 0) each fixed step",
+            long_desc="Apply wind forces to wind-receptive rigid bodies (physics material wind_receptivity > 0) each fixed step",
             visible=True,
             developer=False
         ),

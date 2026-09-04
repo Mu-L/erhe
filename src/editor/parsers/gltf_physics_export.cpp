@@ -108,6 +108,7 @@ class Gltf_physics_builder
 public:
     erhe::gltf::Gltf_physics_data data;
 
+    std::vector<std::shared_ptr<erhe::physics::Physics_material>> material_items; // data.materials[i] describes material_items[i]
     std::unordered_map<const erhe::physics::Physics_material*,       std::size_t> material_index_map;
     std::unordered_map<const erhe::physics::Collision_filter*,       std::size_t> filter_index_map;
     std::unordered_map<const erhe::physics::Physics_joint_settings*, std::size_t> joint_index_map;
@@ -132,6 +133,7 @@ public:
         description.friction_combine    = to_gltf_combine_mode(material->get_friction_combine());
         description.restitution_combine = to_gltf_combine_mode(material->get_restitution_combine());
         data.materials.push_back(std::move(description));
+        material_items.push_back(material);
         return index;
     }
 
@@ -314,7 +316,11 @@ public:
 
 } // anonymous namespace
 
-auto build_gltf_physics_data(const erhe::scene::Scene& scene, const Content_library* content_library) -> erhe::gltf::Gltf_physics_data
+auto build_gltf_physics_data(
+    const erhe::scene::Scene&                                      scene,
+    const Content_library*                                         content_library,
+    std::vector<std::shared_ptr<erhe::physics::Physics_material>>* material_items
+) -> erhe::gltf::Gltf_physics_data
 {
     Gltf_physics_builder builder{};
 
@@ -576,6 +582,9 @@ auto build_gltf_physics_data(const erhe::scene::Scene& scene, const Content_libr
         }
     }
 
+    if (material_items != nullptr) {
+        *material_items = std::move(builder.material_items);
+    }
     return builder.data;
 }
 

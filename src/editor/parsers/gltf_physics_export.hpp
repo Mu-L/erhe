@@ -2,7 +2,11 @@
 
 #include "erhe_gltf/gltf_physics.hpp"
 
-namespace erhe::scene { class Scene; }
+#include <memory>
+#include <vector>
+
+namespace erhe::physics { class Physics_material; }
+namespace erhe::scene   { class Scene; }
 
 namespace editor {
 
@@ -18,9 +22,13 @@ class Content_library;
 // filters / joint settings that no body or joint references are appended to
 // the top-level arrays so editor-authored assets survive save / load
 // (parity with scene.json v3+; doc/gltf-scene-roundtrip-plan.md phase 0).
+// When material_items is given it receives the library item behind each
+// entry of the result's materials array, in the same order, for the
+// ERHE_scene physics_materials writer (add_gltf_editor_state).
 [[nodiscard]] auto build_gltf_physics_data(
-    const erhe::scene::Scene& scene,
-    const Content_library*    content_library = nullptr
+    const erhe::scene::Scene&                                      scene,
+    const Content_library*                                         content_library = nullptr,
+    std::vector<std::shared_ptr<erhe::physics::Physics_material>>* material_items  = nullptr
 ) -> erhe::gltf::Gltf_physics_data;
 
 }

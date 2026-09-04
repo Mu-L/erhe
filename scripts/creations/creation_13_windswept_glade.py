@@ -6,7 +6,7 @@ vegetation and a wind field over the scene: every tree sways from its
 trunk, every fern frond and every wildflower stem bends from its base -
 all driven by six-dof rest-pose motor joints (position target 0 =
 authored pose, max_force = yield) plus the per-scene wind system
-(Physics_config v2 + Node_physics wind_receptivity).
+(Physics_config v2 + Physics_material wind_receptivity).
 Showcases: rest-pose motor joints as plant spines, the wind force field
 (traveling gusts - plants a wavelength apart move out of phase),
 one-body-per-plant physics LOD (the whole canopy rides its trunk node),
@@ -118,9 +118,14 @@ def rig_sway(c, sway_jobs):
             c.body(carrier_id, shape="sphere", radius=0.05,
                    motion_mode="static", is_trigger=True)
             carriers_with_body.add(carrier_id)
+        # Damping and wind receptivity are physics material properties: one
+        # shared material per distinct (receptivity, damping) pair.
+        material = c.physics_material(
+            f"Sway r{receptivity:g} d{ang_damp:g}",
+            angular_damping=ang_damp, linear_damping=0.05,
+            wind_receptivity=receptivity)
         c.body(node_id, shape="auto", motion_mode="dynamic", mass=mass,
-               gravity_factor=0.0, angular_damping=ang_damp,
-               linear_damping=0.05, wind_receptivity=receptivity)
+               gravity_factor=0.0, material_name=material)
         # Ragdoll pattern (creations 7/14, same fix as rig_tree_sway): TWO
         # coincident anchors at the pivot, one per body. Connecting the
         # spine anchor straight to the carrier NODE put the carrier-side

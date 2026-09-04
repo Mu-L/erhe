@@ -47,13 +47,14 @@ class ICollision_shape;
 class IWorld;
 class Physics_material;
 
+// What a body is created from. Damping, wind receptivity and density are
+// not here: the physics material carries them (Physics_material), and a
+// body without a material uses the material defaults. Without an explicit
+// mass the body's mass is its shape volume times the material density.
 class IRigid_body_create_info
 {
 public:
-    float                             linear_damping   {0.05f};
-    float                             angular_damping  {0.05f};
     std::shared_ptr<ICollision_shape> collision_shape  {};
-    std::optional<float>              density          {};
     std::optional<float>              mass             {};
     std::optional<glm::mat4>          inertia_override {};
     std::string                       debug_label      {};
@@ -65,7 +66,7 @@ public:
     glm::vec3                         angular_velocity {0.0f, 0.0f, 0.0f}; // world space, applied at creation
     float                             gravity_factor   {1.0f};
     bool                              is_sensor        {false};
-    std::shared_ptr<Physics_material> physics_material {}; // shared material, the carrier of friction and restitution; none = the material defaults
+    std::shared_ptr<Physics_material> physics_material {}; // shared material, the carrier of friction, restitution, damping, wind receptivity and density; none = the material defaults
     std::shared_ptr<Collision_filter> collision_filter {}; // shared collision-system filter
 };
 
@@ -129,6 +130,8 @@ public:
     // Material / filter assignment. Must be called outside
     // IWorld::update_fixed_step(): the backend snapshot is read without locks
     // by contact callbacks running on physics worker threads during update.
+    // Setting the material also applies its damping to the body and, while
+    // the body has no explicit mass, re-derives the mass from its density.
     virtual void set_physics_material(const std::shared_ptr<Physics_material>& material) = 0;
     virtual void set_collision_filter(const std::shared_ptr<Collision_filter>& filter)   = 0;
 };

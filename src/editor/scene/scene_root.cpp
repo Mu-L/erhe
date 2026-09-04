@@ -1821,7 +1821,10 @@ void Scene_root::apply_wind_forces(const float dt, const Physics_config& physics
     const float wavelength = std::max(physics.wind_wavelength, 0.01f);
 
     for (const std::shared_ptr<Node_physics>& node_physics : m_node_physics) {
-        const float receptivity = node_physics->get_wind_receptivity();
+        // The physics material carries the receptivity; a body without a
+        // material is unaffected (the material default is 0).
+        const std::shared_ptr<erhe::physics::Physics_material>& material = node_physics->get_physics_material();
+        const float receptivity = material ? material->get_wind_receptivity() : erhe::physics::c_default_wind_receptivity;
         if (receptivity <= 0.0f) {
             continue;
         }

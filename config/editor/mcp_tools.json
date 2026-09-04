@@ -3181,10 +3181,6 @@
     "description": "Attach a new rigid body (Node_physics) to a scene node (undoable). One rigid body per node.",
     "inputSchema": {
       "properties": {
-        "angular_damping": {
-          "description": "Angular damping",
-          "type": "number"
-        },
         "angular_velocity": {
           "description": "Initial angular velocity [x, y, z] (world space, applied at body creation)",
           "items": {
@@ -3239,10 +3235,6 @@
         },
         "length": {
           "description": "Capsule / tapered shape axial length (default 1.0)",
-          "type": "number"
-        },
-        "linear_damping": {
-          "description": "Linear damping",
           "type": "number"
         },
         "linear_velocity": {
@@ -3310,10 +3302,6 @@
         "wake": {
           "description": "Wake the (dynamic) body as soon as it enters the world instead of starting asleep; replaces a follow-up wake_physics_bodies pass",
           "type": "boolean"
-        },
-        "wind_receptivity": {
-          "description": "Wind drag coefficient in kg/s: the scene wind applies force = wind_receptivity * (wind_velocity - body_velocity) each fixed step; 0 (default) = unaffected",
-          "type": "number"
         }
       },
       "required": [
@@ -3327,10 +3315,6 @@
     "description": "Edit the rigid body attached to a scene node. Only fields supplied are changed; shape fields replace the collision shape (recreates the body).",
     "inputSchema": {
       "properties": {
-        "angular_damping": {
-          "description": "Angular damping",
-          "type": "number"
-        },
         "angular_velocity": {
           "description": "Initial angular velocity [x, y, z] (world space, applied at body creation)",
           "items": {
@@ -3385,10 +3369,6 @@
         },
         "length": {
           "description": "Capsule / tapered shape axial length (default 1.0)",
-          "type": "number"
-        },
-        "linear_damping": {
-          "description": "Linear damping",
           "type": "number"
         },
         "linear_velocity": {
@@ -3456,10 +3436,6 @@
         "wake": {
           "description": "Wake the (dynamic) body as soon as it enters the world instead of starting asleep; replaces a follow-up wake_physics_bodies pass",
           "type": "boolean"
-        },
-        "wind_receptivity": {
-          "description": "Wind drag coefficient in kg/s: the scene wind applies force = wind_receptivity * (wind_velocity - body_velocity) each fixed step; 0 (default) = unaffected",
-          "type": "number"
         }
       },
       "required": [
@@ -3565,6 +3541,14 @@
     "description": "Create a shared physics material in the scene's content library (undoable)",
     "inputSchema": {
       "properties": {
+        "angular_damping": {
+          "description": "Angular damping of every body using the material (default 0.05)",
+          "type": "number"
+        },
+        "density": {
+          "description": "Mass per shape volume of a body without an explicit mass; scales the shape mass (default 1)",
+          "type": "number"
+        },
         "dynamic_friction": {
           "description": "Dynamic friction (default 0.6)",
           "type": "number"
@@ -3578,6 +3562,10 @@
             "multiply"
           ],
           "type": "string"
+        },
+        "linear_damping": {
+          "description": "Linear damping of every body using the material (default 0.05)",
+          "type": "number"
         },
         "name": {
           "description": "Name for the new physics material (must not already exist)",
@@ -3604,6 +3592,10 @@
         "static_friction": {
           "description": "Static friction (default 0.6)",
           "type": "number"
+        },
+        "wind_receptivity": {
+          "description": "Wind drag coefficient in kg/s of every body using the material: the scene wind applies force = wind_receptivity * (wind_velocity - body_velocity) each fixed step; 0 (default) = unaffected",
+          "type": "number"
         }
       },
       "required": [
@@ -3615,9 +3607,17 @@
     "name": "create_physics_material"
   },
   {
-    "description": "Edit a shared physics material; changes re-apply to all bodies using it. Only fields supplied are changed.",
+    "description": "Edit a shared physics material (friction, restitution, combine modes, damping, wind receptivity, density); changes re-apply to all bodies using it. Only fields supplied are changed.",
     "inputSchema": {
       "properties": {
+        "angular_damping": {
+          "description": "Angular damping of every body using the material (default 0.05)",
+          "type": "number"
+        },
+        "density": {
+          "description": "Mass per shape volume of a body without an explicit mass; scales the shape mass (default 1)",
+          "type": "number"
+        },
         "dynamic_friction": {
           "description": "Dynamic friction (default 0.6)",
           "type": "number"
@@ -3631,6 +3631,10 @@
             "multiply"
           ],
           "type": "string"
+        },
+        "linear_damping": {
+          "description": "Linear damping of every body using the material (default 0.05)",
+          "type": "number"
         },
         "name": {
           "description": "Name of the physics material to edit",
@@ -3660,6 +3664,10 @@
         },
         "static_friction": {
           "description": "Static friction (default 0.6)",
+          "type": "number"
+        },
+        "wind_receptivity": {
+          "description": "Wind drag coefficient in kg/s of every body using the material: the scene wind applies force = wind_receptivity * (wind_velocity - body_velocity) each fixed step; 0 (default) = unaffected",
           "type": "number"
         }
       },

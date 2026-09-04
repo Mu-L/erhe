@@ -103,8 +103,8 @@ Not properties: the five slot samplers (`Material_data`, edited through
 |---|---|---|
 | motion_mode | member | enumeration, sets the body's effective mode |
 | is_trigger | member | recreates the body |
-| linear_damping, angular_damping, gravity_factor | member | over the create info, pushed to the live body |
-| wind_receptivity, initial_linear_velocity, initial_angular_velocity | member | no live consequence |
+| gravity_factor | member | over the create info, pushed to the live body |
+| initial_linear_velocity, initial_angular_velocity | member | no live consequence |
 | mass | bridge | optional in the create info, read from the live body until set |
 | center_of_mass_offset | bridge | collision shape wrapper, recreates the body |
 | physics_material, collision_filter | member | object references |
@@ -126,6 +126,9 @@ Every Grid property's property_changed touches the settings store.
 |---|---|---|
 | static_friction, dynamic_friction, restitution | entry | inherits; bodies re-snapshot through the Node_physics observer |
 | friction_combine, restitution_combine | entry | inherits; enumerations |
+| linear_damping, angular_damping | entry | inherits; applied to every live body of the material |
+| wind_receptivity | entry | inherits; read by the scene wind each fixed step |
+| density | entry | inherits; the mass of a body without an explicit mass |
 
 ### Layout (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13)
 

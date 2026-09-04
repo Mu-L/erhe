@@ -13,9 +13,10 @@ a specific engine.
   enable/disable via `set_collision_enabled()` (joint enableCollision = false)
 - `IRigid_body` -- rigid body with mass, velocity, damping, motion mode, transform, shared
   physics material / collision filter assignment
-- `IRigid_body_create_info` -- parameters for creating a rigid body (shape, mass/density, physics material,
+- `IRigid_body_create_info` -- parameters for creating a rigid body (shape, mass, physics material,
   initial velocities, gravity factor, sensor flag, shared material / filter, etc.); explicit mass 0
-  means infinite mass (KHR_physics_rigid_bodies convention)
+  means infinite mass (KHR_physics_rigid_bodies convention); without an explicit mass the body's
+  mass is its shape mass scaled by the material density
 - `ICollision_shape` -- factory for shapes: box, sphere, capsule, tapered capsule, cylinder,
   tapered cylinder, convex hull, triangle mesh (static/kinematic bodies only), compound,
   uniform scaling, non-uniform scaled and center-of-mass offset wrappers; introspection for
@@ -25,9 +26,12 @@ a specific engine.
 - `IConstraint` -- joint constraints: point-to-point and the generic six-DOF constraint
   (`Six_dof_constraint_settings`: per-axis limits incl. translation soft limits, position /
   velocity motors; frames in body node space, axes 0..2 translation, 3..5 rotation)
-- `Physics_material` -- shared material item; static/dynamic friction, restitution and the
-  combine modes are registered `erhe::property` properties (doc/property-system.md section
-  4.12), read through the typed accessors; KHR_physics_rigid_bodies precedence in `combine()`
+- `Physics_material` -- shared material item, the carrier of how a kind of matter behaves:
+  static/dynamic friction, restitution, the combine modes, linear/angular damping, wind
+  receptivity and density are registered `erhe::property` properties (doc/property-system.md
+  section 4.12), read through the typed accessors; a body without a material uses the
+  `c_default_*` values; `IRigid_body::set_physics_material()` applies the damping to the body and
+  re-derives a density-based mass; KHR_physics_rigid_bodies precedence in `combine()`
 - `Collision_filter` -- shared collision-system filter item (allowlist / denylist of free-form
   system strings; Jolt backend interns at most 64 system names per world into uint64 bitsets)
 - `Physics_joint_settings` -- shared joint settings item (`Joint_limit` / `Joint_drive` arrays,

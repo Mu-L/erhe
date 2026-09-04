@@ -977,10 +977,29 @@ class Creation:
     def body(self, node_id, **kwargs):
         """create_physics_body on a node (typically one created with
         motion_mode="none"): shape="auto" hulls the node's own mesh. Pass
-        wind_receptivity / gravity_factor / mass / damping etc. through."""
+        gravity_factor / mass / material_name etc. through. Damping, wind
+        receptivity, friction, restitution and density belong to the
+        physics material (physics_material())."""
         args = {"scene_name": self.scene, "node_id": int(node_id)}
         args.update(kwargs)
         return self.mutate("create_physics_body", args)
+
+    def physics_material(self, name, **fields):
+        """Shared physics material in this scene's library (created once,
+        edited to the given fields on every later call): the carrier of
+        friction, restitution, combine modes, linear/angular damping,
+        wind_receptivity and density for every body that names it
+        (create_physics_body material_name=...). Returns the name."""
+        args = {"scene_name": self.scene, "name": name}
+        args.update(fields)
+        try:
+            self.mutate("create_physics_material", args)
+        except RuntimeError as error:
+            if "already exists" not in str(error):
+                raise
+            if fields:
+                self.mutate("edit_physics_material", args)
+        return name
 
     def joint_settings(self, name, limits, drives=None):
         """Create shared Physics_joint_settings in this scene's library."""

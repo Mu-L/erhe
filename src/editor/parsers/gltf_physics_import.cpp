@@ -13,6 +13,7 @@
 #include "scene/generated/gltf_source_reference.hpp"
 
 #include "erhe_gltf/gltf.hpp"
+#include "erhe_gltf/gltf_item_flags.hpp"
 #include "erhe_physics/collision_filter.hpp"
 #include "erhe_physics/icollision_shape.hpp"
 #include "erhe_physics/irigid_body.hpp"
@@ -316,21 +317,7 @@ void import_gltf_physics(
             return;
         }
         const Gltf_physics_overrides& overrides = it->second;
-        if (overrides.motion_mode.has_value())     { create_info.motion_mode     = overrides.motion_mode.value(); }
-        if (overrides.linear_damping.has_value())  { create_info.linear_damping  = overrides.linear_damping.value(); }
-        if (overrides.angular_damping.has_value()) { create_info.angular_damping = overrides.angular_damping.value(); }
-    };
-    // Node_physics attributes that live outside the create info, applied
-    // after construction.
-    const auto apply_node_physics_overrides = [&physics_overrides](Node_physics& node_physics, const erhe::scene::Node* node) {
-        const auto it = physics_overrides.find(node);
-        if (it == physics_overrides.end()) {
-            return;
-        }
-        const Gltf_physics_overrides& overrides = it->second;
-        if (overrides.wind_receptivity.has_value()) {
-            node_physics.set_wind_receptivity(overrides.wind_receptivity.value());
-        }
+        if (overrides.motion_mode.has_value()) { create_info.motion_mode = overrides.motion_mode.value(); }
     };
 
     // 1. Shared content-library items (1:1 with the glTF top-level arrays),
@@ -347,13 +334,35 @@ void import_gltf_physics(
     importer.material_items.reserve(physics.materials.size());
     for (std::size_t i = 0; i < physics.materials.size(); ++i) {
         const erhe::gltf::Physics_material_description& description = physics.materials[i];
-        const std::string name = item_name(item_names.physics_materials, i, description.name, "Physics material");
+        const Gltf_physics_material_record* record = (i < item_names.physics_materials.size()) ? &item_names.physics_materials[i] : nullptr;
+        const std::string name = ((record != nullptr) && !record->name.empty())
+            ? record->name
+            : (description.name.empty() ? fmt::format("Physics material {}", i) : description.name);
         auto item = std::make_shared<erhe::physics::Physics_material>(name);
         item->set_static_friction    (description.static_friction);
         item->set_dynamic_friction   (description.dynamic_friction);
         item->set_restitution        (description.restitution);
         item->set_friction_combine   (to_combine_mode(description.friction_combine));
         item->set_restitution_combine(to_combine_mode(description.restitution_combine));
+        if ((record != nullptr) && record->has_properties) {
+            // ERHE_scene physics_materials: the properties map is the
+            // material's complete local set, so a friction the KHR entry
+            // baked from an inherited value inherits again after the reload.
+            for (const std::pair<std::string, std::string>& property : record->properties) {
+                static_cast<void>(erhe::gltf::apply_item_local_property(*item, property.first, property.second));
+            }
+            erhe::gltf::clear_local_properties_not_listed(
+                *item,
+                [record](const std::string_view property_name) -> bool {
+                    for (const std::pair<std::string, std::string>& property : record->properties) {
+                        if (property.first == property_name) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            );
+        }
         importer.material_items.push_back(item);
         operations.push_back(
             std::make_shared<Content_library_attach_operation<erhe::physics::Physics_material>>(
@@ -616,7 +625,6 @@ void import_gltf_physics(
         // bodies are created when the insert operation gives the nodes a
         // scene host.
         auto node_physics = std::make_shared<Node_physics>(create_info);
-        apply_node_physics_overrides(*node_physics, root);
         root->attach(node_physics);
         nodes_with_body.insert(root);
         ++body_count;
@@ -698,7 +706,6 @@ void import_gltf_physics(
             importer.make_body_create_info(*node, description.motion, trigger_shape, {}, trigger_filter, true);
         apply_physics_overrides(create_info, node);
         auto node_physics = std::make_shared<Node_physics>(create_info);
-        apply_node_physics_overrides(*node_physics, node);
         node->attach(node_physics);
         nodes_with_body.insert(node);
         ++trigger_count;
@@ -724,7 +731,6 @@ void import_gltf_physics(
         );
         apply_physics_overrides(create_info, node);
         auto node_physics = std::make_shared<Node_physics>(create_info);
-        apply_node_physics_overrides(*node_physics, node);
         node->attach(node_physics);
         nodes_with_body.insert(node);
         ++body_count;

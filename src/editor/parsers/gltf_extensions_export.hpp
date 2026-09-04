@@ -3,6 +3,10 @@
 #include "erhe_gltf/gltf.hpp"
 
 #include <filesystem>
+#include <memory>
+#include <vector>
+
+namespace erhe::physics { class Physics_material; }
 
 namespace editor {
 
@@ -41,10 +45,14 @@ class Scene_root;
 //
 // scene_root must outlive the export_gltf() call; the builder callback
 // captures its own copies of the collected payload data.
+// physics_material_items pairs arguments.physics_data->materials by index
+// with the library items (build_gltf_physics_data's material_items) so the
+// ERHE_scene physics_materials entries carry each material's local values.
 void add_gltf_editor_state(
-    erhe::gltf::Gltf_export_arguments& arguments,
-    Scene_root&                        scene_root,
-    const std::filesystem::path&       export_path
+    erhe::gltf::Gltf_export_arguments&                                   arguments,
+    Scene_root&                                                          scene_root,
+    const std::filesystem::path&                                         export_path,
+    const std::vector<std::shared_ptr<erhe::physics::Physics_material>>& physics_material_items
 );
 
 }

@@ -24,11 +24,21 @@ plain interchange exports never do.
   keyed by qualified name such as `Material.roughness` or `Light.color`;
   omitted when empty). A `target` member of older files is ignored. Loaded before anything that names a style. Omitted when the
   library has no styles.
-- `physics_material_names`, `collision_filter_names` (optional): the names
-  of the `KHR_physics_rigid_bodies` `physicsMaterials` and
-  `collisionFilters` entries, by index (the KHR entries carry no name),
-  so the content library's physics materials and collision filters keep
-  their names across a save and reload. Omitted when the file has none.
+- `physics_materials` (optional): one entry per `KHR_physics_rigid_bodies`
+  `physicsMaterials` entry, by index (the KHR entries carry no name):
+  `name` and `properties` (the material's local property values as a
+  name to text map, the form of `ERHE_node` `properties`; the registered
+  properties of `Physics_material` by name, so the erhe-only
+  `linear_damping`, `angular_damping`, `wind_receptivity` and `density`
+  have their carrier here). The map is the material's complete local
+  set: on load, a value the KHR entry carried (friction, restitution, a
+  combine mode) that the map does not name is cleared again, so a
+  material that inherits it from its folder or style still does after a
+  reload. Omitted when the file has no physics materials.
+- `collision_filter_names` (optional): the names of the
+  `KHR_physics_rigid_bodies` `collisionFilters` entries, by index, so the
+  content library's collision filters keep their names across a save and
+  reload. Omitted when the file has none.
 - `library_folders` (optional): the content library's folders below its
   category folders (`doc/content-library-folders.md` D5), parents before
   their subfolders. Each entry has `path` (slash-separated from the
@@ -53,6 +63,10 @@ plain interchange exports never do.
     "styles": [
         {"name": "Brushed metal", "properties": {"Material.roughness": "0.34 0.2", "Material.metallic": "1"}}
     ],
+    "physics_materials": [
+        {"name": "Rubber", "properties": {"restitution": "0.8", "linear_damping": "0.1"}}
+    ],
+    "collision_filter_names": ["Debris"],
     "library_folders": [
         {"path": "Materials/Metals", "properties": {"visible": "false"}, "items": ["Gold", "Copper"], "style": "Brushed metal"},
         {"path": "Brushes/Platonic Solids", "items": ["Cube", "Octahedron"]}

@@ -599,19 +599,11 @@ void clear_local_properties_not_listed(erhe::Item_base& item, const simdjson::do
     if (extension_object.at_key(properties_key).get_object().get(properties_object) != simdjson::SUCCESS) {
         return;
     }
-    const erhe::property::Owner_type owner_type = item.get_property_owner_type();
-    erhe::property::Property_registry::get().for_each_property_of_object(
-        owner_type,
-        [&item, &properties_object, owner_type](const erhe::property::Dependency_property& property) {
-            const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
-            if (property.is_read_only() || metadata.bridge.is_bound() || metadata.is_computed() || !item.has_local_value(property)) {
-                return;
-            }
+    erhe::gltf::clear_local_properties_not_listed(
+        item,
+        [&properties_object](const std::string_view name) -> bool {
             std::string_view listed_value;
-            if (properties_object.at_key(property.get_name()).get_string().get(listed_value) == simdjson::SUCCESS) {
-                return;
-            }
-            static_cast<void>(item.clear_value(property));
+            return properties_object.at_key(name).get_string().get(listed_value) == simdjson::SUCCESS;
         }
     );
 }

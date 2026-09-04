@@ -23,6 +23,7 @@
 #include "erhe_gltf/gltf_physics.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_physics/irigid_body.hpp"
+#include "erhe_physics/physics_material.hpp"
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/layout.hpp"
 #include "erhe_scene/mesh.hpp"
@@ -258,9 +259,10 @@ void add_material_asset_references(
 } // anonymous namespace
 
 void add_gltf_editor_state(
-    erhe::gltf::Gltf_export_arguments& arguments,
-    Scene_root&                        scene_root,
-    const std::filesystem::path&       export_path
+    erhe::gltf::Gltf_export_arguments&                                   arguments,
+    Scene_root&                                                          scene_root,
+    const std::filesystem::path&                                         export_path,
+    const std::vector<std::shared_ptr<erhe::physics::Physics_material>>& physics_material_items
 )
 {
     add_material_asset_references(arguments, scene_root.get_content_library(), export_path);
@@ -311,16 +313,12 @@ void add_gltf_editor_state(
         }
 
         // ERHE_physics: erhe rigid-body state KHR_physics_rigid_bodies
-        // cannot carry (defaults mirror scene.json's).
+        // cannot carry. Damping, wind receptivity and density ride the
+        // physics material (ERHE_scene physics_materials).
         if (node_physics) {
             nlohmann::json physics_json{
-                {"motion_mode",     motion_mode_name(node_physics->get_motion_mode())},
-                {"linear_damping",  json_float(node_physics->get_linear_damping())},
-                {"angular_damping", json_float(node_physics->get_angular_damping())},
+                {"motion_mode", motion_mode_name(node_physics->get_motion_mode())},
             };
-            if (node_physics->get_wind_receptivity() != 0.0f) {
-                physics_json["wind_receptivity"] = json_float(node_physics->get_wind_receptivity());
-            }
             append_members(arguments.extension_payloads.nodes[node.get()], fmt::format("\"ERHE_physics\":{}", physics_json.dump()));
             used_physics = true;
         }
@@ -405,16 +403,24 @@ void add_gltf_editor_state(
                 scene_json["styles"] = std::move(styles);
             }
         }
-        // physics_material_names / collision_filter_names: the names of the
-        // KHR_physics_rigid_bodies entries by index (the KHR entries carry
-        // none), so the library items keep their names across a reload.
+        // physics_materials / collision_filter_names: the KHR_physics_rigid_bodies
+        // entries by index (the KHR entries carry no name), so the library
+        // items keep their names across a reload; a physics material entry
+        // also carries the material's local property values (the KHR entry
+        // has no carrier for damping, wind receptivity and density, and the
+        // map is the material's complete local set on reload).
         if (arguments.physics_data != nullptr) {
             if (!arguments.physics_data->materials.empty()) {
-                nlohmann::json names = nlohmann::json::array();
-                for (const erhe::gltf::Physics_material_description& material : arguments.physics_data->materials) {
-                    names.push_back(material.name);
+                nlohmann::json materials = nlohmann::json::array();
+                const std::vector<erhe::gltf::Physics_material_description>& descriptions = arguments.physics_data->materials;
+                for (std::size_t i = 0; i < descriptions.size(); ++i) {
+                    nlohmann::json entry{{"name", descriptions[i].name}};
+                    if ((i < physics_material_items.size()) && physics_material_items[i]) {
+                        entry["properties"] = json_properties(*physics_material_items[i]);
+                    }
+                    materials.push_back(std::move(entry));
                 }
-                scene_json["physics_material_names"] = std::move(names);
+                scene_json["physics_materials"] = std::move(materials);
             }
             if (!arguments.physics_data->collision_filters.empty()) {
                 nlohmann::json names = nlohmann::json::array();

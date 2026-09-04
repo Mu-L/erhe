@@ -75,26 +75,21 @@ Jolt_rigid_body::Jolt_rigid_body(
     // KHR_physics_rigid_bodies convention: an explicitly provided mass of 0 means infinite mass.
     const bool infinite_mass = create_info.mass.has_value() && (create_info.mass.value() == 0.0f);
 
-    m_mass_properties = jolt_shape->GetMassProperties();
+    m_shape_mass_properties = jolt_shape->GetMassProperties();
     if (create_info.inertia_override.has_value()) {
-        m_mass_properties.mInertia = to_jolt(create_info.inertia_override.value());
-        if (create_info.mass.has_value()) {
+        m_shape_mass_properties.mInertia = to_jolt(create_info.inertia_override.value());
+    }
+    m_has_explicit_mass = create_info.mass.has_value();
+    m_mass_properties   = m_shape_mass_properties;
+    if (create_info.mass.has_value()) {
+        if (create_info.inertia_override.has_value()) {
             m_mass_properties.mMass = create_info.mass.value();
-        } else if (create_info.density.has_value()) {
-            m_mass_properties.ScaleToMass(
-                m_mass_properties.mMass * create_info.density.value()
-            );
+        } else {
+            m_mass_properties.ScaleToMass(create_info.mass.value());
         }
     } else {
-        if (create_info.mass.has_value()) {
-            m_mass_properties.ScaleToMass(
-                create_info.mass.value()
-            );
-        } else if (create_info.density.has_value()) {
-            m_mass_properties.ScaleToMass(
-                m_mass_properties.mMass * create_info.density.value()
-            );
-        }
+        // The material's density scales the shape's own mass properties.
+        m_mass_properties.ScaleToMass(m_shape_mass_properties.mMass * m_material_snapshot.density);
     }
 
     if ((m_mass_properties.mMass == 0.0f) && !infinite_mass) {
@@ -110,8 +105,8 @@ Jolt_rigid_body::Jolt_rigid_body(
     creation_settings.mRestitution             = c_default_restitution;
     creation_settings.mOverrideMassProperties  = JPH::EOverrideMassProperties::MassAndInertiaProvided; //EOverrideMassProperties::CalculateMassAndInertia; // JPH::EOverrideMassProperties::MassAndInertiaProvided;
     creation_settings.mMassPropertiesOverride  = m_mass_properties;
-    creation_settings.mLinearDamping           = create_info.linear_damping;
-    creation_settings.mAngularDamping          = create_info.angular_damping;
+    creation_settings.mLinearDamping           = m_material_snapshot.linear_damping;
+    creation_settings.mAngularDamping          = m_material_snapshot.angular_damping;
     creation_settings.mLinearVelocity          = to_jolt(create_info.linear_velocity);
     creation_settings.mAngularVelocity         = to_jolt(create_info.angular_velocity);
     creation_settings.mGravityFactor           = create_info.gravity_factor;
@@ -544,6 +539,7 @@ void Jolt_rigid_body::set_mass_properties(
     const glm::mat4& inertia_tensor
 )
 {
+    m_has_explicit_mass        = true;
     m_mass_properties.mMass    = mass;
     m_mass_properties.mInertia = to_jolt(inertia_tensor);
 
@@ -628,6 +624,25 @@ void Jolt_rigid_body::set_physics_material(const std::shared_ptr<Physics_materia
 {
     m_physics_material = material;
     update_material_snapshot();
+    apply_material_to_body();
+}
+
+void Jolt_rigid_body::apply_material_to_body()
+{
+    if ((m_body == nullptr) || (m_motion_mode == Motion_mode::e_static) || m_body->IsStatic()) {
+        return; // a static body has no motion properties
+    }
+    JPH::MotionProperties* motion_properties = m_body->GetMotionProperties();
+    if (motion_properties == nullptr) {
+        return;
+    }
+    motion_properties->SetLinearDamping (m_material_snapshot.linear_damping);
+    motion_properties->SetAngularDamping(m_material_snapshot.angular_damping);
+    if (!m_has_explicit_mass && (m_shape_mass_properties.mMass > 0.0f)) {
+        m_mass_properties = m_shape_mass_properties;
+        m_mass_properties.ScaleToMass(m_shape_mass_properties.mMass * m_material_snapshot.density);
+        motion_properties->SetMassProperties(JPH::EAllowedDOFs::All, m_mass_properties);
+    }
 }
 
 auto Jolt_rigid_body::get_collision_filter() const -> std::shared_ptr<Collision_filter>
@@ -657,6 +672,9 @@ void Jolt_rigid_body::update_material_snapshot()
         m_material_snapshot.restitution         = m_physics_material->get_restitution();
         m_material_snapshot.friction_combine    = m_physics_material->get_friction_combine();
         m_material_snapshot.restitution_combine = m_physics_material->get_restitution_combine();
+        m_material_snapshot.linear_damping      = m_physics_material->get_linear_damping();
+        m_material_snapshot.angular_damping     = m_physics_material->get_angular_damping();
+        m_material_snapshot.density             = m_physics_material->get_density();
         m_material_snapshot.has_material        = true;
     } else {
         m_material_snapshot = Physics_material_snapshot{};

@@ -51,10 +51,7 @@ public:
     static const erhe::property::Property<erhe::physics::Motion_mode>      motion_mode_property;
     static const erhe::property::Property<bool>                            is_trigger_property;
     static const erhe::property::Property<float>                           mass_property;
-    static const erhe::property::Property<float>                           linear_damping_property;
-    static const erhe::property::Property<float>                           angular_damping_property;
     static const erhe::property::Property<float>                           gravity_factor_property;
-    static const erhe::property::Property<float>                           wind_receptivity_property;
     static const erhe::property::Property<glm::vec3>                       initial_linear_velocity_property;
     static const erhe::property::Property<glm::vec3>                       initial_angular_velocity_property;
     static const erhe::property::Property<glm::vec3>                       center_of_mass_offset_property;
@@ -96,19 +93,16 @@ public:
     // that cannot produce such a reaction (no body / static / kinematic non-physical).
     void teleport_to_node();
 
-    // The rigid body's scalar dynamics. The create info holds the authored
-    // value, the live body gets it on set; the physics tool's transient
-    // overrides go to the body only and are not seen here.
+    // The body's mass. The create info holds the authored value, the live
+    // body gets it on set; without one the body's mass is its shape volume
+    // times the material density.
     [[nodiscard]] auto get_mass           () const -> float; // the create info's mass, else the live body's (0 when neither)
     void               set_mass           (float mass);      // scales the local inertia with the mass
-    [[nodiscard]] auto get_linear_damping () const -> float;
-    void               set_linear_damping (float linear_damping);
-    [[nodiscard]] auto get_angular_damping() const -> float;
-    void               set_angular_damping(float angular_damping);
 
-    // Shared physics material (the carrier of friction and restitution;
-    // none = the material defaults); updates both create info and the live
-    // rigid body. The attachment observes the material's properties (doc/
+    // Shared physics material (the carrier of friction, restitution,
+    // damping, wind receptivity and density; none = the material
+    // defaults); updates both create info and the live rigid body. The
+    // attachment observes the material's properties (doc/
     // property-system.md section 4.12) and reapply_physics_material() pushes
     // the current material to the body again when one changes, so the
     // backend re-snapshots the values.
@@ -133,13 +127,6 @@ public:
 
     [[nodiscard]] auto get_gravity_factor() const -> float;
     void               set_gravity_factor(float gravity_factor);
-
-    // Wind receptivity in kg/s: the scene wind system applies
-    // force = wind_receptivity * (wind_velocity - body_velocity) at the body
-    // center of mass each fixed step. 0 (default) = unaffected by wind (the
-    // body is never touched, so it can sleep normally).
-    [[nodiscard]] auto get_wind_receptivity() const -> float;
-    void               set_wind_receptivity(float wind_receptivity);
 
     // Bodies enter the world deactivated (quiet scene loading). With
     // wake_on_attach set, a dynamic body is woken right after it is added
@@ -182,7 +169,6 @@ private:
     // hand-written bridge sets): the member already holds the new value.
     void apply_motion_mode          ();
     void apply_mass                 (float mass);
-    void apply_damping              ();
     void apply_gravity_factor       ();
     void apply_center_of_mass_offset(const glm::vec3& offset);
     // Subscribes to the current material (every property); the subscription
@@ -193,7 +179,6 @@ private:
     erhe::physics::IRigid_body_create_info      m_create_info;
     std::shared_ptr<erhe::physics::IRigid_body> m_rigid_body;
     erhe::physics::Motion_mode                  m_motion_mode{erhe::physics::Motion_mode::e_dynamic};
-    float                                       m_wind_receptivity{0.0f};
     bool                                        m_wake_on_attach{false};
     erhe::property::Observer_token              m_physics_material_observer;
 };

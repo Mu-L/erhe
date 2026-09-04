@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -41,6 +42,15 @@ void apply_persistent_item_flags(erhe::Item_base& item, uint64_t listed_bits);
 // Applies one serialized local value; false (logged) for an unknown name
 // or a value that does not parse as the property's type.
 auto apply_item_local_property(erhe::Item_base& item, std::string_view name, std::string_view value) -> bool;
+
+// The "properties" object is the item's complete local set: every stored
+// (not bridged, not computed, not read-only) value property of the item's
+// own chain that holds a local value `is_listed` does not accept is
+// cleared, so a value the core glTF fields carried (a KHR_lights_punctual
+// color, a KHR_physics_rigid_bodies friction) does not turn an inherited
+// value into a local one on reload. Call after the listed values are
+// applied.
+void clear_local_properties_not_listed(erhe::Item_base& item, const std::function<bool(std::string_view name)>& is_listed);
 
 // Older files list visible / shadow_cast / lightmapped in the flags
 // arrays: a listed shadow_cast / lightmapped becomes a local true, an

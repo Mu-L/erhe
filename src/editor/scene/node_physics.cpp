@@ -40,12 +40,6 @@ auto slider(const float min, const float max, const std::string_view label, cons
     return Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::slider, .group = c_group, .tooltip = tooltip, .label = label, .visible_when = visible_when};
 }
 
-auto unit_range(const Property_value& value) -> bool
-{
-    const float f = std::get<float>(value);
-    return (f >= 0.0f) && (f <= 1.0f);
-}
-
 } // anonymous namespace
 
 const Property<Motion_mode> Node_physics::motion_mode_property = Property<Motion_mode>::register_member(
@@ -73,24 +67,10 @@ const Property<float> Node_physics::mass_property = Property<float>::register_pr
     },
     [](const Property_value& value) -> bool { return std::get<float>(value) > 0.0f; }
 );
-const Property<float> Node_physics::linear_damping_property = Property<float>::register_member<Node_physics, float>(
-    "linear_damping", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.linear_damping; },
-    Property_metadata{.default_value = 0.05f, .ui = slider(0.0f, 1.0f, "Linear Damping", {}, is_movable)},
-    [](Node_physics& node_physics) { node_physics.apply_damping(); }, unit_range
-);
-const Property<float> Node_physics::angular_damping_property = Property<float>::register_member<Node_physics, float>(
-    "angular_damping", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.angular_damping; },
-    Property_metadata{.default_value = 0.05f, .ui = slider(0.0f, 1.0f, "Angular Damping", {}, is_movable)},
-    [](Node_physics& node_physics) { node_physics.apply_damping(); }, unit_range
-);
 const Property<float> Node_physics::gravity_factor_property = Property<float>::register_member<Node_physics, float>(
     "gravity_factor", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.gravity_factor; },
     Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 2.0f, "Gravity Factor", {}, is_movable)},
     [](Node_physics& node_physics) { node_physics.apply_gravity_factor(); }
-);
-const Property<float> Node_physics::wind_receptivity_property = Property<float>::register_member(
-    "wind_receptivity", Node_physics::property_owner_type(), &Node_physics::m_wind_receptivity,
-    Property_metadata{.default_value = 0.0f, .ui = slider(0.0f, 10.0f, "Wind Receptivity", "kg/s: force = wind_receptivity * (wind velocity - body velocity) at the center of mass each fixed step; 0 = unaffected by wind")}
 );
 const Property<glm::vec3> Node_physics::initial_linear_velocity_property = Property<glm::vec3>::register_member<Node_physics, glm::vec3>(
     "initial_linear_velocity", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.linear_velocity; },
@@ -112,7 +92,7 @@ const Property<glm::vec3> Node_physics::center_of_mass_offset_property = Propert
 );
 const Property<Object_reference> Node_physics::physics_material_property = Property<Object_reference>::register_member<Node_physics, std::shared_ptr<erhe::physics::Physics_material>>(
     "physics_material", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.physics_material; },
-    Property_metadata{.ui = Property_ui{.group = c_group, .tooltip = "Shared material carrying friction and restitution; none behaves like the material defaults", .label = "Physics Material", .reference_item_types = erhe::Item_type::physics_material}},
+    Property_metadata{.ui = Property_ui{.group = c_group, .tooltip = "Shared material carrying friction, restitution, damping, wind receptivity and density; none behaves like the material defaults", .label = "Physics Material", .reference_item_types = erhe::Item_type::physics_material}},
     [](Node_physics& node_physics) { node_physics.observe_physics_material(); node_physics.reapply_physics_material(); }
 );
 const Property<Object_reference> Node_physics::collision_filter_property = Property<Object_reference>::register_member<Node_physics, std::shared_ptr<erhe::physics::Collision_filter>>(
@@ -128,7 +108,6 @@ Node_physics::Node_physics(const Node_physics& src)
     , m_create_info     {src.m_create_info}
     , m_rigid_body      {src.m_rigid_body}
     , m_motion_mode     {src.m_motion_mode}
-    , m_wind_receptivity{src.m_wind_receptivity}
     , m_wake_on_attach  {src.m_wake_on_attach}
 {
     observe_physics_material();
@@ -142,7 +121,6 @@ Node_physics& Node_physics::operator=(const Node_physics& src)
     m_create_info      = src.m_create_info;
     m_rigid_body       = src.m_rigid_body;
     m_motion_mode      = src.m_motion_mode;
-    m_wind_receptivity = src.m_wind_receptivity;
     m_wake_on_attach   = src.m_wake_on_attach;
     observe_physics_material();
     return *this;
@@ -155,7 +133,6 @@ Node_physics::Node_physics(const Node_physics& src, erhe::for_clone)
     , m_create_info {src.m_create_info}
     , m_rigid_body  {}        // clone rigid body is not initially created
     , m_motion_mode {src.m_motion_mode}
-    , m_wind_receptivity{src.m_wind_receptivity}
 {
     observe_physics_material();
 }
@@ -369,35 +346,6 @@ void Node_physics::apply_mass(const float mass)
     }
 }
 
-auto Node_physics::get_linear_damping() const -> float
-{
-    return m_create_info.linear_damping;
-}
-
-void Node_physics::set_linear_damping(const float linear_damping)
-{
-    set_value(linear_damping_property, linear_damping);
-}
-
-auto Node_physics::get_angular_damping() const -> float
-{
-    return m_create_info.angular_damping;
-}
-
-void Node_physics::set_angular_damping(const float angular_damping)
-{
-    set_value(angular_damping_property, angular_damping);
-}
-
-void Node_physics::apply_damping()
-{
-    // A static body has no motion properties (Jolt); the create info keeps
-    // the values for the next non-static mode.
-    if (m_rigid_body && (m_rigid_body->get_motion_mode() != Motion_mode::e_static)) {
-        m_rigid_body->set_damping(m_create_info.linear_damping, m_create_info.angular_damping);
-    }
-}
-
 auto Node_physics::get_physics_material() const -> const std::shared_ptr<erhe::physics::Physics_material>&
 {
     return m_create_info.physics_material;
@@ -467,16 +415,6 @@ void Node_physics::apply_gravity_factor()
     if (m_rigid_body && (m_rigid_body->get_motion_mode() != Motion_mode::e_static)) {
         m_rigid_body->set_gravity_factor(m_create_info.gravity_factor);
     }
-}
-
-auto Node_physics::get_wind_receptivity() const -> float
-{
-    return m_wind_receptivity;
-}
-
-void Node_physics::set_wind_receptivity(const float wind_receptivity)
-{
-    set_value(wind_receptivity_property, wind_receptivity);
 }
 
 void Node_physics::set_wake_on_attach(const bool wake_on_attach)

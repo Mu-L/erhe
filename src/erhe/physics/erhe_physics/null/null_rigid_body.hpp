@@ -2,6 +2,7 @@
 
 #include "erhe_physics/null/null_world.hpp"
 #include "erhe_physics/irigid_body.hpp"
+#include "erhe_physics/physics_material.hpp"
 
 #include <string>
 
@@ -72,9 +73,9 @@ private:
     glm::vec3                         m_angular_velocity;
     std::optional<float>              m_mass;
     Motion_mode                       m_motion_mode     {Motion_mode::e_static};
-    float                             m_linear_damping  {0.05f};
+    float                             m_linear_damping  {c_default_linear_damping};
     glm::mat4                         m_local_inertia   {0.0f};
-    float                             m_angular_damping {0.05f};
+    float                             m_angular_damping {c_default_angular_damping};
     float                             m_friction        {0.5f};
     float                             m_gravity_factor  {1.0f};
     float                             m_restitution     {0.5f};

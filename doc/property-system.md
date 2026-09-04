@@ -1422,19 +1422,22 @@ live body. `motion_mode` (`erhe::physics::Motion_mode`, `Enum_info` table
 `c_motion_mode_enum_info` next to `c_motion_mode_strings` in
 `erhe_physics/irigid_body.hpp`, the four authorable modes) re-derives the
 effective mode and sets it on the body; `is_trigger` recreates the body;
-`linear_damping` and `angular_damping` ([0, 1], `visible_when` the mode is
-not static) set the body's damping while the body is not static;
-`gravity_factor` (0..2, `visible_when` not static) likewise;
-`wind_receptivity` (0..10 kg/s) and the two initial velocities (world
-space, applied at (re)creation) have no live consequence.
+`gravity_factor` (0..2, `visible_when` the mode is not static) sets the
+body's gravity factor while the body is not static; the two initial
+velocities (world space, applied at (re)creation) have no live
+consequence.
 `physics_material` and `collision_filter` are object properties (D28,
 `reference_item_types` the physics material and collision filter type
 bits; `find_item_in_scene` walks the content library's physics materials
 and collision filters so a name resolves) whose hook sets the body's
-material or filter. The material is the only carrier of friction and
-restitution (section 4.12): the attachment, the create info and
-`ERHE_physics` hold no scalar of their own, and a body without a
-material behaves like one with the material defaults;
+material or filter. The attachment holds what describes this body
+instance: its role (`motion_mode`, `is_trigger`) and the
+`KHR_physics_rigid_bodies` motion fields (mass, center of mass, initial
+velocities, gravity factor). What describes the kind of matter - friction,
+restitution, damping, wind receptivity, density - is the material's
+(section 4.12): the attachment, the create info and `ERHE_physics` hold
+no such scalar of their own, and a body without a material behaves like
+one with the material defaults;
 `reapply_physics_material()` / `reapply_collision_filter()` push the
 current one again after the referenced item itself was edited, because a
 write of the pointer the member already holds is a no-op (R4): the
@@ -1450,7 +1453,7 @@ wrapper around the collision shape; the set rewraps and recreates the
 body).
 
 The typed accessors (`set_motion_mode()`, `set_trigger()`, `set_mass()`,
-`set_linear_damping()`, ... `set_collision_filter()`) write through the
+`set_gravity_factor()`, ... `set_collision_filter()`) write through the
 properties, so the MCP `edit_physics_body` tool, the glTF physics import
 overrides, the geometry graph mesh binding and the Properties rows all
 notify; the physics tool's drag-time overrides of friction, damping and
@@ -1500,29 +1503,39 @@ count diagnostics.
 item; the content library's Physics Materials category holds them, with
 "Create Physics Material" on the folder, the Operations window and the
 MCP `create_physics_material` making new ones and the "Default" item
-`add_default_physics_materials` adds to every scene) registers its five
-fields as entry-stored, inheriting properties (owner type
+`add_default_physics_materials` adds to every scene) describes how a kind
+of matter behaves and registers its nine fields as entry-stored,
+inheriting properties (owner type
 `Physics_material::property_owner_type()`, so a folder or a style holds
-them, D30) with the spec defaults (`c_default_friction`,
-`c_default_restitution`, also what the Jolt backend gives a body without
-a material) as the property defaults: `static_friction` and
-`dynamic_friction` (0.6,
-validated non-negative; the extension and the physics sense set no upper
-bound, so a file value above the 0..1 slider still loads), `restitution`
-(0, validated to [0, 1]) and the enumerations `friction_combine` and
+them, D30) with the `c_default_*` constants of
+`erhe_physics/physics_material.hpp` (also what a body without a material
+behaves like) as the property defaults. The `KHR_physics_rigid_bodies`
+fields: `static_friction` and `dynamic_friction` (0.6, validated
+non-negative; the extension and the physics sense set no upper bound, so
+a file value above the 0..1 slider still loads), `restitution` (0,
+validated to [0, 1]) and the enumerations `friction_combine` and
 `restitution_combine` (`Combine_mode`, `Enum_info` table
 `c_combine_mode_enum_info` next to the enumeration in
 `erhe_physics/physics_material.hpp`, defined in `physics_material.cpp`).
+The erhe fields, which the KHR material has no carrier for and which
+ride `ERHE_scene` `physics_materials` as the material's local values:
+`linear_damping` and `angular_damping` (0.05, validated to [0, 1]),
+`wind_receptivity` (0 kg/s, validated non-negative; the scene wind reads
+it each fixed step) and `density` (1, validated positive; the mass of a
+body without an explicit mass is its shape mass scaled by it).
 The typed accessors (`get_static_friction()`, `set_static_friction()`, ...)
 read and write the store, and every reader - the Jolt body snapshot, the
-glTF physics import and export, the MCP physics tools, the default
-library material - uses them.
+glTF physics import and export, the MCP physics tools, the scene wind,
+the default library material - uses them.
 
-The material is the only carrier of friction and restitution: neither
-`Node_physics` nor `IRigid_body_create_info` holds a scalar of its own
-(section 4.10). The consequence of an edit stays backend-neutral. A backend may snapshot
-the material per body at `IRigid_body::set_physics_material()` (Jolt
-does, so its contact listener reads the values without locks), and the
+The material is the only carrier of these scalars: neither `Node_physics`
+nor `IRigid_body_create_info` holds one of its own (section 4.10; the
+body keeps its own mass, and a brush-placed body's mass is explicit). The
+consequence of an edit stays backend-neutral. A backend may snapshot the
+material per body at `IRigid_body::set_physics_material()` (Jolt does,
+so its contact listener reads the values without locks; the same call
+applies the damping to the body's motion properties and, while the body
+has no explicit mass, re-derives the mass from the density), and the
 material does not know the bodies that reference it, so the holder of
 the reference pushes it again: the editor's `Node_physics` subscribes an
 any-property observer (D21) to its material whenever its
@@ -1625,7 +1638,7 @@ style layer is D25.
   node or a style should hold and a descendant inherit (D30): a bridged
   property is always local, so it is neither offered on a holder nor
   inherited. In the order the holding is wanted: `Node_physics` (a
-  physics style or a folder value for friction, damping, motion mode),
+  physics style or a node value for the material, motion mode, mass),
   `Layout`, `Grid`, `Brush_placement`, then the graph node parameters.
   The Light and Camera migrations (sections 4.3, 4.4) are the recipe:
   keep the engineered struct as a mirror refreshed from

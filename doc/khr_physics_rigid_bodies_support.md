@@ -78,8 +78,10 @@ available for Phase 6 round-trip verification.
   spec-compliance fixes; see the Phase 5.5 table row and the `CPMAddPackage`
   comment in the root `CMakeLists.txt`. Drop the fork and move back to
   spnda/fastgltf when upstream catches up with the spec.
-- glTF physics material / filter / joint names do not round-trip (the fastgltf types carry no
-  name fields); the importer synthesizes "Physics material N" style names.
+- The fastgltf physics material / filter / joint types carry no name fields: the names (and a
+  physics material's erhe-only property values) ride `ERHE_scene` `physics_materials` /
+  `collision_filter_names` in erhe-authored files; for foreign files the importer synthesizes
+  "Physics material N" style names.
 - Plane shapes: not representable in fastgltf (Shape variant lacks plane; not added by the
   fork either).
 - Export: compound children with convex hull / mesh shapes are skipped with a warning (the

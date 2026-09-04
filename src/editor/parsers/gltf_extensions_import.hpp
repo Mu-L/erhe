@@ -33,9 +33,6 @@ class Gltf_physics_overrides
 {
 public:
     std::optional<erhe::physics::Motion_mode> motion_mode;
-    std::optional<float>                      linear_damping;
-    std::optional<float>                      angular_damping;
-    std::optional<float>                      wind_receptivity; // Node_physics attribute, applied after construction
 };
 
 [[nodiscard]] auto parse_gltf_physics_overrides(const erhe::gltf::Gltf_data& gltf_data)
@@ -56,14 +53,24 @@ public:
 
 [[nodiscard]] auto parse_gltf_scene_state(const erhe::gltf::Gltf_data& gltf_data) -> std::optional<Gltf_scene_state>;
 
-// ERHE_scene physics_material_names / collision_filter_names: the names of
-// the KHR_physics_rigid_bodies physicsMaterials / collisionFilters entries
-// by index (the KHR entries carry no name). Empty vectors when absent.
+// ERHE_scene physics_materials / collision_filter_names: the
+// KHR_physics_rigid_bodies physicsMaterials / collisionFilters entries by
+// index (the KHR entries carry no name). A physics material entry carries
+// the name and the material's local property values (name -> text), the
+// material's complete local set. Empty vectors when absent.
+class Gltf_physics_material_record
+{
+public:
+    std::string                                      name;
+    std::vector<std::pair<std::string, std::string>> properties;
+    bool                                             has_properties{false};
+};
+
 class Gltf_physics_item_names
 {
 public:
-    std::vector<std::string> physics_materials;
-    std::vector<std::string> collision_filters;
+    std::vector<Gltf_physics_material_record> physics_materials;
+    std::vector<std::string>                  collision_filters;
 };
 
 [[nodiscard]] auto parse_gltf_physics_item_names(const erhe::gltf::Gltf_data& gltf_data) -> Gltf_physics_item_names;

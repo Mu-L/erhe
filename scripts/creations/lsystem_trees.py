@@ -120,9 +120,14 @@ def rig_tree_sway(c, sway_jobs, collision_filter="sway_spines"):
             c.body(carrier_id, shape="sphere", radius=0.05,
                    motion_mode="static", is_trigger=True)
             carriers_with_body.add(carrier_id)
+        # Damping and wind receptivity are physics material properties: one
+        # shared material per distinct (receptivity, damping) pair.
+        material = c.physics_material(
+            f"Sway r{receptivity:g} d{ang_damp:g}",
+            angular_damping=ang_damp, linear_damping=0.05,
+            wind_receptivity=receptivity)
         body_args = dict(shape="auto", motion_mode="dynamic", mass=mass,
-                         gravity_factor=0.0, angular_damping=ang_damp,
-                         linear_damping=0.05, wind_receptivity=receptivity)
+                         gravity_factor=0.0, material_name=material)
         if collision_filter:
             body_args["filter_name"] = collision_filter
         c.body(node_id, **body_args)

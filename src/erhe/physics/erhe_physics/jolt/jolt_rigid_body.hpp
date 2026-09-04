@@ -19,15 +19,19 @@ class Jolt_world;
 // POD copy of the assigned Physics_material, read without locks by the
 // world's contact listener (Jolt worker threads) during update_fixed_step().
 // Updated only at body creation and from set_physics_material(), which must
-// be called outside update_fixed_step().
+// be called outside update_fixed_step(). The defaults are the material
+// defaults, so a body without a material reads the same values.
 class Physics_material_snapshot
 {
 public:
-    float        static_friction    {0.6f};
-    float        dynamic_friction   {0.6f};
-    float        restitution        {0.0f};
+    float        static_friction    {c_default_friction};
+    float        dynamic_friction   {c_default_friction};
+    float        restitution        {c_default_restitution};
     Combine_mode friction_combine   {Combine_mode::e_average};
     Combine_mode restitution_combine{Combine_mode::e_average};
+    float        linear_damping     {c_default_linear_damping};
+    float        angular_damping    {c_default_angular_damping};
+    float        density            {c_default_density};
     bool         has_material       {false};
 };
 
@@ -94,11 +98,18 @@ public:
 private:
     [[nodiscard]] auto get_body_interface() const -> JPH::BodyInterface&;
     void update_material_snapshot();
+    // Pushes the snapshot's damping to the body and, while the body has no
+    // explicit mass, re-derives the mass from the snapshot's density.
+    void apply_material_to_body();
 
     JPH::Body*                            m_body            {nullptr};
     void*                                 m_owner           {nullptr};
     Jolt_world&                           m_world;
     JPH::MassProperties                   m_mass_properties;
+    // The shape's own mass properties (inertia override applied): what the
+    // mass is derived from while no explicit mass is set.
+    JPH::MassProperties                   m_shape_mass_properties;
+    bool                                  m_has_explicit_mass{false};
     std::shared_ptr<Jolt_collision_shape> m_collision_shape;
     Motion_mode                           m_motion_mode     {Motion_mode::e_kinematic_non_physical};
     std::string                           m_debug_label;

@@ -1387,7 +1387,8 @@ auto save_scene_gltf(Scene_root& scene_root, const std::filesystem::path& path) 
         log_parsers->error("save_scene_gltf: scene '{}' has no root node", scene_root.get_name());
         return false;
     }
-    const erhe::gltf::Gltf_physics_data physics_data = build_gltf_physics_data(scene, scene_root.get_content_library().get());
+    std::vector<std::shared_ptr<erhe::physics::Physics_material>> physics_material_items;
+    const erhe::gltf::Gltf_physics_data physics_data = build_gltf_physics_data(scene, scene_root.get_content_library().get(), &physics_material_items);
     erhe::gltf::Gltf_export_arguments export_arguments{
         .root_node             = *root_node,
         .binary                = path.extension() != std::filesystem::path{".gltf"},
@@ -1399,7 +1400,7 @@ auto save_scene_gltf(Scene_root& scene_root, const std::filesystem::path& path) 
     // Editor-domain ERHE_* extensions + baked graph-mesh exclusion: this is
     // what makes the file a full scene save instead of an interchange export
     // (ERHE_scene in extensionsUsed is the erhe-authored marker).
-    add_gltf_editor_state(export_arguments, scene_root, path);
+    add_gltf_editor_state(export_arguments, scene_root, path, physics_material_items);
     const std::string gltf = erhe::gltf::export_gltf(export_arguments);
     if (!erhe::file::write_file(path, gltf)) {
         log_parsers->error("save_scene_gltf: failed to write '{}'", erhe::file::to_string(path));

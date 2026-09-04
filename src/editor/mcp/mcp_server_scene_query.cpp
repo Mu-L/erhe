@@ -548,7 +548,6 @@ auto Mcp_server::query_node_details(const json& args) -> std::string
             att_json["motion_mode"]      = motion_mode_to_string(node_physics->get_motion_mode());
             att_json["is_trigger"]       = node_physics->is_trigger();
             att_json["gravity_factor"]   = node_physics->get_gravity_factor();
-            att_json["wind_receptivity"] = node_physics->get_wind_receptivity();
             const std::shared_ptr<erhe::physics::ICollision_shape>& shape = node_physics->get_collision_shape();
             att_json["collision_shape"] = shape ? shape->describe() : "";
             const std::shared_ptr<erhe::physics::Physics_material>& physics_material = node_physics->get_physics_material();
@@ -557,8 +556,12 @@ auto Mcp_server::query_node_details(const json& args) -> std::string
             att_json["collision_filter"] = collision_filter ? collision_filter->get_name() : "";
             const erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
             if (rigid_body != nullptr) {
-                att_json["mass"]        = rigid_body->get_mass();
-                att_json["is_active"]   = rigid_body->is_active();
+                att_json["mass"]            = rigid_body->get_mass();
+                att_json["is_active"]       = rigid_body->is_active();
+                // The live body's damping: the physics material's values as
+                // the backend applied them (0 for a static body).
+                att_json["linear_damping"]  = rigid_body->get_linear_damping();
+                att_json["angular_damping"] = rigid_body->get_angular_damping();
             }
         }
 

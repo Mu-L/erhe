@@ -197,7 +197,11 @@ auto Mcp_server::query_physics_items(const json& args) -> std::string
             {"dynamic_friction",    material->get_dynamic_friction()},
             {"restitution",         material->get_restitution()},
             {"friction_combine",    combine_mode_to_string(material->get_friction_combine())},
-            {"restitution_combine", combine_mode_to_string(material->get_restitution_combine())}
+            {"restitution_combine", combine_mode_to_string(material->get_restitution_combine())},
+            {"linear_damping",      material->get_linear_damping()},
+            {"angular_damping",     material->get_angular_damping()},
+            {"wind_receptivity",    material->get_wind_receptivity()},
+            {"density",             material->get_density()}
         });
     }
     json filters = json::array();
@@ -258,8 +262,6 @@ auto Mcp_server::action_create_physics_body(const json& args) -> std::string
     if (args.contains("mass")) {
         create_info.mass = args["mass"].get<float>();
     }
-    create_info.linear_damping   = args.value("linear_damping",  create_info.linear_damping);
-    create_info.angular_damping  = args.value("angular_damping", create_info.angular_damping);
     create_info.gravity_factor   = args.value("gravity_factor",  create_info.gravity_factor);
     create_info.is_sensor        = args.value("is_trigger",      false);
     create_info.linear_velocity  = get_vec3(args, "linear_velocity",  create_info.linear_velocity);
@@ -289,9 +291,6 @@ auto Mcp_server::action_create_physics_body(const json& args) -> std::string
     const std::shared_ptr<Node_physics> node_physics = m_context.scene_commands->create_new_rigid_body(node.get(), create_info);
     if (!node_physics) {
         return make_error_content("Failed to create rigid body on node: " + node->get_name());
-    }
-    if (args.contains("wind_receptivity")) {
-        node_physics->set_wind_receptivity(args["wind_receptivity"].get<float>());
     }
     if (args.value("wake", false)) {
         node_physics->set_wake_on_attach(true);
@@ -386,10 +385,6 @@ auto Mcp_server::action_edit_physics_body(const json& args) -> std::string
         node_physics->set_gravity_factor(args["gravity_factor"].get<float>());
         applied.push_back("gravity_factor");
     }
-    if (args.contains("wind_receptivity")) {
-        node_physics->set_wind_receptivity(args["wind_receptivity"].get<float>());
-        applied.push_back("wind_receptivity");
-    }
     if (args.contains("linear_velocity")) {
         node_physics->set_initial_linear_velocity(get_vec3(args, "linear_velocity", glm::vec3{0.0f}));
         applied.push_back("linear_velocity");
@@ -407,19 +402,13 @@ auto Mcp_server::action_edit_physics_body(const json& args) -> std::string
         applied.push_back("filter_name");
     }
 
-    // The scalar dynamics are Node_physics properties: the create info
-    // keeps the authored value and the live body (if any) gets it now.
+    // The mass is a Node_physics property: the create info keeps the
+    // authored value and the live body (if any) gets it now. Damping, wind
+    // receptivity and density belong to the physics material
+    // (edit_physics_material).
     if (args.contains("mass")) {
         node_physics->set_mass(args["mass"].get<float>());
         applied.push_back("mass");
-    }
-    if (args.contains("linear_damping")) {
-        node_physics->set_linear_damping(args["linear_damping"].get<float>());
-        applied.push_back("linear_damping");
-    }
-    if (args.contains("angular_damping")) {
-        node_physics->set_angular_damping(args["angular_damping"].get<float>());
-        applied.push_back("angular_damping");
     }
 
     const std::shared_ptr<erhe::physics::ICollision_shape>& shape = node_physics->get_collision_shape();
@@ -584,6 +573,10 @@ auto Mcp_server::action_create_physics_material(const json& args) -> std::string
     item->set_restitution        (args.value("restitution",      item->get_restitution()));
     item->set_friction_combine   (parse_combine_mode(args.value("friction_combine",    ""), item->get_friction_combine()));
     item->set_restitution_combine(parse_combine_mode(args.value("restitution_combine", ""), item->get_restitution_combine()));
+    item->set_linear_damping     (args.value("linear_damping",   item->get_linear_damping()));
+    item->set_angular_damping    (args.value("angular_damping",  item->get_angular_damping()));
+    item->set_wind_receptivity   (args.value("wind_receptivity", item->get_wind_receptivity()));
+    item->set_density            (args.value("density",          item->get_density()));
 
     m_context.operation_stack->queue(
         std::make_shared<Item_insert_remove_operation>(
@@ -636,6 +629,10 @@ auto Mcp_server::action_edit_physics_material(const json& args) -> std::string
         item->set_restitution_combine(parse_combine_mode(args["restitution_combine"].get<std::string>(), item->get_restitution_combine()));
         applied.push_back("restitution_combine");
     }
+    if (args.contains("linear_damping"))   { item->set_linear_damping  (args["linear_damping"].get<float>());   applied.push_back("linear_damping"); }
+    if (args.contains("angular_damping"))  { item->set_angular_damping (args["angular_damping"].get<float>());  applied.push_back("angular_damping"); }
+    if (args.contains("wind_receptivity")) { item->set_wind_receptivity(args["wind_receptivity"].get<float>()); applied.push_back("wind_receptivity"); }
+    if (args.contains("density"))          { item->set_density         (args["density"].get<float>());          applied.push_back("density"); }
 
     return make_json_content({
         {"name",                item->get_name()},
@@ -644,7 +641,11 @@ auto Mcp_server::action_edit_physics_material(const json& args) -> std::string
         {"dynamic_friction",    item->get_dynamic_friction()},
         {"restitution",         item->get_restitution()},
         {"friction_combine",    combine_mode_to_string(item->get_friction_combine())},
-        {"restitution_combine", combine_mode_to_string(item->get_restitution_combine())}
+        {"restitution_combine", combine_mode_to_string(item->get_restitution_combine())},
+        {"linear_damping",      item->get_linear_damping()},
+        {"angular_damping",     item->get_angular_damping()},
+        {"wind_receptivity",    item->get_wind_receptivity()},
+        {"density",             item->get_density()}
     }).dump();
 }
 

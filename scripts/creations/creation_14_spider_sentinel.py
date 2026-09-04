@@ -262,9 +262,10 @@ def make_motor_settings(c):
 def rig_spider(c, spider):
     """Attach bodies (explicit masses) and motor joints. Run AFTER settle()
     with the simulation disabled so the drives capture the standing pose."""
+    material = c.physics_material("Spider limb", angular_damping=0.3, linear_damping=0.1)
     for node_id, mass in spider.body_jobs:
         c.body(node_id, shape="auto", motion_mode="dynamic", mass=mass,
-               angular_damping=0.3, linear_damping=0.1)
+               material_name=material)
     for name, part_a, part_b, pivot, settings in spider.joint_jobs:
         anchor_a = c.anchor(f"{name} A", part_a, pivot)
         anchor_b = c.anchor(f"{name} B", part_b, pivot)

@@ -156,10 +156,18 @@ class RockYard:
     def apply_rock_friction(self):
         """Rocks pile instead of scattering: high friction, dead bounce,
         angular damping so boulders stop rolling. One batch per 40 rocks."""
+        # Friction, restitution and damping are physics material properties:
+        # one shared material per distinct friction value.
+        materials = {}
+        for _node_id, friction in self.body_ids:
+            if friction not in materials:
+                materials[friction] = self.c.physics_material(
+                    f"Rock f{friction:g}",
+                    static_friction=friction, dynamic_friction=friction,
+                    restitution=0.02, angular_damping=0.35, linear_damping=0.05)
         calls = [{"tool": "edit_physics_body", "arguments": {
             "scene_name": self.c.scene, "node_id": node_id,
-            "friction": friction, "restitution": 0.02,
-            "angular_damping": 0.35, "linear_damping": 0.05,
+            "material_name": materials[friction],
         }} for node_id, friction in self.body_ids]
         for i in range(0, len(calls), 40):
             self.c.batch(calls[i:i + 40])

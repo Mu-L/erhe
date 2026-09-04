@@ -26,6 +26,10 @@ Null_rigid_body::Null_rigid_body(
     if (create_info.inertia_override.has_value()) {
         m_local_inertia = create_info.inertia_override.value();
     }
+    if (m_physics_material) {
+        m_linear_damping  = m_physics_material->get_linear_damping();
+        m_angular_damping = m_physics_material->get_angular_damping();
+    }
 }
 
 IRigid_body::~IRigid_body() noexcept
@@ -54,6 +58,8 @@ auto Null_rigid_body::get_physics_material() const -> std::shared_ptr<Physics_ma
 void Null_rigid_body::set_physics_material(const std::shared_ptr<Physics_material>& material)
 {
     m_physics_material = material;
+    m_linear_damping   = material ? material->get_linear_damping()  : c_default_linear_damping;
+    m_angular_damping  = material ? material->get_angular_damping() : c_default_angular_damping;
 }
 
 auto Null_rigid_body::get_collision_filter() const -> std::shared_ptr<Collision_filter>
@@ -162,7 +168,7 @@ void Null_rigid_body::set_damping(const float linear_damping, const float angula
 
 auto Null_rigid_body::get_angular_damping () const -> float
 {
-    return m_linear_damping;
+    return m_angular_damping;
 }
 
 auto Null_rigid_body::get_angular_velocity() const -> glm::vec3
