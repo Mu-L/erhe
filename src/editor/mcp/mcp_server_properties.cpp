@@ -30,7 +30,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -453,26 +452,13 @@ auto Mcp_server::action_set_item_style(const json& args) -> std::string
     ).dump();
 }
 
-// An empty style item of the named target class in the scene's Styles
-// folder (doc/style-library.md R1); fill it with set_item_property by
-// qualified name and assign it through an item's 'style' property.
+// An empty style item in the scene's Styles folder (doc/style-library.md
+// R1); fill it with set_item_property by qualified name and assign it
+// through an item's 'style' property.
 auto Mcp_server::action_create_style(const json& args) -> std::string
 {
-    const std::string scene_name  = args.value("scene_name", "");
-    const std::string name        = args.value("name", "New Style");
-    const std::string target_name = args.value("target", "");
-    const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
-    std::vector<erhe::property::Owner_type> targets;
-    collect_style_target_owner_types(targets);
-    const std::optional<erhe::property::Owner_type> target = registry.find_owner_type(target_name);
-    if (!target.has_value() || (std::find(targets.begin(), targets.end(), target.value()) == targets.end())) {
-        std::string valid;
-        for (const erhe::property::Owner_type candidate : targets) {
-            valid += valid.empty() ? "" : ", ";
-            valid += std::string{registry.get_owner_name(candidate)};
-        }
-        return make_error_content("'target' must name a class with value properties; one of: " + valid);
-    }
+    const std::string scene_name = args.value("scene_name", "");
+    const std::string name       = args.value("name", "New Style");
     Scene_root* scene_root = nullptr;
     if (scene_name.empty()) {
         const std::vector<std::shared_ptr<Scene_root>>& scene_roots = m_context.app_scenes->get_scene_roots();
@@ -490,7 +476,7 @@ auto Mcp_server::action_create_style(const json& args) -> std::string
     std::shared_ptr<Style> style{};
     {
         std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{library->mutex};
-        style = std::make_shared<Style>(make_unique_style_name(*library->styles, name), target.value());
+        style = std::make_shared<Style>(make_unique_style_name(*library->styles, name));
     }
     m_context.operation_stack->execute_now(
         std::make_shared<Item_insert_remove_operation>(
@@ -504,7 +490,7 @@ auto Mcp_server::action_create_style(const json& args) -> std::string
     );
     return make_json_content(
         json{
-            {"style", {{"id", style->get_id()}, {"name", style->get_name()}, {"target", std::string{registry.get_owner_name(target.value())}}}}
+            {"style", {{"id", style->get_id()}, {"name", style->get_name()}}}
         }
     ).dump();
 }

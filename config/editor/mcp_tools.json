@@ -6540,7 +6540,7 @@
   },
   {
     "name": "create_style",
-    "description": "Create an empty style item (doc/style-library.md R1) of the given target class in the scene's Styles folder, as one undoable insert executed immediately; returns the style's item id and final (unique) name. Fill it with set_item_property by qualified name ('Light.color', 'Material.roughness'; get_addable_item_properties lists them) and assign it by setting an item's 'style' property to the style's name. A style applies to items of the target class and to holders whose secondary owner type the target descends from: a Material style to a Materials folder, a Light (or any attachment class) style to a Node, so lights below the node inherit its values. An invalid target lists the valid class names.",
+    "description": "Create an empty style item (doc/style-library.md R1) in the scene's Styles folder, as one undoable insert executed immediately; returns the style's item id and final (unique) name. A style holds value properties of any class by qualified name ('Light.color', 'Material.roughness'; get_addable_item_properties on the style lists them all): fill it with set_item_property and assign it by setting any item's 'style' property to the style's name. Values of a class the user is not (Light.* on a node) reach the user's inheritance descendants of that class, so a style on an empty node styles the lights below it.",
     "inputSchema": {
       "properties": {
         "scene_name": {
@@ -6550,15 +6550,8 @@
         "name": {
           "description": "Style name (default 'New Style'; made unique in the folder)",
           "type": "string"
-        },
-        "target": {
-          "description": "Target class name, e.g. 'Material', 'Light', 'Camera', 'Node'",
-          "type": "string"
         }
       },
-      "required": [
-        "target"
-      ],
       "type": "object"
     }
   },

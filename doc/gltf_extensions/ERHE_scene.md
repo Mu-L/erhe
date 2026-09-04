@@ -19,11 +19,10 @@ plain interchange exports never do.
   field means "use the editor-global default"). Omitted entirely when no
   override is engaged.
 - `styles` (optional): the content library's style items
-  (`doc/style-library.md` D4): `name`, `target` (the owner type name of
-  the class the style holds values of, e.g. `"Material"`) and
-  `properties` (the style's local values as a name to text map, the form
-  of `ERHE_node` `properties`, keyed by qualified name; omitted when
-  empty). Loaded before anything that names a style. Omitted when the
+  (`doc/style-library.md` D4): `name` and `properties` (the style's local
+  values as a name to text map, the form of `ERHE_node` `properties`,
+  keyed by qualified name such as `Material.roughness` or `Light.color`;
+  omitted when empty). A `target` member of older files is ignored. Loaded before anything that names a style. Omitted when the
   library has no styles.
 - `library_folders` (optional): the content library's folders below its
   category folders (`doc/content-library-folders.md` D5), parents before
@@ -47,7 +46,7 @@ plain interchange exports never do.
         "clear_color": [0, 0, 0, 1]
     },
     "styles": [
-        {"name": "Brushed metal", "target": "Material", "properties": {"Material.roughness": "0.34 0.2", "Material.metallic": "1"}}
+        {"name": "Brushed metal", "properties": {"Material.roughness": "0.34 0.2", "Material.metallic": "1"}}
     ],
     "library_folders": [
         {"path": "Materials/Metals", "properties": {"visible": "false"}, "items": ["Gold", "Copper"], "style": "Brushed metal"},

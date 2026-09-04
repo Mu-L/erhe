@@ -876,18 +876,12 @@ void import_styles(
     std::size_t style_index = 0;
     for (const nlohmann::json& entry : *styles_it) {
         ++style_index;
-        if (!entry.is_object() || !entry.contains("name") || !entry["name"].is_string() || !entry.contains("target") || !entry["target"].is_string()) {
-            log_parsers->warn("glTF editor state: styles entry {} without name and target - skipped", style_index);
+        if (!entry.is_object() || !entry.contains("name") || !entry["name"].is_string()) {
+            log_parsers->warn("glTF editor state: styles entry {} without name - skipped", style_index);
             continue;
         }
-        const std::string name   = entry["name"].get<std::string>();
-        const std::string target = entry["target"].get<std::string>();
-        const std::optional<erhe::property::Owner_type> target_type = erhe::property::Property_registry::get().find_owner_type(target);
-        if (!target_type.has_value()) {
-            log_parsers->warn("glTF editor state: style '{}' targets unknown class '{}' - skipped", name, target);
-            continue;
-        }
-        std::shared_ptr<Style> style = std::make_shared<Style>(name, target_type.value());
+        const std::string name = entry["name"].get<std::string>();
+        std::shared_ptr<Style> style = std::make_shared<Style>(name);
         const auto properties_it = entry.find("properties");
         if ((properties_it != entry.end()) && properties_it->is_object()) {
             for (const auto& [property_name, value] : properties_it->items()) {

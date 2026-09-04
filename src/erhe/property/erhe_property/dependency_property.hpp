@@ -154,11 +154,6 @@ public:
     auto               allocate_owner_type(Owner_type parent, std::string_view name) -> Owner_type;
     [[nodiscard]] auto get_owner_parent   (Owner_type id) const -> Owner_type;
     [[nodiscard]] auto get_owner_name     (Owner_type id) const -> std::string_view;
-    // Ids 0 .. get_owner_count() - 1 are the allocated owner types.
-    [[nodiscard]] auto get_owner_count    () const -> std::size_t;
-    // True when owner_type itself registered at least one non-attached,
-    // non-read-only property (the types a style can target).
-    [[nodiscard]] auto has_own_value_properties(Owner_type owner_type) const -> bool;
 
 private:
     Property_registry();

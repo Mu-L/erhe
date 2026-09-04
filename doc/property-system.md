@@ -1149,7 +1149,8 @@ to inherit, and takes a style whose target is an attachment class
 (`Item_base::style_applies`, `doc/style-library.md` D3). The
 `Item_base` chain is the node's own, so `visible` and its siblings stay
 plain node properties, and `Mesh`'s computed world bounds are left out
-by the D30 rule. `ERHE_node` carries the held values in its `properties`
+by the D30 rule. The editor's `Style` item names the root type the same
+way and so holds every class's values (`doc/style-library.md` D2). `ERHE_node` carries the held values in its `properties`
 map by qualified name and the node's style by name (`style`).
 
 ### 4.3 Light

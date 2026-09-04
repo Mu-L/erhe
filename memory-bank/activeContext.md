@@ -11,7 +11,8 @@
 @node-holds-attachment-values::D30-generalized✓2026-09-04{ff0f28de6+62b80d7fd+8d1b12a57;user-report:"cannot add light properties to empty node / to style"}
   D30::secondary-covers-descendant-types{is_secondary_property:secondary|ancestor|descendant;¬bridged+¬computed;deliver-skips-property_changed-metadata-callback-on-holder{callback-casts-to-registering-class→was-UB}}
   Node::secondary=Node_attachment{offers-Light.*/Camera.*/...;Light-props-all-inherits}|Item_base::style_applies{target-on-chain||target-descends-from-object-secondary}|candidates-filtered
-  editor::Create-Style-submenu{Styles-folder;collect_style_target_owner_types=every-type-with-own-value-props≈40-incl-graph-node-kinds}+MCP-create_style{name,target;defaults-first-scene}|listing-rule=has_own_value{style-provided-secondary-listed;x-clears-local-only}
+  style-any-class::©User-chose-2026-09-04{"still cannot add light or camera properties to style"}→Style-secondary=root_owner_type{holds-every-class;applies-to-every-item;no-target;ERHE_scene.styles={name,properties};Create-Style-plain-item;MCP-create_style{name}}|listing-rule=has_own_value{style-provided-secondary-listed;x-clears-local-only}
+  !camera-gap::Camera-projection-props-bridged(D18)→¬holdable-by-style/node+¬inheritable{only-Camera.exposure+shadow_range};fix=migrate-Camera-to-entry-store-like-Light{ask-user}
   persistence::ERHE_node.style{Item_style_by_name_operation}+ERHE_light.properties=complete-local-set{loader-clears-unlisted-KHR-baked-values→light-keeps-inheriting-after-reload}
   trap-hit::Mesh.world_bounds_*-computed-listed-as-secondary-on-node→compute(node)-cast-to-Mesh→crash{fixed-by-¬computed-rule}|find_scene("")¬first-scene{create_library_folder-schema-claims-default}
   verify✓headless{scratchpad-verify_light_inherit.py;doc/style-library.md-step-6}|?user-interactive{Create-Style>Light,Add-Property-on-empty-node}

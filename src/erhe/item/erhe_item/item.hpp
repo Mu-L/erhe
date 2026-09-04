@@ -495,10 +495,9 @@ public:
     // is the rule the setter and the picker's candidate list share.
     static const erhe::property::Property<erhe::property::Object_reference> style_property;
     // True when `object` can use `source` as its style: the source's
-    // secondary owner type (its target class) is on the object's owner
-    // chain, or is the object's own secondary owner type or a descendant of
-    // it (a content-library folder taking a style of its category, a node
-    // taking a style of an attachment class).
+    // secondary owner type is on the object's owner chain, or is the
+    // object's own secondary owner type or a descendant of it. An editor
+    // Style item names the root type and so applies to every object.
     [[nodiscard]] static auto style_applies(const erhe::property::Dependency_object& source, const erhe::property::Dependency_object& object) -> bool;
 
     // Rejects Item_flags::derived bits in mask (logged, dropped). A change

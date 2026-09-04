@@ -21,10 +21,9 @@
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
-                    "target": {"type": "string", "description": "Owner type name of the class the style holds values of"},
                     "properties": {"type": "object", "additionalProperties": {"type": "string"}}
                 },
-                "required": ["name", "target"]
+                "required": ["name"]
             }
         },
         "library_folders": {

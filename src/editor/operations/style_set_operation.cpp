@@ -91,9 +91,8 @@ auto make_style_from_values(
         log_operations->warn("style from '{}': item '{}' belongs to no scene library", name, first->get_name());
         return {};
     }
-    const erhe::property::Owner_type target = first->get_property_owner_type();
-    std::shared_ptr<Style> style = std::make_shared<Style>(make_unique_style_name(*library->styles, name), target);
-    // Only the values the target class has and can hold (by identity), as paste.
+    std::shared_ptr<Style> style = std::make_shared<Style>(make_unique_style_name(*library->styles, name));
+    // Only the values a style can hold (by identity), as paste.
     const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
     std::size_t value_count = 0;
     for (const erhe::property::Property_set::Entry& entry : values.entries()) {
@@ -119,7 +118,7 @@ auto make_style_from_values(
         )
     );
     for (const std::shared_ptr<erhe::Item_base>& item : items) {
-        if (!item || item->is_sealed() || !erhe::property::is_owner_type_or_descendant(item->get_property_owner_type(), target)) {
+        if (!item || item->is_sealed()) {
             continue;
         }
         parameters.operations.push_back(std::make_shared<Style_set_operation>(item, item->get_style(), style));

@@ -395,10 +395,7 @@ void add_gltf_editor_state(
                 if (!style) {
                     continue;
                 }
-                nlohmann::json entry{
-                    {"name",   style->get_name()},
-                    {"target", std::string{erhe::property::Property_registry::get().get_owner_name(style->get_target_owner_type())}},
-                };
+                nlohmann::json entry{{"name", style->get_name()}};
                 const nlohmann::json properties = json_properties(*style);
                 if (properties.is_object() && !properties.empty()) {
                     entry["properties"] = properties;

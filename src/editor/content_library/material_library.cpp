@@ -10,7 +10,7 @@ namespace editor {
 auto make_brushed_metal_style() -> std::shared_ptr<Style>
 {
     using erhe::primitive::Material;
-    std::shared_ptr<Style> style = std::make_shared<Style>("Brushed metal", Material::property_owner_type());
+    std::shared_ptr<Style> style = std::make_shared<Style>("Brushed metal");
     style->set_value(Material::roughness_property,                  glm::vec2{0.34f, 0.20f});
     style->set_value(Material::metallic_property,                   1.0f);
     style->set_value(Material::bxdf_model_property,                 erhe::primitive::Bxdf_model::anisotropic_brdf);
