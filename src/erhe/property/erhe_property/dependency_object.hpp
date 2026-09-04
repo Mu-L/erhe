@@ -187,6 +187,9 @@ public:
     auto               clear_value     (const Dependency_property& property) -> bool;
     [[nodiscard]] auto read_local_value(const Dependency_property& property) const -> std::optional<Property_value>;
     [[nodiscard]] auto has_local_value (const Dependency_property& property) const -> bool;
+    // Local (entry or bridge) or style value: the object is the origin of
+    // the value its descendants inherit.
+    [[nodiscard]] auto has_own_value   (const Dependency_property& property) const -> bool;
     [[nodiscard]] auto get_value_source(const Dependency_property& property) const -> Value_source;
     [[nodiscard]] auto is_coerced      (const Dependency_property& property) const -> bool;
 
@@ -299,9 +302,6 @@ private:
     [[nodiscard]] auto get_base_value     (const Dependency_property& property, Value_source& out_source) const -> Property_value;
     [[nodiscard]] auto get_effective_value(const Dependency_property& property, Value_source& out_source) const -> Property_value;
     [[nodiscard]] auto get_inherited_value(const Dependency_property& property) const -> std::optional<Property_value>;
-    // Local (entry or bridge) or style value: the object is the origin of
-    // the value its descendants inherit.
-    [[nodiscard]] auto has_own_value      (const Dependency_property& property) const -> bool;
     [[nodiscard]] auto get_style_value    (const Dependency_property& property) const -> std::optional<Property_value>;
 
     [[nodiscard]] auto reject_if_sealed   (const Dependency_property& property) const -> bool;

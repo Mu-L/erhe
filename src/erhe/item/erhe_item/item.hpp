@@ -491,11 +491,15 @@ public:
     static const erhe::property::Property<bool> lightmapped_property;
     // The item's style source (doc/style-library.md D3): a bridged object
     // reference over Dependency_object::set_style / get_style, so the
-    // Properties window shows a "Style" row with the picker. The
-    // referenced object's secondary owner type (its target class) must be
-    // on this item's owner chain, or equal this item's own secondary owner
-    // type (a content-library folder taking a style of its category).
+    // Properties window shows a "Style" row with the picker; style_applies
+    // is the rule the setter and the picker's candidate list share.
     static const erhe::property::Property<erhe::property::Object_reference> style_property;
+    // True when `object` can use `source` as its style: the source's
+    // secondary owner type (its target class) is on the object's owner
+    // chain, or is the object's own secondary owner type or a descendant of
+    // it (a content-library folder taking a style of its category, a node
+    // taking a style of an attachment class).
+    [[nodiscard]] static auto style_applies(const erhe::property::Dependency_object& source, const erhe::property::Dependency_object& object) -> bool;
 
     // Rejects Item_flags::derived bits in mask (logged, dropped). A change
     // of Item_flags::lock_edit seals / unseals the property store (D24):

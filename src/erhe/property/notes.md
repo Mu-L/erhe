@@ -178,15 +178,20 @@ seal to `Item_flags::lock_edit`.
 ## Secondary owner type
 
 `Dependency_object::get_secondary_property_owner_type()` (nullopt by
-default) names a second owner type whose non-attached, non-bridged
-properties the object may hold as local values for its inheritance
-descendants to read (`doc/property-system.md` D30). `Property_registry::
-is_secondary_property(object, property)` is the predicate,
-`for_each_secondary_property(object, callback)` the enumeration, and the
-object forms `find_for_object(object, name)` / `qualified_name(object,
-property)` address such a property by `<Owner>.<name>` on the holder and
-by its plain name on an object of the owning type. The editor's
-content-library folder is the user.
+default) names a second owner type whose non-attached, non-bridged,
+non-computed properties - registered on that type, an ancestor or a
+descendant of it - the object may hold as local values for its
+inheritance descendants to read (`doc/property-system.md` D30).
+`Property_registry::is_secondary_property(object, property)` is the
+predicate, `for_each_secondary_property(object, callback)` the
+enumeration (the secondary type's chain, then each descendant type's own
+registrations), and the object forms `find_for_object(object, name)` /
+`qualified_name(object, property)` address such a property by
+`<Owner>.<name>` on the holder and by its plain name on an object of the
+owning type. A holder never runs a secondary property's `property_changed`
+metadata callback (it belongs to the registering class); the virtual hook
+and observers run as usual. The editor's content-library folder and
+`erhe::scene::Node` (secondary type `Node_attachment`) are the users.
 
 ## Inheritance
 

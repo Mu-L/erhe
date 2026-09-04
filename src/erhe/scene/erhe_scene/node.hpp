@@ -5,6 +5,7 @@
 #include "erhe_property/dependency_property.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -95,6 +96,10 @@ public:
 
     // Inherited properties reach child nodes and then attachments (D23).
     void for_each_inheritance_child(const std::function<void(erhe::property::Dependency_object&)>& callback) override;
+    // A node holds the properties of every attachment class (Light, Camera,
+    // Mesh, ...) for the attachments below it to inherit (D30): its
+    // secondary owner type is Node_attachment, whose descendants they are.
+    [[nodiscard]] auto get_secondary_property_owner_type() const -> std::optional<erhe::property::Owner_type> override;
 
     // Public API
     [[nodiscard]] auto get_parent_node() const -> std::shared_ptr<Node>;

@@ -131,6 +131,27 @@ auto Property_registry::get_owner_name(const Owner_type id) const -> std::string
     return m_owner_types[id].name;
 }
 
+auto Property_registry::get_owner_count() const -> std::size_t
+{
+    const std::lock_guard<std::mutex> lock{m_mutex};
+    return m_owner_types.size();
+}
+
+auto Property_registry::has_own_value_properties(const Owner_type owner_type) const -> bool
+{
+    const std::lock_guard<std::mutex> lock{m_mutex};
+    if (owner_type >= m_by_owner.size()) {
+        return false;
+    }
+    for (const uint16_t index : m_by_owner[owner_type]) {
+        const Dependency_property* property = m_properties[index].get();
+        if (!property->is_attached() && !property->is_read_only()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 auto allocate_owner_type(const Owner_type parent, const std::string_view name) -> Owner_type
 {
     return Property_registry::get().allocate_owner_type(parent, name);
@@ -263,10 +284,16 @@ auto Property_registry::is_secondary_property(const Dependency_object& object, c
         return false;
     }
     const Owner_type owner = property.get_owner_type();
-    return
-        is_owner_type_or_descendant(secondary.value(), owner) &&
-        !is_owner_type_or_descendant(object.get_property_owner_type(), owner) &&
-        !property.get_metadata(object.get_property_owner_type()).bridge.is_bound();
+    if (
+        (!is_owner_type_or_descendant(secondary.value(), owner) && !is_owner_type_or_descendant(owner, secondary.value())) ||
+        is_owner_type_or_descendant(object.get_property_owner_type(), owner)
+    ) {
+        return false;
+    }
+    // A bridge and a compute callback both read the registering class's
+    // state from the object, which the holder is not.
+    const Property_metadata& metadata = property.get_metadata(object.get_property_owner_type());
+    return !metadata.bridge.is_bound() && !metadata.is_computed();
 }
 
 void Property_registry::for_each_secondary_property(const Dependency_object& object, const std::function<void(const Dependency_property&)>& callback) const
@@ -275,14 +302,60 @@ void Property_registry::for_each_secondary_property(const Dependency_object& obj
     if (!secondary.has_value()) {
         return;
     }
+    // The secondary type's own chain first (root first, as for an object of
+    // that type), then the own registrations of each strict descendant of
+    // the secondary type, descendants in allocation order.
+    std::vector<const Dependency_property*> visited;
     for_each_property_of_object(
         secondary.value(),
-        [this, &object, &callback](const Dependency_property& property) {
+        [this, &object, &callback, &visited](const Dependency_property& property) {
             if (is_secondary_property(object, property)) {
+                visited.push_back(&property);
                 callback(property);
             }
         }
     );
+    std::vector<Owner_type> descendants;
+    {
+        const std::lock_guard<std::mutex> lock{m_mutex};
+        for (std::size_t id = 0; id < m_owner_types.size(); ++id) {
+            if (id == secondary.value()) {
+                continue;
+            }
+            // The parent walk under the lock: is_owner_type_or_descendant
+            // would take it again.
+            for (Owner_type ancestor = static_cast<Owner_type>(id); ; ancestor = m_owner_types[ancestor].parent) {
+                if (ancestor == secondary.value()) {
+                    descendants.push_back(static_cast<Owner_type>(id));
+                    break;
+                }
+                if (ancestor == root_owner_type) {
+                    break;
+                }
+            }
+        }
+    }
+    std::vector<const Dependency_property*> own;
+    for (const Owner_type descendant : descendants) {
+        own.clear();
+        {
+            const std::lock_guard<std::mutex> lock{m_mutex};
+            if (descendant < m_by_owner.size()) {
+                for (const uint16_t index : m_by_owner[descendant]) {
+                    own.push_back(m_properties[index].get());
+                }
+            }
+        }
+        for (const Dependency_property* property : own) {
+            if (std::find(visited.begin(), visited.end(), property) != visited.end()) {
+                continue;
+            }
+            if (is_secondary_property(object, *property)) {
+                visited.push_back(property);
+                callback(*property);
+            }
+        }
+    }
 }
 
 auto Property_registry::find_owner_type(const std::string_view name) const -> std::optional<Owner_type>

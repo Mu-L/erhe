@@ -1001,26 +1001,38 @@ table, see D2a), and references to other objects (D28).
   owner type whose properties the object may hold as local values for its
   inheritance descendants to read. A *secondary property* of an object
   (`Property_registry::is_secondary_property`) is a non-attached property
-  registered on the secondary type or one of its ancestors, not on the
-  object's own owner chain, and not bridged for the object (a bridge
-  reads the member of the registering class, which the object is not).
-  It is addressed on the object by its qualified name
+  registered on the secondary type, one of its ancestors or one of its
+  descendants, not on the object's own owner chain, and neither bridged
+  nor computed for the object (a bridge and a compute callback read the
+  state of the registering class, which the object is not). For the
+  same reason a holder never runs the registering class's
+  `property_changed` callback for a secondary property (`deliver` skips
+  it; the virtual hook and the observers still run) - the callback runs
+  on the descendant of that class when the change propagates to it.
+  `for_each_secondary_property` lists the secondary type's own chain
+  first, then the own registrations of each descendant type in
+  allocation order. It is addressed on the object by its qualified name
   (`Property_registry::find_for_object(object, name)` and
   `qualified_name(object, property)`, the object forms of D3's lookup and
   naming), so `Material.base_color` on a folder and `base_color` on a
   material name the same registration. The D12 rule lists a secondary
-  property on the object when it holds a local value (its `visible_when`
-  belongs to the secondary type's objects and is never evaluated on the
-  holder), Add Property offers every secondary property the rule does
-  not list, "Remove Property" and the inline "x" clear it, MCP lists and
-  writes it by the qualified name, and the glTF extras carry it under
-  that name. Reading is D8 unchanged: an `inherits` property of a
-  descendant with no local value walks up to the holder. The user is the
-  content-library folder (`doc/content-library-folders.md` D8): a
-  Materials folder holds `Material` values for the materials below it,
-  which is why every `Material` value property of section 4.1 is
-  registered `inherits`. Section 6 records the registration-time check
-  this makes wanted.
+  property on the object when it holds an own value - local, or from
+  its style (its `visible_when` belongs to the secondary type's objects
+  and is never evaluated on the holder), Add Property offers every
+  secondary property the rule does not list, "Remove Property" and the
+  inline "x" clear a local one, MCP lists and writes it by the qualified
+  name, and the glTF extras carry it under that name. Reading is D8
+  unchanged: an `inherits` property of a descendant with no local value
+  walks up to the holder. The users are the content-library folder
+  (`doc/content-library-folders.md` D8): a Materials folder holds
+  `Material` values for the materials below it, which is why every
+  `Material` value property of section 4.1 is registered `inherits`;
+  and the scene node (section 4.2), whose secondary owner type is
+  `Node_attachment` so that it holds the values of every attachment
+  class (`Light.color` on an empty node) for the attachments below it,
+  which is why every `Light` property of section 4.3 is registered
+  `inherits`. Section 6 records the registration-time check this makes
+  wanted.
 
 ## 4. Implementation
 
@@ -1129,11 +1141,24 @@ that would preserve it is section 6 work.
 
 R14 holds by construction: no per-frame path changed.
 
+`Node::get_secondary_property_owner_type()` is `Node_attachment::
+property_owner_type()` (D30): a node holds the properties of every
+attachment class by qualified name (`Light.color`, `Camera.fov_y`) for
+the attachments below it - directly on it and on its descendant nodes -
+to inherit, and takes a style whose target is an attachment class
+(`Item_base::style_applies`, `doc/style-library.md` D3). The
+`Item_base` chain is the node's own, so `visible` and its siblings stay
+plain node properties, and `Mesh`'s computed world bounds are left out
+by the D30 rule. `ERHE_node` carries the held values in its `properties`
+map by qualified name and the node's style by name (`style`).
+
 ### 4.3 Light
 
 Every `Light` public field except `layer_id` is a registered property
 (owner type `Light::property_owner_type()`) stored in the entry store, the Material way
-(section 4.1), with the previous initializers as defaults: `light_type`
+(section 4.1), every one `inherits` (a light without a local value reads
+its node chain, section 4.2 / D30), with the previous initializers as
+defaults: `light_type`
 (`Light_type`, `Enum_info` table `c_light_type_enum_info` defined next to
 `Light::c_type_strings` in `light.cpp`, labels Directional / Point / Spot;
 named `light_type` with `get_light_type()` / `set_light_type()` because

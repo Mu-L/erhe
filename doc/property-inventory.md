@@ -86,7 +86,7 @@ Not properties: the five slot samplers (`Material_data`, edited through
 
 | Property | Storage | Notes |
 |---|---|---|
-| light_type, color, intensity, temperature, range, inner_spot_angle, outer_spot_angle, cast_shadow | entry | shared property_changed re-resolves the light set |
+| light_type, color, intensity, temperature, range, inner_spot_angle, outer_spot_angle, cast_shadow | entry | inherits (D30, from the node chain); shared property_changed re-resolves the light set |
 
 ### Camera (`src/erhe/scene/erhe_scene/camera.cpp`, section 4.4)
 

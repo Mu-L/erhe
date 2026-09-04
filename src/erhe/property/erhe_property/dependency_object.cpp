@@ -930,7 +930,10 @@ void Dependency_object::notify(
 void Dependency_object::deliver(const Property_changed_args& args)
 {
     const Property_metadata& metadata = get_metadata(args.property);
-    if (metadata.property_changed) {
+    // The registering class's callback expects an object of that class;
+    // a holder of the property through its secondary owner type (D30) is
+    // not one, and only gets the virtual hook and the observers.
+    if (metadata.property_changed && (args.property.is_attached() || is_owner_type_or_descendant(get_property_owner_type(), args.property.get_owner_type()))) {
         metadata.property_changed(*this, args);
     }
     on_property_changed(args);

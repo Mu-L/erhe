@@ -127,14 +127,8 @@ const erhe::property::Property<erhe::property::Object_reference> Item_base::styl
             .set = [](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
                 const std::shared_ptr<erhe::property::Dependency_object>& source = std::get<erhe::property::Object_reference>(value).object;
                 if (source) {
-                    const std::optional<erhe::property::Owner_type> target = source->get_secondary_property_owner_type();
-                    const bool applies =
-                        target.has_value() &&
-                        (
-                            erhe::property::is_owner_type_or_descendant(object.get_property_owner_type(), target.value()) ||
-                            (object.get_secondary_property_owner_type() == target)
-                        );
-                    if (!applies) {
+                    if (!Item_base::style_applies(*source, object)) {
+                        const std::optional<erhe::property::Owner_type> target = source->get_secondary_property_owner_type();
                         erhe::item::log->error(
                             "style '{}' targets '{}', which a {} cannot use",
                             source->get_reference_path(),
@@ -149,6 +143,19 @@ const erhe::property::Property<erhe::property::Object_reference> Item_base::styl
         }
     }
 );
+
+auto Item_base::style_applies(const erhe::property::Dependency_object& source, const erhe::property::Dependency_object& object) -> bool
+{
+    const std::optional<erhe::property::Owner_type> target = source.get_secondary_property_owner_type();
+    if (!target.has_value()) {
+        return false;
+    }
+    if (erhe::property::is_owner_type_or_descendant(object.get_property_owner_type(), target.value())) {
+        return true;
+    }
+    const std::optional<erhe::property::Owner_type> secondary = object.get_secondary_property_owner_type();
+    return secondary.has_value() && erhe::property::is_owner_type_or_descendant(target.value(), secondary.value());
+}
 
 void Item_base::on_flag_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args)
 {

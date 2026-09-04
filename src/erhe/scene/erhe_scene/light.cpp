@@ -49,35 +49,35 @@ const erhe::property::Enum_info c_light_type_enum_info{"Light_type", c_light_typ
 
 const Property<Light_type> Light::light_type_property = Property<Light_type>::register_property(
     "light_type", c_owner, c_light_type_enum_info,
-    Property_metadata{.default_value = erhe::property::make_value(Light_type::directional), .property_changed = Light::on_light_property_changed, .ui = Property_ui{.label = "Light Type"}}
+    Property_metadata{.default_value = erhe::property::make_value(Light_type::directional), .property_changed = Light::on_light_property_changed, .inherits = true, .ui = Property_ui{.label = "Light Type"}}
 );
 const Property<glm::vec3> Light::color_property = Property<glm::vec3>::register_property(
     "color", c_owner,
-    Property_metadata{.default_value = glm::vec3{1.0f, 1.0f, 1.0f}, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .tooltip = "Tint; modulated by the blackbody color while Temperature is positive", .label = "Color"}}
+    Property_metadata{.default_value = glm::vec3{1.0f, 1.0f, 1.0f}, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = Property_ui{.presentation = Property_ui::Presentation::color, .tooltip = "Tint; modulated by the blackbody color while Temperature is positive", .label = "Color"}}
 );
 const Property<float> Light::intensity_property = Property<float>::register_property(
     "intensity", c_owner,
-    Property_metadata{.default_value = 1.0f, .property_changed = Light::on_light_property_changed, .ui = log_slider(0.01f, 20000.0f, "Intensity", "KHR_lights_punctual units: lux for directional lights, candela for point and spot lights")}
+    Property_metadata{.default_value = 1.0f, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = log_slider(0.01f, 20000.0f, "Intensity", "KHR_lights_punctual units: lux for directional lights, candela for point and spot lights")}
 );
 const Property<float> Light::temperature_property = Property<float>::register_property(
     "temperature", c_owner,
-    Property_metadata{.default_value = 0.0f, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.min = 0.0f, .max = 12000.0f, .presentation = Property_ui::Presentation::slider, .tooltip = "Correlated color temperature in Kelvin; 0 disables the temperature contribution", .label = "Temperature"}}
+    Property_metadata{.default_value = 0.0f, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = Property_ui{.min = 0.0f, .max = 12000.0f, .presentation = Property_ui::Presentation::slider, .tooltip = "Correlated color temperature in Kelvin; 0 disables the temperature contribution", .label = "Temperature"}}
 );
 const Property<float> Light::range_property = Property<float>::register_property(
     "range", c_owner,
-    Property_metadata{.default_value = 100.0f, .property_changed = Light::on_light_property_changed, .ui = log_slider(1.0f, 20000.0f, "Range", "Distance the light reaches; a point light with range 0 emits no light")}
+    Property_metadata{.default_value = 100.0f, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = log_slider(1.0f, 20000.0f, "Range", "Distance the light reaches; a point light with range 0 emits no light")}
 );
 const Property<float> Light::inner_spot_angle_property = Property<float>::register_property(
     "inner_spot_angle", c_owner,
-    Property_metadata{.default_value = glm::pi<float>() * 0.4f, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.min = 0.0f, .max = glm::pi<float>(), .presentation = Property_ui::Presentation::angle_degrees, .label = "Inner Spot", .visible_when = is_spot}}
+    Property_metadata{.default_value = glm::pi<float>() * 0.4f, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = Property_ui{.min = 0.0f, .max = glm::pi<float>(), .presentation = Property_ui::Presentation::angle_degrees, .label = "Inner Spot", .visible_when = is_spot}}
 );
 const Property<float> Light::outer_spot_angle_property = Property<float>::register_property(
     "outer_spot_angle", c_owner,
-    Property_metadata{.default_value = glm::pi<float>() * 0.5f, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.min = 0.0f, .max = glm::pi<float>(), .presentation = Property_ui::Presentation::angle_degrees, .tooltip = "0 makes the spot light inactive", .label = "Outer Spot", .visible_when = is_spot}}
+    Property_metadata{.default_value = glm::pi<float>() * 0.5f, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = Property_ui{.min = 0.0f, .max = glm::pi<float>(), .presentation = Property_ui::Presentation::angle_degrees, .tooltip = "0 makes the spot light inactive", .label = "Outer Spot", .visible_when = is_spot}}
 );
 const Property<bool> Light::cast_shadow_property = Property<bool>::register_property(
     "cast_shadow", c_owner,
-    Property_metadata{.default_value = true, .property_changed = Light::on_light_property_changed, .ui = Property_ui{.label = "Cast Shadow"}}
+    Property_metadata{.default_value = true, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = Property_ui{.label = "Cast Shadow"}}
 );
 
 auto Light::get_texture_from_clip(const erhe::math::Depth_range depth_range, const erhe::math::Coordinate_conventions& conventions) -> glm::mat4

@@ -299,6 +299,11 @@ void Node::for_each_inheritance_child(const std::function<void(erhe::property::D
     }
 }
 
+auto Node::get_secondary_property_owner_type() const -> std::optional<erhe::property::Owner_type>
+{
+    return Node_attachment::property_owner_type();
+}
+
 void Node::handle_add_attachment(const std::shared_ptr<Node_attachment>& attachment, std::size_t position)
 {
     ERHE_VERIFY(attachment);

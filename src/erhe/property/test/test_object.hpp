@@ -11,12 +11,13 @@ namespace erhe::property::test {
 
 // Owner type ids for test registrations. Functions (not variables) so a
 // registration in another translation unit's static initialization finds
-// the id allocated. type_a_child is a child of type_a(); the rest are roots.
+// the id allocated. type_a_child is a child of type_a(), type_b_child of type_b(); the rest are roots.
 inline auto type_a() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_a"); return id; }
 inline auto type_b() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_b"); return id; }
 inline auto type_c() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_c"); return id; }
 inline auto type_d() -> Owner_type { static const Owner_type id = allocate_owner_type(root_owner_type, "type_d"); return id; } // bridged-property tests only
 inline auto type_a_child() -> Owner_type { static const Owner_type id = allocate_owner_type(type_a(), "type_a_child"); return id; }
+inline auto type_b_child() -> Owner_type { static const Owner_type id = allocate_owner_type(type_b(), "type_b_child"); return id; } // secondary-owner tests only
 
 struct Recorded_change
 {
