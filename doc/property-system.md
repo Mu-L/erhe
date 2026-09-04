@@ -407,7 +407,10 @@ table, see D2a), and references to other objects (D28).
   native glTF fields plus the `ERHE_material` extension (section 6). An
   object value (D28) rides its native glTF carrier - a primitive's
   material index, a material's `textureInfo` - and never the extras:
-  both users are member-backed (D18), which the extras writer skips.
+  the primitive's is member-backed (D18), which the extras writer skips,
+  and materials write no extras (section 6). A content-library folder's
+  texture slot value (D30) rides `library_folders` by the referenced
+  item's name.
 - D15 Observers (R16). `Dependency_object::add_observer(property, callback)
   -> Observer_token` and `remove_observer(Observer_token)`; the token is a
   move-only RAII object that unsubscribes on destruction, and an object
@@ -462,10 +465,9 @@ table, see D2a), and references to other objects (D28).
   for a `std::shared_ptr<U>` member the cast to and from an
   `Object_reference` (D28) plus a validate that rejects a pointee that is
   not a `U`. An enumeration member registers through the overload that
-  takes its `Enum_info`, as `register_property` does. The material texture
-  slots (section 4.1), the mesh primitive material (section 4.9), the
-  Camera projection fields (section 4.4) and the graph node parameters
-  (section 4.5) register this way.
+  takes its `Enum_info`, as `register_property` does. The mesh primitive
+  material (section 4.9), the Camera projection fields (section 4.4) and
+  the graph node parameters (section 4.5) register this way.
 
 - D19 Item-side consequences through metadata callbacks. When a change of
   a property has a consequence inside the item library itself (not in the
@@ -1056,36 +1058,40 @@ material preview, MCP tools, tests) use the accessor and nothing else
 changed. `operator==(Material)` compares the remaining `Material_data`, the
 property bags of D17 and the style pointers (D25).
 
-The five texture slots are object properties (D28) registered with
-`register_member` (D18) over `data.texture_samplers.<slot>.texture_reference`:
-`base_color_texture`, `metallic_roughness_texture`, `normal_texture`,
-`occlusion_texture` and `emissive_texture` (group `Textures`,
-`reference_item_types` texture | graph texture, the PBR slots
-`visible_when` lit), flagged `affects_shader_variant` because a bound slot
-selects the texture-using variant and a normal texture's two-component
-flag rides the texture. Member-backed because the per-frame readers
-(`Material_buffer::gather_texture`, `Shader_key::derive`) read the member
-with no variant access, the `Material_create_info` designated initializers
-at every construction site keep working, and the slot's sampler stays in
-`Material_data` with `Material_change_operation`. The slot transforms are
-member-backed the same way, over the same slot: `<slot>_texture_texgen_mode`
+The five texture slots are object properties (D28) in the entry store,
+registered `inherits` like the value properties: `base_color_texture`,
+`metallic_roughness_texture`, `normal_texture`, `occlusion_texture` and
+`emissive_texture` (group `Textures`, `reference_item_types` texture |
+graph texture, the PBR slots `visible_when` lit, validate
+`Member_value_traits<Texture_slot>::validate` so only a
+`Texture_reference` pointee is accepted), flagged `affects_shader_variant`
+because a bound slot selects the texture-using variant and a normal
+texture's two-component flag rides the texture. The slot transforms are
+entry-store properties the same way: `<slot>_texture_texgen_mode`
 (`Texgen_mode`, flagged `affects_shader_variant` because `Shader_key`
 selects the texgen variant from it), `<slot>_texture_uv_rotation`
 (`angle_degrees`), `<slot>_texture_uv_offset` and `<slot>_texture_uv_scale`
 (vec2), each in the `<Slot> Texture` UI group and `visible_when` the slot
-is bound (the PBR slots also lit); the per-frame readers
-(`Material_buffer`, `Shader_key`) and the glTF import and export read the
-members.
+is bound (the PBR slots also lit). Each slot field of
+`Material_data::texture_samplers` is a mirror of its property's effective
+value - local, inherited from a content-library folder (D30) or the
+default - kept current by `Material::on_property_changed`, so the
+per-frame readers (`Material_buffer::gather_texture`, `Shader_key::derive`)
+and the glTF export read the member with no variant access and see a
+folder's texture like the material's own. The slot's sampler stays in
+`Material_data` with `Material_change_operation`.
 The `Member_value_traits` cast to `erhe::graphics::Texture_reference` needs
 the complete class, so `erhe::primitive` links `erhe::graphics` privately.
 Writers of a live material use `set_base_color_texture()` and the other
-setters, `set_slot_texture(slot, texture)` for a slot held by pointer,
-`set_value` on a slot transform property, or `set_data(Material_data)`
-(what `Material_change_operation` applies: the textures and slot
-transforms through the properties in one change batch, the samplers
-assigned);
-construction-time fills (`Material_create_info.data`, the glTF importer's
-`bind_material_textures`) stay member writes under the D18 caveat. The
+setters, `set_slot_texture(slot, texture)` for a slot held by pointer
+(the glTF importer's `bind_material_textures` and the graph-texture
+binders), `set_value` on a slot transform property, or
+`set_data(Material_data)` (what `Material_change_operation` applies: the
+textures and slot transforms through the properties in one change batch,
+the samplers assigned). A `Material_data` cannot say "inherit", so a slot
+field at its default - an unbound texture, an identity transform - clears
+the local value and any other value becomes local; the constructor seeds
+the store from `Material_create_info.data` by the same rule. The
 Properties window draws the slot textures and transforms as generic rows
 and, under a `<Slot> Sampler` group, the bound slot's sampler rows; its
 material inspect snapshot ignores the property-backed slot fields so a
@@ -1275,7 +1281,7 @@ Gradient and curve parameters have no `Property_value` form and stay in
   `doc/command_script.md`) with `item`, `property` and `value` or
   `expression`, using the D16 string conversion (enumerations by label).
 - Registering a new property: follow the D3 example; `Material`
-  (section 4.1, stored and member-backed) and `Camera` (section 4.4,
+  (section 4.1, stored, with member mirrors) and `Camera` (section 4.4,
   hand-written bridge) are the recipes. An enumeration needs its
   `Enum_info` table next to the `c_str`; a member that already exists is
   `register_member` (D18); a reference to another item is an

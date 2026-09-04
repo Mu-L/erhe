@@ -57,8 +57,7 @@ inventory (and the owner's design section when the design changed).
   value: identity for every storable type; a `std::shared_ptr<U>` member
   is stored as an `Object_reference`, cast to and from `U`, with a
   validate rejecting a pointee that is not a `U` (instantiate where `U`
-  is complete). Users: `erhe::primitive::Material`'s texture slots,
-  `erhe::scene::Mesh_primitive::material`.
+  is complete). User: `erhe::scene::Mesh_primitive::material`.
 - **`Property_registry`** - function-local static registry; registration
   happens from static members of owning classes and from single-threaded
   early startup (descriptor-driven registrations whose tables are

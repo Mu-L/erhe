@@ -28,9 +28,10 @@ the wire format is `doc/gltf_extensions/ERHE_scene.md`.
   registered properties (its class chain: `Item_base` flags, the
   `Hierarchy` child count) and the Add Property row of D12, so an attached
   property is added to and removed from a folder like on any item.
-- R7 Category properties. A folder holds the value properties of its
+- R7 Category properties. A folder holds the properties of its
   category's item class (a Materials folder holds `base_color`,
-  `roughness`, `bxdf_model`, ...): Add Property offers them, a held one
+  `roughness`, `bxdf_model`, the texture slots and their UV transforms,
+  ...): Add Property offers them, a held one
   shows as a row, "Remove Property" clears it, and every entry below the
   folder without a local value of its own reads it (R4).
 - R4 Inheritance. An `inherits` property with no local value on a library
@@ -88,9 +89,15 @@ the wire format is `doc/gltf_extensions/ERHE_scene.md`.
   `create_library_folder`, and reported by `get_secondary_property_owner_
   type()` on folder nodes only (an entry node holds none). The item class
   registers the properties a folder may pass down as `inherits`;
-  `Material` does (section 4.1 of the property design record), the other
-  categories gain it when a folder value of theirs is wanted. The held
-  values ride `library_folders` `properties` (D5) by qualified name.
+  `Material` does for its values, texture slots and slot transforms
+  (section 4.1 of the property design record), the other categories gain
+  it when a folder value of theirs is wanted. The held values ride
+  `library_folders` `properties` (D5) by qualified name; a texture
+  reference travels as the texture's name and resolves on load through
+  the folder's library owner (`Content_library_node::
+  resolve_expression_object`), and the reference picker of a folder row
+  lists the textures of the library's scene (`find_scene_root_for_item`
+  knows a library node's scene).
 - D4 Properties window. `Properties::item_properties` already unwraps a
   leaf node to its item and shows a folder node as itself; the generic
   `dependency_properties` section (D12) lists the folder's class chain and

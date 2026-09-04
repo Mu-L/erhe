@@ -74,9 +74,9 @@ purple by layer, computed rows dim gray. Untinted rows are hand-written.
 | base_color, opacity, roughness, metallic, reflectance, emissive, ior, transmission, normal_texture_scale, occlusion_texture_strength, alpha_cutoff | entry | scalars and colors; inherits (D30, from a content-library folder) |
 | normalmap_encoding, bxdf_model, blending_mode, circular_brushed_metal_texgen_mode | entry | enumerations; inherits |
 | double_sided, use_circular_brushed_metal, use_aniso_control | entry | booleans; inherits |
-| base_color_texture, metallic_roughness_texture, normal_texture, occlusion_texture, emissive_texture | member | object references, texture or graph texture |
-| `<slot>`_texture_texgen_mode (5) | member | enumeration, affects shader variant |
-| `<slot>`_texture_uv_rotation, _uv_offset, _uv_scale (15) | member | |
+| base_color_texture, metallic_roughness_texture, normal_texture, occlusion_texture, emissive_texture | entry | object references, texture or graph texture; inherits; mirrored into `Material_data` by `on_property_changed` |
+| `<slot>`_texture_texgen_mode (5) | entry | enumeration, affects shader variant; inherits; mirrored |
+| `<slot>`_texture_uv_rotation, _uv_offset, _uv_scale (15) | entry | inherits; mirrored |
 
 Not properties: the five slot samplers (`Material_data`, edited through
 `Material_change_operation`).
