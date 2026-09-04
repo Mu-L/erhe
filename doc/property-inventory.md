@@ -92,10 +92,10 @@ Not properties: the five slot samplers (`Material_data`, edited through
 
 | Property | Storage | Notes |
 |---|---|---|
-| projection_type, infinite_z_far | member | over `Projection` |
-| fov_x, fov_y, fov_left, fov_right, fov_up, fov_down | member | over `Projection`, angle rows |
-| ortho_left, ortho_width, ortho_bottom, ortho_height, frustum_left, frustum_right, frustum_bottom, frustum_top, z_near, z_far | member | over `Projection`, logarithmic extents |
-| exposure, shadow_range | entry | |
+| projection_type, infinite_z_far | entry | inherits (D30); mirrored into `Projection` by `on_property_changed` |
+| fov_x, fov_y, fov_left, fov_right, fov_up, fov_down | entry | inherits; mirrored; angle rows |
+| ortho_left, ortho_width, ortho_bottom, ortho_height, frustum_left, frustum_right, frustum_bottom, frustum_top, z_near, z_far | entry | inherits; mirrored; logarithmic extents |
+| exposure, shadow_range | entry | inherits |
 
 ### Node_physics (`src/editor/scene/node_physics.cpp`, section 4.10)
 

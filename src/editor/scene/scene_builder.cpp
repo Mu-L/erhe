@@ -132,10 +132,10 @@ auto Scene_builder::make_camera(std::string_view name, vec3 position, vec3 look_
 
     std::shared_ptr<erhe::scene::Node>   node   = std::make_shared<erhe::scene::Node>(name);
     std::shared_ptr<erhe::scene::Camera> camera = std::make_shared<erhe::scene::Camera>(name);
-    camera->projection()->fov_y           = glm::radians(35.0f);
-    camera->projection()->projection_type = erhe::scene::Projection::Type::perspective_vertical;
-    camera->projection()->z_near          = z_near;
-    camera->projection()->z_far           = z_far;
+    camera->set_fov_y          (glm::radians(35.0f));
+    camera->set_projection_type(erhe::scene::Projection::Type::perspective_vertical);
+    camera->set_z_near         (z_near);
+    camera->set_z_far          (z_far);
     camera->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui | Item_flags::show_debug_visualizations);
     camera->set_exposure(exposure);
     camera->set_shadow_range(shadow_range);

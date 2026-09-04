@@ -537,10 +537,10 @@ private:
 
         auto node   = std::make_shared<erhe::scene::Node>(name);
         auto camera = std::make_shared<erhe::scene::Camera>(name);
-        camera->projection()->fov_y           = glm::radians(45.0f);
-        camera->projection()->projection_type = erhe::scene::Projection::Type::perspective_vertical;
-        camera->projection()->z_near          = 1.0f / 128.0f;
-        camera->projection()->z_far           = 512.0f;
+        camera->set_fov_y          (glm::radians(45.0f));
+        camera->set_projection_type(erhe::scene::Projection::Type::perspective_vertical);
+        camera->set_z_near         (1.0f / 128.0f);
+        camera->set_z_far          (512.0f);
         camera->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
         node->attach(camera);
         node->set_parent(m_scene.get_root_node());

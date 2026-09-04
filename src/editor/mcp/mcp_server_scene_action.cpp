@@ -2400,25 +2400,16 @@ auto Mcp_server::action_edit_camera(const json& args) -> std::string
             changed["shadow_range"] = camera->get_shadow_range();
         }
         if (args.contains("fov_y")) {
-            erhe::scene::Projection* projection = camera->projection();
-            if (projection != nullptr) {
-                projection->fov_y = args.value("fov_y", projection->fov_y);
-                changed["fov_y"] = projection->fov_y;
-            }
+            camera->set_fov_y(args.value("fov_y", camera->projection()->fov_y));
+            changed["fov_y"] = camera->projection()->fov_y;
         }
         if (args.contains("z_near")) {
-            erhe::scene::Projection* projection = camera->projection();
-            if (projection != nullptr) {
-                projection->z_near = args.value("z_near", projection->z_near);
-                changed["z_near"] = projection->z_near;
-            }
+            camera->set_z_near(args.value("z_near", camera->projection()->z_near));
+            changed["z_near"] = camera->projection()->z_near;
         }
         if (args.contains("z_far")) {
-            erhe::scene::Projection* projection = camera->projection();
-            if (projection != nullptr) {
-                projection->z_far = args.value("z_far", projection->z_far);
-                changed["z_far"] = projection->z_far;
-            }
+            camera->set_z_far(args.value("z_far", camera->projection()->z_far));
+            changed["z_far"] = camera->projection()->z_far;
         }
     }
 

@@ -28,10 +28,10 @@ public:
     {
         camera_node = std::make_shared<erhe::scene::Node>("camera node");
         camera      = std::make_shared<erhe::scene::Camera>("camera");
-        camera->projection()->projection_type = erhe::scene::Projection::Type::perspective_vertical;
-        camera->projection()->z_near = 0.1f;
-        camera->projection()->z_far  = 100.0f;
-        camera->projection()->fov_y  = glm::pi<float>() / 3.0f;
+        camera->set_projection_type(erhe::scene::Projection::Type::perspective_vertical);
+        camera->set_z_near(0.1f);
+        camera->set_z_far (100.0f);
+        camera->set_fov_y (glm::pi<float>() / 3.0f);
         camera->set_shadow_range(20.0f);
         camera_node->attach(camera);
         camera_node->set_parent_from_node(

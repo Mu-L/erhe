@@ -119,9 +119,9 @@ void Brush_preview::make_preview_scene()
     m_camera = std::make_shared<erhe::scene::Camera>("Camera");
     //m_camera_node->enable_flag_bits(erhe::Item_flags::content);
     //m_camera->enable_flag_bits(erhe::Item_flags::content);
-    m_camera->projection()->fov_y  =  0.3f;
-    m_camera->projection()->z_near =  4.0f;
-    m_camera->projection()->z_far  = 12.0f;
+    m_camera->set_fov_y (0.3f);
+    m_camera->set_z_near(4.0f);
+    m_camera->set_z_far (12.0f);
     m_camera_node->attach(m_camera);
     m_camera_node->set_parent(paremt);
 
@@ -353,8 +353,8 @@ void Brush_preview::render_preview(
     //const glm::mat4 world_from_clip = m_camera_node->world_from_node() * node_from_clip;
     //
     // TODO Compute good near and far planes
-    m_camera->projection()->z_near =  0.1f;
-    m_camera->projection()->z_far  = 80.0f;
+    m_camera->set_z_near(0.1f);
+    m_camera->set_z_far (80.0f);
 
     m_scene_root_shared->get_hosted_scene()->update_node_transforms();
 

@@ -1198,13 +1198,19 @@ section.
 
 ### 4.4 Camera
 
-`Camera` registers its `Projection` fields as bridged properties (D18) over
-`m_projection`, so `Camera::projection()` keeps returning the mutable
-`Projection*` that the fly camera, scene commands, previews, glTF import
-and tests write through; a bridged property reads and writes the
-same member, so both paths agree, with the D18 caveat that a direct member
-write does not raise a changed notification (nothing observes camera
-properties yet). The properties, all in the `Projection` UI group:
+`Camera` registers its `Projection` fields as entry-stored properties, the
+Material way (section 4.1), every one `inherits` (a camera without a local
+value reads its node chain, section 4.2 / D30, so an empty node or a style
+holds `Camera.fov_y` for the cameras below it). `Camera::projection()`
+returns a const `Projection` that mirrors the effective values:
+`Camera::on_property_changed` refreshes the mirror on every change of a
+`Camera` property, whatever its source, so the renderers, the shadow fit
+and the XR views keep reading a plain struct. Writers use the setters
+(`set_fov_y()` ... `set_infinite_z_far()`, `set_projection(const
+Projection&)` for a whole projection); the XR per-frame projection update
+calls `set_projection` and pays nothing while the values are unchanged
+(the store early-outs on an equal value). The properties, all in the
+`Projection` UI group:
 `projection_type` (`Projection::Type`, table `c_projection_type_enum_info`
 defined next to `Projection::c_type_strings` in `projection.cpp`),
 `fov_x`, `fov_y`, `fov_left`, `fov_right`, `fov_up`, `fov_down`
@@ -1213,16 +1219,18 @@ defined next to `Projection::c_type_strings` in `projection.cpp`),
 `frustum_left`, `frustum_right`, `frustum_bottom`, `frustum_top`
 (logarithmic sliders 0..1000, `visible_when` per type as the hand-written
 rows switched), `z_near`, `z_far` (logarithmic sliders 0..1000) and
-`infinite_z_far` (bool, `visible_when` perspective types). Each registers
-with `register_member` over its `Projection` field, the accessor reaching
-the field through `Camera::projection()`.
+`infinite_z_far` (bool, `visible_when` perspective types). The
+`visible_when` callbacks read the mirror and are evaluated on `Camera`
+objects only.
 
-`exposure` and `shadow_range` are the camera's own scalars with no
-engineered representation, so they live in the entry store as ordinary
-properties (logarithmic sliders 0..800000 and 1..1000) and the
-`get_exposure()` / `set_exposure()` / `get_shadow_range()` /
-`set_shadow_range()` accessors read and write the store. The clone
-constructor keeps copying `m_projection`; the entries copy through D10.
+`exposure` and `shadow_range` (logarithmic sliders 0..800000 and 1..1000)
+inherit the same way; `get_exposure()` / `set_exposure()` /
+`get_shadow_range()` / `set_shadow_range()` read and write the store. The
+clone constructor copies `m_projection`; the entries copy through D10.
+`ERHE_camera` keeps writing every projection field explicitly and the
+`properties` map of local values; on load the map is the camera's
+complete local set, the same rule as `ERHE_light`
+(`doc/gltf_extensions/ERHE_camera.md`).
 
 `Properties::camera_properties` is gone: every row it drew is a generic
 row now.

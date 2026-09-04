@@ -1590,11 +1590,10 @@ void Headset_view::setup_root_camera()
 
     m_root_camera = std::make_shared<erhe::scene::Camera>("Root Camera");
     m_root_camera->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui);
-    auto& projection = *m_root_camera->projection();
-    projection.fov_y           = glm::radians(35.0f);
-    projection.projection_type = erhe::scene::Projection::Type::perspective_vertical;
-    projection.z_near          = 0.03f;
-    projection.z_far           = 200.0f;
+    m_root_camera->set_fov_y          (glm::radians(35.0f));
+    m_root_camera->set_projection_type(erhe::scene::Projection::Type::perspective_vertical);
+    m_root_camera->set_z_near         (0.03f);
+    m_root_camera->set_z_far          (200.0f);
     m_headset_node->attach(m_root_camera);
 
     setup_pointer_pick_camera();
@@ -1611,11 +1610,10 @@ void Headset_view::setup_pointer_pick_camera()
     m_pointer_pick_node   = std::make_shared<erhe::scene::Node>("Pointer Pick Camera Node");
     m_pointer_pick_camera = std::make_shared<erhe::scene::Camera>("Pointer Pick Camera");
     m_pointer_pick_node->hide();
-    erhe::scene::Projection& projection = *m_pointer_pick_camera->projection();
-    projection.projection_type = erhe::scene::Projection::Type::perspective_vertical;
-    projection.fov_y           = glm::radians(10.0f);
-    projection.z_near          = 0.03f;
-    projection.z_far           = 200.0f;
+    m_pointer_pick_camera->set_projection_type(erhe::scene::Projection::Type::perspective_vertical);
+    m_pointer_pick_camera->set_fov_y          (glm::radians(10.0f));
+    m_pointer_pick_camera->set_z_near         (0.03f);
+    m_pointer_pick_camera->set_z_far          (200.0f);
     m_pointer_pick_node->attach(m_pointer_pick_camera);
     m_pointer_pick_node->set_parent(m_root_node);
 }
@@ -1693,19 +1691,19 @@ void Headset_view::update_root_camera_projection()
     if (!m_combined_eye_fov_valid || !m_root_camera) {
         return; // before the first successful locate: keep setup_root_camera()'s default
     }
-    erhe::scene::Projection* const projection = m_root_camera->projection();
-    if (projection == nullptr) {
-        return;
-    }
-    *projection = erhe::scene::Projection{
-        .projection_type = erhe::scene::Projection::Type::perspective_xr,
-        .z_near          = m_combined_eye_z_near,
-        .z_far           = m_combined_eye_z_far,
-        .fov_left        = m_combined_eye_fov_sides.left,
-        .fov_right       = m_combined_eye_fov_sides.right,
-        .fov_up          = m_combined_eye_fov_sides.up,
-        .fov_down        = m_combined_eye_fov_sides.down
-    };
+    // Unchanged values are early-outs in the property store, so the
+    // per-frame call costs nothing while the eye fov stays the same.
+    m_root_camera->set_projection(
+        erhe::scene::Projection{
+            .projection_type = erhe::scene::Projection::Type::perspective_xr,
+            .z_near          = m_combined_eye_z_near,
+            .z_far           = m_combined_eye_z_far,
+            .fov_left        = m_combined_eye_fov_sides.left,
+            .fov_right       = m_combined_eye_fov_sides.right,
+            .fov_up          = m_combined_eye_fov_sides.up,
+            .fov_down        = m_combined_eye_fov_sides.down
+        }
+    );
 }
 
 auto Headset_view::get_camera_offset() const -> glm::vec3

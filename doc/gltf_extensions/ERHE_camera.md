@@ -37,7 +37,8 @@ fallback only.
     "infinite_z_far": false,
     "exposure": 1,
     "shadow_range": 22,
-    "flags": ["content", "show_in_ui"]
+    "flags": ["content", "show_in_ui"],
+    "properties": {"fov_y": "0.6108652", "z_far": "80"}
 }
 ```
 
@@ -57,6 +58,12 @@ fallback only.
   extension also sees an infinite camera. Ignored for the orthographic
   types, where glTF requires a finite `zfar`.
 - `exposure`, `shadow_range`: erhe camera parameters.
+- `properties`: the camera's local property values as a name to text map
+  (`doc/property-system.md` D14), the registered properties of `Camera`
+  by name. The map is the camera's complete local set: on load, a
+  projection field of this extension or of the core camera that the map
+  does not name is cleared again, so a camera that inherits it from its
+  node (`doc/property-system.md` D30) still does after a reload.
 - `flags`: the camera attachment's persistent Item flags
   (see [flags.md](flags.md)).
 

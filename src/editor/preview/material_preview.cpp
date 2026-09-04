@@ -141,9 +141,9 @@ void Material_preview::make_preview_scene(erhe::scene_renderer::Mesh_memory& mes
     m_camera = std::make_shared<erhe::scene::Camera>("Camera");
     m_camera_node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
     m_camera->enable_flag_bits(erhe::Item_flags::content | Item_flags::show_in_ui);
-    m_camera->projection()->fov_y = 0.3f;
-    m_camera->projection()->z_near = 4.0f;
-    m_camera->projection()->z_far = 12.0f;
+    m_camera->set_fov_y (0.3f);
+    m_camera->set_z_near(4.0f);
+    m_camera->set_z_far (12.0f);
     m_camera_node->attach(m_camera);
     m_camera_node->set_parent(paremt);
     m_camera_node->set_parent_from_node(

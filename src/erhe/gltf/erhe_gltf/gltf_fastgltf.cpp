@@ -1928,7 +1928,9 @@ private:
         copy_uid(camera, *erhe_camera);
         m_data_out.cameras[camera_index] = erhe_camera;
         erhe_camera->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
-        auto* projection = erhe_camera->projection();
+        // Built on a copy, then set as the camera's local values.
+        erhe::scene::Projection  projection_value = *erhe_camera->projection();
+        erhe::scene::Projection* projection       = &projection_value;
 
 	    std::visit(
             fastgltf::visitor{
@@ -1987,6 +1989,7 @@ private:
             },
             camera.camera
         );
+        erhe_camera->set_projection(projection_value);
     }
     // --fix-spot-lights workaround for a broken glTF exporter: push the color
     // value to 1.0 (hue and saturation kept), force the intensity, widen the
@@ -3884,8 +3887,13 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                 if (!get_extension_object(extension_json, extension_object)) {
                     continue;
                 }
-                erhe::scene::Projection* projection = camera->projection();
-                if (projection != nullptr) {
+                {
+                    // The explicit fields, then the "properties" map as
+                    // the camera's complete local set (see the ERHE_light
+                    // read above): a field the map does not name is
+                    // cleared again so an inherited value survives.
+                    erhe::scene::Projection  projection_value = *camera->projection();
+                    erhe::scene::Projection* projection       = &projection_value;
                     std::string_view type_name;
                     if (extension_object.at_key("projection_type").get_string().get(type_name) == simdjson::SUCCESS) {
                         projection->projection_type = projection_type_from_name(type_name);
@@ -3907,6 +3915,7 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                     static_cast<void>(read_float(extension_object, "frustum_bottom", projection->frustum_bottom));
                     static_cast<void>(read_float(extension_object, "frustum_top",    projection->frustum_top));
                     static_cast<void>(read_bool (extension_object, "infinite_z_far", projection->infinite_z_far));
+                    camera->set_projection(projection_value);
                 }
                 float float_value{0.0f};
                 if (read_float(extension_object, "exposure", float_value)) {
@@ -3916,6 +3925,7 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                     camera->set_shadow_range(float_value);
                 }
                 apply_persistent_flags_and_properties(*camera, extension_object, "flags", "properties");
+                clear_local_properties_not_listed(*camera, extension_object, "properties");
             }
         }
 
@@ -5134,7 +5144,7 @@ private:
     [[nodiscard]] auto process_camera(erhe::scene::Camera* erhe_camera) -> std::size_t
     {
         ERHE_VERIFY(erhe_camera != nullptr);
-        erhe::scene::Projection* erhe_projection = erhe_camera->projection();
+        const erhe::scene::Projection* erhe_projection = erhe_camera->projection();
         ERHE_VERIFY(erhe_projection != nullptr);
 
         auto fi = m_erhe_camera_to_gltf_camera_index.find(erhe_camera);

@@ -4,6 +4,7 @@
 ✓style-source-generalization{9132674f2}+Style-item+style-property{a88dd405c}+persistence+docs
 ✓node-holds-attachment-values+Light-inherits+Create-Style/create_style+node-style-persistence{ff0f28de6..8d1b12a57}
 ✓style-holds-any-class{no-target}
+✓Camera-props-entry-store+inherits{node/style-hold-Camera.*}
 ?user-interactive-verify
 
 [TASK::content-library-folders]{DONE-2026-09-04}
@@ -16,7 +17,7 @@
 ?user-interactive-verify
 
 [TASK::property-migrations]{ONGOING}
-✓Material+Node+Light+Camera+graph-nodes+Mesh_primitive+Node_physics+Grid+Brush_placement+Physics_material+Layout+Layout-hints{attached}
+✓Material+Node+Light+Camera{entry-store-since-2026-09-04}+graph-nodes+Mesh_primitive+Node_physics+Grid+Brush_placement+Physics_material+Layout+Layout-hints{attached}
 ?next::Light-derived-rows{flux+blackbody}→Rendertarget_mesh→Animation{see-doc/property-inventory.md}
 
 [NOTES]
