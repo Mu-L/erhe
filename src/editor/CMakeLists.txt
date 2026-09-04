@@ -349,6 +349,8 @@ erhe_target_sources_grouped(
     operations/operation.hpp
     operations/import_gltf_operation.cpp
     operations/import_gltf_operation.hpp
+    operations/content_library_move_operation.cpp
+    operations/content_library_move_operation.hpp
     operations/item_insert_remove_operation.cpp
     operations/item_insert_remove_operation.hpp
     operations/item_parent_change_operation.cpp

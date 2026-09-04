@@ -815,6 +815,29 @@ auto Scene_root::make_browser_window(
                 return;
             }
             const bool is_folder = !content_node->item && (content_node->type_code != 0);
+            // "Create Folder" on a category folder or a folder inside one
+            // (doc/content-library-folders.md D2); the library root is not
+            // a target, a folder under it would have no category.
+            if (is_folder && (content_node->type_code != erhe::Item_type::content_library_node)) {
+                App_context* context_ptr = &context;
+                if (ImGui::MenuItem("Create Folder")) {
+                    deferred_operations.push_back(
+                        [context_ptr, content_node]() {
+                            auto new_folder = std::make_shared<Content_library_node>("New Folder", content_node->type_code, content_node->type_name);
+                            auto op = std::make_shared<Item_insert_remove_operation>(
+                                Item_insert_remove_operation::Parameters{
+                                    .context = *context_ptr,
+                                    .item    = new_folder,
+                                    .parent  = content_node,
+                                    .mode    = Item_insert_remove_operation::Mode::insert
+                                }
+                            );
+                            context_ptr->operation_stack->queue(op);
+                        }
+                    );
+                    close = true;
+                }
+            }
             if (is_folder && (content_node->type_code == erhe::Item_type::material)) {
                 auto         materials   = get_content_library()->materials;
                 App_context* context_ptr = &context;

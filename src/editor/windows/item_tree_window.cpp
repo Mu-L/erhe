@@ -17,6 +17,7 @@
 #include "graphics/icon_set.hpp"
 #include "graphics/thumbnails.hpp"
 #include "operations/compound_operation.hpp"
+#include "operations/content_library_move_operation.hpp"
 #include "operations/item_insert_remove_operation.hpp"
 #include "operations/item_parent_change_operation.hpp"
 #include "operations/item_reposition_in_parent_operation.hpp"
@@ -622,8 +623,53 @@ auto Item_tree::drag_and_drop_target(const std::shared_ptr<erhe::Item_base>& ite
 
     const ImGuiPayload* payload_peek = ImGui::GetDragDropPayload();
 
-    // Handle material drop onto a brush in the content library
     const auto& target_cl_node = std::dynamic_pointer_cast<Content_library_node>(item);
+
+    // A library entry or folder dropped on a folder of its own category
+    // moves there (doc/content-library-folders.md D3); the library root
+    // and the category folders are not movable.
+    if (target_cl_node && !target_cl_node->item && payload_peek && payload_peek->IsDataType("Content_library_node")) {
+        erhe::Item_base* const      payload_item_base = *static_cast<erhe::Item_base**>(payload_peek->Data);
+        Content_library_node* const payload_node      = dynamic_cast<Content_library_node*>(payload_item_base);
+        const std::shared_ptr<erhe::Hierarchy> payload_parent = (payload_node != nullptr) ? payload_node->get_parent().lock() : std::shared_ptr<erhe::Hierarchy>{};
+        const Content_library_node* const payload_parent_node = dynamic_cast<const Content_library_node*>(payload_parent.get());
+        const bool payload_movable =
+            (payload_node != nullptr) &&
+            (payload_parent_node != nullptr) &&
+            (payload_parent_node->type_code != erhe::Item_type::content_library_node) && // not a category folder
+            (payload_node->type_code == target_cl_node->type_code) &&
+            (payload_node != target_cl_node.get()) &&
+            (payload_parent_node != target_cl_node.get()) &&
+            !target_cl_node->is_ancestor(payload_node) &&
+            (target_cl_node->get_library() != nullptr) &&
+            (payload_node->get_library() == target_cl_node->get_library());
+        if (payload_movable) {
+            const ImRect rect{rect_min, rect_max};
+            if (ImGui::BeginDragDropTargetCustom(rect, imgui_id_center)) {
+                drag_and_drop_rectangle_preview(rect);
+                const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("Content_library_node", ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
+                if (payload != nullptr) {
+                    Content_library* const library = target_cl_node->get_library();
+                    Scene_root* const scene_root = static_cast<Scene_root*>(library->get_owner());
+                    const std::shared_ptr<Content_library> library_shared = (scene_root != nullptr) ? scene_root->get_content_library() : std::shared_ptr<Content_library>{};
+                    if (library_shared) {
+                        auto op = std::make_shared<Content_library_move_operation>(
+                            library_shared,
+                            std::dynamic_pointer_cast<Content_library_node>(payload_node->shared_from_this()),
+                            target_cl_node,
+                            target_cl_node->get_child_count()
+                        );
+                        m_context.operation_stack->queue(op);
+                    }
+                }
+                ImGui::EndDragDropTarget();
+                return true;
+            }
+            return false;
+        }
+    }
+
+    // Handle material drop onto a brush in the content library
     if (target_cl_node && payload_peek && payload_peek->IsDataType("Content_library_node")) {
         const auto target_brush = std::dynamic_pointer_cast<Brush>(target_cl_node->item);
         if (target_brush) {
