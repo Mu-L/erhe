@@ -587,6 +587,35 @@ void apply_persistent_flags_and_properties(
     }
 }
 
+// A "properties" object is the item's complete local set: every registered
+// value property of the item's own chain that holds a local value the map
+// does not name is cleared, so a value the core glTF fields carried (a
+// KHR_lights_punctual color) does not turn an inherited value into a local
+// one on reload. Bridged and computed properties read the item's members
+// and are left alone.
+void clear_local_properties_not_listed(erhe::Item_base& item, const simdjson::dom::object& extension_object, const std::string_view properties_key)
+{
+    simdjson::dom::object properties_object;
+    if (extension_object.at_key(properties_key).get_object().get(properties_object) != simdjson::SUCCESS) {
+        return;
+    }
+    const erhe::property::Owner_type owner_type = item.get_property_owner_type();
+    erhe::property::Property_registry::get().for_each_property_of_object(
+        owner_type,
+        [&item, &properties_object, owner_type](const erhe::property::Dependency_property& property) {
+            const erhe::property::Property_metadata& metadata = property.get_metadata(owner_type);
+            if (property.is_read_only() || metadata.bridge.is_bound() || metadata.is_computed() || !item.has_local_value(property)) {
+                return;
+            }
+            std::string_view listed_value;
+            if (properties_object.at_key(property.get_name()).get_string().get(listed_value) == simdjson::SUCCESS) {
+                return;
+            }
+            static_cast<void>(item.clear_value(property));
+        }
+    );
+}
+
 [[nodiscard]] auto is_number(std::string_view s) -> bool
 {
     return 
@@ -3836,6 +3865,7 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                             light->set_range(0.0f);
                         }
                         apply_persistent_flags_and_properties(*light, extension_object, "flags", "properties");
+                        clear_local_properties_not_listed(*light, extension_object, "properties");
                     }
                 }
             }
@@ -5758,6 +5788,18 @@ private:
             persistent_item_flags_to_json(erhe_node.get_flag_bits()),
             item_local_properties_to_json(erhe_node)
         );
+        if (erhe_node.get_style()) {
+            // The style item's name (doc/style-library.md D4); quotes and
+            // backslashes escaped, the only characters a JSON string needs.
+            std::string escaped;
+            for (const char c : erhe_node.get_style()->get_reference_path()) {
+                if ((c == '"') || (c == '\\')) {
+                    escaped += '\\';
+                }
+                escaped += c;
+            }
+            members += fmt::format(",\"style\":\"{}\"", escaped);
+        }
         if (erhe_mesh) {
             members += fmt::format(
                 ",\"mesh_flags\":{},\"mesh_properties\":{}",

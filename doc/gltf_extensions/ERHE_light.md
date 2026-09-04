@@ -21,6 +21,13 @@ Carries erhe light state `KHR_lights_punctual` cannot express:
   default a missing range; this explicit marker resolves the asymmetry.
 - `flags`: the light attachment's persistent Item flags
   (see [flags.md](flags.md)).
+- `properties`: the light's local property values as a name to text map
+  (`doc/property-system.md` D14), the registered properties of `Light`
+  by name. The map is the light's complete local set: on load, a value
+  the `KHR_lights_punctual` entry carried (color, intensity, range, spot
+  angles) that the map does not name is cleared again, so a light that
+  inherits it from its node (`doc/property-system.md` D30) still does
+  after a reload.
 
 ## JSON layout
 
@@ -28,7 +35,8 @@ Carries erhe light state `KHR_lights_punctual` cannot express:
 {
     "cast_shadow": true,
     "infinite_range": true,
-    "flags": ["content", "visible", "show_in_ui"]
+    "flags": ["content", "visible", "show_in_ui"],
+    "properties": {"intensity": "300", "temperature": "3200"}
 }
 ```
 

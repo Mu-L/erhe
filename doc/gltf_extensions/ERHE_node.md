@@ -14,10 +14,15 @@ Carries the erhe Item state of a node that core glTF cannot express:
   older files, this extension wins when both are present.
 - `properties`: the node's local property values as a name to text map
   (`doc/property-system.md` D14): the registered properties of `Node`
-  by name, and attached properties (D3) by their qualified
+  by name, attached properties (D3) by their qualified
   `<owner>.<name>`, such as the `Layout.*` per-child layout hints
-  (`ERHE_layout` names the layout itself). Enumerations travel as their
-  labels.
+  (`ERHE_layout` names the layout itself), and the attachment-class
+  values the node holds for the attachments below it (D30, `Light.color`)
+  by the same qualified form. Enumerations travel as their labels.
+- `style` (optional): the name of the style item the node uses
+  (`doc/style-library.md` D4), one of the scene's `ERHE_scene` `styles`;
+  emitted only when the node has a style. Assigned on load once the
+  styles exist; an unknown name is logged and assigns nothing.
 - `mesh_flags` (optional): the persistent Item flags of the node's mesh
   attachment. They ride the node because core glTF meshes have no erhe
   payload of their own and erhe `Mesh` attachments are per node while glTF
@@ -28,7 +33,8 @@ Carries the erhe Item state of a node that core glTF cannot express:
 ```json
 {
     "flags": ["content", "visible", "show_in_ui"],
-    "properties": {"Layout.align_y": "Stretch", "Layout.margin_min": "0.1 0 0"},
+    "properties": {"Layout.align_y": "Stretch", "Light.color": "1 0.9 0.8"},
+    "style": "Warm lights",
     "mesh_flags": ["content", "visible", "shadow_cast", "id", "show_in_ui"]
 }
 ```

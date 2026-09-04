@@ -16,15 +16,21 @@ layer) and D30 (secondary owner types), the library reference is
   item class it styles). Its own local values are the style: adding,
   editing and removing them is the D12 row machinery (Add Property,
   Reset to default, Remove Property, undo), with the same qualified names
-  a folder of that category uses (`Material.roughness`).
+  a folder of that category uses (`Material.roughness`). "Create Style"
+  on the Styles folder and the MCP `create_style` make an empty style of
+  a chosen target class (every class with value properties of its own).
 - R2 Live edit. A change of a style's value reaches every item using the
   style at that moment: each user without a local value of its own for
   that property is notified with the old and new effective value, and the
   editor consequences of D11 run for it.
 - R3 Assignment. Every item has a `style` property (a D28 object
   reference) shown as a row with the picker and the drag target; the
-  candidates are the scene's styles whose target owner type the item's
-  class (or, for a folder, its category) descends from. Clearing the row
+  candidates are the scene's styles that apply to the item (D3): those
+  whose target owner type the item's class descends from, and those
+  whose target is the item's secondary owner type or a descendant of it
+  (a Materials folder takes Material styles, a node takes the styles of
+  every attachment class, so a Light style on an empty node reaches the
+  lights below it through inheritance). Clearing the row
   removes the style. "Paste Properties as Style" and the MCP
   `set_item_style` create a style item in the scene's Styles folder from
   the copied values and assign it, in one undo entry.
@@ -32,8 +38,9 @@ layer) and D30 (secondary owner types), the library reference is
   the style's values are the folder's effective values and so reach the
   entries below it through inheritance (R4 of the folders record).
 - R5 Persistence. A scene save keeps every style (name, target class,
-  values) and the style each material and each library folder uses, by
-  name. A load recreates the styles before anything references them.
+  values) and the style each material, each node and each library folder
+  uses, by name. A load recreates the styles before anything references
+  them.
 - R6 Defaults. The default metals share one "Brushed metal" style item in
   the scene's Styles folder, so the library shows what the metals have in
   common and a scene keeps it across a save.
@@ -60,11 +67,14 @@ layer) and D30 (secondary owner types), the library reference is
   material.
 - D3 The `style` property. `Item_base::style_property` is a bridged (D18)
   object-reference property registered on `Item_base`: `get` is the
-  object's style source, `set` is `set_style`, validated so the referenced
-  object's secondary owner type (its target) is on the object's own owner
-  chain or equals the object's own secondary owner type (a folder taking a
-  style of its category). `reference_item_types` is the style bit, so the
-  row's picker and drop target take styles only. The property carries the
+  object's style source, `set` is `set_style`, validated by
+  `Item_base::style_applies`: the referenced object's secondary owner
+  type (its target) is on the object's own owner chain, or is the
+  object's own secondary owner type or a descendant of it (a folder
+  taking a style of its category, a node taking a style of an attachment
+  class). `reference_item_types` is the style bit, so the row's picker
+  and drop target take styles only, and `collect_reference_candidates`
+  offers only the styles that apply. The property carries the
   draw-list and shader-variant flags, so the D11 hook rebuilds the draw
   lists after an assignment through a `Property_set_operation`;
   `Style_set_operation` (the operation the paste and MCP paths queue)
@@ -72,11 +82,15 @@ layer) and D30 (secondary owner types), the library reference is
 - D4 Wire format. `ERHE_scene` gains `styles`: an array of `{"name",
   "target", "properties"}`, `target` the owner type name (`"Material"`),
   `properties` the D14 map of the style's local values by qualified name.
-  `ERHE_material` gains `style`, the name of the material's style item;
-  a `library_folders` entry gains `style` the same way. A load creates the
-  styles first (one attach operation per style, before the folders
-  operation), then the folders operation and a material style operation
-  assign them by name; an unknown name logs a warning and assigns nothing.
+  `ERHE_material` and `ERHE_node` gain `style`, the name of the item's
+  style item; a `library_folders` entry gains `style` the same way. A
+  load creates the styles first (one attach operation per style, before
+  the folders operation), then the folders operation and one
+  `Item_style_by_name_operation` per material and per node assign them
+  by name; an unknown name logs a warning and assigns nothing. A light
+  keeps inheriting through a reload because `ERHE_light`'s `properties`
+  map is the light's complete local set (`doc/gltf_extensions/
+  ERHE_light.md`).
 - D5 Defaults. `add_default_materials` makes the "Brushed metal" style
   item in the library's Styles folder and assigns it to each metal.
 
@@ -100,6 +114,21 @@ Headless, over `scripts/mcp_call.py` on a fresh editor:
 5. `save_scene` and reopen: the style item, its values, `Copper`'s
    `style` and the folder's `style` are back; `close_scene` is clean.
 
+6. Lights through a node: `create_node` an empty node, `create_light` a
+   point light and `reparent_node` it below the node;
+   `get_addable_item_properties` on the node lists `Light.color`;
+   `set_item_property` `Light.color` `1 0 0` on the node and clear the
+   light's own `color` (value `null`): the light reads `1 0 0` with
+   source `inherited` and `get_scene_lights` reports it. `create_style`
+   `target` `Light`, set its `Light.intensity`, set the node's `style` to
+   it and clear the light's `intensity`: the node lists `Light.intensity`
+   with source `style`, the light reads it `inherited`, and a style edit
+   reaches the light. Setting `Brushed metal` on the node is refused.
+   `save_scene`, `open_scene`: the node's `Light.color`, its style and
+   the light's inherited sources are back; `close_scene` is clean.
+
 Interactive: select the style in the Scene Hierarchy's Styles folder,
 edit a value and watch the metals change; drag the style onto a folder;
-Paste Properties as Style from a material; Ctrl+Z after each.
+Paste Properties as Style from a material; Create Style > Light on the
+Styles folder, Add Property on it and on an empty node; Ctrl+Z after
+each.

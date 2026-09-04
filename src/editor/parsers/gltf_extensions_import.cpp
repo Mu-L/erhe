@@ -914,36 +914,40 @@ void import_styles(
 
 // Assigns a material's ERHE_material style by name at execute time, when
 // the style items of the same import exist (doc/style-library.md D4).
-class Material_style_by_name_operation : public Operation
+// Assigns the style item of the named style to an item (a material from
+// ERHE_material.style, a node from ERHE_node.style) once the styles exist.
+class Item_style_by_name_operation : public Operation
 {
 public:
-    Material_style_by_name_operation(std::shared_ptr<Content_library> content_library, std::shared_ptr<erhe::primitive::Material> material, std::string style_name)
+    Item_style_by_name_operation(std::shared_ptr<Content_library> content_library, std::shared_ptr<erhe::Item_base> item, std::string style_name)
         : m_content_library{std::move(content_library)}
-        , m_material       {std::move(material)}
+        , m_item           {std::move(item)}
         , m_style_name     {std::move(style_name)}
     {
-        set_description(fmt::format("[{}] Material '{}' style '{}'", get_serial(), m_material->get_name(), m_style_name));
+        set_description(fmt::format("[{}] {} '{}' style '{}'", get_serial(), m_item->get_type_name(), m_item->get_name(), m_style_name));
     }
 
     void execute(App_context&) override
     {
-        m_before = m_material->get_style();
+        m_before = m_item->get_style();
         const std::shared_ptr<Style> style = find_style_by_name(*m_content_library, m_style_name);
         if (!style) {
-            log_parsers->warn("glTF editor state: material '{}' names style '{}', which the scene does not hold", m_material->get_name(), m_style_name);
+            log_parsers->warn("glTF editor state: {} '{}' names style '{}', which the scene does not hold", m_item->get_type_name(), m_item->get_name(), m_style_name);
             return;
         }
-        m_material->set_style(style);
+        if (!m_item->set_style(style)) {
+            log_parsers->warn("glTF editor state: {} '{}' cannot use style '{}'", m_item->get_type_name(), m_item->get_name(), m_style_name);
+        }
     }
 
     void undo(App_context&) override
     {
-        m_material->set_style(m_before);
+        m_item->set_style(m_before);
     }
 
 private:
     std::shared_ptr<Content_library>                         m_content_library;
-    std::shared_ptr<erhe::primitive::Material>               m_material;
+    std::shared_ptr<erhe::Item_base>                         m_item;
     std::string                                              m_style_name;
     std::shared_ptr<const erhe::property::Dependency_object> m_before;
 };
@@ -962,7 +966,37 @@ void import_material_styles(
         if (style_name.empty() || !gltf_data.materials[i]) {
             continue;
         }
-        operations.push_back(std::make_shared<Material_style_by_name_operation>(content_library, gltf_data.materials[i], style_name));
+        operations.push_back(std::make_shared<Item_style_by_name_operation>(content_library, gltf_data.materials[i], style_name));
+    }
+}
+
+// ERHE_node.style (doc/style-library.md D4): the node's style item by name.
+void import_node_styles(
+    const erhe::gltf::Gltf_data&             gltf_data,
+    const std::shared_ptr<Content_library>&  content_library,
+    std::vector<std::shared_ptr<Operation>>& operations
+)
+{
+    if (!content_library) {
+        return;
+    }
+    for (std::size_t i = 0, end = gltf_data.node_extensions.size(); i < end; ++i) {
+        if ((i >= gltf_data.nodes.size()) || !gltf_data.nodes[i]) {
+            continue;
+        }
+        const std::string* extension_json = find_extension(gltf_data.node_extensions[i], "ERHE_node");
+        if (extension_json == nullptr) {
+            continue;
+        }
+        const nlohmann::json payload = parse_extension_object(*extension_json, "ERHE_node", gltf_data.nodes[i]->get_name());
+        if (!payload.is_object()) {
+            continue;
+        }
+        const std::string style_name = payload.value("style", std::string{});
+        if (style_name.empty()) {
+            continue;
+        }
+        operations.push_back(std::make_shared<Item_style_by_name_operation>(content_library, gltf_data.nodes[i], style_name));
     }
 }
 
@@ -986,6 +1020,7 @@ void import_gltf_editor_state(
     import_brushes(context, gltf_data, content_library, gltf_path_str, operations);
     import_node_graphs(context, gltf_data, content_library, gltf_path_str, operations);
     import_material_styles(gltf_data, content_library, operations);
+    import_node_styles(gltf_data, content_library, operations);
     // Last: the folders operation places entries the operations above attach.
     import_library_folders(gltf_data, content_library, operations);
 }
