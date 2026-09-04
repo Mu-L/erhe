@@ -2,7 +2,7 @@
 
 #include "operations/operation.hpp"
 
-#include "erhe_property/property_style.hpp"
+#include "erhe_property/dependency_object.hpp"
 
 #include <memory>
 
@@ -18,8 +18,8 @@ class Style_set_operation : public Operation
 public:
     Style_set_operation(
         const std::shared_ptr<erhe::Item_base>&               item,
-        std::shared_ptr<const erhe::property::Property_style> before,
-        std::shared_ptr<const erhe::property::Property_style> after
+        std::shared_ptr<const erhe::property::Dependency_object> before,
+        std::shared_ptr<const erhe::property::Dependency_object> after
     );
     ~Style_set_operation() noexcept override;
 
@@ -29,11 +29,11 @@ public:
     void collect_item_references(std::unordered_set<const erhe::Item_base*>& out_items) const override;
 
 private:
-    void apply(App_context& context, const std::shared_ptr<const erhe::property::Property_style>& style);
+    void apply(App_context& context, const std::shared_ptr<const erhe::property::Dependency_object>& style);
 
-    std::shared_ptr<erhe::Item_base>                      m_item;
-    std::shared_ptr<const erhe::property::Property_style> m_before;
-    std::shared_ptr<const erhe::property::Property_style> m_after;
+    std::shared_ptr<erhe::Item_base>                         m_item;
+    std::shared_ptr<const erhe::property::Dependency_object> m_before;
+    std::shared_ptr<const erhe::property::Dependency_object> m_after;
 };
 
 } // namespace editor

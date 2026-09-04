@@ -139,3 +139,49 @@ TEST(Style, copy_carries_style_and_sealed_rejects)
     o.unseal();
     EXPECT_TRUE(o.set_style(nullptr));
 }
+
+TEST(Style, source_edit_reaches_users_live)
+{
+    // D25 live edit (doc/style-library.md D1): a change of the source's
+    // local layer notifies every user reading the style for that property.
+    std::shared_ptr<Property_style> style = std::make_shared<Property_style>("s", Property_set{});
+    Test_object a;
+    Test_object b;
+    EXPECT_TRUE(a.set_style(style));
+    EXPECT_TRUE(b.set_style(style));
+    EXPECT_EQ(style->get_style_user_count(), std::size_t{2});
+    b.set_value(st_a, 5.0f); // b shadows the style for st_a
+
+    a.changes.clear();
+    b.changes.clear();
+    style->set_value(st_a, 2.0f);
+    EXPECT_EQ(a.get_value(st_a), 2.0f);
+    EXPECT_EQ(a.get_value_source(st_a.get()), Value_source::style);
+    ASSERT_EQ(a.changes.size(), std::size_t{1});
+    EXPECT_EQ(a.changes[0].old_source, Value_source::default_value);
+    EXPECT_EQ(a.changes[0].new_source, Value_source::style);
+    EXPECT_TRUE(b.changes.empty()); // local value: untouched
+
+    style->set_value(st_a, 3.0f);
+    ASSERT_EQ(a.changes.size(), std::size_t{2});
+    EXPECT_EQ(std::get<float>(a.changes[1].old_value), 2.0f);
+    EXPECT_EQ(std::get<float>(a.changes[1].new_value), 3.0f);
+
+    style->clear_value(st_a);
+    ASSERT_EQ(a.changes.size(), std::size_t{3});
+    EXPECT_EQ(a.changes[2].new_source, Value_source::default_value);
+    EXPECT_EQ(a.get_value(st_a), 1.0f); // st_a's registered default
+
+    // A user that leaves the style stops being notified; a destroyed user
+    // leaves the source's list.
+    EXPECT_TRUE(a.set_style(nullptr));
+    EXPECT_EQ(style->get_style_user_count(), std::size_t{1});
+    {
+        Test_object c;
+        EXPECT_TRUE(c.set_style(style));
+        EXPECT_EQ(style->get_style_user_count(), std::size_t{2});
+    }
+    EXPECT_EQ(style->get_style_user_count(), std::size_t{1});
+    style->set_value(st_a, 4.0f);
+    EXPECT_EQ(a.changes.size(), std::size_t{3});
+}

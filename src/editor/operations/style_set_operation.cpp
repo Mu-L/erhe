@@ -12,8 +12,8 @@ namespace editor {
 
 Style_set_operation::Style_set_operation(
     const std::shared_ptr<erhe::Item_base>&               item,
-    std::shared_ptr<const erhe::property::Property_style> before,
-    std::shared_ptr<const erhe::property::Property_style> after
+    std::shared_ptr<const erhe::property::Dependency_object> before,
+    std::shared_ptr<const erhe::property::Dependency_object> after
 )
     : m_item  {item}
     , m_before{std::move(before)}
@@ -24,7 +24,7 @@ Style_set_operation::Style_set_operation(
             "Set {} '{}' style = {}",
             item->get_type_name(),
             item->get_name(),
-            m_after ? fmt::format("'{}'", m_after->get_name()) : "none"
+            m_after ? fmt::format("'{}'", m_after->get_reference_path()) : "none"
         )
     );
 }
@@ -43,25 +43,27 @@ void Style_set_operation::undo(App_context& context)
     apply(context, m_before);
 }
 
-void Style_set_operation::apply(App_context& context, const std::shared_ptr<const erhe::property::Property_style>& style)
+void Style_set_operation::apply(App_context& context, const std::shared_ptr<const erhe::property::Dependency_object>& style)
 {
     if (!m_item) {
         return;
     }
     // Consequences (D11) for every property either style names; the store
     // itself notified only the ones whose effective value changed.
-    const std::shared_ptr<const erhe::property::Property_style> old_style = m_item->get_style();
+    const std::shared_ptr<const erhe::property::Dependency_object> old_style = m_item->get_style();
     if (!m_item->set_style(style)) {
         log_operations->warn("style on '{}' not applied", m_item->get_name());
         return;
     }
-    for (const std::shared_ptr<const erhe::property::Property_style>& touched : {old_style, style}) {
+    for (const std::shared_ptr<const erhe::property::Dependency_object>& touched : {old_style, style}) {
         if (!touched) {
             continue;
         }
-        for (const erhe::property::Property_set::Entry& entry : touched->get_values().entries()) {
-            context.on_item_property_changed(*m_item, *entry.property);
-        }
+        touched->for_each_local_value(
+            [&context, this](const erhe::property::Dependency_property& property, const erhe::property::Property_value&) {
+                context.on_item_property_changed(*m_item, property);
+            }
+        );
     }
 }
 

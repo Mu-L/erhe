@@ -189,7 +189,7 @@ auto Mcp_server::query_item_properties(const json& args) -> std::string
         {"name",   item->get_name()},
         {"type",   std::string{item->get_type_name()}},
         {"sealed", item->is_sealed()}, // lock_edit (D24): writes are refused
-        {"style",  item->get_style() ? json(std::string{item->get_style()->get_name()}) : json(nullptr)} // D25
+        {"style",  item->get_style() ? json(item->get_style()->get_reference_path()) : json(nullptr)} // D25
     };
     json properties = properties_json(*item);
     // Property sub-objects (D29): a mesh's primitives.
@@ -452,7 +452,7 @@ auto Mcp_server::action_set_item_style(const json& args) -> std::string
             {"item",       {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
             {"style",      std::string{style->get_name()}},
             {"properties", names},
-            {"before",     item->get_style() ? json(std::string{item->get_style()->get_name()}) : json(nullptr)},
+            {"before",     item->get_style() ? json(item->get_style()->get_reference_path()) : json(nullptr)},
             {"queued",     true}
         }
     ).dump();
@@ -471,7 +471,7 @@ auto Mcp_server::action_clear_item_style(const json& args) -> std::string
     if (!item->get_style()) {
         return make_error_content("Item '" + item->get_name() + "' has no style");
     }
-    const std::string before{item->get_style()->get_name()};
+    const std::string before{item->get_style()->get_reference_path()};
     m_context.operation_stack->queue(std::make_shared<Style_set_operation>(item, item->get_style(), nullptr));
     return make_json_content(
         json{

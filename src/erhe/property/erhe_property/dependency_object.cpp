@@ -110,6 +110,9 @@ Dependency_object::Dependency_object(const Dependency_object& other)
     : m_entries{other.m_entries}
     , m_style  {other.m_style}
 {
+    if (m_style) {
+        m_style->add_style_user(*this);
+    }
 }
 
 Dependency_object& Dependency_object::operator=(const Dependency_object& other)
@@ -119,13 +122,23 @@ Dependency_object& Dependency_object::operator=(const Dependency_object& other)
             detach_expression(entry);
         }
         m_entries = other.m_entries;
-        m_style   = other.m_style;
+        if (m_style) {
+            m_style->remove_style_user(*this);
+        }
+        m_style = other.m_style;
+        if (m_style) {
+            m_style->add_style_user(*this);
+        }
     }
     return *this;
 }
 
 Dependency_object::~Dependency_object() noexcept
 {
+    if (m_style) {
+        m_style->remove_style_user(*this);
+        m_style.reset();
+    }
     // Expressions on this object stop reading their sources; expressions
     // elsewhere that read this object lose the reference.
     for (Effective_value_entry& entry : m_entries) {
@@ -194,12 +207,84 @@ auto Dependency_object::get_style_value(const Dependency_property& property) con
     if (!m_style) {
         return std::nullopt;
     }
-    return m_style->get_values().find(property);
+    return m_style->read_local_value(property);
 }
 
 auto Dependency_object::has_own_value(const Dependency_property& property) const -> bool
 {
-    return has_local_value(property) || (m_style && m_style->get_values().contains(property));
+    return has_local_value(property) || (m_style && m_style->has_local_value(property));
+}
+
+auto Dependency_object::get_effective_value_below_style(const Dependency_property& property, Value_source& out_source) const -> Property_value
+{
+    const Property_metadata& metadata = get_metadata(property);
+    Property_value value{};
+    if (metadata.inherits) {
+        if (std::optional<Property_value> inherited = get_inherited_value(property); inherited.has_value()) {
+            out_source = Value_source::inherited;
+            value = std::move(inherited.value());
+            return metadata.coerce ? metadata.coerce(*this, value) : value;
+        }
+    }
+    out_source = Value_source::default_value;
+    value = metadata.default_value.value();
+    return metadata.coerce ? metadata.coerce(*this, value) : value;
+}
+
+auto Dependency_object::get_style_user_count() const -> std::size_t
+{
+    return m_style_users ? m_style_users->size() : std::size_t{0};
+}
+
+void Dependency_object::add_style_user(Dependency_object& user) const
+{
+    if (!m_style_users) {
+        m_style_users = std::make_unique<std::vector<Dependency_object*>>();
+    }
+    if (std::find(m_style_users->begin(), m_style_users->end(), &user) == m_style_users->end()) {
+        m_style_users->push_back(&user);
+    }
+}
+
+void Dependency_object::remove_style_user(Dependency_object& user) const
+{
+    if (m_style_users) {
+        std::erase(*m_style_users, &user);
+    }
+}
+
+// D25 live edit: this object's local layer changed for args.property (the
+// notify that got here says so through its sources); every user that
+// reads the style for it is notified with its own old and new value.
+void Dependency_object::propagate_to_style_users(const Property_changed_args& args)
+{
+    if (!m_style_users || m_style_users->empty()) {
+        return;
+    }
+    const auto is_local = [](const Value_source source) { return (source == Value_source::local) || (source == Value_source::expression); };
+    const bool old_local = is_local(args.old_source);
+    const bool new_local = is_local(args.new_source);
+    if (!old_local && !new_local) {
+        return; // the source's own inherited / default value moved; its local layer did not
+    }
+    const std::vector<Dependency_object*> users = *m_style_users; // a notified user may change its style
+    for (Dependency_object* user : users) {
+        if (user->has_local_value(args.property)) {
+            continue;
+        }
+        const Property_metadata& user_metadata = user->get_metadata(args.property);
+        Value_source   old_user_source{};
+        Property_value old_user_value{};
+        if (old_local) {
+            old_user_source = Value_source::style;
+            old_user_value  = user_metadata.coerce ? user_metadata.coerce(*user, args.old_value) : args.old_value;
+        } else {
+            old_user_value = user->get_effective_value_below_style(args.property, old_user_source);
+        }
+        Value_source   new_user_source{};
+        Property_value new_user_value = user->get_effective_value(args.property, new_user_source);
+        user->notify(args.property, old_user_value, old_user_source, new_user_value, new_user_source);
+    }
 }
 
 auto Dependency_object::get_inherited_value(const Dependency_property& property) const -> std::optional<Property_value>
@@ -864,6 +949,7 @@ void Dependency_object::deliver(const Property_changed_args& args)
         }
     }
     invalidate_dependents(args.property);
+    propagate_to_style_users(args);
 }
 
 void Dependency_object::propagate_to_descendants(
@@ -930,7 +1016,7 @@ void Dependency_object::flush_batch()
 
 // Style (D25)
 
-auto Dependency_object::set_style(std::shared_ptr<const Property_style> style) -> bool
+auto Dependency_object::set_style(std::shared_ptr<const Dependency_object> style) -> bool
 {
     if (m_sealed) {
         log->error("set_style: object is sealed");
@@ -948,27 +1034,34 @@ auto Dependency_object::set_style(std::shared_ptr<const Property_style> style) -
         Value_source               source;
     };
     std::vector<Before> before;
-    const auto collect = [&](const std::shared_ptr<const Property_style>& from) {
+    const auto collect = [&](const std::shared_ptr<const Dependency_object>& from) {
         if (!from) {
             return;
         }
-        for (const Property_set::Entry& entry : from->get_values().entries()) {
-            const Dependency_property& property = *entry.property;
-            if (has_local_value(property)) {
-                continue;
+        from->for_each_local_value(
+            [&](const Dependency_property& property, const Property_value&) {
+                if (has_local_value(property)) {
+                    return;
+                }
+                const bool seen = std::any_of(before.begin(), before.end(), [&property](const Before& b) { return b.property == &property; });
+                if (seen) {
+                    return;
+                }
+                Value_source source{};
+                Property_value value = get_effective_value(property, source);
+                before.push_back(Before{.property = &property, .value = std::move(value), .source = source});
             }
-            const bool seen = std::any_of(before.begin(), before.end(), [&property](const Before& b) { return b.property == &property; });
-            if (seen) {
-                continue;
-            }
-            Value_source source{};
-            Property_value value = get_effective_value(property, source);
-            before.push_back(Before{.property = &property, .value = std::move(value), .source = source});
-        }
+        );
     };
     collect(m_style);
     collect(style);
+    if (m_style) {
+        m_style->remove_style_user(*this);
+    }
     m_style = std::move(style);
+    if (m_style) {
+        m_style->add_style_user(*this);
+    }
     for (const Before& b : before) {
         Value_source   new_source{};
         Property_value new_value = get_effective_value(*b.property, new_source);

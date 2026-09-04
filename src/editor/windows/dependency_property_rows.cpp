@@ -18,6 +18,7 @@
 #include "erhe_property/enum_info.hpp"
 #include "erhe_property/property_metadata.hpp"
 #include "erhe_property/property_set.hpp"
+#include "erhe_property/property_style.hpp"
 #include "erhe_property/property_string.hpp"
 
 #include <glm/gtc/quaternion.hpp>
@@ -377,7 +378,7 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     }
     if (first.get_value_source(property) == Value_source::style) {
         tooltip += " (";
-        tooltip += first.get_style()->get_name();
+        tooltip += first.get_style()->get_reference_path();
         tooltip += ")";
     }
     if (first_item.is_sealed()) {

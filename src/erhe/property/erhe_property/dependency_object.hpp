@@ -4,7 +4,6 @@
 #include "erhe_property/expression.hpp"
 #include "erhe_property/owner_type.hpp"
 #include "erhe_property/property_metadata.hpp"
-#include "erhe_property/property_style.hpp"
 #include "erhe_property/property_value.hpp"
 
 #include <cstdint>
@@ -165,13 +164,18 @@ public:
     void               unseal   ()       { m_sealed = false; }
     [[nodiscard]] auto is_sealed() const -> bool { return m_sealed; }
 
-    // Style (D25): one shared Property_style per object, read between the
-    // local and inherited layers; a bridged property ignores it. set_style
-    // notifies every property whose effective value or source changes
-    // (locals shadow the style and are untouched); nullptr clears. False
-    // (logged) on a sealed object.
-    auto               set_style(std::shared_ptr<const Property_style> style) -> bool;
-    [[nodiscard]] auto get_style() const -> const std::shared_ptr<const Property_style>& { return m_style; }
+    // Style (D25): one shared style source per object - another
+    // Dependency_object whose LOCAL values are the style (a Property_style,
+    // or the editor's style item, doc/style-library.md D1) - read between
+    // the local and inherited layers; a bridged property ignores it.
+    // set_style notifies every property whose effective value or source
+    // changes (locals shadow the style and are untouched); nullptr clears.
+    // False (logged) on a sealed object. The source keeps a list of its
+    // users: a change of its local layer notifies every user without a
+    // local value of that property, so an edited style is live.
+    auto               set_style(std::shared_ptr<const Dependency_object> style) -> bool;
+    [[nodiscard]] auto get_style() const -> const std::shared_ptr<const Dependency_object>& { return m_style; }
+    [[nodiscard]] auto get_style_user_count() const -> std::size_t;
 
     // Untyped access (editor, undo, serialization, MCP). Writes to a
     // read-only property or a sealed object are rejected here (false);
@@ -301,6 +305,14 @@ private:
     [[nodiscard]] auto get_style_value    (const Dependency_property& property) const -> std::optional<Property_value>;
 
     [[nodiscard]] auto reject_if_sealed   (const Dependency_property& property) const -> bool;
+    // The effective value the object would have without its style layer
+    // (inherited or default, coerced): a style user's value before the
+    // source gained the property, or after it lost it.
+    [[nodiscard]] auto get_effective_value_below_style(const Dependency_property& property, Value_source& out_source) const -> Property_value;
+    // Style users (D25 live edit): this object as a style source.
+    void add_style_user   (Dependency_object& user) const;
+    void remove_style_user(Dependency_object& user) const;
+    void propagate_to_style_users(const Property_changed_args& args);
     auto               set_value_internal  (const Dependency_property& property, const Property_value& value, bool allow_read_only, bool keep_expression) -> bool;
     auto               clear_value_internal(const Dependency_property& property, bool allow_read_only) -> bool;
     void store_coerced       (const Dependency_property& property, Effective_value_entry& entry);
@@ -337,7 +349,8 @@ private:
     std::shared_ptr<Observer_token::Observer_list>  m_observers;   // allocated on first add_observer
     std::unique_ptr<std::vector<Dependent>>         m_dependents;  // allocated when the first expression resolves to this object
     std::vector<Pending_change>                     m_pending;
-    std::shared_ptr<const Property_style>           m_style;
+    std::shared_ptr<const Dependency_object>        m_style;
+    mutable std::unique_ptr<std::vector<Dependency_object*>> m_style_users; // allocated when this object first becomes a style source
     int                                             m_batch_depth{0};
     bool                                            m_sealed{false};
 };
