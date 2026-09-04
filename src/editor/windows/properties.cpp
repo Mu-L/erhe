@@ -1645,7 +1645,10 @@ void Properties::imgui()
             group.clear();
         }
         std::size_t group_count = 0;
-        for (const std::shared_ptr<erhe::Item_base>& item : items) {
+        for (const std::shared_ptr<erhe::Item_base>& selected : items) {
+            // A content-library entry stands for its item, as in item_properties().
+            const std::shared_ptr<Content_library_node> content_library_node = std::dynamic_pointer_cast<Content_library_node>(selected);
+            const std::shared_ptr<erhe::Item_base>&     item                 = (content_library_node && content_library_node->item) ? content_library_node->item : selected;
             const erhe::property::Owner_type owner_type = item->get_property_owner_type();
             std::size_t group_index = 0;
             while ((group_index < group_count) && (m_type_groups[group_index].front()->get_property_owner_type() != owner_type)) {
