@@ -20,8 +20,9 @@ enum class Developer_mode : unsigned int {
 // registering type's visible_when holds for the object, or the object holds
 // a local value for it (a stale hint stays visible and resettable). A
 // secondary property (Property_registry::is_secondary_property) is listed
-// when the object holds a local value for it; its visible_when belongs to
-// the secondary type's objects and is never evaluated on this one.
+// when the object holds an own value for it (local, or from its style);
+// its visible_when belongs to the secondary type's objects and is never
+// evaluated on this one.
 [[nodiscard]] auto is_extra_property_listed(
     const erhe::property::Dependency_object&   object,
     const erhe::property::Dependency_property& property

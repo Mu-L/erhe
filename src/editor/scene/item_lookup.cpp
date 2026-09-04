@@ -225,8 +225,12 @@ void collect_reference_candidates(
         return;
     }
     const bool developer_mode = context.developer_mode;
-    const auto consider = [&out, item_types, developer_mode](const std::shared_ptr<erhe::Item_base>& item) {
+    const auto consider = [&out, &target, item_types, developer_mode](const std::shared_ptr<erhe::Item_base>& item) {
         if (!item || ((item->get_type() & item_types) == 0)) {
+            return;
+        }
+        // A style is offered only where it applies (doc/style-library.md R3).
+        if (((item->get_type() & erhe::Item_type::style) != 0) && !erhe::Item_base::style_applies(*item, target)) {
             return;
         }
         const bool shown =

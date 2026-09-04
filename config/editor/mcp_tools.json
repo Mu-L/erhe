@@ -6539,6 +6539,30 @@
     "name": "set_item_property"
   },
   {
+    "name": "create_style",
+    "description": "Create an empty style item (doc/style-library.md R1) of the given target class in the scene's Styles folder, as one undoable insert executed immediately; returns the style's item id and final (unique) name. Fill it with set_item_property by qualified name ('Light.color', 'Material.roughness'; get_addable_item_properties lists them) and assign it by setting an item's 'style' property to the style's name. A style applies to items of the target class and to holders whose secondary owner type the target descends from: a Material style to a Materials folder, a Light (or any attachment class) style to a Node, so lights below the node inherit its values. An invalid target lists the valid class names.",
+    "inputSchema": {
+      "properties": {
+        "scene_name": {
+          "description": "Scene whose Styles folder gets the style (optional, the first scene by default)",
+          "type": "string"
+        },
+        "name": {
+          "description": "Style name (default 'New Style'; made unique in the folder)",
+          "type": "string"
+        },
+        "target": {
+          "description": "Target class name, e.g. 'Material', 'Light', 'Camera', 'Node'",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "name": "set_item_style",
     "description": "Make a style item (doc/style-library.md) in the item's scene Styles folder from the source item's local values, named after the source, and assign it to the item, in one undo entry. The style item is then editable like any item (get_item_properties / set_item_property by qualified name, e.g. 'Material.roughness'), and every item using it follows the edit live. To assign an existing style, set_item_property the item's 'style' property to the style's name (or reference_id); a null value clears it (same as clear_item_style).",
     "inputSchema": {

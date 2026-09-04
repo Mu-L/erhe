@@ -492,9 +492,10 @@ auto Dependency_property_rows::inline_remove_offered(const Dependency_property& 
         return false;
     }
     if (!property.is_attached()) {
-        // A secondary property (D30) is listed only because of its local
-        // value; its visible_when is never evaluated on this object.
-        return erhe::property::Property_registry::get().is_secondary_property(*target(0), property);
+        // A secondary property (D30) is listed because of its own value;
+        // the "x" clears a local one. Its visible_when is never evaluated
+        // on this object.
+        return erhe::property::Property_registry::get().is_secondary_property(*target(0), property) && target(0)->has_local_value(property);
     }
     const Property_ui::Visible_when& visible_when = metadata.ui.visible_when;
     return !(visible_when && visible_when(*target(0)));

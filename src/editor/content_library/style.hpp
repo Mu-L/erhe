@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace editor {
 
@@ -40,6 +41,11 @@ public:
 private:
     erhe::property::Owner_type m_target_owner_type;
 };
+
+// The owner types a style can target: every type with own value
+// properties (Property_registry::has_own_value_properties), sorted by name.
+// Clears and fills `out`.
+void collect_style_target_owner_types(std::vector<erhe::property::Owner_type>& out);
 
 // A name no style in the folder uses: `base_name`, else `base_name (N)`.
 [[nodiscard]] auto make_unique_style_name(const Content_library_node& styles_folder, std::string_view base_name) -> std::string;

@@ -15,6 +15,7 @@
 #include "graphics/texture_file_loader.hpp"
 #include "brushes/brush.hpp"
 #include "content_library/content_library.hpp"
+#include "content_library/style.hpp"
 #include "geometry_graph/graph_mesh.hpp"
 #include "geometry_graph/geometry_graph_window.hpp"
 #include "texture_graph/graph_texture.hpp"
@@ -868,6 +869,39 @@ auto Scene_root::make_browser_window(
                         }
                     );
                     close = true;
+                }
+            }
+            // "Create Style" on the Styles folder (doc/style-library.md R1):
+            // an empty style of the chosen target class.
+            if (is_folder && (content_node->type_code == erhe::Item_type::style)) {
+                auto         styles      = get_content_library()->styles;
+                App_context* context_ptr = &context;
+                if (ImGui::BeginMenu("Create Style")) {
+                    const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
+                    std::vector<erhe::property::Owner_type> targets;
+                    collect_style_target_owner_types(targets);
+                    for (const erhe::property::Owner_type target : targets) {
+                        const std::string_view target_name = registry.get_owner_name(target);
+                        if (ImGui::MenuItem(std::string{target_name}.c_str())) {
+                            deferred_operations.push_back(
+                                [context_ptr, styles, target]() {
+                                    auto new_style = std::make_shared<Style>(make_unique_style_name(*styles, "New Style"), target);
+                                    auto new_node  = std::make_shared<Content_library_node>(new_style);
+                                    auto op = std::make_shared<Item_insert_remove_operation>(
+                                        Item_insert_remove_operation::Parameters{
+                                            .context = *context_ptr,
+                                            .item    = new_node,
+                                            .parent  = styles,
+                                            .mode    = Item_insert_remove_operation::Mode::insert
+                                        }
+                                    );
+                                    context_ptr->operation_stack->queue(op);
+                                }
+                            );
+                            close = true;
+                        }
+                    }
+                    ImGui::EndMenu();
                 }
             }
             if (is_folder && (content_node->type_code == erhe::Item_type::graph_texture)) {

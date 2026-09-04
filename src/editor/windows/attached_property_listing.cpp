@@ -14,7 +14,7 @@ auto is_extra_property_listed(
     if (!property.is_attached()) {
         return
             erhe::property::Property_registry::get().is_secondary_property(object, property) &&
-            object.has_local_value(property);
+            object.has_own_value(property);
     }
     const erhe::property::Property_ui::Visible_when& visible_when = property.get_metadata(object.get_property_owner_type()).ui.visible_when;
     return (visible_when && visible_when(object)) || object.has_local_value(property);

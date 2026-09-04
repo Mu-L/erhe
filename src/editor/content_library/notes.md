@@ -45,14 +45,18 @@ The Styles category holds `Style` items (`style.{hpp,cpp}`,
 `doc/style-library.md`): a style's target class is its secondary owner
 type, so its own local values are the style (`Material.roughness` on a
 Material style) and the Properties window edits it with the generic rows.
-An item names its style through the `Item_base::style_property` row; the
+An item names its style through the `Item_base::style_property` row
+(`Item_base::style_applies` decides which styles it can take); the
 default metals share the "Brushed metal" style `add_default_materials`
-creates here. `make_style_from_values` (`operations/style_set_operation.hpp`)
-turns a bag of values into a style item plus its assignment for "Paste
-Properties as Style" and the MCP `set_item_style`; `copy_library_item_to_
-library` remaps or copies a material's style into the target library.
-Styles save through `ERHE_scene` `styles`, materials and folders name
-theirs.
+creates here. "Create Style" on the Styles folder and the MCP
+`create_style` make an empty style of a chosen target class
+(`collect_style_target_owner_types` lists the classes with value
+properties of their own). `make_style_from_values`
+(`operations/style_set_operation.hpp`) turns a bag of values into a style
+item plus its assignment for "Paste Properties as Style" and the MCP
+`set_item_style`; `copy_library_item_to_library` remaps or copies a
+material's style into the target library. Styles save through
+`ERHE_scene` `styles`; materials, nodes and folders name theirs.
 
 ## Importing texture files
 

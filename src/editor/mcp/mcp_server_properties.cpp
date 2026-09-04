@@ -9,6 +9,9 @@
 
 #include "app_context.hpp"
 #include "app_scenes.hpp"
+#include "content_library/content_library.hpp"
+#include "content_library/style.hpp"
+#include "operations/item_insert_remove_operation.hpp"
 #include "operations/operation_stack.hpp"
 #include "operations/property_set_operation.hpp"
 #include "operations/compound_operation.hpp"
@@ -27,8 +30,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace editor {
 
@@ -444,6 +449,62 @@ auto Mcp_server::action_set_item_style(const json& args) -> std::string
             {"properties", names},
             {"before",     item->get_style() ? json(item->get_style()->get_reference_path()) : json(nullptr)},
             {"queued",     true}
+        }
+    ).dump();
+}
+
+// An empty style item of the named target class in the scene's Styles
+// folder (doc/style-library.md R1); fill it with set_item_property by
+// qualified name and assign it through an item's 'style' property.
+auto Mcp_server::action_create_style(const json& args) -> std::string
+{
+    const std::string scene_name  = args.value("scene_name", "");
+    const std::string name        = args.value("name", "New Style");
+    const std::string target_name = args.value("target", "");
+    const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
+    std::vector<erhe::property::Owner_type> targets;
+    collect_style_target_owner_types(targets);
+    const std::optional<erhe::property::Owner_type> target = registry.find_owner_type(target_name);
+    if (!target.has_value() || (std::find(targets.begin(), targets.end(), target.value()) == targets.end())) {
+        std::string valid;
+        for (const erhe::property::Owner_type candidate : targets) {
+            valid += valid.empty() ? "" : ", ";
+            valid += std::string{registry.get_owner_name(candidate)};
+        }
+        return make_error_content("'target' must name a class with value properties; one of: " + valid);
+    }
+    Scene_root* scene_root = nullptr;
+    if (scene_name.empty()) {
+        const std::vector<std::shared_ptr<Scene_root>>& scene_roots = m_context.app_scenes->get_scene_roots();
+        scene_root = scene_roots.empty() ? nullptr : scene_roots.front().get();
+    } else {
+        scene_root = find_scene(scene_name);
+    }
+    if (scene_root == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    const std::shared_ptr<Content_library> library = scene_root->get_content_library();
+    if (!library || !library->styles) {
+        return make_error_content("Scene has no content library");
+    }
+    std::shared_ptr<Style> style{};
+    {
+        std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{library->mutex};
+        style = std::make_shared<Style>(make_unique_style_name(*library->styles, name), target.value());
+    }
+    m_context.operation_stack->execute_now(
+        std::make_shared<Item_insert_remove_operation>(
+            Item_insert_remove_operation::Parameters{
+                .context = m_context,
+                .item    = std::make_shared<Content_library_node>(style),
+                .parent  = library->styles,
+                .mode    = Item_insert_remove_operation::Mode::insert
+            }
+        )
+    );
+    return make_json_content(
+        json{
+            {"style", {{"id", style->get_id()}, {"name", style->get_name()}, {"target", std::string{registry.get_owner_name(target.value())}}}}
         }
     ).dump();
 }
