@@ -70,6 +70,10 @@ public:
     // A folder holds its category's item properties (D8); an entry node
     // holds none.
     [[nodiscard]] auto get_secondary_property_owner_type() const -> std::optional<erhe::property::Owner_type> override;
+    // A node has no Item_host of its own: an item name in a reference or
+    // expression resolves through the library owner (its scene), so a
+    // folder's texture reference loads by name.
+    [[nodiscard]] auto resolve_expression_object(std::string_view path) const -> erhe::property::Dependency_object* override;
 
     // Walks up the node hierarchy to the root, which carries the back-pointer
     // to the owning Content_library. Null for nodes not (yet) in a library.

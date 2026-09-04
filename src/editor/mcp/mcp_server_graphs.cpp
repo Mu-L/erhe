@@ -1036,7 +1036,7 @@ auto Mcp_server::action_set_material_texture_source(const json& args) -> std::st
     }
     // Graph_texture is-a erhe::graphics::Texture_reference; the shared_ptr upcasts.
     // The slot has a single reference, so this replaces any previous binding.
-    sampler->texture_reference = graph_texture;
+    material->set_slot_texture(*sampler, graph_texture);
     return make_json_content({
         {"bound",            true},
         {"material",         material_name},

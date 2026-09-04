@@ -195,6 +195,16 @@ void Content_library_node::for_each_inheritance_child(const std::function<void(e
     }
 }
 
+auto Content_library_node::resolve_expression_object(const std::string_view path) const -> erhe::property::Dependency_object*
+{
+    if (path.empty() || (path == "..")) {
+        return Item::resolve_expression_object(path);
+    }
+    Content_library* const library = get_library();
+    erhe::Item_host* const owner   = (library != nullptr) ? library->get_owner() : nullptr;
+    return (owner != nullptr) ? owner->find_hosted_item(path) : nullptr;
+}
+
 auto Content_library_node::get_secondary_property_owner_type() const -> std::optional<erhe::property::Owner_type>
 {
     return item ? std::nullopt : category_owner_type;

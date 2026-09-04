@@ -545,7 +545,7 @@ void import_node_graphs(
             else if (slot == "occlusion")          sampler = &samplers.occlusion;
             else if (slot == "emissive")           sampler = &samplers.emissive;
             if (sampler != nullptr) {
-                sampler->texture_reference = graph_texture;
+                material->set_slot_texture(*sampler, graph_texture);
                 // Sampler state (wrap / filters): graph-texture slots export
                 // no glTF texture, so this is the only carrier - without it
                 // a wrap=repeat slot reloads as the clamp fallback.

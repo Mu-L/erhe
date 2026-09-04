@@ -81,7 +81,7 @@ void Texture_output_node::on_removed_from_graph()
     // unresolved reference never assigned anything, so nothing to clear.
     const std::shared_ptr<erhe::primitive::Material> material = get_material();
     if (m_assign_to_material && material) {
-        material->data.texture_samplers.base_color.texture_reference.reset();
+        material->clear_value(erhe::primitive::Material::base_color_texture_property);
         material->data.texture_samplers.base_color.sampler.reset();
     }
 }

@@ -186,7 +186,13 @@ auto find_scene_root_for_item(App_context& context, const erhe::Item_base& item)
         }
         // An unhosted item (an asset-typed one): the scene whose content
         // library lists it, else the scene the manager records as defining it.
+        // A library node itself (a folder holding a reference property,
+        // doc/content-library-folders.md D8) belongs to its library's scene.
         const std::shared_ptr<Content_library>& library = scene_root->get_content_library();
+        const Content_library_node* const library_node = dynamic_cast<const Content_library_node*>(&item);
+        if ((library_node != nullptr) && library && (library_node->get_library() == library.get())) {
+            return scene_root.get();
+        }
         if (library && library->root && library->root->has_item(item)) {
             return scene_root.get();
         }
