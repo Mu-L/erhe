@@ -29,6 +29,8 @@
 prompt_queue.txt::items-0-4-unchanged{folders-task-was-a-direct-request}
 
 [OPEN]
+?user-interactive-check{folders+category-props+texture-slots+styles}→expect-fixes;then-migrations{Light-derived-rows}
+?inherits-registration-check::third-form-added{secondary-owner-type}→still-unimplemented
 ?startup-log-error::"property 'lightmapped': object is sealed"{pre-existing,at-startup,unrelated}
 ?inherits-registration-check{doc/property-system.md-section-6}
 ?Light-derived-rows→Rendertarget_mesh→Animation{doc/property-inventory.md}
