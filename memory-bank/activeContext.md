@@ -1,38 +1,24 @@
 §MBEL:5.0
 
 [FOCUS]
->R2-slots-onto-Asset_reference{95ec5eec,2026-07-16-late}✓
-  Slot_entry::brush/material→Asset_reference{resolved-slot=declared-user;labels:"inventory grid slot N"/"inventory hotbar slot N"/hotbar-copies-"hotbar slot N";re-stamped-after-any-slot-change}
-  codegen::Asset_reference_data-v1{scope+asset_type+path+uid+name;¬index-per-decision-11}+assets/asset_reference_config.{hpp,cpp}{to_asset_key/to_asset_reference_data}
-  Inventory_slot-v4::brush_asset/material_asset{legacy-names-read+migrated-to-scene_local¬written;uid-self-heals-into-written-keys}
-  Pending_slot_item-retry-queue→per-frame-resolve_slot_references{imgui;scene_local-misses-don't-latch;unresolved-keys-survive-write_config-by-construction}
-  NEW-Asset_reference::adopt{drag-drop-adopts-EXACT-object¬name-re-resolution{builtin-shadows-scene-copy}};swaps-exchange-real-Slot_entries
-  collect_pinned_items-SLIMMED{transitive-only:slot-brush-pins-own-material;slot-items-covered-by-is_pinned}
-  NEW-MCP::set_window_visibility{title,visible;windows-do-per-frame-work-only-visible;default-layout-leaves-Inventory-closed;desktop_windows.json-seeding-clobbered-by-window-state-autosave}
-  verify✓::v2-legacy-migrate+resolve|v4-file-key-loads-container-on-demand|unload-refusal-names-"inventory grid slot 3"|restart-restores-from-autosaved-v4{uid-self-heal-in-written-keys}|close-scene-with-scene-hosted-slot-material→info-"intentionally pinned by the asset manager"+zero-warns{134-released,1-pinned}|MSVC+clang-cl-clean
-  observed::scene_local-key-can-bind-loaded-CONTAINER-copy{registry-before-scenes,plan-risk-6;Chromium-leg}=deterministic-accepted
-
-[PREV]
->ITEM1-scene-close-leak-root-cause{8c3db108+8df79fa1}✓{s_item_tasks-completed-AsyncTask-handles+5-selection-holders;watchdog-"N holder(s)";7-legs-clean;details→history-2026-07-16-late}
->R1-asset-manager-core{a5cdda26}✓+F1{856dedd3}✓+U1{577d9f75}✓
+@property-system::erhe::property{WPF-dependency-property-port;doc/property-system.md=design-record{D-numbers};doc/property-inventory.md=per-field-status;src/erhe/property/notes.md=library-reference}
+>2026-09-03::object-refs{D28/D29}+migrations{Node_physics+Grid+Brush_placement+Physics_material+Layout}+Owner_type-registry{D27}+attached-properties{D3;qualified-"<Owner>.<name>";Layout.align_x..grid_span-on-child-Node}✓
+>2026-09-04::Add/Remove-Property-UI{940aeccbb..3a2318199}✓
+  windows/attached_property_listing.{hpp,cpp}::D12-listing-rule+addable-candidates{rows+MCP-share-it}
+  Properties-section-ends-with-"Add Property"-row{filterable-popup;candidates=attached-registrations-not-listed;add-writes-effective-value-local→row-appears,undo-removes}
+  attached-rows::"Remove Property"-context-menu+inline-"x"-when-listed-only-by-local-value
+  MCP::get_addable_item_properties;add=set_item_property-qualified-name;remove=value-null
+  trap-fixed{4e496b984}::Dependency_property_rows-kept-m_items-across-frames=scene-close-leak-holder→snapshot-bound-only-in-add_rows+each-row-lambda
+  verify✓headless{node+cube-mesh-attachment;floor-mesh-is-sealed;close-scene-clean-132-released}|?user-interactive{filter-typing,Ctrl+Z,multi-select,locked-item-disabled}
 
 [STATE]
-@branch::main
-prompt_queue.txt::WRITTEN{handoff-for-fresh-context;ITEM1=interactive-verification-redo{windowed-launch+checklist}→ITEM2=R3-tool-state;read-first-next-session}
-uncommitted::config/editor/{desktop_windows.json+editor_settings.json}{user's-short-interactive-run:inventory-flag-true+slots-migrated-v2→v4+grid-slot-1-cube-from-real-drag-drop{adopt-proven-live};expected-R2-behavior;ask-user-commit-or-leave}
-untracked::res/editor/scenes/{user-saved¬touch}
-uncommitted-held::doc/gltf_extensions/ERHE_asset_reference.{md,schema.json}+README-row{DRAFT-R6-wire-spec;ask-user-before-committing}
-plan::asset-manager-plan.md{OUTSIDE-repo;R2-AS-LANDED-noted;next:R3-tool-state{brush_tool-m_active_brush+material_paint_tool-m_material→Asset_reference;supersedes-F1-subscriptions-there}}
+@branch::main{#10-commits-unpushed;user-pushes-themselves}
+prompt_queue.txt::item0=next-migration{Light-derived-rows}|items1-4-unchanged
+memory-bank-files-of-July{asset-manager-R1/R2}→history{superseded-by-this-focus}
 
 [OPEN]
-?R3-tool-state{next-phase;plan-section-is-spec}
-?user-verify-INTERACTIVE::
-  R2{95ec5eec}::drag-drop-slots{brush/material/swap/clear}+hotbar-brush-activation+brush-with-material-fork-transitive-pin
-  leak-fixes{8c3db108+8df79fa1}::normal-editing-unaffected+interactive-close-legs-leak-free{grep-"scene-close"}
-  R1{a5cdda26}::query_asset_manager-live-session
-  F1{856dedd3}::close-scene-while{animation|brush|material-paint|save-modal}
-  graph-mesh-hover/pick{c18b2608}+close-scene-graph-window{dd9022bc}+dragdrop-list{2026-07-15-pm}
-?content-library-user-interactive-verify+selection-deferred+animation-editor{#243}+6c-fields+PhaseC+cc-perf-leftovers+#239-per-scene-settings{parked}+geogram-upstream-issue{unfiled}
+?inherits-registration-check{inherits⇒attached||root-owner;doc-section-6;when-first-inheritable-attached-property-appears}
+?Light-derived-rows→Rendertarget_mesh→Animation{doc/property-inventory.md-"Not yet migrated"-order}
 
 [BLOCKERS]
 none
