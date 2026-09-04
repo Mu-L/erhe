@@ -46,6 +46,7 @@ purple by layer, computed rows dim gray. Untinted rows are hand-written.
 | visible | entry | flag mirror |
 | shadow_cast | entry | flag mirror, group Rendering |
 | lightmapped | entry | flag mirror, group Rendering |
+| style | bridge | object reference to the item's style source (doc/style-library.md D3), style items only |
 
 ### Hierarchy (`src/erhe/item/erhe_item/hierarchy.cpp`)
 

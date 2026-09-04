@@ -6540,7 +6540,7 @@
   },
   {
     "name": "set_item_style",
-    "description": "Give an item a style (doc/property-system.md D25): the source item's local values become a named value layer between the target's local values and its inherited / default values (precedence: local > style > inherited > default). The target's local values stay on top; clearing a local value (set_item_property with null) exposes the style value. get_item_properties reports the style name on the item and 'style' as a property source. Undoable (Style_set_operation).",
+    "description": "Make a style item (doc/style-library.md) in the item's scene Styles folder from the source item's local values, named after the source, and assign it to the item, in one undo entry. The style item is then editable like any item (get_item_properties / set_item_property by qualified name, e.g. 'Material.roughness'), and every item using it follows the edit live. To assign an existing style, set_item_property the item's 'style' property to the style's name (or reference_id); a null value clears it (same as clear_item_style).",
     "inputSchema": {
       "properties": {
         "item_id": {
@@ -6570,7 +6570,7 @@
   },
   {
     "name": "clear_item_style",
-    "description": "Remove an item's style (see set_item_style); the properties the style supplied fall back to their inherited or default values, local values are untouched. Undoable.",
+    "description": "Remove the item's style (doc/style-library.md); local values stay. Equivalent to set_item_property 'style' with a null value.",
     "inputSchema": {
       "properties": {
         "item_id": {

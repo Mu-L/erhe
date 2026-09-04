@@ -149,17 +149,21 @@ the value before the batch and after it.
 
 ## Style
 
-`set_style(std::shared_ptr<const Property_style>)` / `get_style()` (D25, WPF
-Style setters): the style's values sit between the local and inherited
-layers (`Value_source::style`); a local value or an expression shadows
-them, a bridged property ignores them. `set_style` notifies every property
-either the old or the new style names whose effective value or source
-changes, through the normal path, and leaves locals alone. A style value of
+`set_style(std::shared_ptr<const Dependency_object>)` / `get_style()` (D25,
+WPF Style setters): the source's local values sit between the user's local
+and inherited layers (`Value_source::style`); a local value or an
+expression shadows them, a bridged property ignores them. `set_style`
+notifies every property either the old or the new source holds whose
+effective value or source changes, through the normal path, and leaves
+locals alone. A source keeps its users (`get_style_user_count`): when its
+local layer changes, `notify` forwards the change to every user without a
+local value of that property, so an edited style is live. A style value of
 an inherits-flagged property is what descendants inherit, and it stops an
 ancestor's propagation like a local value. A copy carries the style
-pointer; a sealed object rejects `set_style`. Styles are session state: the
-glTF writers export effective values, and the `properties` extras carry
-locals only.
+pointer; a sealed object rejects `set_style`. `Property_style` is a named
+source filled from a `Property_set`; the editor's style items
+(`doc/style-library.md`) are sources of their own and are the ones a scene
+saves.
 
 ## Sealing
 

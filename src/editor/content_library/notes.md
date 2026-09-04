@@ -39,6 +39,21 @@ secondary owner type, `doc/content-library-folders.md` D8): a Materials
 folder offers `Material.base_color` and the other `Material` values in Add
 Property, and a material below it without a local value reads them.
 
+## Styles
+
+The Styles category holds `Style` items (`style.{hpp,cpp}`,
+`doc/style-library.md`): a style's target class is its secondary owner
+type, so its own local values are the style (`Material.roughness` on a
+Material style) and the Properties window edits it with the generic rows.
+An item names its style through the `Item_base::style_property` row; the
+default metals share the "Brushed metal" style `add_default_materials`
+creates here. `make_style_from_values` (`operations/style_set_operation.hpp`)
+turns a bag of values into a style item plus its assignment for "Paste
+Properties as Style" and the MCP `set_item_style`; `copy_library_item_to_
+library` remaps or copies a material's style into the target library.
+Styles save through `ERHE_scene` `styles`, materials and folders name
+theirs.
+
 ## Importing texture files
 
 Image files the editor can decode (`.png` / `.jpg` / `.jpeg` / `.ktx2` / `.dds`, see `is_texture_file_extension`) appear in the Asset Browser as `Asset_file_texture` items, and enter a scene's library through `import_texture_into_scene` (`assets/asset_workflow.hpp`) two ways:

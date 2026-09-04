@@ -92,8 +92,13 @@ Headless, over `scripts/mcp_call.py` on a fresh editor:
    restores.
 3. `set_item_property` `style` `null` on `Copper`: `roughness` reads the
    default; setting `style` back by name restores.
-4. `save_scene` and reopen: the style item, its values and `Copper`'s
-   `style` are back; `close_scene` is clean.
+4. A folder with a style: `create_library_folder` `Materials/Styled`,
+   move `Floor` into it, set the folder's `style` to `Brushed metal`,
+   clear `Floor`'s own `metallic` (value `null`): `Floor` reads `1` with
+   source `inherited` (a create-info material carries every value as
+   local, so the folder's style shows only through a cleared value).
+5. `save_scene` and reopen: the style item, its values, `Copper`'s
+   `style` and the folder's `style` are back; `close_scene` is clean.
 
 Interactive: select the style in the Scene Hierarchy's Styles folder,
 edit a value and watch the metals change; drag the style onto a folder;

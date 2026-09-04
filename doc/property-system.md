@@ -771,54 +771,64 @@ table, see D2a), and references to other objects (D28).
     (`Graphics_preset_entry` inside `Graphics_settings`) that the Settings
     window edits in place, with no local-override concept to preserve; they
     stay as they are until `Graphics_settings` is an item (section 6). The
-    first user is the material library, and the layer is generic for every
-    item type.
-  - Library. `Property_style` (`erhe_property/property_style.hpp`) is a
-    name plus a `Property_set` (D17), immutable after construction and
-    shared as `std::shared_ptr<const Property_style>` (WPF seals a style
-    once used; a changed preset is a new object re-applied by whoever owns
-    the preset list). `Dependency_object::set_style(style)` /
-    `get_style()` install one style per object; R3 is coerced > local
-    (a stored value or an expression) > style > inherited > default, with
-    `Value_source::style`. A bridged property (D18) is always local and
-    ignores a style entry (the transform, the projection). A style entry
-    for an inherits-flagged property is the object's effective value and
-    so flows to descendants exactly as a local value would: the inheritance
-    walk, the descendant notification and the tree-change snapshot treat
-    "has a local value" as "has a local or style value". `set_style`
-    notifies, through the normal path (batches, D19 callbacks, observers,
-    descendants), every property in the union of the old and new style
-    whose effective value or source changes; local values are untouched
-    and shadow the style (WPF `IsSetOnContainer`). A sealed object (D24)
-    rejects `set_style`. A copy (D10) carries the style pointer (it is
-    authored state, WPF copies `StyleProperty`). `read_local_value`,
-    `for_each_local_value` and `Property_set::read_local_values` stay
-    local-only; `Material::operator==` also compares the style pointers.
-  - Serialization. A style is session state like an expression (D14):
-    the glTF exporters read effective values through the typed accessors,
-    so a styled material or light exports its baked values and imports
-    them as local values; the `properties` extras of D23 stay local-only.
-    Writing a style by name is future work with the preset library that
-    would own the names (section 6).
-  - Editor. `Style_set_operation` (item, style before, style after) is the
-    undo step. The generic rows show `Source: style (<name>)` in the
-    tooltip and the `*` prefix only for a local value; the
-    context menu has `Paste Properties as Style` (the clipboard bag,
-    named after the item it was copied from, becomes the style of every
-    selected item through one compound of `Style_set_operation`s) and
-    `Clear Style`. MCP: `set_item_style(item, source_item)` builds the
-    style from the source item's local values, `clear_item_style(item)`,
-    and `get_item_properties` reports `style` (the name or `null`) on the
-    item and `style` as a property source.
-  - Material library. `add_default_materials` creates one `Property_style`
+    layer is generic for every item type; its users are the material
+    library's style items (`doc/style-library.md`).
+  - Library. A style source is a `Dependency_object` whose LOCAL values
+    are the style: `Dependency_object::set_style(std::shared_ptr<const
+    Dependency_object>)` / `get_style()` install one source per object.
+    `Property_style` (`erhe_property/property_style.hpp`) is the library's
+    plain named source, filled from a `Property_set` (D17); the editor's
+    style items are their own sources (`doc/style-library.md` D2). R3 is
+    coerced > local (a stored value or an expression) > style > inherited
+    > default, with `Value_source::style`. A bridged property (D18) is
+    always local and ignores a style entry (the transform, the
+    projection). A style entry for an inherits-flagged property is the
+    object's effective value and so flows to descendants exactly as a
+    local value would: the inheritance walk, the descendant notification
+    and the tree-change snapshot treat "has a local value" as "has a local
+    or style value". `set_style` notifies, through the normal path
+    (batches, D19 callbacks, observers, descendants), every property in
+    the union of the old and new source's local values whose effective
+    value or source changes; local values are untouched and shadow the
+    style (WPF `IsSetOnContainer`). A source keeps the list of its users
+    (`set_style` registers, the copy of a user registers the copy, a
+    user's destructor unregisters); when the source's local layer changes
+    for a property, `notify` forwards the change to every user without a
+    local value of it, with the user's old value taken from the old style
+    value (or from the user's inherited / default value when the source
+    held none) and its new value from the user's effective value, so an
+    edited style is live. A sealed object (D24) rejects `set_style`. A
+    copy (D10) carries the style pointer (it is authored state, WPF copies
+    `StyleProperty`). `read_local_value`, `for_each_local_value` and
+    `Property_set::read_local_values` stay local-only;
+    `Material::operator==` also compares the style pointers.
+  - Serialization. A style item and the style each material and library
+    folder uses are saved by name (`doc/style-library.md` D4); a source
+    that is not an item is session state. The `properties` extras of D23
+    stay local-only, and a material's own values export baked as before.
+  - Editor. Every item has a `style` property, a bridged object reference
+    over the source (`Item_base::style_property`, `doc/style-library.md`
+    D3) drawn as a row with the picker; `Style_set_operation` (item, style
+    before, style after) is the undo step of the paste and MCP paths. The
+    generic rows show `Source: style (<name>)` in the tooltip and the `*`
+    prefix only for a local value; the context menu has `Paste Properties
+    as Style` (the clipboard bag becomes a style item in the scene's
+    Styles folder, named after the item it was copied from, and the style
+    of every selected item, in one compound) and `Clear Style`. MCP:
+    `set_item_style(item, source_item)` makes the style item from the
+    source item's local values, `clear_item_style(item)`, and
+    `get_item_properties` reports `style` (the name or `null`) on the
+    item, the `style` row, and `style` as a property source.
+  - Material library. `add_default_materials` creates one style item
     `Brushed metal` (roughness, metallic, BxDF model, circular brushed
-    metal, anisotropy control) and gives each metal only its base color as
-    a local value plus that style, so the twelve materials share the
-    traits and a material edited in the Properties window keeps its
-    override when the style is swapped or cleared. `Material` has a
-    name-only constructor that writes no local values; the
-    `Material_create_info` constructor keeps writing every field as a
-    local value (a full snapshot, which would shadow a style).
+    metal, anisotropy control) in the library's Styles folder and gives
+    each metal only its base color as a local value plus that style, so
+    the twelve materials share the traits and a material edited in the
+    Properties window keeps its override when the style is swapped or
+    cleared. `Material` has a name-only constructor that writes no local
+    values; the `Material_create_info` constructor keeps writing every
+    value field as a local value (a full snapshot, which would shadow a
+    style).
 
 - D26 Computed properties (WPF read-only dependency property whose value
   the owner provides; R6).
@@ -1549,10 +1559,9 @@ style layer is D25.
   incomplete and not ready to implement; the decisions it records so far
   live there and nowhere else.
 - Style users beyond the material library (D25): the graphics presets once
-  `Graphics_settings` is an item with registered properties, per-instance
-  prefab overrides once `doc/gltf-prefabs-plan.md` phase 6 takes them on,
-  and a preset library that owns style names so a style can be written to
-  glTF by name.
+  `Graphics_settings` is an item with registered properties, and
+  per-instance prefab overrides once `doc/gltf-prefabs-plan.md` phase 6
+  takes them on.
 - Further computed properties (D26) as their consumers appear: a node's
   world bounds over its subtree, a scene's item counts.
 - Further item migrations, each reusing the Material recipe (section 4.1).

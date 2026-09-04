@@ -1,6 +1,13 @@
 §MBEL:5.0
 
 [FOCUS]
+@style-library::doc/style-library.md{R1-R6,D1-D5}✓2026-09-04{9132674f2+a88dd405c+persistence+docs}
+  D1::style-source=any-Dependency_object{local-values=style;m_style_users-registry;deliver()->propagate_to_style_users;Property_style=Dependency_object-subclass}
+  D2::editor::Style-item{content_library/style.{hpp,cpp};secondary-owner=target-class;Item_type::style=bit47;Styles-category-folder;icon}
+  D3::Item_base::style_property{bridged-object-ref;validate-target-vs-owner-chain-or-secondary;flags-partition+variant+serialize}
+  D4::ERHE_scene.styles{name,target,properties}+ERHE_material.style+library_folders.style;import order:styles→...→material-styles→folders
+  D5::add_default_materials→"Brushed metal"-Style-item;make_style_from_values{paste-as-style+MCP-set_item_style}
+  verify✓headless{scratchpad-verify_styles.py:live-edit,clear/reassign-by-name,folder-style-inherit(after-clearing-local),paste-as-style+undo,save/open,close-clean}|?user-interactive
 @folder-category-properties::D30{secondary-owner-type}✓2026-09-04{5ff73f41b+59dd60042+34d66432b}
   Content_library_node.category_owner_type→get_secondary_property_owner_type{folders-only};Material-value-props-inherits=true;Add-Property-offers-"Material.<name>"-on-Materials-folder;listing=is_extra_property_listed+collect_addable_properties
   trap::Material-visible_when-lambdas-static_cast-to-Material→NEVER-evaluate-on-a-folder{secondary-listed-by-local-value-only}
@@ -18,7 +25,7 @@
   >2026-09-04::Add/Remove-Property-UI{940aeccbb..3a2318199}✓|?user-interactive
 
 [STATE]
-@branch::main{#24-commits-unpushed;user-pushes-themselves}
+@branch::main{#28-commits-unpushed;user-pushes-themselves}
 prompt_queue.txt::items-0-4-unchanged{folders-task-was-a-direct-request}
 
 [OPEN]
