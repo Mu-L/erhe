@@ -40,11 +40,14 @@
   split::©User-chose{"each property: node physics (unlikely) or physics material (likely)"}→Physics_material=kind-of-matter{+linear_damping+angular_damping+wind_receptivity+density;Jolt-snapshot-applies-damping+density-mass-when-no-explicit-mass}|Node_physics=instance{motion_mode,is_trigger,mass,com,velocities,gravity_factor,material+filter-refs;ALL-entry+inherits;create-info+m_motion_mode=mirrors;ctor-sets-local-only-where-differs-from-default;mass-source-default=density-mass}
   gltf::ERHE_physics={motion_mode,properties}|ERHE_scene.physics_materials=[{name,properties}]{replaces-physics_material_names}|Gltf_data.unresolved_object_properties→Item_object_property_by_name_operation{node-held-object-refs-survive-reload;erhe_gltf-records,editor-resolves-late}
   verify✓headless{scratchpad:verify_material_move*.py+verify_np_inherit.py}|?user-interactive
-@next::property-migrations{doc/property-migration-handoff.md=order+recipe+verify;Light-derived-rows→Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes}
+@interactive-check-fixes::✓2026-09-04{900328b01:attached-holder-type{register_attached(name,owner,HOLDER,...);applies_to;for_each_attached_property_of;Layout-hints-held-by-Node-only}|b8cea9cd0+34cac3e24:multi-selection=per-owner-type-sections{library-entry→its-item;nodes+their-attachments;scratch-cleared-after-use}|9c4ff5327:shadow_cast+lightmapped=Mesh-properties{Item_base-keeps-visible;node/style-hold-Mesh.shadow_cast-via-Add-Property;legacy-flags-apply-to-meshes-only}}
+  by-design::own-class-properties-always-rows{Add-Property-offers-only-other-class-values};Style-row-on-every-item
+@next::properties-window-single-path{doc/properties-window-single-path.md;two-paths=registered-rows(per-type-sections)+hand-written-per-item-rows;R1-R5;order:item-level-bridges(name,flags,tags)→per-owner-migrations→retire-material-inspect→diagnostics-only-helpers}
+@then::property-migrations{doc/property-migration-handoff.md;Light-derived-rows→Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes}
 
 [STATE]
-@branch::main{#30-commits-unpushed;user-pushes-themselves}
-prompt_queue.txt::item-0=property-migrations{doc/property-migration-handoff.md};items-1-4-unchanged
+@branch::main{#36-commits-unpushed;user-pushes-themselves}
+prompt_queue.txt::item-0=properties-window-single-path{doc/properties-window-single-path.md};item-1=property-migrations;items-2-5-unchanged
 
 [OPEN]
 ?user-interactive-check{folders+category-props+texture-slots+styles+node-attachment-values+camera+physics-materials}→expect-fixes;then-migrations{Node_physics-first}
