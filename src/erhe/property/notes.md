@@ -172,6 +172,19 @@ inherited values and their notifications, observers and an installed
 expression keep working. A copy is not sealed. `erhe::Item_base` ties the
 seal to `Item_flags::lock_edit`.
 
+## Secondary owner type
+
+`Dependency_object::get_secondary_property_owner_type()` (nullopt by
+default) names a second owner type whose non-attached, non-bridged
+properties the object may hold as local values for its inheritance
+descendants to read (`doc/property-system.md` D30). `Property_registry::
+is_secondary_property(object, property)` is the predicate,
+`for_each_secondary_property(object, callback)` the enumeration, and the
+object forms `find_for_object(object, name)` / `qualified_name(object,
+property)` address such a property by `<Owner>.<name>` on the holder and
+by its plain name on an object of the owning type. The editor's
+content-library folder is the user.
+
 ## Inheritance
 
 `inherits` metadata makes a property without a local value read the closest

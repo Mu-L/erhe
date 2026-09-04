@@ -33,7 +33,11 @@ item after the hierarchy children. A reference entry never becomes a
 container - its item is owned by another scene. The editor creates folders
 ("Create Folder", `create_library_folder`), moves entries between them
 (drag onto a folder, `move_library_item`; `Content_library_move_operation`)
-and persists them through `ERHE_scene` `library_folders`.
+and persists them through `ERHE_scene` `library_folders`. A folder also
+holds its category's item properties (`category_owner_type`, the folder's
+secondary owner type, `doc/content-library-folders.md` D8): a Materials
+folder offers `Material.base_color` and the other `Material` values in Add
+Property, and a material below it without a local value reads them.
 
 ## Importing texture files
 

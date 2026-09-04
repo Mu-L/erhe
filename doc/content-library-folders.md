@@ -28,6 +28,11 @@ the wire format is `doc/gltf_extensions/ERHE_scene.md`.
   registered properties (its class chain: `Item_base` flags, the
   `Hierarchy` child count) and the Add Property row of D12, so an attached
   property is added to and removed from a folder like on any item.
+- R7 Category properties. A folder holds the value properties of its
+  category's item class (a Materials folder holds `base_color`,
+  `roughness`, `bxdf_model`, ...): Add Property offers them, a held one
+  shows as a row, "Remove Property" clears it, and every entry below the
+  folder without a local value of its own reads it (R4).
 - R4 Inheritance. An `inherits` property with no local value on a library
   entry reads the closest ancestor with one: the entry's own node, then its
   folders up to the category folder and the root. Setting or clearing such
@@ -74,6 +79,18 @@ the wire format is `doc/gltf_extensions/ERHE_scene.md`.
   one of its ancestors; the drop appends to the folder. A drop on the
   Brushes category's brush rows keeps its existing meaning (fork the brush
   with the dropped material).
+- D8 Category properties (R7). A folder's secondary owner type
+  (`doc/property-system.md` D30) is its category's item class:
+  `Content_library_node::category_owner_type`, set on each category
+  folder by the `Content_library` constructor (`Material::
+  property_owner_type()` for Materials, `Brush` for Brushes, ...), copied
+  to every folder made below it by `make_folder`, "Create Folder" and
+  `create_library_folder`, and reported by `get_secondary_property_owner_
+  type()` on folder nodes only (an entry node holds none). The item class
+  registers the properties a folder may pass down as `inherits`;
+  `Material` does (section 4.1 of the property design record), the other
+  categories gain it when a folder value of theirs is wanted. The held
+  values ride `library_folders` `properties` (D5) by qualified name.
 - D4 Properties window. `Properties::item_properties` already unwraps a
   leaf node to its item and shows a folder node as itself; the generic
   `dependency_properties` section (D12) lists the folder's class chain and
@@ -123,6 +140,13 @@ Headless, over `scripts/mcp_call.py` on a fresh editor:
    scene file never carries unused library materials, so an unused one is
    reported as not held by the category on reload.
 4. `close_scene`, wait, grep `logs/log.txt` for `scene-close leak`: clean.
+5. Category properties (R7): `get_addable_item_properties` on a Materials
+   folder lists `Material.base_color` and no `Material.*_texture` slot;
+   `set_item_property` `Material.base_color` `1 0 0` on the folder, clear
+   the moved material's own `base_color` (value `null`): the material
+   reads `1 0 0` with source `inherited`; save and reopen: the folder's
+   value is back as local (the material's is local too, baked by the glTF
+   material export).
 
 Interactive: "Create Folder" from the context menu, rename in Properties,
 drag a material onto the folder, Ctrl+Z after each.

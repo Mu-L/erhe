@@ -984,6 +984,31 @@ table, see D2a), and references to other objects (D28).
   sealed item (D24) is as sealed as the item, checked in the editor
   funnel because the sub-object has no seal of its own. Section 4.9 is
   the user.
+- D30 Secondary owner type. `Dependency_object::
+  get_secondary_property_owner_type()` (default nullopt) names a second
+  owner type whose properties the object may hold as local values for its
+  inheritance descendants to read. A *secondary property* of an object
+  (`Property_registry::is_secondary_property`) is a non-attached property
+  registered on the secondary type or one of its ancestors, not on the
+  object's own owner chain, and not bridged for the object (a bridge
+  reads the member of the registering class, which the object is not).
+  It is addressed on the object by its qualified name
+  (`Property_registry::find_for_object(object, name)` and
+  `qualified_name(object, property)`, the object forms of D3's lookup and
+  naming), so `Material.base_color` on a folder and `base_color` on a
+  material name the same registration. The D12 rule lists a secondary
+  property on the object when it holds a local value (its `visible_when`
+  belongs to the secondary type's objects and is never evaluated on the
+  holder), Add Property offers every secondary property the rule does
+  not list, "Remove Property" and the inline "x" clear it, MCP lists and
+  writes it by the qualified name, and the glTF extras carry it under
+  that name. Reading is D8 unchanged: an `inherits` property of a
+  descendant with no local value walks up to the holder. The user is the
+  content-library folder (`doc/content-library-folders.md` D8): a
+  Materials folder holds `Material` values for the materials below it,
+  which is why every `Material` value property of section 4.1 is
+  registered `inherits`. Section 6 records the registration-time check
+  this makes wanted.
 
 ## 4. Implementation
 
@@ -1014,6 +1039,14 @@ file value outside the UI slider range still loads.
 `affects_shader_variant`, so the D11 hook owns the rebuilds. Each migrated
 field carries the `Property_ui` block of the hand-written row it replaced
 (ranges, color presentation for `base_color` and `emissive`).
+
+Every value property above is registered `inherits`, so a material with
+no local value for it reads the closest content-library folder that
+holds one (D30; a material's own values are local, set at construction
+or by an edit, and "Reset to default" on the material is what lets a
+folder value through). A save writes effective values into the glTF
+material, so after a round trip every value is local again; the folder
+keeps its own values in `ERHE_scene` `library_folders`.
 
 `Material_data` keeps only `texture_samplers`. `Material` exposes typed
 getters and setters for every migrated field (`get_base_color()`,
@@ -1525,10 +1558,12 @@ style layer is D25.
   operations at all; migrating it starts with adopting the
   `Graph_editor_node` base (or retiring the prototype), not with
   registrations.
-- A registration-time check that an `inherits` property is either
-  attached or registered on the root owner type, the rule that keeps its
-  inheritance walk reachable from the Add Property picker (D12); wanted
-  when the first inheritable attached property is registered.
+- A registration-time check that an `inherits` property is attached,
+  registered on the root owner type, or registered on a type some object
+  names as its secondary owner type (D30), the rule that keeps its
+  inheritance walk reachable from the Add Property picker (D12); the
+  `Material` registrations of section 4.1 satisfy the third form through
+  the content-library folder.
 - Editor per-item state as attached properties registered by the editor:
   item tree expansion, sheet-window formulas. The naming, lookup and
   listing side exists (D3, D12, section 4.14); each needs its own
