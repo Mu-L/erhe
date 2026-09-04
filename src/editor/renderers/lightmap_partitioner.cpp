@@ -785,7 +785,7 @@ void Lightmap_partitioner::commit_prepare()
                 erhe::Item_flags::content      |
                 erhe::Item_flags::render_proxy
             );
-            entry.piece_mesh->set_value(erhe::Item_base::shadow_cast_property, true);
+            entry.piece_mesh->set_value(erhe::scene::Mesh::shadow_cast_property, true);
             entry.piece_mesh->hide();
             entry.piece_node->attach(entry.piece_mesh);
             // Piece nodes hold world-space geometry on a static identity

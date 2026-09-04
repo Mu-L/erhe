@@ -94,7 +94,7 @@ void import_geogram(
 
     mesh->layer_id = scene_root.layers().content()->id;
     mesh->enable_flag_bits(mesh_flags);
-    mesh->set_value       (erhe::Item_base::shadow_cast_property, true);
+    mesh->set_value       (erhe::scene::Mesh::shadow_cast_property, true);
     node->attach          (mesh);
     node->enable_flag_bits(node_flags);
     node->set_world_from_node(

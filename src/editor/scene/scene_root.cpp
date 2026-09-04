@@ -689,7 +689,7 @@ auto Scene_root::make_browser_window(
                             if (roots.empty()) {
                                 roots.push_back(node);
                             }
-                            const erhe::property::Dependency_property& property = erhe::Item_base::lightmapped_property.get();
+                            const erhe::property::Dependency_property& property = erhe::scene::Mesh::lightmapped_property.get();
                             // Guard against double-collect when the selection
                             // holds both an ancestor and its descendant.
                             std::unordered_set<const erhe::Item_base*> seen;

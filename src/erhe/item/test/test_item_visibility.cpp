@@ -38,8 +38,6 @@ TEST(Item_visibility, defaults_are_the_property_defaults)
     auto item = std::make_shared<Leaf>("i");
     EXPECT_TRUE (item->is_visible());
     EXPECT_TRUE (item->get_value(erhe::Item_base::visible_property));
-    EXPECT_FALSE(item->get_value(erhe::Item_base::shadow_cast_property));
-    EXPECT_FALSE(item->get_value(erhe::Item_base::lightmapped_property));
     EXPECT_EQ(item->get_flag_bits() & erhe::Item_flags::derived, erhe::Item_flags::visible);
     EXPECT_EQ(item->get_value_source(erhe::Item_base::visible_property.get()), Value_source::default_value);
 }
@@ -57,13 +55,6 @@ TEST(Item_visibility, derived_bit_follows_local_value)
     EXPECT_TRUE(item->is_visible());
     item->set_visible(false);
     EXPECT_FALSE(item->is_visible());
-
-    item->set_value(erhe::Item_base::shadow_cast_property, true);
-    EXPECT_NE(item->get_flag_bits() & erhe::Item_flags::shadow_cast, 0u);
-    item->set_value(erhe::Item_base::lightmapped_property, true);
-    EXPECT_NE(item->get_flag_bits() & erhe::Item_flags::lightmapped, 0u);
-    item->clear_value(erhe::Item_base::lightmapped_property);
-    EXPECT_EQ(item->get_flag_bits() & erhe::Item_flags::lightmapped, 0u);
 }
 
 TEST(Item_visibility, derived_bit_follows_inherited_value)
@@ -118,7 +109,6 @@ TEST(Item_visibility, set_flag_bits_drops_derived_bits)
     item->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::shadow_cast);
     EXPECT_NE(item->get_flag_bits() & erhe::Item_flags::content, 0u);
     EXPECT_EQ(item->get_flag_bits() & erhe::Item_flags::shadow_cast, 0u);
-    EXPECT_FALSE(item->has_local_value(erhe::Item_base::shadow_cast_property.get()));
 
     item->disable_flag_bits(erhe::Item_flags::visible);
     EXPECT_TRUE(item->is_visible());
@@ -130,15 +120,12 @@ TEST(Item_visibility, copy_rederives_bits)
     auto child  = std::make_shared<Leaf>("child");
     child->set_parent(parent);
     parent->hide();
-    child->set_value(erhe::Item_base::shadow_cast_property, true);
     EXPECT_FALSE(child->is_visible());
 
-    // The copy has no parent: the inherited false does not survive, the
-    // local shadow_cast does.
+    // The copy has no parent: the inherited false does not survive.
     auto copy = std::make_shared<Leaf>(*child);
     EXPECT_TRUE (copy->is_visible());
     EXPECT_FALSE(copy->has_local_value(erhe::Item_base::visible_property.get()));
-    EXPECT_NE   (copy->get_flag_bits() & erhe::Item_flags::shadow_cast, 0u);
 
     auto hidden_copy = std::make_shared<Leaf>(*parent);
     EXPECT_FALSE(hidden_copy->is_visible());

@@ -44,8 +44,6 @@ purple by layer, computed rows dim gray. Untinted rows are hand-written.
 | Property | Storage | Notes |
 |---|---|---|
 | visible | entry | flag mirror |
-| shadow_cast | entry | flag mirror, group Rendering |
-| lightmapped | entry | flag mirror, group Rendering |
 | style | bridge | object reference to the item's style source (doc/style-library.md D3), style items only |
 
 ### Hierarchy (`src/erhe/item/erhe_item/hierarchy.cpp`)
@@ -66,6 +64,7 @@ purple by layer, computed rows dim gray. Untinted rows are hand-written.
 | Owner | Property | Storage | Notes |
 |---|---|---|---|
 | Mesh | world_bounds_min, world_bounds_max | computed | |
+| Mesh | shadow_cast, lightmapped | entry | inherits (a node or a style holds Mesh.shadow_cast, D30); flag mirrors, group Rendering |
 | Mesh_primitive (sub-object) | material | member | object reference, Material |
 
 ### Material (`src/erhe/primitive/erhe_primitive/material.cpp`, section 4.1)

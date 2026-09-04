@@ -119,6 +119,38 @@ const erhe::property::Property<glm::vec3> Mesh::world_bounds_max_property = erhe
     }
 );
 
+// Inherited flags (D23), the flag word as the mirror. The callback runs on
+// meshes only: deliver skips a metadata callback on a holder (a node or a
+// style holding Mesh.shadow_cast for the meshes below it, D30).
+const erhe::property::Property<bool> Mesh::shadow_cast_property = erhe::property::Property<bool>::register_property(
+    "shadow_cast", Mesh::property_owner_type(),
+    erhe::property::Property_metadata{.default_value = false, .property_changed = Mesh::on_render_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Cast Shadow"}}
+);
+const erhe::property::Property<bool> Mesh::lightmapped_property = erhe::property::Property<bool>::register_property(
+    "lightmapped", Mesh::property_owner_type(),
+    erhe::property::Property_metadata{.default_value = false, .property_changed = Mesh::on_render_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Lightmapped"}}
+);
+
+void Mesh::on_render_flag_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args)
+{
+    Mesh& mesh = static_cast<Mesh&>(object);
+    const bool value = erhe::property::get_as<bool>(args.new_value);
+    if (&args.property == &shadow_cast_property.get()) {
+        mesh.set_derived_flag_bit(Item_flags::shadow_cast, value);
+    } else if (&args.property == &lightmapped_property.get()) {
+        mesh.set_derived_flag_bit(Item_flags::lightmapped, value);
+    }
+}
+
+// After a copy (Item_base::rederive_flag_bits keeps only visible): the
+// copy has no node, so an inherited value does not survive; the bits must
+// agree with the copied entries.
+void Mesh::rederive_render_flag_bits()
+{
+    set_derived_flag_bit(Item_flags::shadow_cast, get_value(shadow_cast_property));
+    set_derived_flag_bit(Item_flags::lightmapped, get_value(lightmapped_property));
+}
+
 void Mesh::notify_primitives_changed()
 {
     // The computed world bounds (D26) follow the primitives.
@@ -387,6 +419,7 @@ Mesh::Mesh(const Mesh& src, erhe::for_clone)
     , point_size{src.point_size}
     , line_width{src.line_width}
 {
+    rederive_render_flag_bits();
     set_primitives(src.get_primitives());
 }
 

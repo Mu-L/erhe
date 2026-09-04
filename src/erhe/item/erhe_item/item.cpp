@@ -103,14 +103,6 @@ const erhe::property::Property<bool> Item_base::visible_property = erhe::propert
     "visible", Item_base::property_owner_type(),
     erhe::property::Property_metadata{.default_value = true, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.label = "Visible"}}
 );
-const erhe::property::Property<bool> Item_base::shadow_cast_property = erhe::property::Property<bool>::register_property(
-    "shadow_cast", Item_base::property_owner_type(),
-    erhe::property::Property_metadata{.default_value = false, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Cast Shadow"}}
-);
-const erhe::property::Property<bool> Item_base::lightmapped_property = erhe::property::Property<bool>::register_property(
-    "lightmapped", Item_base::property_owner_type(),
-    erhe::property::Property_metadata{.default_value = false, .property_changed = Item_base::on_flag_property_changed, .inherits = true, .ui = erhe::property::Property_ui{.group = "Rendering", .label = "Lightmapped"}}
-);
 
 const erhe::property::Property<erhe::property::Object_reference> Item_base::style_property = erhe::property::Property<erhe::property::Object_reference>::register_property(
     "style", Item_base::property_owner_type(),
@@ -163,10 +155,6 @@ void Item_base::on_flag_property_changed(erhe::property::Dependency_object& obje
     const bool value = erhe::property::get_as<bool>(args.new_value);
     if (&args.property == &visible_property.get()) {
         item.set_derived_flag_bit(Item_flags::visible, value);
-    } else if (&args.property == &shadow_cast_property.get()) {
-        item.set_derived_flag_bit(Item_flags::shadow_cast, value);
-    } else if (&args.property == &lightmapped_property.get()) {
-        item.set_derived_flag_bit(Item_flags::lightmapped, value);
     }
 }
 
@@ -181,15 +169,14 @@ void Item_base::set_derived_flag_bit(const uint64_t bit, const bool value)
 }
 
 // After a copy: the copy has no parent, so an inherited value of the source
-// does not survive; the derived bits must agree with the copied entries.
+// does not survive; the derived bits must agree with the copied entries
+// (Mesh rederives its own shadow_cast / lightmapped bits after this).
 // The copied lock_edit flag re-seals the copy (Dependency_object's copy is
 // unsealed).
 void Item_base::rederive_flag_bits()
 {
     m_flag_bits = (m_flag_bits & ~Item_flags::derived)
-        | (get_value(visible_property)     ? Item_flags::visible     : 0u)
-        | (get_value(shadow_cast_property) ? Item_flags::shadow_cast : 0u)
-        | (get_value(lightmapped_property) ? Item_flags::lightmapped : 0u);
+        | (get_value(visible_property) ? Item_flags::visible : 0u);
     sync_seal_with_lock_edit();
 }
 
@@ -258,7 +245,7 @@ void Item_base::set_flag_bits(const uint64_t requested_mask, const bool value)
     uint64_t mask = requested_mask;
     if ((mask & Item_flags::derived) != 0u) {
         erhe::item::log->error(
-            "Item_base::set_flag_bits({}) on '{}': {} is a property (visible_property / shadow_cast_property / lightmapped_property); the derived bits are dropped from the mask",
+            "Item_base::set_flag_bits({}) on '{}': {} is a property (Item_base::visible_property / Mesh::shadow_cast_property / Mesh::lightmapped_property); the derived bits are dropped from the mask",
             value, m_name, Item_flags::to_string(mask & Item_flags::derived)
         );
         mask &= ~Item_flags::derived;

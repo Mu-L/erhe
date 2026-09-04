@@ -137,12 +137,12 @@ TEST(Attachment_inheritance, shadow_cast_on_group_reaches_meshes_without_local_v
     node_b->set_parent(group);
     node_a->attach(mesh_a);
     node_b->attach(mesh_b);
-    mesh_b->set_value(erhe::Item_base::shadow_cast_property, false);
+    mesh_b->set_value(Mesh::shadow_cast_property, false);
 
-    group->set_value(erhe::Item_base::shadow_cast_property, true);
+    group->set_value(Mesh::shadow_cast_property, true);
     EXPECT_NE(mesh_a->get_flag_bits() & erhe::Item_flags::shadow_cast, 0u);
     EXPECT_EQ(mesh_b->get_flag_bits() & erhe::Item_flags::shadow_cast, 0u);
 
-    group->clear_value(erhe::Item_base::shadow_cast_property);
+    group->clear_value(Mesh::shadow_cast_property);
     EXPECT_EQ(mesh_a->get_flag_bits() & erhe::Item_flags::shadow_cast, 0u);
 }

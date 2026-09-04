@@ -650,11 +650,14 @@ table, see D2a), and references to other objects (D28).
     is not visibility propagation: `Scene_root` sets it on the scene root
     node and the item tree skips that row and lists its children in its
     place; it stays as it is.
-  - Properties. `Item_base` registers `visible` (default `true`),
-    `shadow_cast` (default `false`) and `lightmapped` (default `false`) as
-    inherits-flagged `bool` properties with owner type
-    `Item_base::property_owner_type()`, the id every item class descends
-    from (D27), so every item type lists them. The semantics are the D8 ones: the closest ancestor with a
+  - Properties. `Item_base` registers `visible` (default `true`) with
+    owner type `Item_base::property_owner_type()`, the id every item class
+    descends from (D27), so every item type lists it; `erhe::scene::Mesh`
+    registers `shadow_cast` (default `false`) and `lightmapped` (default
+    `false`), the two the renderers read on meshes only, so a mesh lists
+    them and a node or a style holds `Mesh.shadow_cast` for the meshes
+    below it (D30) instead of every item carrying a meaningless row. All
+    three are inherits-flagged `bool` properties. The semantics are the D8 ones: the closest ancestor with a
     local value wins, as CSS `visibility` (a child under a hidden parent can
     be shown with a local `true`); WPF `IsVisible` (parent AND self) is not
     reproduced, because the coerced value of a local write is stored at
@@ -662,7 +665,12 @@ table, see D2a), and references to other objects (D28).
     three carries an R15 editor flag: the draw lists read the derived bits
     (next point), so nothing in the editor hook is needed. `shadow_cast`
     and `lightmapped` carry `.ui.group = "Rendering"`; `visible` is
-    ungrouped. All three keep `serialize`.
+    ungrouped. All three keep `serialize`. Each property's changed
+    callback mirrors the effective value into its `Item_flags::derived`
+    bit (`Item_base::on_flag_property_changed`,
+    `Mesh::on_render_flag_property_changed`); a copy rederives the bits
+    from the copied entries (`Item_base::rederive_flag_bits`,
+    `Mesh::rederive_render_flag_bits`).
   - Inheritance tree. A `Node_attachment` is not a `Hierarchy`; it overrides
     `get_inheritance_parent()` to return its node and `Node::
     for_each_inheritance_child` visits child nodes, then attachments.
@@ -700,7 +708,7 @@ table, see D2a), and references to other objects (D28).
     mesh would stop the node's hide from reaching it (the point of the
     change). A construction site that relied on the bit being absent to
     start hidden calls `hide()` explicitly. `shadow_cast` and `lightmapped`
-    construction writes are `set_value(shadow_cast_property, true)`
+    construction writes are `set_value(Mesh::shadow_cast_property, true)`
     (a local value, the per-mesh semantics; a group node's local
     value reaches only meshes without one).
   - Editor. The generic property rows (D12) draw the three checkboxes with
@@ -723,7 +731,7 @@ table, see D2a), and references to other objects (D28).
     `shadow_cast` and `lightmapped` in the `flags` arrays; the importer
     keeps reading them from old files (`visible` absent from a listed
     `flags` array sets local `false`; `shadow_cast` / `lightmapped` present
-    set local `true`) so existing scenes load as before.
+    set local `true` on a mesh) so existing scenes load as before.
 
 - D24 Sealing (WPF `Freezable.Freeze`, reversible).
   - Before the change. `Item_flags::lock_edit` is the user's edit lock

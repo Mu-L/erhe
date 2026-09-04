@@ -178,6 +178,13 @@ public:
     // handle_node_transform_update and the primitive changes.
     static const erhe::property::Property<glm::vec3> world_bounds_min_property;
     static const erhe::property::Property<glm::vec3> world_bounds_max_property;
+    // Inherited flags (doc/property-system.md D23): the closest ancestor
+    // with a local value wins (a node above or a style holds
+    // Mesh.shadow_cast for the meshes below it, D30); the effective value
+    // is mirrored into Item_flags::shadow_cast / lightmapped so the
+    // renderers stay bit tests.
+    static const erhe::property::Property<bool> shadow_cast_property;
+    static const erhe::property::Property<bool> lightmapped_property;
     // Posed bounds from the skin alone. Returns an invalid Aabb when the mesh is
     // not skinned, or when the primitives carry no per-joint rest bounds.
     [[nodiscard]] auto get_skinned_aabb_world() const -> erhe::math::Aabb;
@@ -193,6 +200,10 @@ public:
     std::shared_ptr<Skin> skin; // TODO Make this a separate node attachment
     float                 point_size{3.0f};
     float                 line_width{1.0f};
+
+private:
+    static void on_render_flag_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args);
+    void        rederive_render_flag_bits();
 
 private:
     friend class Mesh_primitive;

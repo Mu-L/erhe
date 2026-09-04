@@ -217,7 +217,7 @@ void Geometry_graph_mesh::apply_baked_products()
         m_mesh = std::make_shared<erhe::scene::Mesh>(node->get_name() + " Mesh");
         m_mesh->layer_id = scene_root->layers().content()->id;
         m_mesh->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::id);
-        m_mesh->set_value(erhe::Item_base::shadow_cast_property, true);
+        m_mesh->set_value(erhe::scene::Mesh::shadow_cast_property, true);
         node->attach(m_mesh);
         m_controlled_node = node->shared_node_from_this();
     }

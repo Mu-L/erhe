@@ -2707,7 +2707,7 @@ private:
             Item_flags::show_in_ui  |
             Item_flags::id
         );
-        erhe_mesh.set_value(erhe::Item_base::shadow_cast_property, true);
+        erhe_mesh.set_value(erhe::scene::Mesh::shadow_cast_property, true);
         for (std::size_t i = 0, end = mesh.primitives.size(); i < end; ++i) {
             parse_primitive(erhe_mesh, mesh_index, mesh, i);
         }

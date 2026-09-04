@@ -358,10 +358,10 @@ auto Brush::make_instance(const Instance_create_info& instance_create_info) -> s
     mesh->layer_id = instance_create_info.scene_root->layers().content()->id;
     mesh->enable_flag_bits   (instance_create_info.mesh_flags);
     if (instance_create_info.mesh_shadow_cast) {
-        mesh->set_value(erhe::Item_base::shadow_cast_property, true);
+        mesh->set_value(erhe::scene::Mesh::shadow_cast_property, true);
     }
     if (instance_create_info.mesh_lightmapped) {
-        mesh->set_value(erhe::Item_base::lightmapped_property, true);
+        mesh->set_value(erhe::scene::Mesh::lightmapped_property, true);
     }
     node->set_world_from_node(instance_create_info.world_from_node);
     node->attach             (mesh);

@@ -1273,7 +1273,7 @@ auto Scene_builder::add_cubes(glm::ivec3 shape, float scale, float gap) -> bool
                 mesh->add_primitive(primitive, material);
                 mesh->layer_id = m_scene_root->layers().content()->id;
                 mesh->enable_flag_bits(Item_flags::content);
-                mesh->set_value(erhe::Item_base::shadow_cast_property, true);
+                mesh->set_value(erhe::scene::Mesh::shadow_cast_property, true);
                 node->attach(mesh);
                 node->set_parent(root);
                 node->set_parent_from_node(erhe::math::create_translation<float>(px, py, pz));

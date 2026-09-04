@@ -3,6 +3,7 @@
 
 #include "erhe_item/item.hpp"
 #include "erhe_property/dependency_property.hpp"
+#include "erhe_scene/mesh.hpp"
 #include "erhe_property/property_string.hpp"
 
 #include <cstdio>
@@ -209,11 +210,17 @@ void apply_legacy_derived_item_flags(erhe::Item_base& item, const uint64_t liste
     if ((listed_bits & erhe::Item_flags::visible) == 0u) {
         item.set_value(erhe::Item_base::visible_property, false);
     }
+    // shadow_cast and lightmapped are Mesh properties; an old file's node
+    // flags carried the bits without effect.
+    erhe::scene::Mesh* const mesh = dynamic_cast<erhe::scene::Mesh*>(&item);
+    if (mesh == nullptr) {
+        return;
+    }
     if ((listed_bits & erhe::Item_flags::shadow_cast) != 0u) {
-        item.set_value(erhe::Item_base::shadow_cast_property, true);
+        mesh->set_value(erhe::scene::Mesh::shadow_cast_property, true);
     }
     if ((listed_bits & erhe::Item_flags::lightmapped) != 0u) {
-        item.set_value(erhe::Item_base::lightmapped_property, true);
+        mesh->set_value(erhe::scene::Mesh::lightmapped_property, true);
     }
 }
 

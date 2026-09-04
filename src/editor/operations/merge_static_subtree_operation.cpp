@@ -9,6 +9,7 @@
 #include "erhe_geometry/geometry.hpp"
 #include "erhe_profile/profile.hpp"
 #include "erhe_raytrace/iscene.hpp"
+#include "erhe_scene/mesh.hpp"
 #include "erhe_scene/scene.hpp"
 #include "erhe_verify/verify.hpp"
 
@@ -213,7 +214,7 @@ void Merge_static_subtree_operation::build_target(
         // visible / shadow_cast / lightmapped are properties: copy the
         // source's local values, an inherited value comes from the target's
         // own node.
-        for (const erhe::property::Property<bool>& property : {erhe::Item_base::visible_property, erhe::Item_base::shadow_cast_property, erhe::Item_base::lightmapped_property}) {
+        for (const erhe::property::Property<bool>& property : {erhe::Item_base::visible_property, erhe::scene::Mesh::shadow_cast_property, erhe::scene::Mesh::lightmapped_property}) {
             if (const std::optional<bool> local = source_mesh->read_local_value(property); local.has_value()) {
                 target.mesh->set_value(property, local.value());
             }
