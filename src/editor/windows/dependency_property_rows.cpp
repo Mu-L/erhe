@@ -1,4 +1,5 @@
 #include "windows/dependency_property_rows.hpp"
+#include "windows/attached_property_listing.hpp"
 #include "windows/item_reference.hpp"
 #include "windows/property_editor.hpp"
 
@@ -134,26 +135,21 @@ void Dependency_property_rows::draw_rows(Property_editor& editor)
             return false;
         }
     );
-    // Attached properties (R7, D12 listing rule): listed when the
-    // registering type's visible_when holds for every selected item, or
-    // every selected item holds a local value (a stale hint stays
-    // visible and resettable). Multi-select needs no owner-chain check:
-    // an attached property applies to any object.
+    // Attached properties (R7): listed when the D12 listing rule
+    // (is_attached_property_listed) holds for every selected item.
+    // Multi-select needs no owner-chain check: an attached property
+    // applies to any object.
     registry.for_each_attached_property(
         [this, &properties, owner_type](const Dependency_property& property) {
-            const Property_metadata& metadata = property.get_metadata(owner_type);
-            if (!m_context.developer_mode && metadata.ui.developer_only) {
+            if (!m_context.developer_mode && property.get_metadata(owner_type).ui.developer_only) {
                 return;
             }
-            bool visible = true;
-            bool local   = true;
             for (std::size_t i = 0; i < m_items->size(); ++i) {
-                visible = visible && metadata.ui.visible_when && metadata.ui.visible_when(*target(i));
-                local   = local   && target(i)->has_local_value(property);
+                if (!is_attached_property_listed(*target(i), property)) {
+                    return;
+                }
             }
-            if (visible || local) {
-                properties.push_back(&property);
-            }
+            properties.push_back(&property);
         }
     );
     if (properties.empty()) {

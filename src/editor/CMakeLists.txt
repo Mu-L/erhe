@@ -657,6 +657,8 @@ erhe_target_sources_grouped(
     windows/item_reference.hpp
     windows/item_tree_window.cpp
     windows/item_tree_window.hpp
+    windows/attached_property_listing.cpp
+    windows/attached_property_listing.hpp
     windows/dependency_property_rows.cpp
     windows/dependency_property_rows.hpp
     windows/properties.cpp

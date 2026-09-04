@@ -13,6 +13,7 @@
 #include "operations/style_set_operation.hpp"
 #include "scene/item_lookup.hpp"
 #include "scene/scene_root.hpp"
+#include "windows/attached_property_listing.hpp"
 
 #include "erhe_item/item.hpp"
 #include "erhe_property/dependency_property.hpp"
@@ -139,11 +140,9 @@ auto properties_json(const erhe::property::Dependency_object& object) -> json
         properties.push_back(entry);
     };
     registry.for_each_property_of_object(owner_type, add);
-    // Attached properties: the D12 listing rule (visible_when holds, or a
-    // local value is set).
+    // Attached properties: the D12 listing rule.
     registry.for_each_attached_property([&](const erhe::property::Dependency_property& property) {
-        const erhe::property::Property_ui::Visible_when& visible_when = property.get_metadata(owner_type).ui.visible_when;
-        if ((visible_when && visible_when(object)) || object.has_local_value(property)) {
+        if (is_attached_property_listed(object, property)) {
             add(property);
         }
     });
