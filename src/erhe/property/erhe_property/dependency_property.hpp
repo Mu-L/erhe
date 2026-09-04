@@ -39,6 +39,11 @@ public:
         const Enum_info*  enum_info {nullptr}; // required when type == enumeration
         bool              read_only {false};
         bool              attached  {false};
+        // Attached only: the class of the objects that may hold the value
+        // (WPF attached properties are typed by their holder too - a Grid.Row
+        // sits on a UIElement). Listing and qualified lookup offer the
+        // property to that class and its descendants only.
+        Owner_type        holder_type{};
     };
 
     [[nodiscard]] auto get_index      () const -> uint16_t         { return m_index; }
@@ -47,7 +52,13 @@ public:
     [[nodiscard]] auto get_owner_type () const -> Owner_type       { return m_owner_type; }
     [[nodiscard]] auto is_read_only   () const -> bool             { return m_read_only; }
     [[nodiscard]] auto is_attached    () const -> bool             { return m_attached; }
+    [[nodiscard]] auto get_holder_type() const -> Owner_type       { return m_holder_type; } // attached only
     [[nodiscard]] auto get_enum_info  () const -> const Enum_info* { return m_enum_info; }
+
+    // Attached only: whether an object of object_type (the holder type or
+    // a descendant of it) may hold the value. False for a non-attached
+    // property: its own chain lists it.
+    [[nodiscard]] auto applies_to(Owner_type object_type) const -> bool;
 
     // Metadata resolution for an object whose get_property_owner_type() is
     // object_type: the override registered for the nearest owner type on
@@ -86,6 +97,7 @@ private:
     Owner_type            m_owner_type;
     bool                  m_read_only;
     bool                  m_attached;
+    Owner_type            m_holder_type;
     const Enum_info*      m_enum_info;
     Validate_callback     m_validate;
     Property_metadata     m_default_metadata;
@@ -140,6 +152,9 @@ public:
     [[nodiscard]] auto qualified_name (const Dependency_object& object, const Dependency_property& property) const -> std::string;
     // Every attached registration, in registration order (R7 listing).
     void for_each_attached_property(const std::function<void(const Dependency_property&)>& callback) const;
+    // The attached properties an object of the given type may hold
+    // (Dependency_property::applies_to), in registration order.
+    void for_each_attached_property_of(Owner_type object_type, const std::function<void(const Dependency_property&)>& callback) const;
     [[nodiscard]] auto get      (uint16_t index) const -> const Dependency_property&;
     [[nodiscard]] auto get_count() const -> std::size_t;
 
@@ -292,11 +307,15 @@ public:
         };
     }
 
+    // An attached property (R7): registered by owner_type, held by objects
+    // of holder_type and its descendants (Layout registers the per-child
+    // hints a Node holds).
     template <Property_storable U = T>
         requires (!Property_enum_type<U>)
     static auto register_attached(
         std::string_view  name,
         Owner_type        owner_type,
+        Owner_type        holder_type,
         Property_metadata metadata = {},
         Validate_callback validate = {}
     ) -> Property<T>
@@ -304,12 +323,13 @@ public:
         return Property<T>{
             &Property_registry::get().register_property(
                 Dependency_property::Registration{
-                    .name       = name,
-                    .type       = property_type_of<T>(),
-                    .owner_type = owner_type,
-                    .metadata   = std::move(metadata),
-                    .validate   = std::move(validate),
-                    .attached   = true,
+                    .name        = name,
+                    .type        = property_type_of<T>(),
+                    .owner_type  = owner_type,
+                    .metadata    = std::move(metadata),
+                    .validate    = std::move(validate),
+                    .attached    = true,
+                    .holder_type = holder_type,
                 }
             )
         };
@@ -320,6 +340,7 @@ public:
     static auto register_attached(
         std::string_view  name,
         Owner_type        owner_type,
+        Owner_type        holder_type,
         const Enum_info&  enum_info,
         Property_metadata metadata = {},
         Validate_callback validate = {}
@@ -328,13 +349,14 @@ public:
         return Property<T>{
             &Property_registry::get().register_property(
                 Dependency_property::Registration{
-                    .name       = name,
-                    .type       = Property_type::enumeration,
-                    .owner_type = owner_type,
-                    .metadata   = std::move(metadata),
-                    .validate   = std::move(validate),
-                    .enum_info  = &enum_info,
-                    .attached   = true,
+                    .name        = name,
+                    .type        = Property_type::enumeration,
+                    .owner_type  = owner_type,
+                    .metadata    = std::move(metadata),
+                    .validate    = std::move(validate),
+                    .enum_info   = &enum_info,
+                    .attached    = true,
+                    .holder_type = holder_type,
                 }
             )
         };

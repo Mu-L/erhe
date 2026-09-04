@@ -149,10 +149,11 @@ void Dependency_property_rows::draw_rows(Property_editor& editor)
         }
     );
     // Attached properties (R7): listed when the D12 listing rule
-    // (is_extra_property_listed) holds for every selected item.
-    // Multi-select needs no owner-chain check: an attached property
-    // applies to any object.
-    registry.for_each_attached_property(
+    // (is_extra_property_listed, which includes the holder-type check)
+    // holds for every selected item; the first item's type seeds the
+    // candidates, the per-item rule filters the rest.
+    registry.for_each_attached_property_of(
+        owner_type,
         [this, &properties, owner_type](const Dependency_property& property) {
             if (!m_context.developer_mode && property.get_metadata(owner_type).ui.developer_only) {
                 return;

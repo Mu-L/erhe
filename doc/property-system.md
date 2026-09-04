@@ -84,7 +84,9 @@ table, see D2a), and references to other objects (D28).
   key object the owner holds privately; the public handle reads only.
 - R7 Attached. A property can be registered by a type other than the type of
   the objects it is set on (WPF attached properties), so the editor and tools
-  can store per-item state without the item class knowing.
+  can store per-item state without the item class knowing. The registration
+  names the holder type: the class (and its descendants) whose objects may
+  hold the value, the only ones it is listed and offered on.
 - R8 Inheritance. A property flagged `inherits` reads the closest ancestor's
   value through `erhe::Hierarchy` when the object has no local value;
   descendants get changed callbacks when the ancestor's value or the tree
@@ -346,7 +348,8 @@ table, see D2a), and references to other objects (D28).
   skipping properties the target type does not have).
 
   Attached properties (R7) follow the section's listing rule: an attached
-  property is listed on an object when the registering type's
+  property is listed on an object of its holder type
+  (`Dependency_property::applies_to`) when the registering type's
   `visible_when` holds for it, or when the object holds a local value for
   it (a stale hint stays visible and resettable); with several items
   selected, for every one of them. The rule is
@@ -1598,8 +1601,8 @@ the first attached-property user; WPF `Grid.Row`): `align_x`, `align_y`,
 in `erhe_scene/layout.hpp`), `margin_min`, `margin_max`, `grid_cell_auto`,
 `grid_cell` (validated non-negative) and `grid_span` (validated to at
 least 1 per axis), UI group `Layout Item`, qualified `Layout.align_x` ..
-`Layout.grid_span`. The value is set on the child `Node`; `Node` knows
-nothing about layouts, and `Layout::update()` reads each direct child's
+`Layout.grid_span`, holder type `Node`. The value is set on the child
+`Node`; `Node` knows nothing about layouts, and `Layout::update()` reads each direct child's
 values (a child without local values gets the defaults). Each hint's
 `visible_when` is "the object is a Node whose parent node has a Layout",
 the grid hints additionally "that layout is a grid" and `grid_cell` "and

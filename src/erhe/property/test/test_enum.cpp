@@ -27,7 +27,7 @@ const Property<Color_mode> enum_mode_default = Property<Color_mode>::register_pr
     "enum_mode_default", type_a(), c_color_mode_info, Property_metadata{.default_value = make_value(Color_mode::gray)}
 );
 const Property<Color_mode> enum_mode_attached = Property<Color_mode>::register_attached(
-    "enum_mode_attached", type_c(), c_color_mode_info, Property_metadata{.default_value = make_value(Color_mode::hsv)}
+    "enum_mode_attached", type_c(), type_b(), c_color_mode_info, Property_metadata{.default_value = make_value(Color_mode::hsv)}
 );
 
 } // anonymous namespace

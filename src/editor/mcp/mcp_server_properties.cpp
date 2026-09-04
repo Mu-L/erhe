@@ -164,7 +164,7 @@ auto properties_json(const erhe::property::Dependency_object& object) -> json
     };
     registry.for_each_property_of_object(owner_type, add);
     // Attached properties: the D12 listing rule.
-    registry.for_each_attached_property([&](const erhe::property::Dependency_property& property) {
+    registry.for_each_attached_property_of(owner_type, [&](const erhe::property::Dependency_property& property) {
         if (is_extra_property_listed(object, property)) {
             add(property);
         }

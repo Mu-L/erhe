@@ -17,6 +17,7 @@ Dependency_property::Dependency_property(const uint16_t index, Registration&& re
     , m_owner_type      {registration.owner_type}
     , m_read_only       {registration.read_only}
     , m_attached        {registration.attached}
+    , m_holder_type    {registration.holder_type}
     , m_enum_info       {registration.enum_info}
     , m_validate        {std::move(registration.validate)}
     , m_default_metadata{std::move(registration.metadata)}
@@ -225,7 +226,7 @@ auto Property_registry::find_for_object(const Owner_type object_type, const std:
             return nullptr;
         }
         const Dependency_property* property = find(owner.value(), name.substr(dot + 1));
-        return ((property != nullptr) && property->is_attached()) ? property : nullptr;
+        return ((property != nullptr) && property->applies_to(object_type)) ? property : nullptr;
     }
     for (Owner_type id = object_type; ; id = get_owner_type_parent(id)) {
         const Dependency_property* property = find(id, name);
@@ -368,6 +369,22 @@ auto Property_registry::qualified_name(const Dependency_object& object, const De
     result += '.';
     result += property.get_name();
     return result;
+}
+
+auto Dependency_property::applies_to(const Owner_type object_type) const -> bool
+{
+    return m_attached && is_owner_type_or_descendant(object_type, m_holder_type);
+}
+
+void Property_registry::for_each_attached_property_of(const Owner_type object_type, const std::function<void(const Dependency_property&)>& callback) const
+{
+    for_each_attached_property(
+        [object_type, &callback](const Dependency_property& property) {
+            if (property.applies_to(object_type)) {
+                callback(property);
+            }
+        }
+    );
 }
 
 void Property_registry::for_each_attached_property(const std::function<void(const Dependency_property&)>& callback) const

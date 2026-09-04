@@ -16,6 +16,9 @@ auto is_extra_property_listed(
             erhe::property::Property_registry::get().is_secondary_property(object, property) &&
             object.has_own_value(property);
     }
+    if (!property.applies_to(object.get_property_owner_type())) {
+        return false;
+    }
     const erhe::property::Property_ui::Visible_when& visible_when = property.get_metadata(object.get_property_owner_type()).ui.visible_when;
     return (visible_when && visible_when(object)) || object.has_local_value(property);
 }
@@ -37,7 +40,7 @@ void collect_addable_properties(
         out.push_back(&property);
     };
     const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
-    registry.for_each_attached_property(consider);
+    registry.for_each_attached_property_of(owner_type, consider);
     registry.for_each_secondary_property(object, consider);
 }
 

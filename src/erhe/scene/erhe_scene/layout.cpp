@@ -391,36 +391,36 @@ const Property<glm::ivec3> Layout::grid_track_count_property = Property<glm::ive
 );
 
 const Property<Layout_alignment> Layout::align_x_property = Property<Layout_alignment>::register_attached(
-    "align_x", Layout::property_owner_type(), c_layout_alignment_enum_info,
+    "align_x", Layout::property_owner_type(), Node::property_owner_type(), c_layout_alignment_enum_info,
     Property_metadata{.default_value = erhe::property::make_value(Layout_alignment::negative), .ui = Property_ui{.group = c_item_group, .tooltip = "Pin to the cell's minimum or maximum face, or stretch to fill it", .label = "Align X", .visible_when = under_layout}}
 );
 const Property<Layout_alignment> Layout::align_y_property = Property<Layout_alignment>::register_attached(
-    "align_y", Layout::property_owner_type(), c_layout_alignment_enum_info,
+    "align_y", Layout::property_owner_type(), Node::property_owner_type(), c_layout_alignment_enum_info,
     Property_metadata{.default_value = erhe::property::make_value(Layout_alignment::negative), .ui = Property_ui{.group = c_item_group, .tooltip = "Pin to the cell's minimum or maximum face, or stretch to fill it", .label = "Align Y", .visible_when = under_layout}}
 );
 const Property<Layout_alignment> Layout::align_z_property = Property<Layout_alignment>::register_attached(
-    "align_z", Layout::property_owner_type(), c_layout_alignment_enum_info,
+    "align_z", Layout::property_owner_type(), Node::property_owner_type(), c_layout_alignment_enum_info,
     Property_metadata{.default_value = erhe::property::make_value(Layout_alignment::negative), .ui = Property_ui{.group = c_item_group, .tooltip = "Pin to the cell's minimum or maximum face, or stretch to fill it", .label = "Align Z", .visible_when = under_layout}}
 );
 const Property<glm::vec3> Layout::margin_min_property = Property<glm::vec3>::register_attached(
-    "margin_min", Layout::property_owner_type(),
+    "margin_min", Layout::property_owner_type(), Node::property_owner_type(),
     Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.step = 0.01f, .group = c_item_group, .tooltip = "Inset at the cell minimum face", .label = "Margin Min", .visible_when = under_layout}}
 );
 const Property<glm::vec3> Layout::margin_max_property = Property<glm::vec3>::register_attached(
-    "margin_max", Layout::property_owner_type(),
+    "margin_max", Layout::property_owner_type(), Node::property_owner_type(),
     Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.step = 0.01f, .group = c_item_group, .tooltip = "Inset at the cell maximum face", .label = "Margin Max", .visible_when = under_layout}}
 );
 const Property<bool> Layout::grid_cell_auto_property = Property<bool>::register_attached(
-    "grid_cell_auto", Layout::property_owner_type(),
+    "grid_cell_auto", Layout::property_owner_type(), Node::property_owner_type(),
     Property_metadata{.default_value = true, .ui = Property_ui{.group = c_item_group, .tooltip = "Grid: place into the next free cell; off = use Grid Cell", .label = "Auto Cell", .visible_when = under_grid_layout}}
 );
 const Property<glm::ivec3> Layout::grid_cell_property = Property<glm::ivec3>::register_attached(
-    "grid_cell", Layout::property_owner_type(),
+    "grid_cell", Layout::property_owner_type(), Node::property_owner_type(),
     Property_metadata{.default_value = glm::ivec3{0, 0, 0}, .ui = Property_ui{.min = 0.0f, .max = 1000.0f, .step = 0.1f, .group = c_item_group, .tooltip = "Grid: explicit cell (i, j, k)", .label = "Grid Cell", .visible_when = under_grid_layout_explicit_cell}},
     non_negative_cell
 );
 const Property<glm::ivec3> Layout::grid_span_property = Property<glm::ivec3>::register_attached(
-    "grid_span", Layout::property_owner_type(),
+    "grid_span", Layout::property_owner_type(), Node::property_owner_type(),
     Property_metadata{.default_value = glm::ivec3{1, 1, 1}, .ui = Property_ui{.min = 1.0f, .max = 1000.0f, .step = 0.1f, .group = c_item_group, .tooltip = "Grid: cells spanned per axis; honored for auto placement too", .label = "Grid Span", .visible_when = under_grid_layout}},
     positive_tracks
 );

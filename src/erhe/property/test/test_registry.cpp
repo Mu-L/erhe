@@ -10,7 +10,7 @@ namespace {
 const Property<float>       reg_float  = Property<float>::register_property("reg_float", type_a(), Property_metadata{.default_value = 2.5f});
 const Property<glm::vec3>   reg_vec3   = Property<glm::vec3>::register_property("reg_vec3", type_a());
 const Property<std::string> reg_string = Property<std::string>::register_property("reg_string", type_b(), Property_metadata{.default_value = std::string{"hello"}});
-const Property<int>         reg_attached = Property<int>::register_attached("reg_attached", type_c());
+const Property<int>         reg_attached = Property<int>::register_attached("reg_attached", type_c(), type_a());
 
 } // anonymous namespace
 
@@ -211,16 +211,31 @@ TEST(Property_registry, read_only_key)
     EXPECT_EQ(o.get_value(p), 10);
 }
 
-TEST(Property_registry, attached_property_resolves_by_qualified_name_on_any_object)
+TEST(Property_registry, attached_property_resolves_by_qualified_name_on_its_holder_type)
 {
     Property_registry& registry = Property_registry::get();
-    // Attached: registered by type_c, set on objects of other types (R7).
+    // Attached: registered by type_c, held by objects of type_a and its
+    // descendants (R7); a qualified name resolves on those only.
     EXPECT_EQ(registry.qualified_name(reg_attached.get()), "type_c.reg_attached");
     EXPECT_EQ(registry.qualified_name(reg_float.get()), "reg_float");
     EXPECT_EQ(registry.find_owner_type("type_c"), std::optional<Owner_type>{type_c()});
     EXPECT_FALSE(registry.find_owner_type("no_such_type").has_value());
-    EXPECT_EQ(registry.find_for_object(type_a(), "type_c.reg_attached"), reg_attached.get_ptr());
-    EXPECT_EQ(registry.find_for_object(type_c(), "type_c.reg_attached"), reg_attached.get_ptr());
+    EXPECT_EQ(reg_attached.get().get_holder_type(), type_a());
+    EXPECT_TRUE (reg_attached.get().applies_to(type_a()));
+    EXPECT_TRUE (reg_attached.get().applies_to(type_a_child()));
+    EXPECT_FALSE(reg_attached.get().applies_to(type_b()));
+    EXPECT_FALSE(reg_attached.get().applies_to(type_c()));
+    EXPECT_FALSE(reg_float.get().applies_to(type_a()));
+    EXPECT_EQ(registry.find_for_object(type_a(),       "type_c.reg_attached"), reg_attached.get_ptr());
+    EXPECT_EQ(registry.find_for_object(type_a_child(), "type_c.reg_attached"), reg_attached.get_ptr());
+    EXPECT_EQ(registry.find_for_object(type_c(),       "type_c.reg_attached"), nullptr);
+    EXPECT_EQ(registry.find_for_object(type_b(),       "type_c.reg_attached"), nullptr);
+    std::vector<const Dependency_property*> held_by_a;
+    registry.for_each_attached_property_of(type_a(), [&held_by_a](const Dependency_property& property) { held_by_a.push_back(&property); });
+    EXPECT_NE(std::find(held_by_a.begin(), held_by_a.end(), reg_attached.get_ptr()), held_by_a.end());
+    std::vector<const Dependency_property*> held_by_b;
+    registry.for_each_attached_property_of(type_b(), [&held_by_b](const Dependency_property& property) { held_by_b.push_back(&property); });
+    EXPECT_EQ(std::find(held_by_b.begin(), held_by_b.end(), reg_attached.get_ptr()), held_by_b.end());
     // The chain walk never returns an attached property, and a qualified
     // name never resolves a non-attached one.
     EXPECT_EQ(registry.find_for_object(type_c(), "reg_attached"), nullptr);

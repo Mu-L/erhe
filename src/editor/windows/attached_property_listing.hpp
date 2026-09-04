@@ -17,6 +17,7 @@ enum class Developer_mode : unsigned int {
 // - shared by the Properties window and the MCP property tools.
 
 // D12 listing rule for one object. An attached property is listed when the
+// object is of its holder type (Dependency_property::applies_to) and the
 // registering type's visible_when holds for the object, or the object holds
 // a local value for it (a stale hint stays visible and resettable). A
 // secondary property (Property_registry::is_secondary_property) is listed
@@ -29,7 +30,8 @@ enum class Developer_mode : unsigned int {
 ) -> bool;
 
 // The registrations "Add Property" offers for the object: every attached
-// property and every secondary property the D12 rule does not list for it,
+// property of its holder type and every secondary property the D12 rule
+// does not list for it,
 // in registry order; developer_only ones only in developer mode. Appends to
 // `out` (the caller keeps the capacity).
 void collect_addable_properties(

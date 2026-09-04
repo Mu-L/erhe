@@ -67,12 +67,16 @@ inventory (and the owner's design section when the design changed).
   by (object, name) through the owner type chain (`find_for_object`, what
   an object of that class means by the name; a qualified `<owner>.<name>`
   resolves the attached property `name` registered by the owner type
-  `<owner>`, on any object - `qualified_name` produces that form,
+  `<owner>` on an object of its holder type (`applies_to`) -
+  `qualified_name` produces that form,
   `find_owner_type` the reverse of `get_owner_name`), enumeration of the
   non-attached properties of an object's class
   (`for_each_property_of_object`: root-first, each level in registration
   order, a shadowed name or a multiply-owned property once at its nearest
-  level) and of every attached registration (`for_each_attached_property`).
+  level), of every attached registration (`for_each_attached_property`)
+  and of the attached registrations an object type may hold
+  (`for_each_attached_property_of`; an attached registration names its
+  holder type, R7).
 - **`Owner_type`** (`owner_type.hpp`, D27) - per-class owner type id with
   a parent link; id 0 is the root every `Dependency_object` belongs to.
   `allocate_owner_type(parent, name)` appends to the registry's id table;
