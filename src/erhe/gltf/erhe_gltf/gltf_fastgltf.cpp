@@ -554,10 +554,11 @@ constexpr Serialized_item_flag c_serialized_item_flags[] = {
 // properties object is an older file: visible / shadow_cast / lightmapped
 // are read from its flags list.
 void apply_persistent_flags_and_properties(
-    erhe::Item_base&            item,
-    const simdjson::dom::object& extension_object,
-    const std::string_view       flags_key,
-    const std::string_view       properties_key
+    erhe::Item_base&                              item,
+    const simdjson::dom::object&                  extension_object,
+    const std::string_view                        flags_key,
+    const std::string_view                        properties_key,
+    std::vector<Unresolved_object_property>&      unresolved
 )
 {
     simdjson::dom::array flags_array;
@@ -580,7 +581,7 @@ void apply_persistent_flags_and_properties(
             if (member.value.get_string().get(value) != simdjson::SUCCESS) {
                 continue;
             }
-            static_cast<void>(apply_item_local_property(item, member.key, value));
+            static_cast<void>(apply_item_local_property(item, member.key, value, unresolved));
         }
     } else if (has_flags) {
         apply_legacy_derived_item_flags(item, listed_bits);
@@ -3844,10 +3845,10 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                     continue;
                 }
                 if (extension_name == "ERHE_node") {
-                    apply_persistent_flags_and_properties(*node, extension_object, "flags", "properties");
+                    apply_persistent_flags_and_properties(*node, extension_object, "flags", "properties", result.unresolved_object_properties);
                     const std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
                     if (mesh) {
-                        apply_persistent_flags_and_properties(*mesh, extension_object, "mesh_flags", "mesh_properties");
+                        apply_persistent_flags_and_properties(*mesh, extension_object, "mesh_flags", "mesh_properties", result.unresolved_object_properties);
                     }
                 } else if (extension_name == "ERHE_light") {
                     const std::shared_ptr<erhe::scene::Light> light = erhe::scene::get_attachment<erhe::scene::Light>(node.get());
@@ -3859,7 +3860,7 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                         if ((extension_object.at_key("infinite_range").get_bool().get(bool_value) == simdjson::SUCCESS) && bool_value) {
                             light->set_range(0.0f);
                         }
-                        apply_persistent_flags_and_properties(*light, extension_object, "flags", "properties");
+                        apply_persistent_flags_and_properties(*light, extension_object, "flags", "properties", result.unresolved_object_properties);
                         clear_local_properties_not_listed(*light, extension_object, "properties");
                     }
                 }
@@ -3916,7 +3917,7 @@ auto parse_gltf(const Gltf_parse_arguments& arguments) -> Gltf_data
                 if (read_float(extension_object, "shadow_range", float_value)) {
                     camera->set_shadow_range(float_value);
                 }
-                apply_persistent_flags_and_properties(*camera, extension_object, "flags", "properties");
+                apply_persistent_flags_and_properties(*camera, extension_object, "flags", "properties", result.unresolved_object_properties);
                 clear_local_properties_not_listed(*camera, extension_object, "properties");
             }
         }

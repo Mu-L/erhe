@@ -11,6 +11,7 @@
 #include "geometry_graph/graph_mesh.hpp"
 #include "geometry_graph/graph_mesh_serialization.hpp"
 #include "operations/content_library_attach_operation.hpp"
+#include "scene/item_lookup.hpp"
 #include "scene/scene_root.hpp"
 #include "texture_graph/graph_texture.hpp"
 #include "texture_graph/graph_texture_serialization.hpp"
@@ -22,6 +23,7 @@
 #include "erhe_gltf/gltf_item_flags.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_primitive/material.hpp"
+#include "erhe_property/dependency_property.hpp"
 #include "erhe_primitive/primitive.hpp"
 #include "erhe_scene/layout.hpp"
 #include "erhe_scene/mesh.hpp"
@@ -128,6 +130,15 @@ auto parse_gltf_physics_overrides(const erhe::gltf::Gltf_data& gltf_data)
         Gltf_physics_overrides entry{};
         if (payload.contains("motion_mode") && payload["motion_mode"].is_string()) {
             entry.motion_mode = motion_mode_from_name(payload["motion_mode"].get<std::string>());
+        }
+        const auto properties_it = payload.find("properties");
+        if ((properties_it != payload.end()) && properties_it->is_object()) {
+            entry.has_properties = true;
+            for (const auto& [name, value] : properties_it->items()) {
+                if (value.is_string()) {
+                    entry.properties.emplace_back(name, value.get<std::string>());
+                }
+            }
         }
         overrides.emplace(gltf_data.nodes[i].get(), entry);
     }
@@ -984,6 +995,66 @@ private:
     std::shared_ptr<const erhe::property::Dependency_object> m_before;
 };
 
+// An object-reference local value of a "properties" map that named an
+// item the parse could not resolve (Gltf_data::unresolved_object_properties):
+// resolved in the scene at execute time, when the items the import's
+// earlier operations create (physics materials, filters, styles) exist
+// and the node has its host; the local value set is undoable.
+class Item_object_property_by_name_operation : public Operation
+{
+public:
+    Item_object_property_by_name_operation(std::shared_ptr<Scene_root> scene_root, erhe::gltf::Unresolved_object_property entry)
+        : m_scene_root{std::move(scene_root)}
+        , m_entry     {std::move(entry)}
+    {
+        set_description(fmt::format("[{}] {} '{}' {} = '{}'", get_serial(), m_entry.item->get_type_name(), m_entry.item->get_name(), m_entry.property_name, m_entry.text));
+    }
+
+    void execute(App_context&) override
+    {
+        const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(*m_entry.item, m_entry.property_name);
+        if (property == nullptr) {
+            return;
+        }
+        m_property = property;
+        m_before   = m_entry.item->read_local_state(*property);
+        const std::shared_ptr<erhe::Item_base> referenced = find_item_in_scene_by_name(*m_scene_root, m_entry.text);
+        if (!referenced) {
+            log_parsers->warn("glTF: {} '{}' property '{}' names '{}', which the scene does not hold", m_entry.item->get_type_name(), m_entry.item->get_name(), m_entry.property_name, m_entry.text);
+            return;
+        }
+        if (!m_entry.item->set_value(*property, erhe::property::Object_reference{referenced})) {
+            log_parsers->warn("glTF: {} '{}' property '{}' cannot reference '{}'", m_entry.item->get_type_name(), m_entry.item->get_name(), m_entry.property_name, m_entry.text);
+        }
+    }
+
+    void undo(App_context&) override
+    {
+        if (m_property != nullptr) {
+            static_cast<void>(m_entry.item->apply_local_state(*m_property, m_before));
+        }
+    }
+
+private:
+    std::shared_ptr<Scene_root>                  m_scene_root;
+    erhe::gltf::Unresolved_object_property       m_entry;
+    const erhe::property::Dependency_property*   m_property{nullptr};
+    std::optional<erhe::property::Local_state>   m_before;
+};
+
+void import_unresolved_object_properties(
+    const erhe::gltf::Gltf_data&             gltf_data,
+    const std::shared_ptr<Scene_root>&       scene_root,
+    std::vector<std::shared_ptr<Operation>>& operations
+)
+{
+    for (const erhe::gltf::Unresolved_object_property& entry : gltf_data.unresolved_object_properties) {
+        if (entry.item) {
+            operations.push_back(std::make_shared<Item_object_property_by_name_operation>(scene_root, entry));
+        }
+    }
+}
+
 void import_material_styles(
     const erhe::gltf::Gltf_data&             gltf_data,
     const std::shared_ptr<Content_library>&  content_library,
@@ -1053,6 +1124,9 @@ void import_gltf_editor_state(
     import_node_graphs(context, gltf_data, content_library, gltf_path_str, operations);
     import_material_styles(gltf_data, content_library, operations);
     import_node_styles(gltf_data, content_library, operations);
+    // Object references by name (a node-held Node_physics.physics_material):
+    // after every operation that creates the items they may name.
+    import_unresolved_object_properties(gltf_data, scene_root, operations);
     // Last: the folders operation places entries the operations above attach.
     import_library_folders(gltf_data, content_library, operations);
 }

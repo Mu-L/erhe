@@ -18,7 +18,11 @@ Carries the erhe Item state of a node that core glTF cannot express:
   `<owner>.<name>`, such as the `Layout.*` per-child layout hints
   (`ERHE_layout` names the layout itself), and the attachment-class
   values the node holds for the attachments below it (D30, `Light.color`)
-  by the same qualified form. Enumerations travel as their labels.
+  by the same qualified form. Enumerations travel as their labels; an
+  object reference travels as the referenced item's name and is resolved
+  in the scene once the file's items exist (`doc/property-system.md`
+  D28), so a node-held `Node_physics.physics_material` names a physics
+  material the same file's `KHR_physics_rigid_bodies` array defines.
 - `style` (optional): the name of the style item the node uses
   (`doc/style-library.md` D4), one of the scene's `ERHE_scene` `styles`;
   emitted only when the node has a style. Assigned on load once the

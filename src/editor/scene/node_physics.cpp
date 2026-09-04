@@ -21,7 +21,6 @@ using erhe::scene::Node_attachment;
 using erhe::property::Dependency_object;
 using erhe::property::Object_reference;
 using erhe::property::Property;
-using erhe::property::Property_bridge;
 using erhe::property::Property_metadata;
 using erhe::property::Property_ui;
 using erhe::property::Property_value;
@@ -29,7 +28,12 @@ using erhe::property::Property_value;
 namespace {
 
 constexpr std::string_view c_group = "Rigid Body";
+const erhe::property::Owner_type c_owner = Node_physics::property_owner_type();
+using Material_traits = erhe::property::Member_value_traits<std::shared_ptr<erhe::physics::Physics_material>>;
+using Filter_traits   = erhe::property::Member_value_traits<std::shared_ptr<erhe::physics::Collision_filter>>;
 
+// Evaluated on Node_physics objects only (a holder of Node_physics values
+// lists them by its own value, doc/property-system.md D30).
 auto is_movable(const Dependency_object& object) -> bool
 {
     return static_cast<const Node_physics&>(object).get_motion_mode() != Motion_mode::e_static;
@@ -42,67 +46,61 @@ auto slider(const float min, const float max, const std::string_view label, cons
 
 } // anonymous namespace
 
-const Property<Motion_mode> Node_physics::motion_mode_property = Property<Motion_mode>::register_member(
-    "motion_mode", Node_physics::property_owner_type(), erhe::physics::c_motion_mode_enum_info, &Node_physics::m_motion_mode,
+// Every property is entry-stored and inherits (doc/property-system.md
+// section 4.10, D30): a node above or a style holds Node_physics.* for
+// the bodies below it. The create info and m_motion_mode mirror the
+// effective values (on_property_changed), so the body is (re)created from
+// a plain struct.
+const Property<Motion_mode> Node_physics::motion_mode_property = Property<Motion_mode>::register_property(
+    "motion_mode", c_owner, erhe::physics::c_motion_mode_enum_info,
     Property_metadata{
         .default_value = erhe::property::make_value(Motion_mode::e_dynamic),
+        .inherits      = true,
         .ui            = Property_ui{.group = c_group, .tooltip = "The intended mode; a static trigger body is created kinematic non-physical", .label = "Motion Mode"}
-    },
-    [](Node_physics& node_physics) { node_physics.apply_motion_mode(); }
+    }
 );
-const Property<bool> Node_physics::is_trigger_property = Property<bool>::register_member<Node_physics, bool>(
-    "is_trigger", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.is_sensor; },
-    Property_metadata{.default_value = false, .ui = Property_ui{.group = c_group, .tooltip = "Sensor body: reports overlaps, no collision response (recreates the rigid body)", .label = "Is Trigger"}},
-    [](Node_physics& node_physics) { node_physics.recreate_rigid_body(); }
+const Property<bool> Node_physics::is_trigger_property = Property<bool>::register_property(
+    "is_trigger", c_owner,
+    Property_metadata{.default_value = false, .inherits = true, .ui = Property_ui{.group = c_group, .tooltip = "Sensor body: reports overlaps, no collision response (recreates the rigid body)", .label = "Is Trigger"}}
 );
 const Property<float> Node_physics::mass_property = Property<float>::register_property(
-    "mass", Node_physics::property_owner_type(),
+    "mass", c_owner,
     Property_metadata{
         .default_value = 1.0f,
-        .ui            = Property_ui{.min = 0.01f, .max = 1000.0f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_group, .tooltip = "kg; until set, the density-derived mass of the live body", .label = "Mass"},
-        .bridge        = Property_bridge{
-            .get = [](const Dependency_object& object) -> Property_value { return static_cast<const Node_physics&>(object).get_mass(); },
-            .set = [](Dependency_object& object, const Property_value& value) { static_cast<Node_physics&>(object).apply_mass(std::get<float>(value)); }
-        }
+        .inherits      = true,
+        .ui            = Property_ui{.min = 0.01f, .max = 1000.0f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_group, .tooltip = "kg; while no value is set (source default) the body's mass is its shape mass scaled by the material density", .label = "Mass"}
     },
     [](const Property_value& value) -> bool { return std::get<float>(value) > 0.0f; }
 );
-const Property<float> Node_physics::gravity_factor_property = Property<float>::register_member<Node_physics, float>(
-    "gravity_factor", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.gravity_factor; },
-    Property_metadata{.default_value = 1.0f, .ui = slider(0.0f, 2.0f, "Gravity Factor", {}, is_movable)},
-    [](Node_physics& node_physics) { node_physics.apply_gravity_factor(); }
+const Property<float> Node_physics::gravity_factor_property = Property<float>::register_property(
+    "gravity_factor", c_owner,
+    Property_metadata{.default_value = 1.0f, .inherits = true, .ui = slider(0.0f, 2.0f, "Gravity Factor", {}, is_movable)}
 );
-const Property<glm::vec3> Node_physics::initial_linear_velocity_property = Property<glm::vec3>::register_member<Node_physics, glm::vec3>(
-    "initial_linear_velocity", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.linear_velocity; },
-    Property_metadata{.ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "World space; applied when the rigid body is (re)created", .label = "Initial Linear Velocity"}}
+const Property<glm::vec3> Node_physics::initial_linear_velocity_property = Property<glm::vec3>::register_property(
+    "initial_linear_velocity", c_owner,
+    Property_metadata{.default_value = glm::vec3{0.0f}, .inherits = true, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "World space; applied when the rigid body is (re)created", .label = "Initial Linear Velocity"}}
 );
-const Property<glm::vec3> Node_physics::initial_angular_velocity_property = Property<glm::vec3>::register_member<Node_physics, glm::vec3>(
-    "initial_angular_velocity", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.angular_velocity; },
-    Property_metadata{.ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "World space; applied when the rigid body is (re)created", .label = "Initial Angular Velocity"}}
+const Property<glm::vec3> Node_physics::initial_angular_velocity_property = Property<glm::vec3>::register_property(
+    "initial_angular_velocity", c_owner,
+    Property_metadata{.default_value = glm::vec3{0.0f}, .inherits = true, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "World space; applied when the rigid body is (re)created", .label = "Initial Angular Velocity"}}
 );
 const Property<glm::vec3> Node_physics::center_of_mass_offset_property = Property<glm::vec3>::register_property(
-    "center_of_mass_offset", Node_physics::property_owner_type(),
-    Property_metadata{
-        .ui     = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "Offset-center-of-mass wrapper around the collision shape (recreates the rigid body)", .label = "Center of Mass"},
-        .bridge = Property_bridge{
-            .get = [](const Dependency_object& object) -> Property_value { return static_cast<const Node_physics&>(object).get_center_of_mass_offset(); },
-            .set = [](Dependency_object& object, const Property_value& value) { static_cast<Node_physics&>(object).apply_center_of_mass_offset(std::get<glm::vec3>(value)); }
-        }
-    }
+    "center_of_mass_offset", c_owner,
+    Property_metadata{.default_value = glm::vec3{0.0f}, .inherits = true, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "Offset-center-of-mass wrapper around the collision shape (recreates the rigid body)", .label = "Center of Mass"}}
 );
-const Property<Object_reference> Node_physics::physics_material_property = Property<Object_reference>::register_member<Node_physics, std::shared_ptr<erhe::physics::Physics_material>>(
-    "physics_material", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.physics_material; },
-    Property_metadata{.ui = Property_ui{.group = c_group, .tooltip = "Shared material carrying friction, restitution, damping, wind receptivity and density; none behaves like the material defaults", .label = "Physics Material", .reference_item_types = erhe::Item_type::physics_material}},
-    [](Node_physics& node_physics) { node_physics.observe_physics_material(); node_physics.reapply_physics_material(); }
+const Property<Object_reference> Node_physics::physics_material_property = Property<Object_reference>::register_property(
+    "physics_material", c_owner,
+    Property_metadata{.inherits = true, .ui = Property_ui{.group = c_group, .tooltip = "Shared material carrying friction, restitution, damping, wind receptivity and density; none behaves like the material defaults", .label = "Physics Material", .reference_item_types = erhe::Item_type::physics_material}},
+    Material_traits::validate
 );
-const Property<Object_reference> Node_physics::collision_filter_property = Property<Object_reference>::register_member<Node_physics, std::shared_ptr<erhe::physics::Collision_filter>>(
-    "collision_filter", Node_physics::property_owner_type(), [](auto& node_physics) -> auto& { return node_physics.m_create_info.collision_filter; },
-    Property_metadata{.ui = Property_ui{.group = c_group, .label = "Collision Filter", .reference_item_types = erhe::Item_type::collision_filter}},
-    [](Node_physics& node_physics) { node_physics.reapply_collision_filter(); }
+const Property<Object_reference> Node_physics::collision_filter_property = Property<Object_reference>::register_property(
+    "collision_filter", c_owner,
+    Property_metadata{.inherits = true, .ui = Property_ui{.group = c_group, .label = "Collision Filter", .reference_item_types = erhe::Item_type::collision_filter}},
+    Filter_traits::validate
 );
 
 Node_physics::Node_physics(const Node_physics& src)
-    : Item              {src}
+    : Item              {src} // the property entries copy with the base (D10)
     , markers           {src.markers}
     , m_physics_world   {src.m_physics_world}
     , m_create_info     {src.m_create_info}
@@ -127,7 +125,7 @@ Node_physics& Node_physics::operator=(const Node_physics& src)
 }
 
 Node_physics::Node_physics(const Node_physics& src, erhe::for_clone)
-    : Item          {src, erhe::for_clone{}}
+    : Item          {src, erhe::for_clone{}} // the property entries copy with the base (D10)
     , markers       {}        // clone does not initially have markers
     , m_physics_world{nullptr} // clone is initially detached
     , m_create_info {src.m_create_info}
@@ -141,7 +139,63 @@ Node_physics::Node_physics(const IRigid_body_create_info& create_info)
     : m_create_info{create_info}
     , m_motion_mode{create_info.motion_mode}
 {
+    // The create info's fields become local values where they differ from
+    // the property defaults; a field at its default stays unset, so a node
+    // above or a style can hold it (a set_value here reaches
+    // on_property_changed, whose consequences are no-ops while detached).
+    if (create_info.motion_mode != Motion_mode::e_dynamic)  { set_value(motion_mode_property, create_info.motion_mode); }
+    if (create_info.is_sensor)                              { set_value(is_trigger_property, true); }
+    if (create_info.mass.has_value())                       { set_value(mass_property, create_info.mass.value()); }
+    if (create_info.gravity_factor != 1.0f)                 { set_value(gravity_factor_property, create_info.gravity_factor); }
+    if (create_info.linear_velocity != glm::vec3{0.0f})     { set_value(initial_linear_velocity_property, create_info.linear_velocity); }
+    if (create_info.angular_velocity != glm::vec3{0.0f})    { set_value(initial_angular_velocity_property, create_info.angular_velocity); }
+    const glm::vec3 offset = get_center_of_mass_offset();
+    if (offset != glm::vec3{0.0f})                          { set_value(center_of_mass_offset_property, offset); }
+    if (create_info.physics_material)                       { set_value(physics_material_property, Material_traits::to_value(create_info.physics_material)); }
+    if (create_info.collision_filter)                       { set_value(collision_filter_property, Filter_traits::to_value(create_info.collision_filter)); }
     observe_physics_material();
+}
+
+void Node_physics::on_property_changed(const erhe::property::Property_changed_args& args)
+{
+    if (!erhe::property::is_owner_type_or_descendant(c_owner, args.property.get_owner_type())) {
+        return;
+    }
+    const erhe::property::Dependency_property* const changed = &args.property;
+    if (changed == motion_mode_property.get_ptr()) {
+        m_motion_mode = get_value(motion_mode_property);
+        apply_motion_mode();
+    } else if (changed == is_trigger_property.get_ptr()) {
+        m_create_info.is_sensor = get_value(is_trigger_property);
+        recreate_rigid_body();
+    } else if (changed == mass_property.get_ptr()) {
+        if (get_value_source(mass_property) == erhe::property::Value_source::default_value) {
+            // No mass anywhere: back to the shape mass scaled by the
+            // material density, which only a (re)creation computes.
+            if (m_create_info.mass.has_value()) {
+                m_create_info.mass.reset();
+                recreate_rigid_body();
+            }
+        } else {
+            apply_mass(get_value(mass_property));
+        }
+    } else if (changed == gravity_factor_property.get_ptr()) {
+        m_create_info.gravity_factor = get_value(gravity_factor_property);
+        apply_gravity_factor();
+    } else if (changed == initial_linear_velocity_property.get_ptr()) {
+        m_create_info.linear_velocity = get_value(initial_linear_velocity_property);
+    } else if (changed == initial_angular_velocity_property.get_ptr()) {
+        m_create_info.angular_velocity = get_value(initial_angular_velocity_property);
+    } else if (changed == center_of_mass_offset_property.get_ptr()) {
+        apply_center_of_mass_offset(get_value(center_of_mass_offset_property));
+    } else if (changed == physics_material_property.get_ptr()) {
+        m_create_info.physics_material = Material_traits::from_value(get_value(physics_material_property));
+        observe_physics_material();
+        reapply_physics_material();
+    } else if (changed == collision_filter_property.get_ptr()) {
+        m_create_info.collision_filter = Filter_traits::from_value(get_value(collision_filter_property));
+        reapply_collision_filter();
+    }
 }
 
 Node_physics::~Node_physics() noexcept
@@ -289,7 +343,12 @@ void Node_physics::set_collision_shape(const std::shared_ptr<erhe::physics::ICol
     if (m_create_info.collision_shape == collision_shape) {
         return;
     }
-    m_create_info.collision_shape = collision_shape;
+    // The effective center-of-mass offset stays what the property says:
+    // the new shape gets the wrapper the old one carried.
+    const glm::vec3 offset = get_value(center_of_mass_offset_property);
+    m_create_info.collision_shape = ((offset != glm::vec3{0.0f}) && collision_shape)
+        ? erhe::physics::ICollision_shape::create_offset_center_of_mass_shape_shared(collision_shape, offset)
+        : collision_shape;
     recreate_rigid_body();
 }
 
@@ -327,8 +386,8 @@ void Node_physics::set_mass(const float mass)
 
 void Node_physics::apply_mass(const float mass)
 {
-    if (mass == get_mass()) {
-        return; // R4: the bridge set is reached for every write
+    if (m_create_info.mass.has_value() && (mass == m_create_info.mass.value())) {
+        return;
     }
     m_create_info.mass = mass;
     IRigid_body* rigid_body = get_rigid_body();
@@ -353,7 +412,7 @@ auto Node_physics::get_physics_material() const -> const std::shared_ptr<erhe::p
 
 void Node_physics::set_physics_material(const std::shared_ptr<erhe::physics::Physics_material>& physics_material)
 {
-    set_value(physics_material_property, Object_reference{physics_material});
+    set_value(physics_material_property, Material_traits::to_value(physics_material));
 }
 
 void Node_physics::reapply_physics_material()
@@ -380,7 +439,7 @@ auto Node_physics::get_collision_filter() const -> const std::shared_ptr<erhe::p
 
 void Node_physics::set_collision_filter(const std::shared_ptr<erhe::physics::Collision_filter>& collision_filter)
 {
-    set_value(collision_filter_property, Object_reference{collision_filter});
+    set_value(collision_filter_property, Filter_traits::to_value(collision_filter));
 }
 
 void Node_physics::reapply_collision_filter()
@@ -459,7 +518,7 @@ void Node_physics::set_center_of_mass_offset(const glm::vec3& offset)
 void Node_physics::apply_center_of_mass_offset(const glm::vec3& offset)
 {
     if (offset == get_center_of_mass_offset()) {
-        return; // R4: the bridge set is reached for every write
+        return;
     }
     std::shared_ptr<erhe::physics::ICollision_shape> shape = m_create_info.collision_shape;
     if (!shape) {

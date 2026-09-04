@@ -164,6 +164,28 @@ auto apply_item_local_property(erhe::Item_base& item, const std::string_view nam
     return true;
 }
 
+auto apply_item_local_property(erhe::Item_base& item, const std::string_view name, const std::string_view value, std::vector<Unresolved_object_property>& unresolved) -> bool
+{
+    const erhe::property::Dependency_property* property = erhe::property::Property_registry::get().find_for_object(item, name);
+    if ((property != nullptr) && (property->get_type() == erhe::property::Property_type::object) && !value.empty()) {
+        const std::optional<erhe::property::Property_value> parsed = erhe::property::parse_value(item, *property, value);
+        if (!parsed.has_value()) {
+            std::shared_ptr<erhe::Item_base> shared_item = std::dynamic_pointer_cast<erhe::Item_base>(item.get_shared_reference());
+            if (shared_item) {
+                unresolved.push_back(
+                    Unresolved_object_property{
+                        .item          = std::move(shared_item),
+                        .property_name = std::string{name},
+                        .text          = std::string{value},
+                    }
+                );
+                return false;
+            }
+        }
+    }
+    return apply_item_local_property(item, name, value);
+}
+
 void clear_local_properties_not_listed(erhe::Item_base& item, const std::function<bool(std::string_view name)>& is_listed)
 {
     const erhe::property::Owner_type owner_type = item.get_property_owner_type();

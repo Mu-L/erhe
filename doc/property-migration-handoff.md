@@ -18,33 +18,24 @@ no descendant inherits it; moving it to the entry store is what makes it
 holdable. A hand-written row is authored state the Properties window still
 draws by hand and no property carries at all.
 
-1. `Node_physics` (`src/editor/scene/node_physics.{hpp,cpp}`, section
-   4.10): motion_mode, is_trigger, linear_damping, angular_damping,
-   gravity_factor, wind_receptivity, initial_linear_velocity,
-   initial_angular_velocity, mass, center_of_mass_offset, and the object
-   references physics_material and collision_filter. The references are
-   the payoff: a node or a style holding `Node_physics.physics_material`
-   assigns the material to every body below it. Friction and restitution
-   are not here any more; the physics material is their only carrier
-   (section 4.12).
-2. Light derived rows (`Properties::light_properties`, section 4.3): the
+1. Light derived rows (`Properties::light_properties`, section 4.3): the
    flux (lumens) slider as a property computed over intensity and the
    emission solid angle with a setter that writes intensity, and the
    blackbody swatch over temperature. Computed properties are D26.
-3. `Layout` (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13):
+2. `Layout` (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13):
    type, primary, secondary, tertiary, volume_min, volume_max, gap,
    grid_track_count.
-4. `Grid` (`src/editor/grid/grid.cpp`, section 4.11): plane_type,
+3. `Grid` (`src/editor/grid/grid.cpp`, section 4.11): plane_type,
    center, rotation, intersect_enable, snap_enabled, cell_size,
    cell_div, cell_count, the level colors and widths, the label settings.
-5. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
+4. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
    4.11): brush, facet, corner.
-6. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
+5. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
    rows).
-7. `Animation`: start time, end time (hand-written rows).
-8. `Node_joint`: enable collision, connected node as a node-typed object
+6. `Animation`: start time, end time (hand-written rows).
+7. `Node_joint`: enable collision, connected node as a node-typed object
    reference (hand-written rows).
-9. Geometry graph and texture graph node parameters (section 4.5), last;
+8. Geometry graph and texture graph node parameters (section 4.5), last;
    sharing them through a style is rarely wanted.
 
 Stays as it is: `Node`'s transform (bridged for the reasons D18 gives),
@@ -53,8 +44,12 @@ the scene's ambient light (a settings block).
 
 ## 2. Recipe for a bridged owner
 
-The Light (section 4.3) and Camera (section 4.4) migrations are the
-template:
+The Light (section 4.3), Camera (section 4.4) and Node_physics (section
+4.10) migrations are the template. A property that models "this body
+instance" belongs to the attachment; one that models "what kind of matter
+this is" belongs to the shared material (Node_physics kept the KHR motion
+fields and its role, the physics material took damping, wind receptivity
+and density) - settle that split before registering anything.
 
 - Register every field with `register_property` in the entry store,
   `.inherits = true`, the previous initializer as `.default_value`. An
@@ -81,7 +76,18 @@ template:
   virtual hook.
 - Object references (D28) stay `Property<Object_reference>`; a holder
   resolves the reference by identity, and the picker's candidate list
-  comes from `collect_reference_candidates`.
+  comes from `collect_reference_candidates`. On glTF load a reference in
+  an `ERHE_node` / `ERHE_light` / `ERHE_camera` `properties` map resolves
+  late through `Gltf_data::unresolved_object_properties` (D28); an owner
+  with a native KHR carrier for the reference (Node_physics: the
+  collider's material and filter) keeps the identity the constructor got
+  and lets its own map decide only whether the value stays local.
+- A constructor that takes an engineered struct (a create info) writes a
+  local value only for the fields that differ from the property defaults,
+  so a default-constructed instance stays open to a holder.
+- A value that is "unset" in the engineered struct (an optional mass)
+  maps to source `default`: test `get_value_source` in the hook instead
+  of adding an "is set" property.
 - glTF: the owner's extension keeps writing its explicit fields and the
   `properties` map of local values; on load the map is the item's
   complete local set (`clear_local_properties_not_listed`, the rule

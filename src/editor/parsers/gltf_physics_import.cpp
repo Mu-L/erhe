@@ -14,6 +14,7 @@
 
 #include "erhe_gltf/gltf.hpp"
 #include "erhe_gltf/gltf_item_flags.hpp"
+#include "erhe_property/dependency_property.hpp"
 #include "erhe_physics/collision_filter.hpp"
 #include "erhe_physics/icollision_shape.hpp"
 #include "erhe_physics/irigid_body.hpp"
@@ -318,6 +319,38 @@ void import_gltf_physics(
         }
         const Gltf_physics_overrides& overrides = it->second;
         if (overrides.motion_mode.has_value()) { create_info.motion_mode = overrides.motion_mode.value(); }
+    };
+    // ERHE_physics properties: the attachment's complete local set. The
+    // value properties apply from their text; the object references
+    // (physics material, collision filter) keep what the KHR collider gave
+    // the create info by identity - the attachment has no item host yet,
+    // so a name could not resolve - and the map decides whether that
+    // stays local: a reference the map does not list was inherited at
+    // export and inherits again.
+    const auto apply_node_physics_properties = [&physics_overrides](Node_physics& node_physics, const erhe::scene::Node* node) {
+        const auto it = physics_overrides.find(node);
+        if ((it == physics_overrides.end()) || !it->second.has_properties) {
+            return;
+        }
+        const Gltf_physics_overrides& overrides = it->second;
+        for (const std::pair<std::string, std::string>& property : overrides.properties) {
+            const erhe::property::Dependency_property* registered = erhe::property::Property_registry::get().find_for_object(node_physics, property.first);
+            if ((registered != nullptr) && (registered->get_type() == erhe::property::Property_type::object)) {
+                continue;
+            }
+            static_cast<void>(erhe::gltf::apply_item_local_property(node_physics, property.first, property.second));
+        }
+        erhe::gltf::clear_local_properties_not_listed(
+            node_physics,
+            [&overrides](const std::string_view property_name) -> bool {
+                for (const std::pair<std::string, std::string>& property : overrides.properties) {
+                    if (property.first == property_name) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        );
     };
 
     // 1. Shared content-library items (1:1 with the glTF top-level arrays),
@@ -625,6 +658,7 @@ void import_gltf_physics(
         // bodies are created when the insert operation gives the nodes a
         // scene host.
         auto node_physics = std::make_shared<Node_physics>(create_info);
+        apply_node_physics_properties(*node_physics, root);
         root->attach(node_physics);
         nodes_with_body.insert(root);
         ++body_count;
@@ -706,6 +740,7 @@ void import_gltf_physics(
             importer.make_body_create_info(*node, description.motion, trigger_shape, {}, trigger_filter, true);
         apply_physics_overrides(create_info, node);
         auto node_physics = std::make_shared<Node_physics>(create_info);
+        apply_node_physics_properties(*node_physics, node);
         node->attach(node_physics);
         nodes_with_body.insert(node);
         ++trigger_count;
@@ -731,6 +766,7 @@ void import_gltf_physics(
         );
         apply_physics_overrides(create_info, node);
         auto node_physics = std::make_shared<Node_physics>(create_info);
+        apply_node_physics_properties(*node_physics, node);
         node->attach(node_physics);
         nodes_with_body.insert(node);
         ++body_count;

@@ -32,7 +32,11 @@ class Scene_root;
 class Gltf_physics_overrides
 {
 public:
-    std::optional<erhe::physics::Motion_mode> motion_mode;
+    std::optional<erhe::physics::Motion_mode>        motion_mode;
+    // The Node_physics local values (name -> text); has_properties marks a
+    // file that carries the map, the attachment's complete local set.
+    std::vector<std::pair<std::string, std::string>> properties;
+    bool                                             has_properties{false};
 };
 
 [[nodiscard]] auto parse_gltf_physics_overrides(const erhe::gltf::Gltf_data& gltf_data)

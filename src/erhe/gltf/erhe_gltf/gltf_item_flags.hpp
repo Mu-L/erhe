@@ -2,12 +2,27 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace erhe { class Item_base; }
 
 namespace erhe::gltf {
+
+// An object-reference local value of a "properties" map whose path did not
+// resolve while the file was parsed: the item had no Item_host yet, or the
+// referenced item (a content-library physics material) is only created by
+// an operation the editor queues after the parse. The editor resolves the
+// name in its scene once everything exists (Gltf_data::unresolved_object_properties).
+class Unresolved_object_property
+{
+public:
+    std::shared_ptr<erhe::Item_base> item;
+    std::string                      property_name;
+    std::string                      text;
+};
 
 // The persistent (authored) Item flags serialized by NAME in ERHE_*
 // extensions (doc/gltf-scene-roundtrip-plan.md phase 3). Names, never raw
@@ -42,6 +57,12 @@ void apply_persistent_item_flags(erhe::Item_base& item, uint64_t listed_bits);
 // Applies one serialized local value; false (logged) for an unknown name
 // or a value that does not parse as the property's type.
 auto apply_item_local_property(erhe::Item_base& item, std::string_view name, std::string_view value) -> bool;
+
+// apply_item_local_property, except that an object reference whose path
+// does not resolve is appended to `unresolved` (not logged) for the
+// editor's late resolution; false for an unknown name or a value that
+// does not parse.
+auto apply_item_local_property(erhe::Item_base& item, std::string_view name, std::string_view value, std::vector<Unresolved_object_property>& unresolved) -> bool;
 
 // The "properties" object is the item's complete local set: every stored
 // (not bridged, not computed, not read-only) value property of the item's

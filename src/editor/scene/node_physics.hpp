@@ -39,15 +39,21 @@ public:
     // Implements / overrides Node_attachment
     void handle_item_host_update(erhe::Item_host* old_item_host, erhe::Item_host* new_item_host) override;
 
+    // Implements Dependency_object: refreshes the mirrors and applies the
+    // consequence (live body update or recreation) for every source of a
+    // change - local, style, inherited.
+    void on_property_changed(const erhe::property::Property_changed_args& args) override;
+
     // Registered properties (erhe::property, doc/property-system.md
-    // section 4.10), member-backed (D18) over the create info and the
-    // intended motion mode: the members are the authored state the rigid
-    // body is (re)created from, and a property write pushes the change to
-    // the live body or recreates it. The accessors below write through the
-    // properties, so every writer notifies. mass and center_of_mass_offset
-    // carry hand-written bridges (the mass is optional in the create info
-    // and read from the live body until set; the offset is a wrapper
-    // around the collision shape).
+    // section 4.10), entry-stored and inheriting: a node above or a style
+    // holds Node_physics.* for the bodies below it. The create info and
+    // the intended motion mode are MIRRORS of the effective values, kept
+    // current by on_property_changed, which also pushes the change to the
+    // live body or recreates it. The accessors below write through the
+    // properties, so every writer notifies. A mass property without a
+    // value anywhere (source default) leaves the body at its shape mass
+    // scaled by the material density; center_of_mass_offset is realized
+    // as the wrapper around the collision shape.
     static const erhe::property::Property<erhe::physics::Motion_mode>      motion_mode_property;
     static const erhe::property::Property<bool>                            is_trigger_property;
     static const erhe::property::Property<float>                           mass_property;
@@ -63,9 +69,9 @@ public:
     [[nodiscard]] auto get_rigid_body() const -> const erhe::physics::IRigid_body*;
     [[nodiscard]] auto get_collision_shape() const -> const std::shared_ptr<erhe::physics::ICollision_shape>&;
 
-    // Replaces the collision shape wholesale (any center-of-mass offset
-    // wrapper carried by the old shape is dropped; set it again afterwards
-    // if needed). Changing the shape recreates the rigid body.
+    // Replaces the collision shape; the effective center_of_mass_offset is
+    // re-applied as the wrapper around the new shape. Changing the shape
+    // recreates the rigid body.
     void set_collision_shape(const std::shared_ptr<erhe::physics::ICollision_shape>& collision_shape);
 
     void before_physics_simulation();
@@ -93,9 +99,9 @@ public:
     // that cannot produce such a reaction (no body / static / kinematic non-physical).
     void teleport_to_node();
 
-    // The body's mass. The create info holds the authored value, the live
-    // body gets it on set; without one the body's mass is its shape volume
-    // times the material density.
+    // The body's mass. The create info mirrors the effective value, the
+    // live body gets it on set; without one the body's mass is its shape
+    // mass scaled by the material density.
     [[nodiscard]] auto get_mass           () const -> float; // the create info's mass, else the live body's (0 when neither)
     void               set_mass           (float mass);      // scales the local inertia with the mass
 
@@ -165,8 +171,8 @@ private:
     // bookkeeping (joint constraints) stays consistent. No-op when detached.
     void recreate_rigid_body();
 
-    // The consequences of a property write (the after_set hooks and the
-    // hand-written bridge sets): the member already holds the new value.
+    // The consequences of a property change, called from
+    // on_property_changed once the mirror holds the new value.
     void apply_motion_mode          ();
     void apply_mass                 (float mass);
     void apply_gravity_factor       ();
@@ -176,9 +182,9 @@ private:
     void observe_physics_material   ();
 
     erhe::physics::IWorld*                      m_physics_world{nullptr};
-    erhe::physics::IRigid_body_create_info      m_create_info;
+    erhe::physics::IRigid_body_create_info      m_create_info;  // mirror of the effective property values (plus the shape and the label)
     std::shared_ptr<erhe::physics::IRigid_body> m_rigid_body;
-    erhe::physics::Motion_mode                  m_motion_mode{erhe::physics::Motion_mode::e_dynamic};
+    erhe::physics::Motion_mode                  m_motion_mode{erhe::physics::Motion_mode::e_dynamic}; // mirror of motion_mode (the intended mode)
     bool                                        m_wake_on_attach{false};
     erhe::property::Observer_token              m_physics_material_observer;
 };

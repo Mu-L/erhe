@@ -313,11 +313,14 @@ void add_gltf_editor_state(
         }
 
         // ERHE_physics: erhe rigid-body state KHR_physics_rigid_bodies
-        // cannot carry. Damping, wind receptivity and density ride the
-        // physics material (ERHE_scene physics_materials).
+        // cannot carry, and the attachment's local property values (its
+        // complete local set on reload, the ERHE_light rule). Damping,
+        // wind receptivity and density ride the physics material
+        // (ERHE_scene physics_materials).
         if (node_physics) {
             nlohmann::json physics_json{
                 {"motion_mode", motion_mode_name(node_physics->get_motion_mode())},
+                {"properties",  json_properties(*node_physics)},
             };
             append_members(arguments.extension_payloads.nodes[node.get()], fmt::format("\"ERHE_physics\":{}", physics_json.dump()));
             used_physics = true;

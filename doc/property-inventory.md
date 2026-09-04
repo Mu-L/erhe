@@ -101,13 +101,13 @@ Not properties: the five slot samplers (`Material_data`, edited through
 
 | Property | Storage | Notes |
 |---|---|---|
-| motion_mode | member | enumeration, sets the body's effective mode |
-| is_trigger | member | recreates the body |
-| gravity_factor | member | over the create info, pushed to the live body |
-| initial_linear_velocity, initial_angular_velocity | member | no live consequence |
-| mass | bridge | optional in the create info, read from the live body until set |
-| center_of_mass_offset | bridge | collision shape wrapper, recreates the body |
-| physics_material, collision_filter | member | object references |
+| motion_mode | entry | inherits (D30); enumeration, mirrored into the intended mode, sets the body's effective mode |
+| is_trigger | entry | inherits; mirrored into the create info, recreates the body |
+| gravity_factor | entry | inherits; mirrored, pushed to the live body |
+| initial_linear_velocity, initial_angular_velocity | entry | inherits; mirrored, no live consequence |
+| mass | entry | inherits; source default = shape mass scaled by the material density, else scales the body's inertia |
+| center_of_mass_offset | entry | inherits; realized as the collision shape wrapper, recreates the body |
+| physics_material, collision_filter | entry | inherits; object references, a holder assigns them to every body below |
 
 ### Grid (`src/editor/grid/grid.cpp`, section 4.11)
 

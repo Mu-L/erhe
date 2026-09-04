@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gltf_item_flags.hpp"
 #include "gltf_physics.hpp"
 
 #include "erhe_math/aabb.hpp"
@@ -117,6 +118,10 @@ public:
     std::vector<std::shared_ptr<erhe::graphics::Sampler>>   samplers;
     std::vector<std::string>                                extensions;
     Gltf_physics_data                                       physics;
+    // Object-reference local values of the ERHE_* "properties" maps whose
+    // name did not resolve during the parse (see Unresolved_object_property);
+    // the editor resolves them in its scene once its operations ran.
+    std::vector<Unresolved_object_property>                 unresolved_object_properties;
 
     std::vector<Gltf_file_reference>        files;
     std::vector<Gltf_external_asset>        external_assets;
