@@ -36,10 +36,14 @@
 @property-system::erhe::property{doc/property-system.md=design-record;doc/property-inventory.md=per-field-status;src/erhe/property/notes.md=library-reference}
   >2026-09-04::Add/Remove-Property-UI{940aeccbb..3a2318199}✓|?user-interactive
 
-@next::property-migrations{doc/property-migration-handoff.md=order+recipe+verify;Node_physics-first→Light-derived-rows→Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes}
+@node-physics-entry-store::✓2026-09-04{a5233529c+901dab96a}
+  split::©User-chose{"each property: node physics (unlikely) or physics material (likely)"}→Physics_material=kind-of-matter{+linear_damping+angular_damping+wind_receptivity+density;Jolt-snapshot-applies-damping+density-mass-when-no-explicit-mass}|Node_physics=instance{motion_mode,is_trigger,mass,com,velocities,gravity_factor,material+filter-refs;ALL-entry+inherits;create-info+m_motion_mode=mirrors;ctor-sets-local-only-where-differs-from-default;mass-source-default=density-mass}
+  gltf::ERHE_physics={motion_mode,properties}|ERHE_scene.physics_materials=[{name,properties}]{replaces-physics_material_names}|Gltf_data.unresolved_object_properties→Item_object_property_by_name_operation{node-held-object-refs-survive-reload;erhe_gltf-records,editor-resolves-late}
+  verify✓headless{scratchpad:verify_material_move*.py+verify_np_inherit.py}|?user-interactive
+@next::property-migrations{doc/property-migration-handoff.md=order+recipe+verify;Light-derived-rows→Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes}
 
 [STATE]
-@branch::main{#28-commits-unpushed;user-pushes-themselves}
+@branch::main{#30-commits-unpushed;user-pushes-themselves}
 prompt_queue.txt::item-0=property-migrations{doc/property-migration-handoff.md};items-1-4-unchanged
 
 [OPEN]
