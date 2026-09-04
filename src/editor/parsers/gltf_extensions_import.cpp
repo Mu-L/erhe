@@ -671,7 +671,7 @@ public:
         }
         m_moves.clear();
         for (auto it = m_created_folders.rbegin(); it != m_created_folders.rend(); ++it) {
-            (*it)->remove();
+            (*it)->erhe::Hierarchy::remove(); // Content_library_node::remove<T> hides it
         }
         m_created_folders.clear();
     }
