@@ -27,7 +27,10 @@ class Property_editor;
 // Property_set_apply_operation (one operation per completed drag), and the
 // formula text in place of the widget for a property driven by an
 // expression (D22), with "Edit as expression" / "Remove expression" in the
-// context menu.
+// context menu. Each item section ends with an "Add Property" row whose
+// button opens a filterable picker of the attached properties (R7) the
+// D12 rule does not list for the items; choosing one makes the item's
+// effective value local so the row appears (doc/property-add-ui-plan.md).
 class Dependency_property_rows
 {
 public:
@@ -74,6 +77,13 @@ private:
     void reset_to_default  (const erhe::property::Dependency_property& property);
     void edit_as_expression(const erhe::property::Dependency_property& property);
     void remove_expression (const erhe::property::Dependency_property& property);
+    // The "Add Property" row and its picker (doc/property-add-ui-plan.md):
+    // the candidates are collect_addable_attached_properties over the
+    // items, the add is one Property_set_operation per item without a
+    // local value, writing its current effective value.
+    void add_property_row       (Property_editor& editor);
+    void draw_add_property_popup();
+    void queue_add              (const erhe::property::Dependency_property& property);
     void copy_properties ();
     void paste_properties();
     void paste_properties_as_style(); // D25
@@ -97,6 +107,13 @@ private:
     std::string                                              m_text_scratch;
     std::vector<std::shared_ptr<erhe::Item_base>>            m_reference_candidates; // object rows: picker candidates, cleared after each draw
     std::string                                              m_expression_scratch; // the formula being typed in the active expression row
+    std::vector<const erhe::property::Dependency_property*>  m_add_candidates;     // Add Property: the picker's entries, refilled each frame the row draws
+    std::vector<const erhe::property::Dependency_property*>  m_add_scratch;        // Add Property: one item's candidates while forming the union
+    std::string                                              m_add_filter;         // Add Property: the filter text
+    std::string                                              m_add_filter_lower;   // Add Property: the filter lowered for matching
+    std::string                                              m_add_label_lower;    // Add Property: a candidate's label lowered for matching
+    std::string                                              m_add_owner_scratch;  // Add Property: the owner group header text
+    bool                                                     m_add_focus_filter{false}; // Add Property: focus the filter on the popup's first frame
 };
 
 }

@@ -12,6 +12,7 @@
 #include "scene/item_lookup.hpp"
 #include "tools/clipboard.hpp"
 
+#include "erhe_defer/defer.hpp"
 #include "erhe_item/item.hpp"
 #include "erhe_property/dependency_property.hpp"
 #include "erhe_property/enum_info.hpp"
@@ -24,6 +25,7 @@
 #include <imgui/misc/cpp/imgui_stdlib.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <string_view>
 
@@ -54,6 +56,14 @@ namespace {
         case Value_source::computed:      return IM_COL32(165, 165, 165, 255); // dim gray: computed, read-only
     }
     return IM_COL32(255, 255, 255, 255);
+}
+
+void lower_ascii_into(const std::string_view text, std::string& out)
+{
+    out.clear();
+    for (const char c : text) {
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
 }
 
 } // anonymous namespace
@@ -152,10 +162,6 @@ void Dependency_property_rows::draw_rows(Property_editor& editor)
             properties.push_back(&property);
         }
     );
-    if (properties.empty()) {
-        return;
-    }
-
     // Ungrouped rows first, then each group in order of first appearance.
     for (const Dependency_property* property : properties) {
         if (property->get_metadata(owner_type).ui.group.empty()) {
@@ -177,6 +183,148 @@ void Dependency_property_rows::draw_rows(Property_editor& editor)
         }
         editor.pop_group();
     }
+    if (!m_sub_object.has_value()) { // a sub-object (D29) has no attached properties
+        add_property_row(editor);
+    }
+}
+
+void Dependency_property_rows::add_property_row(Property_editor& editor)
+{
+    editor.add_entry(
+        "Add Property",
+        [this, items = m_items]() {
+            m_items = items; // this row's items; a later add_rows() call has re-pointed m_items
+            m_sub_object.reset();
+            ImGui::PushID(static_cast<int>(m_items->front()->get_id()));
+            ERHE_DEFER( ImGui::PopID(); );
+
+            // Candidates (R1, R5): the union over the items, sorted by owner
+            // type so the picker can group them, registry order within.
+            const Developer_mode developer_mode = m_context.developer_mode ? Developer_mode::shown : Developer_mode::hidden;
+            m_add_candidates.clear();
+            collect_addable_attached_properties(*target(0), developer_mode, m_add_candidates);
+            for (std::size_t i = 1; i < m_items->size(); ++i) {
+                m_add_scratch.clear();
+                collect_addable_attached_properties(*target(i), developer_mode, m_add_scratch);
+                for (const Dependency_property* candidate : m_add_scratch) {
+                    if (std::find(m_add_candidates.begin(), m_add_candidates.end(), candidate) == m_add_candidates.end()) {
+                        m_add_candidates.push_back(candidate);
+                    }
+                }
+            }
+            std::sort(
+                m_add_candidates.begin(), m_add_candidates.end(),
+                [](const Dependency_property* lhs, const Dependency_property* rhs) {
+                    return (lhs->get_owner_type() != rhs->get_owner_type())
+                        ? (lhs->get_owner_type() < rhs->get_owner_type())
+                        : (lhs->get_index() < rhs->get_index());
+                }
+            );
+
+            const bool sealed = m_items->front()->is_sealed(); // D24
+            ImGui::BeginDisabled(sealed || m_add_candidates.empty());
+            if (ImGui::Button("Add Property")) {
+                m_add_filter.clear();
+                m_add_focus_filter = true;
+                ImGui::OpenPopup("add_property_popup");
+            }
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip(
+                    "%s",
+                    sealed                   ? "Sealed (lock_edit)" :
+                    m_add_candidates.empty() ? "Every attached property is already listed" :
+                                               "Add an attached property to this item"
+                );
+            }
+            draw_add_property_popup();
+        }
+    );
+}
+
+void Dependency_property_rows::draw_add_property_popup()
+{
+    if (!ImGui::BeginPopup("add_property_popup")) {
+        return;
+    }
+    ERHE_DEFER( ImGui::EndPopup(); );
+    if (m_add_focus_filter) {
+        ImGui::SetKeyboardFocusHere();
+        m_add_focus_filter = false;
+    }
+    ImGui::SetNextItemWidth(260.0f);
+    ImGui::InputTextWithHint("##add_property_filter", "Filter properties...", &m_add_filter);
+    lower_ascii_into(m_add_filter, m_add_filter_lower);
+    const bool filtering = !m_add_filter_lower.empty();
+
+    if (m_add_candidates.empty()) {
+        ImGui::TextDisabled("No properties to add");
+        return;
+    }
+    const erhe::property::Property_registry& registry = erhe::property::Property_registry::get();
+    erhe::property::Owner_type header_owner   = erhe::property::Owner_type{0};
+    bool                       header_pending = true;
+    for (const Dependency_property* candidate : m_add_candidates) {
+        if (header_pending || (candidate->get_owner_type() != header_owner)) {
+            header_owner   = candidate->get_owner_type();
+            header_pending = true;
+        }
+        const Property_metadata& metadata = candidate->get_metadata(target(0)->get_property_owner_type());
+        m_text_scratch = registry.qualified_name(*candidate);
+        if (!metadata.ui.label.empty()) {
+            m_text_scratch += "  (";
+            m_text_scratch += metadata.ui.label;
+            m_text_scratch += ")";
+        }
+        if (filtering) {
+            lower_ascii_into(m_text_scratch, m_add_label_lower);
+            if (m_add_label_lower.find(m_add_filter_lower) == std::string::npos) {
+                continue;
+            }
+        }
+        if (header_pending) { // an owner group is shown only with a matching entry
+            m_add_owner_scratch = registry.get_owner_name(header_owner);
+            ImGui::SeparatorText(m_add_owner_scratch.c_str());
+            header_pending = false;
+        }
+        if (ImGui::Selectable(m_text_scratch.c_str())) {
+            queue_add(*candidate);
+            ImGui::CloseCurrentPopup();
+            return;
+        }
+        if (!metadata.ui.tooltip.empty() && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%.*s", static_cast<int>(metadata.ui.tooltip.size()), metadata.ui.tooltip.data());
+        }
+    }
+}
+
+// The add (R4): the item's current effective value becomes its local
+// value, so nothing changes but the layer and the row appears; undo
+// clears it again. Items already holding a local value are skipped.
+void Dependency_property_rows::queue_add(const Dependency_property& property)
+{
+    if (m_context.operation_stack == nullptr) {
+        return;
+    }
+    Compound_operation::Parameters parameters;
+    for (std::size_t i = 0; i < m_items->size(); ++i) {
+        if (target(i)->has_local_value(property)) {
+            continue;
+        }
+        parameters.operations.push_back(
+            std::make_shared<Property_set_operation>(
+                (*m_items)[i], m_sub_object, property, std::nullopt, erhe::property::Local_state{target(i)->get_value(property)}
+            )
+        );
+    }
+    if (parameters.operations.empty()) {
+        return;
+    }
+    if (parameters.operations.size() == 1) {
+        m_context.operation_stack->queue(parameters.operations.front());
+        return;
+    }
+    m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
 }
 
 void Dependency_property_rows::row(Property_editor& editor, const Dependency_property& property)
