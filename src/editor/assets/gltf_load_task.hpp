@@ -151,7 +151,6 @@ private:
     // into the frame command buffer, staging comes from the device ring and
     // is reclaimed by frame completion (plan 2.6).
     std::unique_ptr<erhe::gltf::Image_transfer> m_image_transfer;
-    bool                          m_samplers_created{false};
     std::shared_ptr<Build_result> m_build_result;
     // Highest LOADER-queue ticket the worker build enqueued. Publish waits
     // until Mesh_memory's loader watermark has reached it, because a

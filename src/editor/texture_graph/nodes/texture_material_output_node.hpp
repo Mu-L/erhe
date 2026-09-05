@@ -3,6 +3,8 @@
 #include "assets/asset_reference.hpp"
 #include "texture_graph/texture_graph_node.hpp"
 
+#include "erhe_primitive/material.hpp"
+
 #include <array>
 #include <cstddef>
 #include <memory>
@@ -130,7 +132,7 @@ private:
     // resolve_scene_root()'s content library; null when no scene resolves
     // or the library has no textures folder.
     [[nodiscard]] auto get_content_library() -> std::shared_ptr<Content_library>;
-    [[nodiscard]] auto ensure_sampler() -> const std::shared_ptr<erhe::graphics::Sampler>&;
+    [[nodiscard]] static auto baked_sampler_state() -> erhe::primitive::Material_sampler_state;
     // Main-thread lazy resolution of the stored material key through the
     // asset manager (R4: read_parameters only stores the key).
     void resolve_reference();
@@ -145,7 +147,6 @@ private:
     // The scene is not an asset; the material reference is (R4).
     std::weak_ptr<Scene_root>                                           m_scene_root;
     Asset_reference                                                     m_material_reference;
-    std::shared_ptr<erhe::graphics::Sampler>                            m_sampler;
     std::array<Baked_texture, static_cast<std::size_t>(Separate_channel::count)> m_separate;
     std::shared_ptr<erhe::graphics::Texture>                            m_orm_target;
     std::shared_ptr<erhe::graphics::Texture>                            m_orm_registered;

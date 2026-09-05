@@ -78,7 +78,6 @@ private:
     // The scene is not an asset; the material reference is (R4).
     std::weak_ptr<Scene_root>                  m_scene_root;
     Asset_reference                            m_material_reference;
-    std::shared_ptr<erhe::graphics::Sampler>   m_sampler;
     std::shared_ptr<erhe::graphics::Texture>   m_registered_texture; // what is currently in the content library
     std::string                                m_texture_name{"Texture Graph"};
     int                                        m_size_index{2};      // 0:256 1:512 2:1024 3:2048

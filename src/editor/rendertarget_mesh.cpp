@@ -138,18 +138,6 @@ void Rendertarget_mesh::resize_rendertarget(
     // rendertarget_imgui_host's draw data).
     command_buffer.transition_texture_layout(*m_texture.get(), erhe::graphics::Image_layout::shader_read_only_optimal);
 
-    m_sampler = std::make_shared<erhe::graphics::Sampler>(
-        graphics_device,
-        erhe::graphics::Sampler_create_info{
-            .min_filter   = erhe::graphics::Filter::linear,
-            .mag_filter   = erhe::graphics::Filter::nearest,
-            .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::linear,
-            .address_mode = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
-            .lod_bias     = -0.666f,
-            .debug_label  = "Rendertarget_mesh"
-        }
-    );
-
     // TODO Use multisample resolve
     erhe::graphics::Render_pass_descriptor render_pass_descriptor{};
     render_pass_descriptor.color_attachments[0].texture        = m_texture.get();
@@ -189,10 +177,10 @@ void Rendertarget_mesh::resize_rendertarget(
         std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{material_home->mutex};
         material_home->materials->add(m_material);
     }
-    // Resize recreates the texture and sampler; the material identity is
-    // stable across resizes, only its texture binding follows.
+    // Resize recreates the texture; the material identity is stable across
+    // resizes, only its texture binding follows.
     m_material->set_base_color_texture(m_texture);
-    m_material->data.texture_samplers.base_color.sampler = m_sampler;
+    m_material->set_slot_sampler(m_material->data.texture_samplers.base_color, sampler_state());
 
     m_local_width  = static_cast<float>(m_texture->get_width ()) / m_pixels_per_meter;
     m_local_height = static_cast<float>(m_texture->get_height()) / m_pixels_per_meter;
@@ -395,6 +383,21 @@ auto Rendertarget_mesh::get_world_to_window(const glm::vec3 position_in_world) c
     };
 }
 
+// The slot sampler of the rendertarget texture: clamped, mipmapped,
+// nearest magnification (the imgui host draws at pixel scale), with the
+// tunable LOD bias.
+auto Rendertarget_mesh::sampler_state() -> erhe::primitive::Material_sampler_state
+{
+    return erhe::primitive::Material_sampler_state{
+        .wrap_u      = erhe::graphics::Sampler_address_mode::clamp_to_edge,
+        .wrap_v      = erhe::graphics::Sampler_address_mode::clamp_to_edge,
+        .min_filter  = erhe::graphics::Filter::linear,
+        .mag_filter  = erhe::graphics::Filter::nearest,
+        .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::linear,
+        .lod_bias    = s_rendertarget_mesh_lod_bias
+    };
+}
+
 void Rendertarget_mesh::render_done(erhe::graphics::Command_buffer& command_buffer, App_context& context)
 {
     {
@@ -402,19 +405,8 @@ void Rendertarget_mesh::render_done(erhe::graphics::Command_buffer& command_buff
         encoder.generate_mipmaps(m_texture.get());
     }
 
-    if (s_rendertarget_mesh_lod_bias != m_sampler->get_lod_bias()) {
-        m_sampler = std::make_shared<erhe::graphics::Sampler>(
-            *context.graphics_device,
-            erhe::graphics::Sampler_create_info{
-                .min_filter   = erhe::graphics::Filter::linear,
-                .mag_filter   = erhe::graphics::Filter::nearest,
-                .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::linear,
-                .address_mode = { erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge, erhe::graphics::Sampler_address_mode::clamp_to_edge },
-                .lod_bias     = s_rendertarget_mesh_lod_bias,
-                .debug_label  = "Rendertarget_mesh"
-            }
-        );
-        m_material->data.texture_samplers.base_color.sampler = m_sampler;
+    if (s_rendertarget_mesh_lod_bias != m_material->data.texture_samplers.base_color.sampler.lod_bias) {
+        m_material->set_slot_sampler(m_material->data.texture_samplers.base_color, sampler_state());
     }
 }
 

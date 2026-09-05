@@ -228,12 +228,6 @@ auto Gltf_load_task::advance_residency(Asset_load_tick_context& tick_context) ->
 {
     erhe::gltf::Gltf_data& gltf_data = m_parse_result->gltf_data;
 
-    if (!m_samplers_created) {
-        // Cheap and unbudgeted: plan 2.7 wants a real object for every
-        // sampler / texture by publish, and only the pixel copies may lag.
-        gltf_data.image_residency.create_samplers(gltf_data, tick_context.graphics_device);
-        m_samplers_created = true;
-    }
     if (!m_image_transfer) {
         m_image_transfer = std::make_unique<erhe::gltf::Image_transfer>(
             tick_context.graphics_device,

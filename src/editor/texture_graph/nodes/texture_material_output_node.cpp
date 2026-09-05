@@ -195,15 +195,15 @@ void Texture_material_output_node::on_removed_from_graph()
     if (m_assign_to_material && material) {
         erhe::primitive::Material_texture_samplers& samplers = material->data.texture_samplers;
         material->set_base_color_texture({});
-        samplers.base_color.sampler.reset();
+        material->set_slot_sampler(samplers.base_color, {});
         material->set_normal_texture({});
-        samplers.normal.sampler.reset();
+        material->set_slot_sampler(samplers.normal, {});
         material->set_emissive_texture({});
-        samplers.emissive.sampler.reset();
+        material->set_slot_sampler(samplers.emissive, {});
         material->set_metallic_roughness_texture({});
-        samplers.metallic_roughness.sampler.reset();
+        material->set_slot_sampler(samplers.metallic_roughness, {});
         material->set_occlusion_texture({});
-        samplers.occlusion.sampler.reset();
+        material->set_slot_sampler(samplers.occlusion, {});
         material->set_metallic(0.0f);
         material->set_roughness(glm::vec2{0.5f, 0.5f});
         material->set_emissive(glm::vec3{0.0f, 0.0f, 0.0f});
@@ -238,21 +238,11 @@ void Texture_material_output_node::evaluate(Texture_graph&)
     pull_inputs();
 }
 
-auto Texture_material_output_node::ensure_sampler() -> const std::shared_ptr<erhe::graphics::Sampler>&
+// The sampler of a baked slot: linear, no mipmaps (the bake has one level),
+// repeat.
+auto Texture_material_output_node::baked_sampler_state() -> erhe::primitive::Material_sampler_state
 {
-    if (!m_sampler && (m_context.graphics_device != nullptr)) {
-        m_sampler = std::make_shared<erhe::graphics::Sampler>(
-            *m_context.graphics_device,
-            erhe::graphics::Sampler_create_info{
-                .min_filter   = erhe::graphics::Filter::linear,
-                .mag_filter   = erhe::graphics::Filter::linear,
-                .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-                .address_mode = { erhe::graphics::Sampler_address_mode::repeat, erhe::graphics::Sampler_address_mode::repeat, erhe::graphics::Sampler_address_mode::repeat },
-                .debug_label  = erhe::utility::Debug_label{"Texture material output sampler"}
-            }
-        );
-    }
-    return m_sampler;
+    return erhe::primitive::Material_sampler_state{.min_filter = erhe::graphics::Filter::linear, .mag_filter = erhe::graphics::Filter::linear, .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::not_mipmapped};
 }
 
 auto Texture_material_output_node::resolve_scene_root() -> std::shared_ptr<Scene_root>
@@ -380,7 +370,7 @@ void Texture_material_output_node::render_separate_channel(
         slot.target.reset();
         if (m_assign_to_material && (sampler_slot != nullptr)) {
             material->set_slot_texture(*sampler_slot, {});
-            sampler_slot->sampler.reset();
+            material->set_slot_sampler(*sampler_slot, {});
             if (channel == Separate_channel::emissive) {
                 material->set_emissive(glm::vec3{0.0f, 0.0f, 0.0f});
             }
@@ -399,7 +389,7 @@ void Texture_material_output_node::render_separate_channel(
 
     if (m_assign_to_material && (sampler_slot != nullptr) && slot.target) {
         material->set_slot_texture(*sampler_slot, slot.target);
-        sampler_slot->sampler = ensure_sampler();
+        material->set_slot_sampler(*sampler_slot, baked_sampler_state());
         if (channel == Separate_channel::albedo) {
             material->set_base_color(glm::vec3{1.0f, 1.0f, 1.0f});
         } else if (channel == Separate_channel::normal) {
@@ -433,9 +423,9 @@ void Texture_material_output_node::render_orm(
         if (m_assign_to_material && material) {
             erhe::primitive::Material_texture_samplers& samplers = material->data.texture_samplers;
             material->set_metallic_roughness_texture({});
-            samplers.metallic_roughness.sampler.reset();
+            material->set_slot_sampler(samplers.metallic_roughness, {});
             material->set_occlusion_texture({});
-            samplers.occlusion.sampler.reset();
+            material->set_slot_sampler(samplers.occlusion, {});
             material->set_metallic(0.0f);
             material->set_roughness(glm::vec2{0.5f, 0.5f});
         }
@@ -469,7 +459,7 @@ void Texture_material_output_node::render_orm(
         // Packed texture drives roughness (.g) and metallic (.b); the scalar
         // multipliers pass the baked values through unchanged.
         material->set_metallic_roughness_texture(m_orm_target);
-        samplers.metallic_roughness.sampler = ensure_sampler();
+        material->set_slot_sampler(samplers.metallic_roughness, baked_sampler_state());
         material->set_metallic(1.0f);
         material->set_roughness(glm::vec2{1.0f, 1.0f});
 
@@ -478,11 +468,11 @@ void Texture_material_output_node::render_orm(
         // leave occlusion at the shader default of 1.0.
         if (occlusion.source_node != nullptr) {
             material->set_occlusion_texture(m_orm_target);
-            samplers.occlusion.sampler = ensure_sampler();
+            material->set_slot_sampler(samplers.occlusion, baked_sampler_state());
             material->set_occlusion_texture_strength(1.0f);
         } else {
             material->set_occlusion_texture({});
-            samplers.occlusion.sampler.reset();
+            material->set_slot_sampler(samplers.occlusion, {});
         }
     }
 }

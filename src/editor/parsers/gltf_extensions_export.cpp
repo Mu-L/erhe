@@ -581,13 +581,12 @@ void add_gltf_editor_state(
                     .slot               = slot,
                     .graph_texture_name = graph_texture->get_name(),
                 };
-                if (sampler.sampler) {
-                    const erhe::graphics::Sampler_create_info& create_info = sampler.sampler->get_create_info();
+                if (sampler.sampler != erhe::primitive::Material_sampler_state{}) {
                     record.has_sampler = true;
-                    record.wrap_u      = create_info.address_mode[0];
-                    record.wrap_v      = create_info.address_mode[1];
-                    record.min_filter  = create_info.min_filter;
-                    record.mag_filter  = create_info.mag_filter;
+                    record.wrap_u      = sampler.sampler.wrap_u;
+                    record.wrap_v      = sampler.sampler.wrap_v;
+                    record.min_filter  = sampler.sampler.min_filter;
+                    record.mag_filter  = sampler.sampler.mag_filter;
                 }
                 data->material_bindings.push_back(record);
             }

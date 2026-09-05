@@ -28,7 +28,7 @@ Implements the undo/redo operation system and all concrete editor operations.
   - `Item_reposition_in_parent_operation` -- reorder siblings
   - `Node_transform_operation` -- undo/redo node transforms
   - `Node_attach_operation` -- attach/detach node attachments
-  - `Material_change_operation` -- undo/redo material property edits
+  - `Material_change_operation` -- undo/redo a whole `Material_data` snapshot (MCP `edit_material`); the Properties window records `Property_set_operation`s instead
   - `Merge_operation` -- merge multiple meshes
 
 - **In-place vertex edits** (NOT `Mesh_operation`: they mutate and reuse the SAME `Geometry` object so `Mesh_component_selection` entries keyed on the Geometry pointer survive, then rebuild one `Primitive` and share it across every mesh referencing the Geometry):

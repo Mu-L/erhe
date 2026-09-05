@@ -4,6 +4,7 @@
 #   include "xr/hand_tracker.hpp"
 #endif
 
+#include "erhe_primitive/material.hpp"
 #include "erhe_scene/mesh.hpp"
 
 #include <glm/glm.hpp>
@@ -106,8 +107,9 @@ private:
     // dies with the scene and the entry needs no removal.
     std::weak_ptr<Content_library>               m_material_home;
 
+    [[nodiscard]] static auto sampler_state() -> erhe::primitive::Material_sampler_state;
+
     std::shared_ptr<erhe::graphics::Texture>     m_texture;
-    std::shared_ptr<erhe::graphics::Sampler>     m_sampler;
     std::shared_ptr<erhe::primitive::Material>   m_material;
     std::shared_ptr<erhe::graphics::Render_pass> m_render_pass;
     std::optional<glm::vec2>                     m_pointer;

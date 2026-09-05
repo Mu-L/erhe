@@ -132,7 +132,6 @@ private:
     void item_flags                   (const std::shared_ptr<erhe::Item_base>& item);
     void item_properties              (const std::shared_ptr<erhe::Item_base>& item);
 
-    void end_material_inspect();
 
     // Scene-hosted references (see AGENTS.md "Scene-hosted references in
     // editor parts"): drop the pinned target and the material-edit latch
@@ -163,9 +162,9 @@ private:
     // capacity kept).
     std::vector<std::vector<std::shared_ptr<erhe::Item_base>>> m_type_groups;
 
-    Editor_state                               m_material_state{Editor_state::clean};
+    // The material whose preview the window renders (the MCP
+    // get_editor_references query reports it).
     std::shared_ptr<erhe::primitive::Material> m_inspected_material;
-    erhe::primitive::Material_data             m_inspected_material_initial_state;
 
     std::vector<std::string> m_vertex_stream_labels;
     std::vector<std::string> m_primitive_labels;

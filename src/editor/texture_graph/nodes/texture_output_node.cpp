@@ -82,7 +82,7 @@ void Texture_output_node::on_removed_from_graph()
     const std::shared_ptr<erhe::primitive::Material> material = get_material();
     if (m_assign_to_material && material) {
         material->clear_value(erhe::primitive::Material::base_color_texture_property);
-        material->data.texture_samplers.base_color.sampler.reset();
+        material->set_slot_sampler(material->data.texture_samplers.base_color, {});
     }
 }
 
@@ -217,20 +217,8 @@ void Texture_output_node::assign_to_material()
     if (!texture) {
         return;
     }
-    if (!m_sampler && (m_context.graphics_device != nullptr)) {
-        m_sampler = std::make_shared<erhe::graphics::Sampler>(
-            *m_context.graphics_device,
-            erhe::graphics::Sampler_create_info{
-                .min_filter   = erhe::graphics::Filter::linear,
-                .mag_filter   = erhe::graphics::Filter::linear,
-                .mipmap_mode  = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
-                .address_mode = { erhe::graphics::Sampler_address_mode::repeat, erhe::graphics::Sampler_address_mode::repeat, erhe::graphics::Sampler_address_mode::repeat },
-                .debug_label  = erhe::utility::Debug_label{"Texture graph output sampler"}
-            }
-        );
-    }
     erhe::primitive::Material_texture_sampler& base_color = material->data.texture_samplers.base_color;
-    base_color.sampler = m_sampler;
+    material->set_slot_sampler(base_color, erhe::primitive::Material_sampler_state{.min_filter = erhe::graphics::Filter::linear, .mag_filter = erhe::graphics::Filter::linear, .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::not_mipmapped}); // one level, no mipmaps
     // Bind the material to the owning content-library asset as a live
     // texture reference (the material samples the asset's baked output every
     // frame, and the binding is persisted on save).

@@ -31,8 +31,8 @@ per-owner migrations that this task depends on.
    `brush_properties`, `texture_properties`, ...) add `add_entry` rows
    per item: the attachment Remove buttons, the read-only diagnostics,
    and the authored rows the inventory's "Not yet migrated" table lists.
-   `material_properties` is a third variant with its own inspect
-   snapshot for the sampler rows. These rows are drawn once per selected
+   `material_properties` draws the material preview and the BRDF slice
+   for a selected material. These rows are drawn once per selected
    item, in a group per item, with no mixed-value display and no shared
    edit.
 
@@ -65,9 +65,10 @@ per-owner migrations that this task depends on.
   are not authored state and need no mixed-value handling. They may
   become read-only computed properties (D26) where that removes a
   hand-written function for free.
-- R4 The material inspect snapshot (`material_properties`,
-  `m_material_state`) is retired once every material row is a property
-  row; the preview render that an open Properties window triggers stays.
+- R4 Every material row is a property row (the slot samplers are the
+  seven `<slot>_texture_*` sampler properties, section 4.1 of the design
+  record); `material_properties` draws only the preview render and the
+  BRDF slice for a selected material.
 - R5 List-valued state with no `Property_value` form
   (`Physics_joint_settings` limits and drives, the scene's ambient light
   settings block) keeps its hand-written editor, drawn per item, and is
@@ -92,7 +93,8 @@ per-owner migrations that this task depends on.
    hand-written rows in their own commit); the graph-node parameters it
    still lists are drawn by the Node Properties window, not this one, so
    they are not on this task's path.
-3. Retire `material_properties` and the inspect snapshot (R4).
+3. R4 holds: the sampler rows are Material properties and the inspect
+   snapshot is gone.
 4. Fold the remaining per-class functions into diagnostics-only helpers
    (R3), and make `item_properties` a thin frame: the group header, the
    diagnostics, the registered section, the attachment Remove buttons.

@@ -146,18 +146,7 @@ void Properties::on_items_removed(const Removed_items& removed)
         );
     }
     if (m_inspected_material && removed.lookup.contains(m_inspected_material.get())) {
-        // Unlike a scene close, an undo does NOT drop the undo history, so a
-        // dirty edit session dying here is a real loss of user work rather
-        // than a consequence of the teardown. Say so instead of discarding it
-        // silently (doc/import-undo-reference-clearing.md).
-        if (m_material_state != Editor_state::clean) {
-            log_asset->warn(
-                "Material '{}' was removed while its property edits were unsaved; the pending edits are discarded",
-                m_inspected_material->get_name()
-            );
-        }
         m_inspected_material.reset();
-        m_material_state = Editor_state::clean;
     }
 }
 
@@ -172,10 +161,7 @@ void Properties::on_close_scene(erhe::Item_host* const closing_host)
         m_target_items.clear();
     }
     if (m_inspected_material && (asset_manager != nullptr) && asset_manager->is_hosted_or_defined_by(*m_inspected_material, closing_host)) {
-        // The edit session dies with the scene: no Material_change_operation
-        // is recorded (the close drops the undo history anyway).
         m_inspected_material.reset();
-        m_material_state = Editor_state::clean;
     }
 }
 
@@ -1180,212 +1166,33 @@ void Properties::dependency_properties(const std::shared_ptr<erhe::Item_base>& i
     m_dependency_rows.add_rows(*this, std::vector<std::shared_ptr<erhe::Item_base>>{item});
 }
 
-namespace {
-
-// The slot textures and slot transforms are registered properties with
-// their own undo (Property_set_operation, doc/property-system.md D18 /
-// D28), so the material inspect snapshot covers only the samplers: `base`
-// with the property-backed slot fields of `properties`.
-auto with_property_fields_of(erhe::primitive::Material_data base, const erhe::primitive::Material_data& properties) -> erhe::primitive::Material_data
-{
-    const auto copy_slot = [](erhe::primitive::Material_texture_sampler& to, const erhe::primitive::Material_texture_sampler& from) {
-        to.texture_reference = from.texture_reference;
-        to.texgen_mode       = from.texgen_mode;
-        to.rotation          = from.rotation;
-        to.offset            = from.offset;
-        to.scale             = from.scale;
-    };
-    copy_slot(base.texture_samplers.base_color,         properties.texture_samplers.base_color);
-    copy_slot(base.texture_samplers.metallic_roughness, properties.texture_samplers.metallic_roughness);
-    copy_slot(base.texture_samplers.normal,             properties.texture_samplers.normal);
-    copy_slot(base.texture_samplers.occlusion,          properties.texture_samplers.occlusion);
-    copy_slot(base.texture_samplers.emissive,           properties.texture_samplers.emissive);
-    return base;
-}
-
-} // anonymous namespace
-
-void Properties::end_material_inspect()
-{
-    if (!m_inspected_material) {
-        m_material_state = Editor_state::clean;
-        return;
-    }
-    const erhe::primitive::Material_data before = with_property_fields_of(m_inspected_material_initial_state, m_inspected_material->data);
-    if (m_inspected_material->data != before) {
-        log_operations->info("end_material_inspect - material changed");
-        m_context.operation_stack->queue(
-            std::make_shared<Material_change_operation>(m_inspected_material, before, m_inspected_material->data)
-        );
-        m_inspected_material_initial_state = m_inspected_material->data;
-    } else {
-        log_operations->info("end_material_inspect - material not changed");
-    }
-    m_material_state = Editor_state::clean;
-}
-
+// The material preview and the BRDF slice for a selected material; the
+// material rows themselves are the registered rows of its section.
 void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Item_base>>& items)
 {
     ERHE_PROFILE_FUNCTION();
 
-    const std::shared_ptr<erhe::primitive::Material> selected_material_shared = get<erhe::primitive::Material>(items);
-    if (m_inspected_material != selected_material_shared) {
-        log_operations->info("m_inspected_material != selected_material_shared");
-        if (m_inspected_material) {
-            end_material_inspect();
-        }
-        m_inspected_material = selected_material_shared;
-        if (m_inspected_material) {
-            log_operations->info("have m_inspected_material - record initial state");
-            m_inspected_material_initial_state = m_inspected_material->data;
-            m_material_state = Editor_state::clean;
-        }
-    }
-
-    if (!selected_material_shared) {
+    const std::shared_ptr<erhe::primitive::Material> selected_material = get<erhe::primitive::Material>(items);
+    m_inspected_material = selected_material;
+    if (!selected_material) {
         return;
     }
-
-    use_state(&m_material_state);
-
-    erhe::primitive::Material* selected_material = selected_material_shared.get();
-
-    const erhe::primitive::Material_data        before      = selected_material->data;
-    erhe::primitive::Material_data&             data        = selected_material->data;
-    erhe::primitive::Material_texture_samplers& samplers    = data.texture_samplers;
-    push_group("Material", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed, m_indent);
-
-    add_entry("state", [this]() {ImGui::TextUnformatted(
-        (m_material_state == Editor_state::clean          ) ? "clean" :
-        (m_material_state == Editor_state::dirty_editing  ) ? "dirty_editing" :
-        (m_material_state == Editor_state::dirty_completed) ? "dirty_completed" : "?"); });
 
     const auto  available_size = ImGui::GetContentRegionAvail();
     const float area_size_0    = std::min(available_size.x, available_size.y);
     const int   area_size      = std::max(1, static_cast<int>(area_size_0));
     m_context.material_preview->resize(area_size, area_size);
     m_context.material_preview->update_rendertarget(*m_context.graphics_device);
-    m_context.material_preview->render_preview(selected_material_shared);
+    m_context.material_preview->render_preview(selected_material);
     m_context.material_preview->show_preview();
 
     auto* node = m_context.brdf_slice->get_node();
     if (node != nullptr) {
-        node->set_material(selected_material_shared);
+        node->set_material(selected_material);
         if (ImGui::TreeNodeEx("BRDF Slice", ImGuiTreeNodeFlags_None)) {
             m_context.brdf_slice->show_brdf_slice(area_size);
             ImGui::TreePop();
         }
-
-        //push_group("BRDF Slice", ImGuiTreeNodeFlags_None);
-        //add_entry("BRDF", [this, area_size]() {
-        //    m_context.brdf_slice->show_brdf_slice(area_size);
-        //});
-        //pop_group();
-    }
-
-    // Registered material properties (doc/property-system.md 4.1):
-    // generic rows, undo through Property_set_operation.
-    m_dependency_rows.add_rows(*this, std::vector<std::shared_ptr<erhe::Item_base>>{selected_material_shared});
-
-    Scene_root* scene_root = m_context.scene_commands->get_scene_root(selected_material);
-    if (scene_root != nullptr) {
-        const std::shared_ptr<Content_library>& content_library = scene_root->get_content_library();
-        if (content_library) {
-            // A slot's texture and its transform are generic rows (the
-            // Textures group and the per-slot groups above,
-            // doc/property-system.md D18 / D28). The sampler rows of a
-            // bound slot follow here - the shader applies them regardless
-            // of which source provided the texture.
-            auto add_texture_slot_entries = [this](const std::string& label, erhe::primitive::Material_texture_sampler* sampler) {
-                if (sampler->texture_reference) {
-                    // Sampler state rows. Every edit REPLACES the slot's
-                    // sampler with a freshly created one (never mutates in
-                    // place), so the material inspect snapshot sees the
-                    // pointer change and undo works.
-                    const auto current_create_info = [](erhe::primitive::Material_texture_sampler* slot) -> erhe::graphics::Sampler_create_info {
-                        if (slot->sampler) {
-                            return slot->sampler->get_create_info();
-                        }
-                        return erhe::graphics::Sampler_create_info{};
-                    };
-                    const auto replace_sampler = [this](erhe::primitive::Material_texture_sampler* slot, const erhe::graphics::Sampler_create_info& create_info) {
-                        slot->sampler = std::make_shared<erhe::graphics::Sampler>(*m_context.graphics_device, create_info);
-                    };
-                    push_group(label + " Sampler", ImGuiTreeNodeFlags_None, m_indent);
-                    static const char* const c_wrap_names[]   = {"Repeat", "Clamp to Edge", "Mirrored Repeat"};
-                    static const char* const c_filter_names[] = {"Nearest", "Linear"};
-                    static const char* const c_mipmap_names[] = {"Not Mipmapped", "Nearest", "Linear"};
-                    add_entry("Wrap U", [sampler, current_create_info, replace_sampler]() {
-                        erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
-                        int current = static_cast<int>(create_info.address_mode[0]);
-                        if (ImGui::Combo("##", &current, c_wrap_names, IM_ARRAYSIZE(c_wrap_names))) {
-                            create_info.address_mode[0] = static_cast<erhe::graphics::Sampler_address_mode>(current);
-                            replace_sampler(sampler, create_info);
-                        }
-                    });
-                    add_entry("Wrap V", [sampler, current_create_info, replace_sampler]() {
-                        erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
-                        int current = static_cast<int>(create_info.address_mode[1]);
-                        if (ImGui::Combo("##", &current, c_wrap_names, IM_ARRAYSIZE(c_wrap_names))) {
-                            create_info.address_mode[1] = static_cast<erhe::graphics::Sampler_address_mode>(current);
-                            create_info.address_mode[2] = create_info.address_mode[1];
-                            replace_sampler(sampler, create_info);
-                        }
-                    });
-                    add_entry("Min Filter", [sampler, current_create_info, replace_sampler]() {
-                        erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
-                        int current = static_cast<int>(create_info.min_filter);
-                        if (ImGui::Combo("##", &current, c_filter_names, IM_ARRAYSIZE(c_filter_names))) {
-                            create_info.min_filter = static_cast<erhe::graphics::Filter>(current);
-                            replace_sampler(sampler, create_info);
-                        }
-                    });
-                    add_entry("Mag Filter", [sampler, current_create_info, replace_sampler]() {
-                        erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
-                        int current = static_cast<int>(create_info.mag_filter);
-                        if (ImGui::Combo("##", &current, c_filter_names, IM_ARRAYSIZE(c_filter_names))) {
-                            create_info.mag_filter = static_cast<erhe::graphics::Filter>(current);
-                            replace_sampler(sampler, create_info);
-                        }
-                    });
-                    add_entry("Mipmap Mode", [sampler, current_create_info, replace_sampler]() {
-                        erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
-                        int current = static_cast<int>(create_info.mipmap_mode);
-                        if (ImGui::Combo("##", &current, c_mipmap_names, IM_ARRAYSIZE(c_mipmap_names))) {
-                            create_info.mipmap_mode = static_cast<erhe::graphics::Sampler_mipmap_mode>(current);
-                            replace_sampler(sampler, create_info);
-                        }
-                    });
-                    add_entry("Max Anisotropy", [sampler, current_create_info, replace_sampler]() {
-                        erhe::graphics::Sampler_create_info create_info = current_create_info(sampler);
-                        int current = static_cast<int>(create_info.max_anisotropy);
-                        if (ImGui::SliderInt("##", &current, 1, 16)) {
-                            create_info.max_anisotropy = static_cast<float>(current);
-                            replace_sampler(sampler, create_info);
-                        }
-                    });
-                    pop_group();
-                }
-            };
-            add_texture_slot_entries("Base Color",         &samplers.base_color);
-            if (selected_material->get_bxdf_model() != erhe::primitive::Bxdf_model::unlit) {
-                add_texture_slot_entries("Metallic Roughness", &samplers.metallic_roughness);
-            }
-            add_texture_slot_entries("Normal",             &samplers.normal);
-            if (selected_material->get_bxdf_model() != erhe::primitive::Bxdf_model::unlit) {
-                add_texture_slot_entries("Occlusion",          &samplers.occlusion);
-            }
-            add_texture_slot_entries("Emissive",           &samplers.emissive);
-        }
-    }
-
-    pop_group();
-
-    show_entries();
-
-    if (m_material_state == Editor_state::dirty_completed) {
-        log_operations->info("m_material_state == Editor_state::dirty_completed");
-        end_material_inspect();
     }
 }
 
