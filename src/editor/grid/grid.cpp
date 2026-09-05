@@ -66,37 +66,35 @@ const erhe::property::Enum_info c_grid_plane_type_enum_info{"Grid_plane_type", c
 
 // (default and ui are parenthesized: macro arguments split at the commas
 // inside braces)
-#define ERHE_GRID_PROPERTY(Type, member_name, default_expr, ui_expr)     Property<Type>::register_member(#member_name, Grid::property_owner_type(), &Grid::m_##member_name, Property_metadata{.default_value = default_expr, .property_changed = Grid::on_grid_property_changed, .ui = ui_expr})
-#define ERHE_GRID_INDEXED_PROPERTY(Type, name, array_member, index, default_expr, ui_expr)     Property<Type>::register_member<Grid, Type>(#name, Grid::property_owner_type(), [](auto& grid) -> auto& { return grid.array_member[index]; }, Property_metadata{.default_value = default_expr, .property_changed = Grid::on_grid_property_changed, .ui = ui_expr})
+// Entry-stored, inheriting (section 4.11): the members are a mirror
+// refreshed by Grid::on_property_changed.
+#define ERHE_GRID_PROPERTY(Type, member_name, default_expr, ui_expr)     Property<Type>::register_property(#member_name, Grid::property_owner_type(), Property_metadata{.default_value = default_expr, .inherits = true, .ui = ui_expr})
 
-const Property<Grid_plane_type> Grid::plane_type_property = Property<Grid_plane_type>::register_member(
-    "plane_type", Grid::property_owner_type(), c_grid_plane_type_enum_info, &Grid::m_plane_type,
-    Property_metadata{.default_value = erhe::property::make_value(Grid_plane_type::XZ), .property_changed = Grid::on_grid_property_changed, .ui = Property_ui{.label = "Plane"}},
-    [](Grid& grid) { grid.update(); }
+const Property<Grid_plane_type> Grid::plane_type_property = Property<Grid_plane_type>::register_property(
+    "plane_type", Grid::property_owner_type(), c_grid_plane_type_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Grid_plane_type::XZ), .inherits = true, .ui = Property_ui{.label = "Plane"}}
 );
-const Property<glm::vec3> Grid::center_property = Property<glm::vec3>::register_member(
-    "center", Grid::property_owner_type(), &Grid::m_center,
-    Property_metadata{.property_changed = Grid::on_grid_property_changed, .ui = Property_ui{.step = 0.01f, .tooltip = "Grid origin in world space", .label = "Offset", .visible_when = is_free_plane}},
-    [](Grid& grid) { grid.update(); }
+const Property<glm::vec3> Grid::center_property = Property<glm::vec3>::register_property(
+    "center", Grid::property_owner_type(),
+    Property_metadata{.default_value = glm::vec3{0.0f}, .inherits = true, .ui = Property_ui{.step = 0.01f, .tooltip = "Grid origin in world space", .label = "Offset", .visible_when = is_free_plane}}
 );
-const Property<float> Grid::rotation_property = Property<float>::register_member(
-    "rotation", Grid::property_owner_type(), &Grid::m_rotation,
-    Property_metadata{.default_value = 0.0f, .property_changed = Grid::on_grid_property_changed, .ui = Property_ui{.min = -180.0f, .max = 180.0f, .step = 0.05f, .tooltip = "Degrees around the plane normal", .label = "Rotation", .visible_when = is_free_plane}},
-    [](Grid& grid) { grid.update(); }
+const Property<float> Grid::rotation_property = Property<float>::register_property(
+    "rotation", Grid::property_owner_type(),
+    Property_metadata{.default_value = 0.0f, .inherits = true, .ui = Property_ui{.min = -180.0f, .max = 180.0f, .step = 0.05f, .tooltip = "Degrees around the plane normal", .label = "Rotation", .visible_when = is_free_plane}}
 );
 const Property<bool>      Grid::intersect_enable_property    = ERHE_GRID_PROPERTY(bool,      intersect_enable,    (true), (Property_ui{.tooltip = "The grid takes part in hover and placement ray tests", .label = "Intersect Enable"}));
 const Property<bool>      Grid::snap_enabled_property        = ERHE_GRID_PROPERTY(bool,      snap_enabled,        (true), (Property_ui{.label = "Snap Enable"}));
 const Property<float>     Grid::cell_size_property           = ERHE_GRID_PROPERTY(float,     cell_size,           (1.0f), (slider(0.01f, 10.0f, "Cell Size", {}, true)));
 const Property<int>       Grid::cell_div_property            = ERHE_GRID_PROPERTY(int,       cell_div,            (2), (slider(1.0f, 10.0f, "Cell Div", "Minor cells per major cell")));
 const Property<int>       Grid::cell_count_property          = ERHE_GRID_PROPERTY(int,       cell_count,          (100), (Property_ui{.min = 1.0f, .max = 10000.0f, .tooltip = "Cells per axis that bound the ray intersection (snap) region; the rendered grid is infinite", .label = "Cell Count"}));
-const Property<glm::vec4> Grid::level0_color_property        = ERHE_GRID_INDEXED_PROPERTY(glm::vec4, level0_color, m_level_colors, 0, (glm::vec4{0.0f, 0.0f, 0.01f, 1.0f}), (color("Level 0 Color", c_lines)));
-const Property<glm::vec4> Grid::level1_color_property        = ERHE_GRID_INDEXED_PROPERTY(glm::vec4, level1_color, m_level_colors, 1, (glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}), (color("Level 1 Color", c_lines)));
-const Property<glm::vec4> Grid::level2_color_property        = ERHE_GRID_INDEXED_PROPERTY(glm::vec4, level2_color, m_level_colors, 2, (glm::vec4{0.01f, 0.0f, 0.0f, 1.0f}), (color("Level 2 Color", c_lines)));
-const Property<glm::vec4> Grid::level3_color_property        = ERHE_GRID_INDEXED_PROPERTY(glm::vec4, level3_color, m_level_colors, 3, (glm::vec4{0.0f, 0.01f, 0.0f, 1.0f}), (color("Level 3 Color", c_lines)));
-const Property<float>     Grid::level0_width_property        = ERHE_GRID_INDEXED_PROPERTY(float, level0_width, m_level_widths, 0, (0.006f), (Property_ui{.min = 0.0f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_lines, .tooltip = "Line width as a fraction of the level cell size", .label = "Level 0 Width"}));
-const Property<float>     Grid::level1_width_property        = ERHE_GRID_INDEXED_PROPERTY(float, level1_width, m_level_widths, 1, (0.02f), (Property_ui{.min = 0.0f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_lines, .label = "Level 1 Width"}));
-const Property<float>     Grid::level2_width_property        = ERHE_GRID_INDEXED_PROPERTY(float, level2_width, m_level_widths, 2, (0.02f), (Property_ui{.min = 0.0f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_lines, .label = "Level 2 Width"}));
-const Property<float>     Grid::level3_width_property        = ERHE_GRID_INDEXED_PROPERTY(float, level3_width, m_level_widths, 3, (0.02f), (Property_ui{.min = 0.0f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_lines, .label = "Level 3 Width"}));
+const Property<glm::vec4> Grid::level0_color_property        = ERHE_GRID_PROPERTY(glm::vec4, level0_color, (glm::vec4{0.0f, 0.0f, 0.01f, 1.0f}), (color("Level 0 Color", c_lines)));
+const Property<glm::vec4> Grid::level1_color_property        = ERHE_GRID_PROPERTY(glm::vec4, level1_color, (glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}), (color("Level 1 Color", c_lines)));
+const Property<glm::vec4> Grid::level2_color_property        = ERHE_GRID_PROPERTY(glm::vec4, level2_color, (glm::vec4{0.01f, 0.0f, 0.0f, 1.0f}), (color("Level 2 Color", c_lines)));
+const Property<glm::vec4> Grid::level3_color_property        = ERHE_GRID_PROPERTY(glm::vec4, level3_color, (glm::vec4{0.0f, 0.01f, 0.0f, 1.0f}), (color("Level 3 Color", c_lines)));
+const Property<float>     Grid::level0_width_property        = ERHE_GRID_PROPERTY(float, level0_width, (0.006f), (Property_ui{.min = 0.0f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_lines, .tooltip = "Line width as a fraction of the level cell size", .label = "Level 0 Width"}));
+const Property<float>     Grid::level1_width_property        = ERHE_GRID_PROPERTY(float, level1_width, (0.02f), (Property_ui{.min = 0.0f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_lines, .label = "Level 1 Width"}));
+const Property<float>     Grid::level2_width_property        = ERHE_GRID_PROPERTY(float, level2_width, (0.02f), (Property_ui{.min = 0.0f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_lines, .label = "Level 2 Width"}));
+const Property<float>     Grid::level3_width_property        = ERHE_GRID_PROPERTY(float, level3_width, (0.02f), (Property_ui{.min = 0.0f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .group = c_lines, .label = "Level 3 Width"}));
 const Property<bool>      Grid::label_enable_property        = ERHE_GRID_PROPERTY(bool,      label_enable,        (true), (Property_ui{.group = c_labels, .tooltip = "Axis coordinate labels in the grid shader", .label = "Enable"}));
 const Property<float>     Grid::label_text_fraction_property = ERHE_GRID_PROPERTY(float,     label_text_fraction, (0.15f), (Property_ui{.min = 0.05f, .max = 0.5f, .presentation = Property_ui::Presentation::slider, .group = c_labels, .tooltip = "Text height as a fraction of the label spacing", .label = "Size"}));
 const Property<float>     Grid::label_spacing_property       = ERHE_GRID_PROPERTY(float,     label_spacing,       (1.0f), (Property_ui{.min = 1.0f, .max = 100.0f, .presentation = Property_ui::Presentation::slider, .group = c_labels, .tooltip = "World units between labels", .label = "Spacing"}));
@@ -104,11 +102,43 @@ const Property<float>     Grid::label_fade_property          = ERHE_GRID_PROPERT
 const Property<glm::vec4> Grid::label_color_property         = ERHE_GRID_PROPERTY(glm::vec4, label_color,         (glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}), (color("Color", c_labels)));
 
 #undef ERHE_GRID_PROPERTY
-#undef ERHE_GRID_INDEXED_PROPERTY
 
-void Grid::on_grid_property_changed(Dependency_object& object, const erhe::property::Property_changed_args&)
+void Grid::on_property_changed(const erhe::property::Property_changed_args& args)
 {
-    static_cast<Grid&>(object).touch_settings();
+    if (!erhe::property::is_owner_type_or_descendant(Grid::property_owner_type(), args.property.get_owner_type())) {
+        return;
+    }
+    refresh_mirror();
+    const erhe::property::Dependency_property* const property = &args.property;
+    if ((property == plane_type_property.get_ptr()) || (property == center_property.get_ptr()) || (property == rotation_property.get_ptr())) {
+        update();
+    }
+    touch_settings(); // D19: every Grid property change schedules the settings autosave
+}
+
+void Grid::refresh_mirror()
+{
+    m_plane_type          = get_value(plane_type_property);
+    m_center              = get_value(center_property);
+    m_rotation            = get_value(rotation_property);
+    m_intersect_enable    = get_value(intersect_enable_property);
+    m_snap_enabled        = get_value(snap_enabled_property);
+    m_cell_size           = get_value(cell_size_property);
+    m_cell_div            = get_value(cell_div_property);
+    m_cell_count          = get_value(cell_count_property);
+    m_level_colors[0]     = get_value(level0_color_property);
+    m_level_colors[1]     = get_value(level1_color_property);
+    m_level_colors[2]     = get_value(level2_color_property);
+    m_level_colors[3]     = get_value(level3_color_property);
+    m_level_widths[0]     = get_value(level0_width_property);
+    m_level_widths[1]     = get_value(level1_width_property);
+    m_level_widths[2]     = get_value(level2_width_property);
+    m_level_widths[3]     = get_value(level3_width_property);
+    m_label_enable        = get_value(label_enable_property);
+    m_label_text_fraction = get_value(label_text_fraction_property);
+    m_label_spacing       = get_value(label_spacing_property);
+    m_label_fade          = get_value(label_fade_property);
+    m_label_color         = get_value(label_color_property);
 }
 
 void Grid::touch_settings()
@@ -157,24 +187,27 @@ Grid::Grid(const Grid& src, erhe::for_clone)
 
 void Grid::read_config(const Grid_config& config)
 {
+    // The config is the grid's authored state: local values, written
+    // through the store so the mirror and every observer follow.
     set_visible(config.visible);
-    m_snap_enabled        = config.snap_enabled;
-    m_cell_size           = config.cell_size;
-    m_cell_div            = config.cell_div;
-    m_cell_count          = config.cell_count;
-    m_label_enable        = config.label_enable;
-    m_label_text_fraction = config.label_text_fraction;
-    m_label_spacing       = config.label_spacing;
-    m_label_fade          = config.label_fade;
-    m_label_color         = config.label_color;
-    m_level_colors[0]     = config.level0_color;
-    m_level_colors[1]     = config.level1_color;
-    m_level_colors[2]     = config.level2_color;
-    m_level_colors[3]     = config.level3_color;
-    m_level_widths[0]     = config.level0_width;
-    m_level_widths[1]     = config.level1_width;
-    m_level_widths[2]     = config.level2_width;
-    m_level_widths[3]     = config.level3_width;
+    const Dependency_object::Change_batch batch{*this};
+    set_value(snap_enabled_property,        config.snap_enabled);
+    set_value(cell_size_property,           config.cell_size);
+    set_value(cell_div_property,            config.cell_div);
+    set_value(cell_count_property,          config.cell_count);
+    set_value(label_enable_property,        config.label_enable);
+    set_value(label_text_fraction_property, config.label_text_fraction);
+    set_value(label_spacing_property,       config.label_spacing);
+    set_value(label_fade_property,          config.label_fade);
+    set_value(label_color_property,         config.label_color);
+    set_value(level0_color_property,        config.level0_color);
+    set_value(level1_color_property,        config.level1_color);
+    set_value(level2_color_property,        config.level2_color);
+    set_value(level3_color_property,        config.level3_color);
+    set_value(level0_width_property,        config.level0_width);
+    set_value(level1_width_property,        config.level1_width);
+    set_value(level2_width_property,        config.level2_width);
+    set_value(level3_width_property,        config.level3_width);
 }
 
 void Grid::write_config(Grid_config& config) const

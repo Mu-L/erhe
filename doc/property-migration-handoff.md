@@ -18,23 +18,20 @@ no descendant inherits it; moving it to the entry store is what makes it
 holdable. A hand-written row is authored state the Properties window still
 draws by hand and no property carries at all.
 
-1. `Grid` (`src/editor/grid/grid.cpp`, section 4.11): plane_type,
-   center, rotation, intersect_enable, snap_enabled, cell_size,
-   cell_div, cell_count, the level colors and widths, the label settings.
-2. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
+1. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
    4.11): brush, facet, corner.
-3. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
+2. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
    rows).
-4. `Animation`: start time, end time (hand-written rows).
-5. `Node_joint`: enable collision, connected node as a node-typed object
+3. `Animation`: start time, end time (hand-written rows).
+4. `Node_joint`: enable collision, connected node as a node-typed object
    reference (hand-written rows).
-6. Geometry graph and texture graph node parameters (section 4.5), last;
+5. Geometry graph and texture graph node parameters (section 4.5), last;
    sharing them through a style is rarely wanted.
 
 Done and the template for a derived row: the Light flux slider and
 blackbody swatch (section 4.3) are computed properties (D26), flux
 writable through a setter over intensity. Done and following the bridged
-owner recipe below: `Layout` (section 4.13).
+owner recipe below: `Layout` (section 4.13) and `Grid` (section 4.11).
 
 Stays as it is: `Node`'s transform (bridged for the reasons D18 gives),
 `Physics_joint_settings` limits and drives (no property value form) and

@@ -47,10 +47,12 @@ public:
     [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return erhe::Item_type::node_attachment | erhe::Item_type::grid; }
 
     // Registered properties (erhe::property, doc/property-system.md
-    // section 4.11), member-backed (D18) over the members below. Every
-    // one carries the property_changed callback that asks the settings
-    // store for the autosave; plane_type, center and rotation also
-    // re-derive the grid transform.
+    // section 4.11), stored in the entry store and inheriting from the
+    // node chain (D30): a node or a style holds "Grid.cell_size" for the
+    // grids below it. The members below are a mirror of the effective
+    // values kept current by on_property_changed, which also asks the
+    // settings store for the autosave and re-derives the grid transform
+    // after plane_type, center or rotation.
     static const erhe::property::Property<Grid_plane_type> plane_type_property;
     static const erhe::property::Property<glm::vec3>       center_property;
     static const erhe::property::Property<float>           rotation_property;
@@ -104,10 +106,14 @@ public:
     // Overrides Item_base: the visible flag persists with the grid config.
     void handle_flag_bits_update(uint64_t old_flag_bits, uint64_t new_flag_bits) override;
 
+    // Implements erhe::property::Dependency_object: refreshes the mirror
+    // on every change of a Grid property, whatever its source, re-derives
+    // the transform and touches the settings store.
+    void on_property_changed(const erhe::property::Property_changed_args& args) override;
+
 private:
     void update();
-    // D19: every Grid property change touches the settings store.
-    static void on_grid_property_changed(erhe::property::Dependency_object& object, const erhe::property::Property_changed_args& args);
+    void refresh_mirror();
     void touch_settings();
 
     Editor_settings_store* m_settings_store{nullptr};

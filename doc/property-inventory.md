@@ -115,12 +115,13 @@ Not properties: the five slot samplers (`Material_data`, edited through
 
 | Property | Storage | Notes |
 |---|---|---|
-| plane_type, center, rotation | member | after_set re-derives the transform |
-| intersect_enable, snap_enabled, cell_size, cell_div, cell_count | member | |
-| level0_color .. level3_color, level0_width .. level3_width | member | accessor lambdas into the two arrays |
-| label_enable, label_text_fraction, label_spacing, label_fade, label_color | member | |
+| plane_type, center, rotation | entry | inherits (D30, from the node chain); on_property_changed re-derives the transform |
+| intersect_enable, snap_enabled, cell_size, cell_div, cell_count | entry | inherits |
+| level0_color .. level3_color, level0_width .. level3_width | entry | inherits; the two mirror arrays follow |
+| label_enable, label_text_fraction, label_spacing, label_fade, label_color | entry | inherits |
 
-Every Grid property's property_changed touches the settings store.
+The members are a mirror of the effective values; every Grid property
+change touches the settings store from on_property_changed.
 
 ### Physics_material (`src/erhe/physics/erhe_physics/physics_material.cpp`, section 4.12)
 

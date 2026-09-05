@@ -1531,22 +1531,30 @@ inertia).
 ### 4.11 Grid and Brush_placement
 
 `Grid` (the editor's grid attachment, owned by `Grid_tool` and optionally
-attached to a node) registers its settings as member-backed properties
-(D18): `plane_type` (`Grid_plane_type`, `Enum_info`
-`c_grid_plane_type_enum_info` next to `grid_plane_type_strings`),
-`center` and `rotation` (degrees, `visible_when` the plane is not the
-Node plane; these three re-derive the grid transform in their
-`after_set`), `intersect_enable`, `snap_enabled`, `cell_size`
-(logarithmic 0.01..10), `cell_div` (1..10), `cell_count` (the snap
-region bound, not a UI row before), the four `level<N>_color` and
-`level<N>_width` rows (group `Lines`, accessor lambdas into the two
-arrays) and `label_enable` / `label_text_fraction` / `label_spacing` /
-`label_fade` / `label_color` (group `Axis Labels`). Every Grid property
-carries one `property_changed` callback (D19) that touches the
-`Editor_settings_store` the owning `Grid_tool` handed the grid, so a
-property edit from any writer schedules the settings autosave that
-`Grid_tool::write_config` feeds; the `visible` flag (an `Item_base`
-property) reaches the same store through `handle_flag_bits_update`. The
+attached to a node) registers its settings as entry-stored properties,
+the Material way (section 4.1), every one `inherits` (a grid without a
+local value reads its node chain, section 4.2 / D30, so a node or a
+style holds `Grid.cell_size` for the grids below it): `plane_type`
+(`Grid_plane_type`, `Enum_info` `c_grid_plane_type_enum_info` next to
+`grid_plane_type_strings`), `center` and `rotation` (degrees,
+`visible_when` the plane is not the Node plane), `intersect_enable`,
+`snap_enabled`, `cell_size` (logarithmic 0.01..10), `cell_div` (1..10),
+`cell_count` (the snap region bound), the four `level<N>_color` and
+`level<N>_width` rows (group `Lines`) and `label_enable` /
+`label_text_fraction` / `label_spacing` / `label_fade` / `label_color`
+(group `Axis Labels`). The private members the render, snap and
+intersection paths read are a mirror of the effective values:
+`Grid::on_property_changed` refreshes them on every change of a `Grid`
+property, whatever its source, re-derives the grid transform after
+`plane_type`, `center` or `rotation`, and touches the
+`Editor_settings_store` the owning `Grid_tool` handed the grid (D19), so
+a property edit from any writer schedules the settings autosave that
+`Grid_tool::write_config` feeds from the mirror; `Grid::read_config`
+writes the config fields as local values through the store (before the
+store is handed over, so the load schedules no autosave). The `visible`
+flag (an `Item_base` property) reaches the same store through
+`handle_flag_bits_update`. The clone constructor copies the mirror; the
+entries copy through D10. The
 Grid window draws the name field and the Node plane's attach / detach
 buttons by hand and everything else as generic rows through its own
 `Property_editor` and `Dependency_property_rows`, so a grid edit is a
@@ -1708,12 +1716,12 @@ style layer is D25.
 - Entry storage for the member-backed registrations (D18) whose values a
   node or a style should hold and a descendant inherit (D30): a bridged
   property is always local, so it is neither offered on a holder nor
-  inherited. In the order the holding is wanted: `Grid`,
-  `Brush_placement`, then the graph node parameters. The Light, Camera
+  inherited. In the order the holding is wanted: `Brush_placement`,
+  then the graph node parameters. The Light, Camera
   and Node_physics migrations (sections 4.3, 4.4, 4.10) are the recipe:
   keep the engineered struct as a mirror refreshed from
   `on_property_changed`, route the writers through setters. `Layout`
-  (section 4.13) is done the same way. `Node`'s transform stays bridged
+  (section 4.13) and `Grid` (section 4.11) are done the same way. `Node`'s transform stays bridged
   for the reasons D18 gives.
 - Shader graph (`src/editor/graph/`) node parameters as properties. The
   oldest graph editor has no parameter serialization and no undo
