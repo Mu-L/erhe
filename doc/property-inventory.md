@@ -26,7 +26,8 @@ record's "Document roles" paragraph states the split.
 - **bridge** - member-backed through a hand-written `Property_bridge`
   (D18), used where the value is not a plain member or the set has a side
   effect the member write does not cover. Does its own no-op check.
-- **computed** - read-only, `register_computed` (D26).
+- **computed** - `register_computed` (D26): read-only, or writable
+  through a setter that writes a stored property (the `writes` note).
 - **attached** - `register_attached` (D3): registered by one type, set on
   objects of another, listed by the D12 rule under its qualified
   `<owner>.<name>`; any item can take one through the Properties
@@ -86,6 +87,8 @@ Not properties: the five slot samplers (`Material_data`, edited through
 | Property | Storage | Notes |
 |---|---|---|
 | light_type, color, intensity, temperature, range, inner_spot_angle, outer_spot_angle, cast_shadow | entry | inherits (D30, from the node chain); shared property_changed re-resolves the light set |
+| flux | computed | writes intensity (intensity times the emission solid angle); point and spot lights |
+| blackbody | computed | read-only chromaticity of temperature; shown while temperature is positive |
 
 ### Camera (`src/erhe/scene/erhe_scene/camera.cpp`, section 4.4)
 
@@ -206,7 +209,6 @@ migration priority order. Each migration follows the Material recipe
 | Owner | Fields | Notes |
 |---|---|---|
 | Physics_joint_settings | limits, drives | lists; no `Property_value` form, stay hand-written |
-| Light | flux, blackbody temperature | derived rows over intensity and temperature |
 | Scene | ambient light | the per-scene overrides stay a settings block |
 | Rendertarget_mesh | width, height, pixels per meter | |
 | Animation | start time, end time | |

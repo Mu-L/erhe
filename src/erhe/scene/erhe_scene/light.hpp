@@ -258,6 +258,12 @@ public:
     static const erhe::property::Property<float>      inner_spot_angle_property;
     static const erhe::property::Property<float>      outer_spot_angle_property;
     static const erhe::property::Property<bool>       cast_shadow_property;
+    // Derived rows (D26 computed properties): `flux` is intensity times
+    // the emission solid angle and its setter writes the intensity, so an
+    // undoable edit of it records the intensity; `blackbody` is the
+    // chromaticity of `temperature`, read-only.
+    static const erhe::property::Property<float>      flux_property;
+    static const erhe::property::Property<glm::vec3>  blackbody_property;
 
     [[nodiscard]] auto get_light_type      () const -> Type      { return get_value(light_type_property); }
     [[nodiscard]] auto get_color           () const -> glm::vec3 { return get_value(color_property); }

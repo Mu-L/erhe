@@ -268,36 +268,17 @@ void Properties::light_properties(erhe::scene::Light& light)
     ERHE_PROFILE_FUNCTION();
 
     // The authored light state (type, cast shadow, spot angles, range,
-    // intensity, color, temperature) is drawn by the generic property rows
-    // (Dependency_property_rows); every write re-resolves the scene light
-    // set through the Light property callback (doc/property-system.md
-    // D19). Only the derived rows remain here.
+    // intensity, color, temperature) and the derived rows (flux, the
+    // blackbody swatch: computed properties, D26) are drawn by the generic
+    // property rows (Dependency_property_rows); every write re-resolves the
+    // scene light set through the Light property callback
+    // (doc/property-system.md D19). Only the diagnostic remains here.
     const erhe::scene::Light::Type type = light.get_light_type();
     if ((type == erhe::scene::Light::Type::point) && (light.get_range() <= 0.0f)) {
         add_entry("Warning", [](){
             ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 160, 32, 255));
             ImGui::TextWrapped("Point light range is 0: it reaches nowhere, so it emits no light and casts no shadow. Set a positive range.");
             ImGui::PopStyleColor();
-        });
-    }
-    // Flux is intensity times the emission solid angle (Light::get_luminous_flux),
-    // so the row edits the intensity property. Directional lights have no
-    // solid angle; their intensity (lux) row is the generic one.
-    if (type != erhe::scene::Light::Type::directional) {
-        add_entry("Flux (lm)", [&light](){
-            float lumens = light.get_luminous_flux();
-            if (ImGui::SliderFloat("##", &lumens, 0.01f, 200000.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
-                light.set_luminous_flux(lumens);
-            }
-        });
-    }
-    const float temperature = light.get_temperature();
-    if (temperature > 0.0f) {
-        add_entry("Blackbody", [temperature](){
-            const glm::vec3 blackbody = erhe::scene::Light::blackbody_color(temperature);
-            ImGui::ColorButton("##blackbody_color", ImVec4{blackbody.r, blackbody.g, blackbody.b, 1.0f}, ImGuiColorEditFlags_NoTooltip);
-            ImGui::SameLine();
-            ImGui::Text("%.0f K", temperature);
         });
     }
 

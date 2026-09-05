@@ -76,6 +76,10 @@ private:
     void begin_edit (const erhe::property::Dependency_property& property);
     void end_edit   (const erhe::property::Dependency_property& property);
     void queue_set  (const erhe::property::Dependency_property& property, const std::optional<erhe::property::Local_state>& after);
+    // The property an edit of `property` records: `property` itself, or
+    // for a writable computed property (D26) the stored property its
+    // setter writes.
+    [[nodiscard]] auto recorded_property(const erhe::property::Dependency_property& property) const -> const erhe::property::Dependency_property&;
     void context_menu(const erhe::property::Dependency_property& property, const erhe::property::Property_metadata& metadata);
     void reset_to_default  (const erhe::property::Dependency_property& property);
     void edit_as_expression(const erhe::property::Dependency_property& property);

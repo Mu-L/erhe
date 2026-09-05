@@ -442,10 +442,23 @@ auto Dependency_object::set_value_internal(const Dependency_property& property, 
         return false;
     }
 
+    const Property_metadata& metadata = get_metadata(property);
+    if (metadata.is_computed()) {
+        // D26: a writable computed property hands the value to its setter,
+        // which writes the stored property the value derives from; that
+        // write notifies for the stored property, this one has no entry,
+        // no previous value and no notification of its own.
+        if (!metadata.is_computed_writable()) {
+            log->error("property '{}' is computed and has no setter", property.get_name());
+            return false;
+        }
+        metadata.compute_set(*this, value);
+        return true;
+    }
+
     Value_source   old_source{};
     Property_value old_value = get_effective_value(property, old_source);
 
-    const Property_metadata& metadata = get_metadata(property);
     Effective_value_entry* entry = find_entry(property.get_index());
     if ((entry != nullptr) && (entry->expression != nullptr) && !keep_expression) {
         // A value write replaces the expression (WPF semantics).
@@ -485,6 +498,10 @@ auto Dependency_object::clear_value_internal(const Dependency_property& property
         return false;
     }
     const Property_metadata& metadata = get_metadata(property);
+    if (metadata.is_computed()) {
+        log->error("property '{}' is computed: it has no local value to clear", property.get_name());
+        return false;
+    }
     if (metadata.bridge.is_bound()) {
         // A bridged property has no "unset" state: clearing writes the
         // default (and drops an expression, through set_value_internal).
@@ -595,6 +612,10 @@ auto Dependency_object::set_expression(const Dependency_property& property, cons
         return false;
     }
     if (reject_if_sealed(property)) {
+        return false;
+    }
+    if (get_metadata(property).is_computed()) {
+        log->error("property '{}' is computed: an expression cannot drive it", property.get_name());
         return false;
     }
     std::string error;

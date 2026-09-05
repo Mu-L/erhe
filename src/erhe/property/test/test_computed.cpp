@@ -43,6 +43,15 @@ const Property<int> computed_count = Property<int>::register_computed(
 
 const Property<float> computed_target = Property<float>::register_property("computed_target", type_d());
 
+// A writable computed property: twice computed_target, and its setter
+// writes computed_target.
+const Property<float> computed_double = Property<float>::register_computed(
+    "computed_double", type_d(),
+    [](const Dependency_object& o) -> Property_value { return o.get_value(computed_target) * 2.0f; },
+    [](Dependency_object& o, const Property_value& value) { o.set_value(computed_target, std::get<float>(value) * 0.5f); },
+    computed_target.get()
+);
+
 } // anonymous namespace
 
 TEST(Computed_property, reads_the_provider_with_source_computed_and_no_layers)
@@ -77,6 +86,52 @@ TEST(Computed_property, every_write_is_rejected_without_notification)
     EXPECT_EQ(o.size, (glm::vec3{1.0f, 2.0f, 3.0f}));
     EXPECT_TRUE(o.changes.empty());
     EXPECT_FALSE(o.read_local_state(computed_extent.get()).has_value());
+}
+
+TEST(Computed_property, writable_one_sets_through_its_setter_and_keeps_no_layer)
+{
+    Computed_object o;
+    const Dependency_property& property = computed_double.get();
+    EXPECT_FALSE(property.is_read_only());
+    EXPECT_TRUE(property.get_default_metadata().is_computed());
+    EXPECT_TRUE(property.get_default_metadata().is_computed_writable());
+    EXPECT_EQ(property.get_default_metadata().compute_writes, computed_target.get_ptr());
+    EXPECT_EQ(o.get_value(computed_double), 0.0f);
+    EXPECT_EQ(o.get_value_source(property), Value_source::computed);
+
+    // A set goes to the stored property: that one notifies, this one has
+    // no entry and no notification of its own.
+    EXPECT_TRUE(o.set_value(property, Property_value{8.0f}));
+    EXPECT_EQ(o.get_value(computed_target), 4.0f);
+    EXPECT_EQ(o.get_value(computed_double), 8.0f);
+    EXPECT_TRUE(o.has_local_value(computed_target.get()));
+    EXPECT_FALSE(o.has_local_value(property));
+    EXPECT_FALSE(o.read_local_state(property).has_value());
+    EXPECT_EQ(o.change_count("computed_target"), std::size_t{1});
+    EXPECT_EQ(o.change_count("computed_double"), std::size_t{0});
+    EXPECT_TRUE(o.set_current_value(property, Property_value{2.0f}));
+    EXPECT_EQ(o.get_value(computed_target), 1.0f);
+
+    // No local layer: clearing, an expression and a null local state are
+    // rejected and change nothing.
+    EXPECT_FALSE(o.clear_value(property));
+    EXPECT_FALSE(o.set_expression(property, "3"));
+    EXPECT_FALSE(o.apply_local_state(property, std::nullopt));
+    EXPECT_FALSE(o.apply_local_state(property, Local_state{Expression_text{"3"}}));
+    EXPECT_EQ(o.get_value(computed_target), 1.0f);
+    // A value through apply_local_state goes to the setter too.
+    EXPECT_TRUE(o.apply_local_state(property, Local_state{Property_value{6.0f}}));
+    EXPECT_EQ(o.get_value(computed_target), 3.0f);
+
+    // Not a local value for bags: the stored property is.
+    const Property_set bag = Property_set::read_local_values(o);
+    EXPECT_FALSE(bag.contains(property));
+    EXPECT_TRUE(bag.contains(computed_target.get()));
+
+    // A sealed object refuses the setter too.
+    o.seal();
+    EXPECT_FALSE(o.set_value(property, Property_value{20.0f}));
+    EXPECT_EQ(o.get_value(computed_target), 3.0f);
 }
 
 TEST(Computed_property, is_not_a_local_value_for_bags_copies_or_styles)

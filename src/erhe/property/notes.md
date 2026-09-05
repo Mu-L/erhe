@@ -100,7 +100,12 @@ inventory (and the owner's design section when the design changed).
   validate and coerce do not apply, and every write is rejected as
   read-only. The owner calls `invalidate_dependents` where the provider's
   inputs change so expressions reading it re-evaluate; changed callbacks
-  and observers never fire for it (no previous value exists). Users:
+  and observers never fire for it (no previous value exists). The
+  overload taking a `Compute_set_callback` and the stored property it
+  writes (`Property_metadata::compute_set` / `compute_writes`) makes it
+  writable: `set_value` hands the value to the setter, clearing and
+  expressions stay rejected (`erhe::scene::Light`'s `flux` over
+  `intensity`). Users:
   `erhe::Hierarchy::child_count_property`, `erhe::scene::Node`'s
   `world_translation` / `world_rotation` / `world_scale`,
   `erhe::scene::Mesh`'s `world_bounds_min` / `world_bounds_max`.

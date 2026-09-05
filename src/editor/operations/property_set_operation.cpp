@@ -123,6 +123,26 @@ void apply_item_property(
     context.on_item_property_changed(item, property);
 }
 
+auto make_computed_write_operation(
+    const std::shared_ptr<erhe::Item_base>&      item,
+    const std::optional<std::size_t>             sub_object,
+    erhe::property::Dependency_object&           target,
+    const erhe::property::Dependency_property&   property,
+    const erhe::property::Property_value&        value
+) -> std::shared_ptr<Property_set_operation>
+{
+    const erhe::property::Property_metadata& metadata = property.get_metadata(target.get_property_owner_type());
+    if (!metadata.is_computed_writable()) {
+        return {};
+    }
+    const erhe::property::Dependency_property&       writes = *metadata.compute_writes;
+    const std::optional<erhe::property::Local_state> before = target.read_local_state(writes);
+    if (!target.set_value(property, value)) {
+        return {};
+    }
+    return std::make_shared<Property_set_operation>(item, sub_object, writes, before, target.read_local_state(writes));
+}
+
 auto to_local_state(const std::optional<erhe::property::Property_value>& value) -> std::optional<erhe::property::Local_state>
 {
     if (!value.has_value()) {

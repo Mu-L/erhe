@@ -882,6 +882,31 @@ table, see D2a), and references to other objects (D28).
     consumer that needs to react to one reads it through an expression on a
     stored property of its own, or keeps polling its serial (the geometry
     graph `transform_from_node` of D21 stays a poll for this reason).
+  - Writable. A computed property may carry a setter
+    (`Property_metadata::compute_set`, `Compute_set_callback`) registered
+    through the `register_computed` overload that also names the stored
+    property the setter writes (`Property_metadata::compute_writes`); the
+    property is then not read-only. `set_value` and `set_current_value`
+    hand the value to the setter after the sealed check and validation
+    and return `true`; the setter writes the stored property, which
+    notifies as usual, and the computed property has no entry, no
+    previous value and no notification of its own. `clear_value`,
+    `set_expression` and `apply_local_state` with no value or an
+    expression stay rejected (one logged error, `false`): there is no
+    local layer. The value it presents is still the provider's
+    (`Value_source::computed`), so a set through the setter is read back
+    through the compute. The editor and the MCP server record an
+    undoable edit of such a property as a `Property_set_operation` of the
+    stored property (`make_computed_write_operation`,
+    `Dependency_property_rows::recorded_property`): the value goes
+    through the setter at once and the operation carries the stored
+    property's local state before and after, so undo restores exactly
+    that state; the row's tooltip names the property it writes
+    (`Writes: intensity`) and `get_item_properties` reports it as
+    `writes`. The context menu offers no expression entry for a computed
+    property, writable or not. The Light flux slider (section 4.3) is the
+    user: flux over intensity and the emission solid angle, its setter
+    writing intensity.
   - Node. `world_translation` (vec3), `world_rotation` (quat) and
     `world_scale` (vec3) read the components of `world_from_node_transform()`
     (group `World`, tooltips naming the world space); `child_count` (int)
@@ -1212,12 +1237,17 @@ renderer, example, tests) reads through them. The photometric helpers
 `Light(const Light&, for_clone)` copies only `layer_id`; the entries
 copy through D10.
 
-`Properties::light_properties` keeps only the derived rows the generic
-section cannot draw: the flux (lumens) slider for point and spot lights,
-the blackbody swatch shown while temperature is positive, and the
-zero-range warning for point lights. The Light Type, Cast Shadow, spot
-angle, Range, Intensity, Color and Temperature rows come from the generic
-section.
+The derived rows are computed properties (D26): `flux` (float,
+logarithmic slider 0.01..200000, label `Flux (lm)`, `visible_when` the
+light is a point or spot light) reads `get_luminous_flux()` and is
+writable, its setter `set_luminous_flux` writing `intensity`, which the
+editor records for undo; `blackbody` (vec3, color presentation, read-only,
+`visible_when` temperature is positive) reads `blackbody_color(temperature)`.
+The shared changed callback invalidates both for expressions before it
+re-resolves the light set, so `{flux}` in a formula follows an intensity
+change. `Properties::light_properties` keeps only the zero-range warning
+for point lights, a diagnostic; every other Light row comes from the
+generic section.
 
 ### 4.4 Camera
 

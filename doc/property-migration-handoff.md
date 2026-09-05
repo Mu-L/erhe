@@ -18,25 +18,25 @@ no descendant inherits it; moving it to the entry store is what makes it
 holdable. A hand-written row is authored state the Properties window still
 draws by hand and no property carries at all.
 
-1. Light derived rows (`Properties::light_properties`, section 4.3): the
-   flux (lumens) slider as a property computed over intensity and the
-   emission solid angle with a setter that writes intensity, and the
-   blackbody swatch over temperature. Computed properties are D26.
-2. `Layout` (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13):
+1. `Layout` (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13):
    type, primary, secondary, tertiary, volume_min, volume_max, gap,
    grid_track_count.
-3. `Grid` (`src/editor/grid/grid.cpp`, section 4.11): plane_type,
+2. `Grid` (`src/editor/grid/grid.cpp`, section 4.11): plane_type,
    center, rotation, intersect_enable, snap_enabled, cell_size,
    cell_div, cell_count, the level colors and widths, the label settings.
-4. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
+3. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
    4.11): brush, facet, corner.
-5. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
+4. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
    rows).
-6. `Animation`: start time, end time (hand-written rows).
-7. `Node_joint`: enable collision, connected node as a node-typed object
+5. `Animation`: start time, end time (hand-written rows).
+6. `Node_joint`: enable collision, connected node as a node-typed object
    reference (hand-written rows).
-8. Geometry graph and texture graph node parameters (section 4.5), last;
+7. Geometry graph and texture graph node parameters (section 4.5), last;
    sharing them through a style is rarely wanted.
+
+Done and the template for a derived row: the Light flux slider and
+blackbody swatch (section 4.3) are computed properties (D26), flux
+writable through a setter over intensity.
 
 Stays as it is: `Node`'s transform (bridged for the reasons D18 gives),
 `Physics_joint_settings` limits and drives (no property value form) and
@@ -106,10 +106,12 @@ and density) - settle that split before registering anything.
 ## 3. Recipe for a hand-written row
 
 The Material recipe of section 4.1 for a stored value; for a derived
-value (the flux slider) a computed property (D26) with a `set` that
-writes the underlying property, so the generic row edits it and undo
-records the underlying change. Delete the hand-written row in the same
-commit; the generic section draws it.
+value a writable computed property (D26, the Light flux slider of
+section 4.3 is the shape): `register_computed` with the provider, a
+setter that writes the stored property, and that property, so the
+generic row edits it and undo records the stored property's change.
+Delete the hand-written row in the same commit; the generic section
+draws it.
 
 ## 4. Verification
 

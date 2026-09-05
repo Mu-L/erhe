@@ -127,6 +127,10 @@ auto property_json(const erhe::property::Dependency_object& object, const erhe::
         if (const std::string_view error = object.get_expression_error(property); !error.empty()) {
             entry["expression_error"] = std::string{error};
         }
+        if (metadata.is_computed_writable()) {
+            // D26: a set of this property writes that stored property.
+            entry["writes"] = std::string{metadata.compute_writes->get_name()};
+        }
         if (property.get_type() == erhe::property::Property_type::object) {
             // D28: the referenced item's session id and type next to its name.
             const erhe::property::Property_value        value      = object.get_value(property);
@@ -297,10 +301,14 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
     if (item->is_sealed()) {
         return make_error_content("Item '" + item->get_name() + "' is sealed (lock_edit): unlock_items first, or edit the prefab's source scene");
     }
+    const bool computed_writable = property->get_metadata(target->get_property_owner_type()).is_computed_writable(); // D26
 
     // An expression (doc/property-system.md D22) instead of a value.
     const auto expression_it = args.find("expression");
     if ((expression_it != args.end()) && !expression_it->is_null()) {
+        if (computed_writable) {
+            return make_error_content("Property '" + property_name + "' is computed: an expression cannot drive it (set '" + std::string{property->get_metadata(target->get_property_owner_type()).compute_writes->get_name()} + "' instead)");
+        }
         if (!expression_it->is_string()) {
             return make_error_content("expression must be a string");
         }
@@ -391,6 +399,27 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
         }
     }
 
+    if (computed_writable) {
+        // D26: the value goes through the setter and the operation records
+        // the stored property it wrote.
+        if (!after.has_value()) {
+            return make_error_content("Property '" + property_name + "' is computed: it has no local value to clear");
+        }
+        const std::shared_ptr<Property_set_operation> operation = make_computed_write_operation(item, sub_object, *target, *property, after.value());
+        if (!operation) {
+            return make_error_content("Property '" + property_name + "' refused the value");
+        }
+        m_context.operation_stack->queue(operation);
+        json result = {
+            {"item",       {{"id", item->get_id()}, {"name", item->get_name()}, {"type", std::string{item->get_type_name()}}}},
+            {"sub_object", sub_object.has_value() ? json(sub_object.value()) : json(nullptr)},
+            {"property",   property_name},
+            {"writes",     std::string{operation->get_property().get_name()}},
+            {"after",      erhe::property::to_string(*property, after.value())},
+            {"queued",     true}
+        };
+        return make_json_content(result).dump();
+    }
     const std::optional<erhe::property::Local_state> before = target->read_local_state(*property);
     m_context.operation_stack->queue(std::make_shared<Property_set_operation>(item, sub_object, *property, before, to_local_state(after)));
 

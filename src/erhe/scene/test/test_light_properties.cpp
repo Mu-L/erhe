@@ -129,6 +129,58 @@ TEST(Light_properties, every_change_re_resolves_the_light_set)
     EXPECT_EQ(host.light_changed_count, 10);
 }
 
+TEST(Light_properties, flux_and_blackbody_are_computed_over_the_stored_values)
+{
+    Counting_scene_host host;
+    auto node  = std::make_shared<erhe::scene::Node>("n");
+    auto light = std::make_shared<Light>("l");
+    node->attach(light);
+    node->set_parent(host.scene.get_root_node());
+    light->set_light_type(Light_type::point);
+    light->set_intensity(2.0f);
+    host.light_changed_count = 0;
+
+    // Flux reads intensity times the emission solid angle and its setter
+    // writes intensity: the stored property notifies, flux itself carries
+    // no local value.
+    const Dependency_property& flux = Light::flux_property.get();
+    EXPECT_FALSE(flux.is_read_only());
+    EXPECT_EQ(flux.get_default_metadata().compute_writes, Light::intensity_property.get_ptr());
+    EXPECT_FLOAT_EQ(light->get_value(Light::flux_property), 2.0f * light->get_solid_angle());
+    EXPECT_EQ(light->get_value_source(flux), Value_source::computed);
+    EXPECT_TRUE(light->set_value(flux, Property_value{light->get_solid_angle() * 5.0f}));
+    EXPECT_FLOAT_EQ(light->get_intensity(), 5.0f);
+    EXPECT_EQ(light->get_value_source(Light::intensity_property), Value_source::local);
+    EXPECT_FALSE(light->has_local_value(flux));
+    EXPECT_EQ(host.light_changed_count, 1);
+    EXPECT_FALSE(light->clear_value(flux));
+    EXPECT_FLOAT_EQ(light->get_intensity(), 5.0f);
+
+    // A directional light has no solid angle: flux is the intensity.
+    light->set_light_type(Light_type::directional);
+    EXPECT_FLOAT_EQ(light->get_value(Light::flux_property), 5.0f);
+
+    // The blackbody swatch is read-only and follows temperature.
+    const Dependency_property& blackbody = Light::blackbody_property.get();
+    EXPECT_TRUE(blackbody.is_read_only());
+    light->set_temperature(6500.0f);
+    EXPECT_EQ(light->get_value(Light::blackbody_property), Light::blackbody_color(6500.0f));
+    EXPECT_FALSE(light->set_value(blackbody, Property_value{glm::vec3{1.0f}}));
+
+    // An expression over flux re-evaluates when intensity changes (D26
+    // push from the shared changed callback).
+    ASSERT_TRUE(light->set_expression(Light::range_property.get(), "{flux} * 2"));
+    EXPECT_FLOAT_EQ(light->get_range(), 10.0f);
+    light->set_intensity(7.0f);
+    EXPECT_FLOAT_EQ(light->get_range(), 14.0f);
+
+    // Neither computed row is a local value for bags / copies.
+    const Property_set bag = Property_set::read_local_values(*light);
+    EXPECT_FALSE(bag.contains(flux));
+    EXPECT_FALSE(bag.contains(blackbody));
+    EXPECT_TRUE(bag.contains(Light::intensity_property.get()));
+}
+
 TEST(Light_properties, unhosted_light_changes_are_silent)
 {
     auto light = std::make_shared<Light>("l");

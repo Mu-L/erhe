@@ -51,6 +51,10 @@ using Validate_callback         = std::function<bool(const Property_value&)>;
 // Value provider of a computed property (doc/property-system.md D26):
 // the effective value is whatever it returns, read on every get_value.
 using Compute_callback          = std::function<Property_value(const Dependency_object&)>;
+// Setter of a writable computed property (D26): set_value hands the value
+// to it, and it writes the underlying stored property the provider derives
+// its value from (a light's flux setter writes the intensity).
+using Compute_set_callback      = std::function<void(Dependency_object&, const Property_value&)>;
 
 // What a change of the property affects. Data only: the library never acts
 // on these, the editor reads them (App_context::on_item_property_changed).
@@ -130,8 +134,15 @@ public:
     // layer applies, and the owner pushes changes to expressions with
     // invalidate_dependents.
     Compute_callback              compute         {};
+    // D26: a computed property with a setter is writable: set_value calls
+    // `compute_set`, which writes `compute_writes` - the stored property the
+    // value is derived from and the one an undoable edit of this property
+    // records. Clearing and expressions stay rejected (no local layer).
+    Compute_set_callback          compute_set     {};
+    const Dependency_property*    compute_writes  {nullptr};
 
-    [[nodiscard]] auto is_computed() const -> bool { return static_cast<bool>(compute); }
+    [[nodiscard]] auto is_computed         () const -> bool { return static_cast<bool>(compute); }
+    [[nodiscard]] auto is_computed_writable() const -> bool { return static_cast<bool>(compute_set); }
 };
 
 } // namespace erhe::property

@@ -38,9 +38,19 @@ auto is_spot(const Dependency_object& object) -> bool
     return static_cast<const Light&>(object).get_light_type() == Light_type::spot;
 }
 
-auto log_slider(const float min, const float max, const std::string_view label, const std::string_view tooltip = {}) -> Property_ui
+auto has_solid_angle(const Dependency_object& object) -> bool
 {
-    return Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .tooltip = tooltip, .label = label};
+    return static_cast<const Light&>(object).get_light_type() != Light_type::directional;
+}
+
+auto has_temperature(const Dependency_object& object) -> bool
+{
+    return static_cast<const Light&>(object).get_temperature() > 0.0f;
+}
+
+auto log_slider(const float min, const float max, const std::string_view label, const std::string_view tooltip = {}, Property_ui::Visible_when visible_when = {}) -> Property_ui
+{
+    return Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::slider, .logarithmic = true, .tooltip = tooltip, .label = label, .visible_when = std::move(visible_when)};
 }
 
 } // anonymous namespace
@@ -59,9 +69,21 @@ const Property<float> Light::intensity_property = Property<float>::register_prop
     "intensity", c_owner,
     Property_metadata{.default_value = 1.0f, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = log_slider(0.01f, 20000.0f, "Intensity", "KHR_lights_punctual units: lux for directional lights, candela for point and spot lights")}
 );
+const Property<float> Light::flux_property = Property<float>::register_computed(
+    "flux", c_owner,
+    [](const Dependency_object& object) -> erhe::property::Property_value { return static_cast<const Light&>(object).get_luminous_flux(); },
+    [](Dependency_object& object, const erhe::property::Property_value& value) { static_cast<Light&>(object).set_luminous_flux(std::get<float>(value)); },
+    Light::intensity_property.get(),
+    Property_metadata{.ui = log_slider(0.01f, 200000.0f, "Flux (lm)", "Luminous flux: intensity times the emission solid angle of a point or spot light; editing it writes Intensity", has_solid_angle)}
+);
 const Property<float> Light::temperature_property = Property<float>::register_property(
     "temperature", c_owner,
     Property_metadata{.default_value = 0.0f, .property_changed = Light::on_light_property_changed, .inherits = true, .ui = Property_ui{.min = 0.0f, .max = 12000.0f, .presentation = Property_ui::Presentation::slider, .tooltip = "Correlated color temperature in Kelvin; 0 disables the temperature contribution", .label = "Temperature"}}
+);
+const Property<glm::vec3> Light::blackbody_property = Property<glm::vec3>::register_computed(
+    "blackbody", c_owner,
+    [](const Dependency_object& object) -> erhe::property::Property_value { return Light::blackbody_color(static_cast<const Light&>(object).get_temperature()); },
+    Property_metadata{.ui = Property_ui{.presentation = Property_ui::Presentation::color, .tooltip = "Chromaticity of a blackbody radiator at Temperature; multiplies Color", .label = "Blackbody", .visible_when = has_temperature}}
 );
 const Property<float> Light::range_property = Property<float>::register_property(
     "range", c_owner,
@@ -265,7 +287,13 @@ void Light::handle_item_host_update(erhe::Item_host* const old_item_host, erhe::
 // D19: every Light property re-resolves the scene light set on change.
 void Light::on_light_property_changed(Dependency_object& object, const Property_changed_args&)
 {
-    static_cast<Light&>(object).notify_changed();
+    Light& light = static_cast<Light&>(object);
+    // D26: the computed rows derive from the stored ones; an expression
+    // reading them re-evaluates on the change (one null check each when
+    // nothing reads them).
+    light.invalidate_dependents(flux_property.get());
+    light.invalidate_dependents(blackbody_property.get());
+    light.notify_changed();
 }
 
 void Light::notify_changed()

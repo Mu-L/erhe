@@ -465,6 +465,37 @@ public:
         };
     }
 
+    // A writable computed property (D26): `set` writes `writes`, the
+    // stored property the provider derives the value from, and the
+    // property is not read-only. Clearing it and driving it by an
+    // expression stay rejected; an undoable edit records `writes`.
+    template <Property_storable U = T>
+        requires (!Property_enum_type<U>)
+    static auto register_computed(
+        std::string_view            name,
+        Owner_type                  owner_type,
+        Compute_callback            compute,
+        Compute_set_callback        set,
+        const Dependency_property&  writes,
+        Property_metadata           metadata = {}
+    ) -> Property<T>
+    {
+        metadata.compute        = std::move(compute);
+        metadata.compute_set    = std::move(set);
+        metadata.compute_writes = &writes;
+        return Property<T>{
+            &Property_registry::get().register_property(
+                Dependency_property::Registration{
+                    .name       = name,
+                    .type       = property_type_of<T>(),
+                    .owner_type = owner_type,
+                    .metadata   = std::move(metadata),
+                    .read_only  = false,
+                }
+            )
+        };
+    }
+
     template <Property_storable U = T>
         requires Property_enum_type<U>
     static auto register_computed(

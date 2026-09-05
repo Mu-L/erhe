@@ -396,6 +396,9 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
     if (!metadata.is_computed()) { // D26: a computed property has no default layer
         tooltip += "\nDefault: ";
         tooltip += erhe::property::to_string(property, metadata.default_value.value());
+    } else if (metadata.is_computed_writable()) {
+        tooltip += "\nWrites: ";
+        tooltip += metadata.compute_writes->get_name();
     }
     if (property.get_type() == Property_type::quat) {
         tooltip += "\nx y z w: ";
@@ -746,12 +749,19 @@ void Dependency_property_rows::draw_expression(const Dependency_property& proper
     }
 }
 
+auto Dependency_property_rows::recorded_property(const Dependency_property& property) const -> const Dependency_property&
+{
+    const Property_metadata& metadata = property.get_metadata(target(0)->get_property_owner_type());
+    return metadata.is_computed_writable() ? *metadata.compute_writes : property;
+}
+
 void Dependency_property_rows::begin_edit(const Dependency_property& property)
 {
+    const Dependency_property& recorded = recorded_property(property);
     m_edit_property = &property;
     m_edit_before.clear();
     for (std::size_t i = 0; i < m_items->size(); ++i) {
-        m_edit_before.push_back(target(i)->read_local_state(property));
+        m_edit_before.push_back(target(i)->read_local_state(recorded));
     }
 }
 
@@ -760,16 +770,19 @@ void Dependency_property_rows::end_edit(const Dependency_property& property)
     if (m_edit_property != &property) {
         return;
     }
-    // Live edits already wrote the local value; the operation records the
-    // session's before / after and re-applies after (idempotent) so the
-    // consequence hook runs once per completed edit.
+    // Live edits already wrote the local value (of the recorded property:
+    // a writable computed row's setter wrote the stored property it
+    // derives from, D26); the operation records the session's before /
+    // after and re-applies after (idempotent) so the consequence hook runs
+    // once per completed edit.
+    const Dependency_property& recorded = recorded_property(property);
     if (m_items->size() == 1) {
-        queue_set(property, target(0)->read_local_state(property));
+        queue_set(recorded, target(0)->read_local_state(recorded));
     } else {
         Compound_operation::Parameters parameters;
         for (std::size_t i = 0; i < m_items->size(); ++i) {
             parameters.operations.push_back(
-                std::make_shared<Property_set_operation>((*m_items)[i], m_sub_object, property, m_edit_before[i], target(i)->read_local_state(property))
+                std::make_shared<Property_set_operation>((*m_items)[i], m_sub_object, recorded, m_edit_before[i], target(i)->read_local_state(recorded))
             );
         }
         m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
@@ -778,10 +791,31 @@ void Dependency_property_rows::end_edit(const Dependency_property& property)
 }
 
 // Queues after = `after` for every item, with the before values captured by
-// begin_edit().
+// begin_edit(). For a writable computed property (D26) `after` is a value
+// of that property: it goes through the setter now, and the operation
+// records the stored property the setter wrote.
 void Dependency_property_rows::queue_set(const Dependency_property& property, const std::optional<erhe::property::Local_state>& after)
 {
     if ((m_context.operation_stack == nullptr) || (m_edit_before.size() != m_items->size())) {
+        return;
+    }
+    const Dependency_property& recorded = recorded_property(property);
+    if (&recorded != &property) {
+        const erhe::property::Property_value* value = after.has_value() ? std::get_if<erhe::property::Property_value>(&after.value()) : nullptr;
+        if (value == nullptr) {
+            return; // no local layer to clear, no expression can drive it
+        }
+        Compound_operation::Parameters parameters;
+        for (std::size_t i = 0; i < m_items->size(); ++i) {
+            if (target(i)->set_value(property, *value)) {
+                parameters.operations.push_back(std::make_shared<Property_set_operation>((*m_items)[i], m_sub_object, recorded, m_edit_before[i], target(i)->read_local_state(recorded)));
+            }
+        }
+        if (parameters.operations.size() == 1) {
+            m_context.operation_stack->queue(parameters.operations.front());
+        } else if (!parameters.operations.empty()) {
+            m_context.operation_stack->queue(std::make_shared<Compound_operation>(std::move(parameters)));
+        }
         return;
     }
     if (m_items->size() == 1) {
@@ -797,7 +831,6 @@ void Dependency_property_rows::queue_set(const Dependency_property& property, co
 
 void Dependency_property_rows::context_menu(const Dependency_property& property, const Property_metadata& metadata)
 {
-    static_cast<void>(metadata);
     if (!ImGui::BeginPopupContextItem("property_row_context")) {
         return;
     }
@@ -814,7 +847,7 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
         remove_property(property);
     }
     const bool driven      = target(0)->get_expression(property).has_value();
-    const bool can_drive   = !driven && writable && (property.get_type() != Property_type::string) && (property.get_type() != Property_type::object);
+    const bool can_drive   = !driven && writable && !metadata.is_computed() && (property.get_type() != Property_type::string) && (property.get_type() != Property_type::object);
     if (ImGui::MenuItem("Edit as expression", nullptr, false, can_drive)) {
         edit_as_expression(property);
     }
