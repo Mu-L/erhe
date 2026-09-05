@@ -1170,9 +1170,7 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
         });
     }
 
-    if (m_item_count == 1) {
-        dependency_properties(item);
-    }
+    dependency_properties(item);
 
     pop_group();
 }
@@ -1409,6 +1407,16 @@ void Properties::set_target(const std::shared_ptr<erhe::Item_base>& item)
 
 void Properties::target_selector_imgui()
 {
+    static const char* const c_selection_mode_names[] = {"Individual", "Combined"};
+    int selection_mode = static_cast<int>(m_selection_mode);
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("Individual").x + ImGui::GetFrameHeight() + 3.0f * ImGui::GetStyle().FramePadding.x);
+    if (ImGui::Combo("##selection_mode", &selection_mode, c_selection_mode_names, IM_ARRAYSIZE(c_selection_mode_names))) {
+        m_selection_mode = static_cast<Selection_mode>(selection_mode);
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Multi-selection: Individual shows every item on its own; Combined edits the items of each type together");
+    }
+    ImGui::SameLine();
     ImGui::TextUnformatted("Pin");
     ImGui::SameLine();
     const bool was_pinned = !m_target.expired();
@@ -1439,15 +1447,16 @@ void Properties::imgui()
 
     const std::vector<std::shared_ptr<erhe::Item_base>>& items = effective_items();
 
-    m_item_count = items.size();
-    int id = 0;
-    for (const auto& item : items) {
-        ImGui::PushID(id++);
-        ERHE_DEFER( ImGui::PopID(); );
-        ERHE_VERIFY(item);
-        item_properties(item);
-    }
-    if (items.size() > 1) {
+    const bool combined = (items.size() > 1) && (m_selection_mode == Selection_mode::combined);
+    if (!combined) {
+        int id = 0;
+        for (const auto& item : items) {
+            ImGui::PushID(id++);
+            ERHE_DEFER( ImGui::PopID(); );
+            ERHE_VERIFY(item);
+            item_properties(item);
+        }
+    } else {
         // Multi-selection: one row set per selected property owner type
         // (the items of one type edit together, with mixed-value display
         // and one operation per edit), in the order the types first appear,

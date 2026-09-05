@@ -39,10 +39,18 @@ per-owner migrations that this task depends on.
 ## 2. Requirements
 
 - R1 Every row the window draws for an item comes from the registered
-  property path or is a read-only diagnostic. A selection of two items
-  of one type shows one section for that type with mixed markers; a
-  selection of two types shows one section per type; nothing is hidden
-  because a second item is selected.
+  property path or is a read-only diagnostic. The selector next to Pin
+  picks how a multi-selection is drawn: Individual draws every item on
+  its own (its group, diagnostics, attachments and registered rows);
+  Combined draws one section per property owner type and nothing per
+  item, and a selection of two types shows one section per type. A
+  single item always draws the individual form.
+- R1a In a combined section a value the items disagree on shows "mixed"
+  in place of a value, per component for a vector (x, y, z, w or the
+  color channels each on their own); editing a component sets that
+  component on every item and leaves the others as they were, after
+  which the shared value shows. A quaternion, a string, an enumeration
+  and an object reference are mixed as a whole.
 - R2 Authored state that is not yet a property becomes one, or gets a
   bridge (D18) where the storage must stay a member: the name (a bridged
   string property over `Item_base::get_name` / `set_name`), the
@@ -93,8 +101,10 @@ per-owner migrations that this task depends on.
 
 Headless over MCP: `get_item_properties` lists the migrated rows with the
 right storage and sources; `set_item_property` and `undo` round-trip each
-bridged field. The multi-selection behaviour is interactive only: select
-two nodes with meshes and bodies, two physics materials, and a material
-plus a body, and check each type has one section, mixed markers where
-values differ, and one undo entry per edit; the user drives that check
-(AGENTS.md "Once the user starts testing").
+bridged field; a `capture_screenshot` with two nodes selected shows the
+combined sections with "mixed" on the components that differ. The edits
+are interactive only: select two nodes with meshes and bodies, two
+physics materials, and a material plus a body, and check each type has
+one section in Combined mode, that dragging one mixed component changes
+only that component on every item, and that each edit is one undo entry;
+the user drives that check (AGENTS.md "Once the user starts testing").

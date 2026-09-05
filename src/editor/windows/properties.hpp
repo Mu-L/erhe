@@ -96,6 +96,16 @@ private:
     // a "pinned" indicator. Bound to m_target.
     void target_selector_imgui();
 
+    // How a multi-selection is shown (the selector next to Pin): every
+    // item on its own with its diagnostics and attachments, or one section
+    // per property owner type editing the items together (mixed values
+    // shown per component, one operation per edit). A single item always
+    // draws the individual form.
+    enum class Selection_mode : unsigned int {
+        individual = 0,
+        combined   = 1
+    };
+
 
     void animation_properties         (const std::shared_ptr<erhe::scene::Animation>& animation);
     void scene_properties             (erhe::scene::Scene& scene);
@@ -137,7 +147,7 @@ private:
 
     Dependency_property_rows m_dependency_rows;
 
-    std::size_t                        m_item_count{0};
+    Selection_mode                     m_selection_mode{Selection_mode::combined};
 
     erhe::message_bus::Subscription<Close_scene_message>   m_close_scene_subscription;
     erhe::message_bus::Subscription<Items_removed_message> m_items_removed_subscription;

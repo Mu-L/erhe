@@ -5,6 +5,7 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -61,12 +62,16 @@ private:
     [[nodiscard]] auto target(std::size_t i) const -> erhe::property::Dependency_object*;
 
     // Returns true when the widget produced a new value this frame.
+    // `mixed` is the per-component mask of values the selected items
+    // disagree on (bit c = component c; one bit for a one-component
+    // type): those components show "mixed" instead of a value.
     // `immediate` is set for widgets that commit on selection (combo)
     // instead of on deactivation.
     auto draw_widget(
         const erhe::property::Dependency_property& property,
         const erhe::property::Property_metadata&   metadata,
         erhe::property::Property_value&            value,
+        uint32_t                                   mixed,
         bool&                                      immediate
     ) -> bool;
 

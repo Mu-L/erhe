@@ -23,6 +23,7 @@
 
 #include <glm/gtc/quaternion.hpp>
 #include <imgui/imgui.h>
+#include <imgui/imgui_internal.h> // ImGuiItemFlags_MixedValue (mixed checkbox)
 #include <imgui/misc/cpp/imgui_stdlib.h>
 
 #include <algorithm>
@@ -57,6 +58,132 @@ namespace {
         case Value_source::computed:      return IM_COL32(165, 165, 165, 255); // dim gray: computed, read-only
     }
     return IM_COL32(255, 255, 255, 255);
+}
+
+// Mixed values across a multi-selection are tracked per component: bit c
+// of the mask is set when the items disagree on component c. A scalar,
+// string, enumeration, object or quaternion value is one component.
+[[nodiscard]] auto component_count(const Property_type type) -> int
+{
+    switch (type) {
+        case Property_type::vec2:  return 2;
+        case Property_type::ivec2: return 2;
+        case Property_type::vec3:  return 3;
+        case Property_type::ivec3: return 3;
+        case Property_type::vec4:  return 4;
+        case Property_type::ivec4: return 4;
+        default:                   return 1;
+    }
+}
+
+template <typename V>
+[[nodiscard]] auto vector_mixed_mask(const V& first, const V& other) -> uint32_t
+{
+    uint32_t mask = 0;
+    for (int c = 0; c < V::length(); ++c) {
+        if (!(first[c] == other[c])) {
+            mask |= (1u << c);
+        }
+    }
+    return mask;
+}
+
+[[nodiscard]] auto mixed_mask(const Property_value& first, const Property_value& other) -> uint32_t
+{
+    if (first.index() != other.index()) {
+        return 1u;
+    }
+    switch (static_cast<Property_type>(first.index())) {
+        case Property_type::vec2:  return vector_mixed_mask(std::get<glm::vec2 >(first), std::get<glm::vec2 >(other));
+        case Property_type::vec3:  return vector_mixed_mask(std::get<glm::vec3 >(first), std::get<glm::vec3 >(other));
+        case Property_type::vec4:  return vector_mixed_mask(std::get<glm::vec4 >(first), std::get<glm::vec4 >(other));
+        case Property_type::ivec2: return vector_mixed_mask(std::get<glm::ivec2>(first), std::get<glm::ivec2>(other));
+        case Property_type::ivec3: return vector_mixed_mask(std::get<glm::ivec3>(first), std::get<glm::ivec3>(other));
+        case Property_type::ivec4: return vector_mixed_mask(std::get<glm::ivec4>(first), std::get<glm::ivec4>(other));
+        default:                   return (first == other) ? 0u : 1u;
+    }
+}
+
+// The value item i receives when the widget turned `original` (the first
+// item's value) into `edited`: the components the user changed, over the
+// item's own value for the rest - so adjusting one component of a mixed
+// vector leaves the other components of every item alone.
+template <typename V>
+[[nodiscard]] auto merge_vector_components(const V& item, const V& original, const V& edited) -> V
+{
+    V result = item;
+    for (int c = 0; c < V::length(); ++c) {
+        if (!(edited[c] == original[c])) {
+            result[c] = edited[c];
+        }
+    }
+    return result;
+}
+
+[[nodiscard]] auto merge_components(const Property_value& item, const Property_value& original, const Property_value& edited) -> Property_value
+{
+    if ((item.index() != edited.index()) || (original.index() != edited.index())) {
+        return edited;
+    }
+    switch (static_cast<Property_type>(edited.index())) {
+        case Property_type::vec2:  return merge_vector_components(std::get<glm::vec2 >(item), std::get<glm::vec2 >(original), std::get<glm::vec2 >(edited));
+        case Property_type::vec3:  return merge_vector_components(std::get<glm::vec3 >(item), std::get<glm::vec3 >(original), std::get<glm::vec3 >(edited));
+        case Property_type::vec4:  return merge_vector_components(std::get<glm::vec4 >(item), std::get<glm::vec4 >(original), std::get<glm::vec4 >(edited));
+        case Property_type::ivec2: return merge_vector_components(std::get<glm::ivec2>(item), std::get<glm::ivec2>(original), std::get<glm::ivec2>(edited));
+        case Property_type::ivec3: return merge_vector_components(std::get<glm::ivec3>(item), std::get<glm::ivec3>(original), std::get<glm::ivec3>(edited));
+        case Property_type::ivec4: return merge_vector_components(std::get<glm::ivec4>(item), std::get<glm::ivec4>(original), std::get<glm::ivec4>(edited));
+        default:                   return edited;
+    }
+}
+
+constexpr const char* c_mixed_format = "mixed"; // a format without a conversion: the drag prints it verbatim
+constexpr ImVec4      c_mixed_frame_color{0.45f, 0.35f, 0.15f, 0.6f};
+
+// `count` drag widgets side by side, one per component (the layout of
+// ImGui::DragScalarN); a mixed component shows "mixed" in a tinted
+// frame in place of its value. Ctrl+click still opens the text input
+// with the first item's value (ImGui substitutes the type's default
+// print format for a format without a conversion).
+[[nodiscard]] auto drag_components(
+    const ImGuiDataType data_type,
+    void* const         values,
+    const int           count,
+    const uint32_t      mixed,
+    const float         speed,
+    const void* const   min,
+    const void* const   max,
+    const char* const   format
+) -> bool
+{
+    const std::size_t stride  = (data_type == ImGuiDataType_Float) ? sizeof(float) : sizeof(int);
+    const float       spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float       width   = std::max(1.0f, (ImGui::CalcItemWidth() - spacing * static_cast<float>(count - 1)) / static_cast<float>(count));
+    bool changed = false;
+    ImGui::BeginGroup(); // one item for the caller's IsItemActivated / IsItemDeactivatedAfterEdit, as DragScalarN
+    ImGui::PushID("components");
+    for (int c = 0; c < count; ++c) {
+        if (c > 0) {
+            ImGui::SameLine(0.0f, spacing);
+        }
+        const bool component_mixed = ((mixed & (1u << c)) != 0u);
+        if (component_mixed) {
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, c_mixed_frame_color);
+        }
+        ImGui::PushID(c);
+        ImGui::SetNextItemWidth(width);
+        void* const value = static_cast<char*>(values) + (static_cast<std::size_t>(c) * stride);
+        changed = ImGui::DragScalar("##", data_type, value, speed, min, max, component_mixed ? c_mixed_format : format) || changed;
+        if (component_mixed && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Mixed values across the selection; editing sets this component on every item");
+        }
+        ImGui::PopID();
+        if (component_mixed) {
+            ImGui::PopStyleColor();
+        }
+    }
+    ImGui::PopID();
+    ImGui::EndGroup();
+    return changed;
 }
 
 void lower_ascii_into(const std::string_view text, std::string& out)
@@ -431,28 +558,21 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
                 }
                 return;
             }
-            Property_value value = target(0)->get_value(property);
-            bool mixed = false;
+            // The first item's value seeds the widget; `mixed` marks the
+            // components the items disagree on (shown as "mixed", no
+            // preview value). A write applies only the components the
+            // widget changed, over each item's own value.
+            const Property_value original = target(0)->get_value(property);
+            Property_value       value    = original;
+            uint32_t             mixed    = 0u;
             for (std::size_t i = 1; i < m_items->size(); ++i) {
-                if (!(target(i)->get_value(property) == value)) {
-                    mixed = true;
-                    break;
-                }
-            }
-            if (mixed) {
-                ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4{0.45f, 0.35f, 0.15f, 0.6f});
+                mixed |= mixed_mask(original, target(i)->get_value(property));
             }
             const bool read_only = property.is_read_only() || sealed;
             ImGui::BeginDisabled(read_only);
             bool immediate = false;
-            const bool changed = draw_widget(property, metadata, value, immediate);
+            const bool changed = draw_widget(property, metadata, value, mixed, immediate);
             ImGui::EndDisabled();
-            if (mixed) {
-                ImGui::PopStyleColor();
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Mixed values across the selection");
-                }
-            }
             if (read_only) {
                 return;
             }
@@ -471,7 +591,7 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
                         begin_edit(property); // keyboard edits can change without a separate activation frame
                     }
                     for (std::size_t i = 0; i < m_items->size(); ++i) {
-                        target(i)->set_value(property, value);
+                        target(i)->set_value(property, merge_components(target(i)->get_value(property), original, value));
                     }
                 }
                 if (ImGui::IsItemDeactivatedAfterEdit()) {
@@ -527,6 +647,7 @@ auto Dependency_property_rows::draw_widget(
     const Dependency_property& property,
     const Property_metadata&   metadata,
     Property_value&            value,
+    const uint32_t             mixed,
     bool&                      immediate
 ) -> bool
 {
@@ -538,22 +659,40 @@ auto Dependency_property_rows::draw_widget(
     const bool  slider    = has_range && (ui.presentation == Property_ui::Presentation::slider);
     const bool  degrees   = (ui.presentation == Property_ui::Presentation::angle_degrees);
     const bool  color     = (ui.presentation == Property_ui::Presentation::color);
+    const bool  any_mixed = (mixed != 0u);
+    const int   imin      = static_cast<int>(min);
+    const int   imax      = static_cast<int>(max);
+    const int   ispeed    = static_cast<int>(std::max(speed, 1.0f));
     immediate = false;
+
+    // One-component widgets show "mixed" in place of the value; vectors
+    // go through drag_components, which marks each mixed component.
+    if (any_mixed) {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, c_mixed_frame_color);
+    }
+    ERHE_DEFER( if (any_mixed) { ImGui::PopStyleColor(); } );
 
     switch (property.get_type()) {
         case Property_type::boolean: {
             bool v = std::get<bool>(value);
-            if (ImGui::Checkbox("##", &v)) {
-                value = v;
-                return true;
+            if (any_mixed) {
+                ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
             }
-            return false;
+            const bool changed = ImGui::Checkbox("##", &v);
+            if (any_mixed) {
+                ImGui::PopItemFlag();
+            }
+            if (changed) {
+                value = v;
+            }
+            return changed;
         }
         case Property_type::integer: {
             int v = std::get<int>(value);
+            const char* const format = any_mixed ? c_mixed_format : "%d";
             const bool changed = slider
-                ? ImGui::SliderInt("##", &v, static_cast<int>(min), static_cast<int>(max))
-                : ImGui::DragInt("##", &v, std::max(speed, 1.0f), has_range ? static_cast<int>(min) : 0, has_range ? static_cast<int>(max) : 0);
+                ? ImGui::SliderInt("##", &v, imin, imax, format)
+                : ImGui::DragInt("##", &v, std::max(speed, 1.0f), has_range ? imin : 0, has_range ? imax : 0, format);
             if (changed) {
                 value = v;
             }
@@ -564,14 +703,14 @@ auto Dependency_property_rows::draw_widget(
             bool changed = false;
             if (degrees) {
                 float d = glm::degrees(v);
-                changed = ImGui::DragFloat("##", &d, ui.step.value_or(0.5f), has_range ? glm::degrees(min) : 0.0f, has_range ? glm::degrees(max) : 0.0f, "%.2f°");
+                changed = ImGui::DragFloat("##", &d, ui.step.value_or(0.5f), has_range ? glm::degrees(min) : 0.0f, has_range ? glm::degrees(max) : 0.0f, any_mixed ? c_mixed_format : "%.2f°");
                 v = glm::radians(d);
             } else if (slider && ui.logarithmic) {
-                changed = ImGui::SliderFloat("##", &v, min, max, "%.4f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
+                changed = ImGui::SliderFloat("##", &v, min, max, any_mixed ? c_mixed_format : "%.4f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
             } else if (slider) {
-                changed = ImGui::SliderFloat("##", &v, min, max);
+                changed = ImGui::SliderFloat("##", &v, min, max, any_mixed ? c_mixed_format : "%.3f");
             } else {
-                changed = ImGui::DragFloat("##", &v, speed, has_range ? min : 0.0f, has_range ? max : 0.0f);
+                changed = ImGui::DragFloat("##", &v, speed, has_range ? min : 0.0f, has_range ? max : 0.0f, any_mixed ? c_mixed_format : "%.3f");
             }
             if (changed) {
                 value = v;
@@ -580,7 +719,7 @@ auto Dependency_property_rows::draw_widget(
         }
         case Property_type::vec2: {
             glm::vec2 v = std::get<glm::vec2>(value);
-            const bool changed = ImGui::DragFloat2("##", &v.x, speed, has_range ? min : 0.0f, has_range ? max : 0.0f);
+            const bool changed = drag_components(ImGuiDataType_Float, &v.x, 2, mixed, speed, has_range ? &min : nullptr, has_range ? &max : nullptr, "%.3f");
             if (changed) {
                 value = v;
             }
@@ -589,14 +728,16 @@ auto Dependency_property_rows::draw_widget(
         case Property_type::vec3: {
             glm::vec3 v = std::get<glm::vec3>(value);
             bool changed = false;
-            if (color) {
+            if (color && !any_mixed) {
                 changed = ImGui::ColorEdit3("##", &v.x, ImGuiColorEditFlags_Float);
             } else if (degrees) {
                 glm::vec3 d = glm::degrees(v);
-                changed = ImGui::DragFloat3("##", &d.x, ui.step.value_or(0.5f), 0.0f, 0.0f, "%.2f°");
+                changed = drag_components(ImGuiDataType_Float, &d.x, 3, mixed, ui.step.value_or(0.5f), nullptr, nullptr, "%.2f°");
                 v = glm::radians(d);
             } else {
-                changed = ImGui::DragFloat3("##", &v.x, speed, has_range ? min : 0.0f, has_range ? max : 0.0f);
+                // A mixed color edits as three components (the picker has no
+                // per-channel mixed state).
+                changed = drag_components(ImGuiDataType_Float, &v.x, 3, mixed, speed, has_range ? &min : nullptr, has_range ? &max : nullptr, "%.3f");
             }
             if (changed) {
                 value = v;
@@ -605,9 +746,9 @@ auto Dependency_property_rows::draw_widget(
         }
         case Property_type::vec4: {
             glm::vec4 v = std::get<glm::vec4>(value);
-            const bool changed = color
+            const bool changed = (color && !any_mixed)
                 ? ImGui::ColorEdit4("##", &v.x, ImGuiColorEditFlags_Float)
-                : ImGui::DragFloat4("##", &v.x, speed, has_range ? min : 0.0f, has_range ? max : 0.0f);
+                : drag_components(ImGuiDataType_Float, &v.x, 4, mixed, speed, has_range ? &min : nullptr, has_range ? &max : nullptr, "%.3f");
             if (changed) {
                 value = v;
             }
@@ -616,13 +757,14 @@ auto Dependency_property_rows::draw_widget(
         case Property_type::quat: {
             // Edited as Euler degrees; the session keeps its own Euler
             // vector so a drag does not re-derive (and jitter) from the
-            // quaternion every frame.
+            // quaternion every frame. Mixed as a whole (the Euler
+            // components of different rotations are not comparable).
             const glm::quat q = std::get<glm::quat>(value);
             if (m_edit_property != &property) {
                 m_edit_euler_degrees = glm::degrees(glm::eulerAngles(q));
             }
             glm::vec3 d = m_edit_euler_degrees;
-            const bool changed = ImGui::DragFloat3("##", &d.x, ui.step.value_or(0.5f), 0.0f, 0.0f, "%.2f°");
+            const bool changed = drag_components(ImGuiDataType_Float, &d.x, 3, any_mixed ? 0x7u : 0u, ui.step.value_or(0.5f), nullptr, nullptr, "%.2f°");
             if (changed) {
                 m_edit_euler_degrees = d;
                 value = glm::normalize(glm::quat{glm::radians(d)});
@@ -630,8 +772,14 @@ auto Dependency_property_rows::draw_widget(
             return changed;
         }
         case Property_type::string: {
-            m_text_scratch = std::get<std::string>(value);
-            const bool changed = ImGui::InputText("##", &m_text_scratch);
+            if (any_mixed && (m_edit_property != &property)) {
+                m_text_scratch.clear();
+            } else if (!any_mixed) {
+                m_text_scratch = std::get<std::string>(value);
+            }
+            const bool changed = any_mixed
+                ? ImGui::InputTextWithHint("##", c_mixed_format, &m_text_scratch)
+                : ImGui::InputText("##", &m_text_scratch);
             if (changed) {
                 value = m_text_scratch;
             }
@@ -640,13 +788,18 @@ auto Dependency_property_rows::draw_widget(
         case Property_type::object: {
             // D28: a drop target / picker for an item; commits on selection.
             immediate = true;
-            std::shared_ptr<erhe::Item_base> current = std::dynamic_pointer_cast<erhe::Item_base>(std::get<erhe::property::Object_reference>(value).object);
+            std::shared_ptr<erhe::Item_base> current = any_mixed
+                ? std::shared_ptr<erhe::Item_base>{}
+                : std::dynamic_pointer_cast<erhe::Item_base>(std::get<erhe::property::Object_reference>(value).object);
             const uint64_t allowed_types = (ui.reference_item_types != 0) ? ui.reference_item_types : ~uint64_t{0};
             collect_reference_candidates(m_context, *m_items->front(), allowed_types, m_reference_candidates);
             Item_reference_options options;
             options.candidates                  = m_reference_candidates;
             options.accept_content_library_node = true;
             options.show_clear_button           = ui.show_clear_button;
+            if (any_mixed) {
+                options.none_text = "(mixed)";
+            }
             const bool changed = item_reference_imgui(m_context, "##", current, allowed_types, options);
             m_reference_candidates.clear(); // strong references must not outlive the draw
             if (changed) {
@@ -656,7 +809,7 @@ auto Dependency_property_rows::draw_widget(
         }
         case Property_type::ivec2: {
             glm::ivec2 v = std::get<glm::ivec2>(value);
-            const bool changed = ImGui::DragInt2("##", &v.x, std::max(speed, 1.0f), has_range ? static_cast<int>(min) : 0, has_range ? static_cast<int>(max) : 0);
+            const bool changed = drag_components(ImGuiDataType_S32, &v.x, 2, mixed, static_cast<float>(ispeed), has_range ? &imin : nullptr, has_range ? &imax : nullptr, "%d");
             if (changed) {
                 value = v;
             }
@@ -664,7 +817,7 @@ auto Dependency_property_rows::draw_widget(
         }
         case Property_type::ivec3: {
             glm::ivec3 v = std::get<glm::ivec3>(value);
-            const bool changed = ImGui::DragInt3("##", &v.x, std::max(speed, 1.0f), has_range ? static_cast<int>(min) : 0, has_range ? static_cast<int>(max) : 0);
+            const bool changed = drag_components(ImGuiDataType_S32, &v.x, 3, mixed, static_cast<float>(ispeed), has_range ? &imin : nullptr, has_range ? &imax : nullptr, "%d");
             if (changed) {
                 value = v;
             }
@@ -672,7 +825,7 @@ auto Dependency_property_rows::draw_widget(
         }
         case Property_type::ivec4: {
             glm::ivec4 v = std::get<glm::ivec4>(value);
-            const bool changed = ImGui::DragInt4("##", &v.x, std::max(speed, 1.0f), has_range ? static_cast<int>(min) : 0, has_range ? static_cast<int>(max) : 0);
+            const bool changed = drag_components(ImGuiDataType_S32, &v.x, 4, mixed, static_cast<float>(ispeed), has_range ? &imin : nullptr, has_range ? &imax : nullptr, "%d");
             if (changed) {
                 value = v;
             }
@@ -682,12 +835,12 @@ auto Dependency_property_rows::draw_widget(
             immediate = true;
             const erhe::property::Enum_info* info = property.get_enum_info();
             const int32_t current = std::get<erhe::property::Enum_value>(value).value;
-            const std::string_view current_label = (info != nullptr) ? info->label_for(current) : std::string_view{};
+            const std::string_view current_label = any_mixed ? std::string_view{c_mixed_format} : (info != nullptr) ? info->label_for(current) : std::string_view{};
             bool changed = false;
             if (ImGui::BeginCombo("##", std::string{current_label}.c_str())) {
                 if (info != nullptr) {
                     for (const erhe::property::Enum_entry& entry : info->get_entries()) {
-                        const bool selected = (entry.value == current);
+                        const bool selected = !any_mixed && (entry.value == current);
                         if (ImGui::Selectable(std::string{entry.label}.c_str(), selected) && !selected) {
                             value   = erhe::property::Enum_value{entry.value};
                             changed = true;
