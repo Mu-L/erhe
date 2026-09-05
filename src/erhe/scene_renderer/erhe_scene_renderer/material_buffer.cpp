@@ -75,9 +75,25 @@ Material_interface::Material_interface(erhe::graphics::Device& graphics_device, 
     material_block.add_struct("materials", &material_struct, erhe::graphics::Shader_resource::unsized_array);
 }
 
+Material_sampler_cache::Material_sampler_cache(erhe::graphics::Device& graphics_device)
+    : m_graphics_device{graphics_device}
+{
+}
+
+auto Material_sampler_cache::get(const erhe::primitive::Material_sampler_state& state) -> const erhe::graphics::Sampler&
+{
+    for (const auto& entry : m_samplers) {
+        if (entry.first == state) {
+            return *entry.second;
+        }
+    }
+    m_samplers.emplace_back(state, std::make_unique<erhe::graphics::Sampler>(m_graphics_device, erhe::primitive::to_sampler_create_info(state)));
+    return *m_samplers.back().second;
+}
+
 auto gather_material_record_inputs(
     const erhe::primitive::Material& material,
-    const erhe::graphics::Sampler&   fallback_sampler
+    Material_sampler_cache&          sampler_cache
 ) -> Material_record_inputs
 {
     const erhe::primitive::Material_values data = material.get_values();
@@ -96,7 +112,7 @@ auto gather_material_record_inputs(
     inputs.transmission               = data.transmission;
     inputs.bxdf_model                 = static_cast<uint32_t>(data.bxdf_model);
 
-    const auto gather_texture = [&fallback_sampler](
+    const auto gather_texture = [&sampler_cache](
         const erhe::primitive::Material_texture_sampler& texture_sampler
     ) -> Material_texture_record_inputs
     {
@@ -115,9 +131,7 @@ auto gather_material_record_inputs(
             .texture        = texture,
             // Only meaningful together with a texture, and left null without
             // one so two textureless slots hash alike.
-            .sampler        = (texture != nullptr)
-                ? (texture_sampler.sampler ? texture_sampler.sampler.get() : &fallback_sampler)
-                : nullptr,
+            .sampler        = (texture != nullptr) ? &sampler_cache.get(texture_sampler.sampler) : nullptr,
             .rotation_scale = { m[0][0], m[0][1], m[1][0], m[1][1] }, // Packing order: c0r0, c0r1, c1r0, c1r1
             .offset         = { texture_sampler.offset.x, texture_sampler.offset.y }
         };
@@ -135,14 +149,7 @@ auto gather_material_record_inputs(
 Material_buffer::Material_buffer(erhe::graphics::Device& graphics_device, Material_interface& material_interface)
     : m_graphics_device {graphics_device}
     , m_material_interface{material_interface}
-    , m_fallback_sampler{
-        graphics_device,
-        erhe::graphics::Sampler_create_info{
-            // Do not set anything else than debug label so erhe::graphics::Sampler_create_info{}
-            // matches with the fallback sampler.
-            .debug_label  = "Material_buffer fallback sampler"
-        }
-    }
+    , m_sampler_cache{graphics_device}
 {
 }
 
@@ -156,7 +163,7 @@ auto Material_buffer::get_content_hash(const erhe::primitive::Material* material
     if (material == nullptr) {
         return 0;
     }
-    const Material_record_inputs inputs = gather_material_record_inputs(*material, m_fallback_sampler);
+    const Material_record_inputs inputs = gather_material_record_inputs(*material, m_sampler_cache);
     return erhe::hash::hash(&inputs, sizeof(inputs));
 }
 
@@ -244,7 +251,7 @@ void Material_buffer::write_records(
     std::size_t write_offset = 0;
     for (const erhe::primitive::Material* material : slot_materials) {
         if (material != nullptr) {
-            const Material_record_inputs inputs = gather_material_record_inputs(*material, m_fallback_sampler);
+            const Material_record_inputs inputs = gather_material_record_inputs(*material, m_sampler_cache);
             write_record(gpu_data, write_offset, inputs, texture_heap);
         }
         write_offset += entry_size;

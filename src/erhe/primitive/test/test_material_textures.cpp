@@ -4,6 +4,7 @@
 // Texture_reference.
 
 #include "erhe_primitive/material.hpp"
+#include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_item/item.hpp"
 #include "erhe_property/property_set.hpp"
@@ -157,4 +158,57 @@ TEST(Material_textures, equality_and_property_set_see_the_slot)
     const std::optional<Property_value> entry = bag.find(Material::base_color_texture_property.get());
     ASSERT_TRUE(entry.has_value());
     EXPECT_EQ(std::get<Object_reference>(entry.value()).object.get(), static_cast<erhe::Item_base*>(texture.get()));
+}
+
+// The slot sampler state is seven entry-store properties per slot
+// (section 4.1): a property write mirrors into the slot state, a set_data
+// snapshot writes the properties (a default field clears the local value),
+// and a folder value is inherited.
+TEST(Material_textures, sampler_properties_mirror_into_the_slot_state)
+{
+    std::shared_ptr<Material> material = std::make_shared<Material>("m");
+    const erhe::primitive::Material_sampler_state defaults{};
+    EXPECT_EQ(material->data.texture_samplers.base_color.sampler, defaults);
+
+    material->set_value(Material::base_color_texture_wrap_u_property, erhe::graphics::Sampler_address_mode::clamp_to_edge);
+    material->set_value(Material::base_color_texture_max_anisotropy_property, 8.0f);
+    EXPECT_EQ(material->data.texture_samplers.base_color.sampler.wrap_u, erhe::graphics::Sampler_address_mode::clamp_to_edge);
+    EXPECT_EQ(material->data.texture_samplers.base_color.sampler.max_anisotropy, 8.0f);
+    EXPECT_EQ(material->data.texture_samplers.base_color.sampler.wrap_v, defaults.wrap_v);
+    EXPECT_EQ(material->data.texture_samplers.normal.sampler, defaults);
+
+    // set_slot_sampler / set_data: local where the state differs from the
+    // default, cleared where it does not.
+    erhe::primitive::Material_sampler_state state{};
+    state.min_filter  = erhe::graphics::Filter::nearest;
+    state.mipmap_mode = erhe::graphics::Sampler_mipmap_mode::not_mipmapped;
+    material->set_slot_sampler(material->data.texture_samplers.base_color, state);
+    EXPECT_EQ(material->data.texture_samplers.base_color.sampler, state);
+    EXPECT_EQ(material->get_value_source(Material::base_color_texture_wrap_u_property.get()),      Value_source::default_value);
+    EXPECT_EQ(material->get_value_source(Material::base_color_texture_min_filter_property.get()),  Value_source::local);
+    EXPECT_EQ(material->get_value_source(Material::base_color_texture_mipmap_mode_property.get()), Value_source::local);
+
+    Material_data snapshot = material->data;
+    snapshot.texture_samplers.emissive.sampler.lod_bias = -1.5f;
+    snapshot.texture_samplers.base_color.sampler        = defaults;
+    material->set_data(snapshot);
+    EXPECT_EQ(material->data.texture_samplers.emissive.sampler.lod_bias, -1.5f);
+    EXPECT_EQ(material->data.texture_samplers.base_color.sampler, defaults);
+    EXPECT_EQ(material->get_value_source(Material::base_color_texture_min_filter_property.get()), Value_source::default_value);
+
+    // The create-info conversions round-trip the state.
+    EXPECT_EQ(erhe::primitive::sampler_state_from(erhe::primitive::to_sampler_create_info(state)), state);
+}
+
+TEST(Material_textures, sampler_state_inherits_from_a_folder)
+{
+    Folder folder;
+    std::shared_ptr<Material> material = std::make_shared<Material>("m");
+    folder.materials.push_back(material.get());
+    material->set_inheritance_container(&folder);
+
+    folder.set_value(Material::normal_texture_wrap_v_property, erhe::graphics::Sampler_address_mode::mirrored_repeat);
+    EXPECT_EQ(material->get_value_source(Material::normal_texture_wrap_v_property.get()), Value_source::inherited);
+    EXPECT_EQ(material->data.texture_samplers.normal.sampler.wrap_v, erhe::graphics::Sampler_address_mode::mirrored_repeat);
+    material->set_inheritance_container(nullptr);
 }

@@ -1104,7 +1104,6 @@ public:
         const long long image_ms = elapsed_ms(image_start_time);
 
         log_gltf->trace("parsing samplers");
-        m_data_out.samplers.resize(m_asset->samplers.size() + 1);
         m_data_out.image_residency.sampler_create_infos.resize(m_asset->samplers.size() + 1);
         for (std::size_t i = 0, end = m_asset->samplers.size(); i < end; ++i) {
             parse_sampler(i);
@@ -1693,8 +1692,8 @@ private:
         create_info.max_anisotropy  = m_arguments.device_options.max_sampler_anisotropy; // TODO
         create_info.debug_label     = erhe::utility::Debug_label{sampler_name};
 
-        // Description only: creating the Sampler needs the device, so
-        // residency does it (Gltf_image_residency::create_samplers).
+        // Description only; bind_material_textures turns it into the slot's
+        // Material_sampler_state.
         m_data_out.image_residency.sampler_create_infos[sampler_index] = create_info;
     }
     void make_default_sampler()
@@ -3426,18 +3425,6 @@ auto Gltf_image_residency::process_next_image_into_frame(
     return true;
 }
 
-void Gltf_image_residency::create_samplers(Gltf_data& data, erhe::graphics::Device& graphics_device) const
-{
-    ERHE_PROFILE_FUNCTION();
-    data.samplers.resize(sampler_create_infos.size());
-    for (std::size_t i = 0, end = sampler_create_infos.size(); i < end; ++i) {
-        if (data.samplers[i]) {
-            continue; // already created (repeat drain)
-        }
-        data.samplers[i] = std::make_shared<erhe::graphics::Sampler>(graphics_device, sampler_create_infos[i]);
-    }
-}
-
 void Gltf_image_residency::bind_material_textures(Gltf_data& data) const
 {
     for (const Gltf_material_texture_binding& binding : material_texture_bindings) {
@@ -3452,8 +3439,8 @@ void Gltf_image_residency::bind_material_textures(Gltf_data& data) const
         if (binding.image_index < data.images.size()) {
             material->set_slot_texture(slot, data.images[binding.image_index]);
         }
-        if (binding.sampler_index < data.samplers.size()) {
-            slot.sampler = data.samplers[binding.sampler_index];
+        if (binding.sampler_index < sampler_create_infos.size()) {
+            material->set_slot_sampler(slot, erhe::primitive::sampler_state_from(sampler_create_infos[binding.sampler_index]));
         }
     }
 }
@@ -3465,7 +3452,6 @@ void Gltf_image_residency::drain(
 )
 {
     ERHE_PROFILE_FUNCTION();
-    create_samplers(data, graphics_device);
     while (process_next_image(data, graphics_device, image_transfer)) {
         // keep going
     }
@@ -5417,15 +5403,15 @@ private:
         return image_index;
     }
 
-    std::unordered_map<const erhe::graphics::Sampler*, std::size_t> m_exported_samplers;
-    [[nodiscard]] auto process_sampler(const erhe::graphics::Sampler* sampler) -> std::size_t
+    std::vector<std::pair<erhe::primitive::Material_sampler_state, std::size_t>> m_exported_samplers;
+    [[nodiscard]] auto process_sampler(const erhe::primitive::Material_sampler_state& state) -> std::size_t
     {
-        ERHE_VERIFY(sampler != nullptr);
-        const auto fi = m_exported_samplers.find(sampler);
-        if (fi != m_exported_samplers.end()) {
-            return fi->second;
+        for (const auto& exported : m_exported_samplers) {
+            if (exported.first == state) {
+                return exported.second;
+            }
         }
-        const erhe::graphics::Sampler_create_info& create_info = sampler->get_create_info();
+        const erhe::graphics::Sampler_create_info create_info = erhe::primitive::to_sampler_create_info(state);
 
         fastgltf::Sampler gltf_sampler{};
         const bool min_linear = (create_info.min_filter == erhe::graphics::Filter::linear);
@@ -5451,21 +5437,18 @@ private:
 
         const std::size_t sampler_index = m_gltf_asset.samplers.size();
         m_gltf_asset.samplers.emplace_back(std::move(gltf_sampler));
-        m_exported_samplers.insert({sampler, sampler_index});
+        m_exported_samplers.emplace_back(state, sampler_index);
         return sampler_index;
     }
 
     std::map<std::pair<std::size_t, std::optional<std::size_t>>, std::size_t> m_exported_textures;
-    [[nodiscard]] auto process_texture(const erhe::graphics::Texture* texture, const erhe::graphics::Sampler* sampler) -> std::optional<std::size_t>
+    [[nodiscard]] auto process_texture(const erhe::graphics::Texture* texture, const erhe::primitive::Material_sampler_state& sampler) -> std::optional<std::size_t>
     {
         const std::optional<std::size_t> image_index = process_image(texture);
         if (!image_index.has_value()) {
             return std::nullopt;
         }
-        std::optional<std::size_t> sampler_index{};
-        if (sampler != nullptr) {
-            sampler_index = process_sampler(sampler);
-        }
+        const std::optional<std::size_t> sampler_index = process_sampler(sampler);
         const std::pair<std::size_t, std::optional<std::size_t>> key{image_index.value(), sampler_index};
         const auto fi = m_exported_textures.find(key);
         if (fi != m_exported_textures.end()) {
@@ -5497,7 +5480,7 @@ private:
         if (texture == nullptr) {
             return false;
         }
-        const std::optional<std::size_t> texture_index = process_texture(texture, slot.sampler.get());
+        const std::optional<std::size_t> texture_index = process_texture(texture, slot.sampler);
         if (!texture_index.has_value()) {
             return false;
         }

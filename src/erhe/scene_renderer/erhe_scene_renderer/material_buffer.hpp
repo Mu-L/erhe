@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_graphics/device.hpp"
+#include "erhe_primitive/material.hpp"
 #include "erhe_graphics/ring_buffer_client.hpp"
 #include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/shader_resource.hpp"
@@ -8,7 +9,9 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <span>
+#include <vector>
 
 namespace erhe::graphics {
     class Sampler;
@@ -115,12 +118,29 @@ public:
     Material_texture_record_inputs emissive_texture          {};
 };
 
+// GPU samplers for the slot sampler states (erhe::primitive::
+// Material_sampler_state): one Sampler per distinct state, created on
+// first use and kept for the life of the cache, so a state always resolves
+// to the same pointer (the texture heap keys its allocations by it).
+class Material_sampler_cache
+{
+public:
+    explicit Material_sampler_cache(erhe::graphics::Device& graphics_device);
+
+    [[nodiscard]] auto get(const erhe::primitive::Material_sampler_state& state) -> const erhe::graphics::Sampler&;
+
+private:
+    erhe::graphics::Device& m_graphics_device;
+    std::vector<std::pair<erhe::primitive::Material_sampler_state, std::unique_ptr<erhe::graphics::Sampler>>> m_samplers;
+};
+
 // Resolves a material to its record inputs. Texture references are resolved
 // here, so a re-baked editor Graph_texture yields a different Texture pointer
-// and therefore both a different record and a different content hash.
+// and therefore both a different record and a different content hash; the
+// slot sampler states resolve through the cache the same way.
 [[nodiscard]] auto gather_material_record_inputs(
     const erhe::primitive::Material& material,
-    const erhe::graphics::Sampler&   fallback_sampler
+    Material_sampler_cache&          sampler_cache
 ) -> Material_record_inputs;
 
 class Material_interface
@@ -172,7 +192,9 @@ private:
     erhe::graphics::Device& m_graphics_device;
     Material_interface&     m_material_interface;
 
-    erhe::graphics::Sampler m_fallback_sampler;
+    // Mutable: get_content_hash is a read of the material, and a state seen
+    // for the first time there creates its sampler like write_records would.
+    mutable Material_sampler_cache m_sampler_cache;
 };
 
 } // namespace erhe::scene_renderer

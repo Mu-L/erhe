@@ -159,10 +159,9 @@ class Gltf_image_residency
 {
 public:
     std::vector<Gltf_decoded_image>            decoded_images;            // parallel to Gltf_data::images
-    // Sampler descriptions built by the parse; residency turns them into
-    // erhe::graphics::Sampler objects in Gltf_data::samplers. Creating a
-    // Sampler needs the device, so the parse cannot do it and stay
-    // device-free. One entry per glTF sampler plus a trailing default.
+    // Sampler descriptions built by the parse; bind_material_textures
+    // writes them into the material slots as Material_sampler_state. One
+    // entry per glTF sampler plus a trailing default.
     std::vector<erhe::graphics::Sampler_create_info> sampler_create_infos;
     std::vector<Gltf_material_texture_binding> material_texture_bindings;
 
@@ -195,13 +194,8 @@ public:
         std::size_t&                    remaining_budget_bytes
     ) -> bool;
 
-    // Create Gltf_data::samplers from sampler_create_infos. Cheap, no
-    // uploads; must run before bind_material_textures.
-    void create_samplers(Gltf_data& data, erhe::graphics::Device& graphics_device) const;
-
     // Assign the parse-recorded image and sampler bindings into the material
-    // texture slots. Requires every referenced image to be resident and
-    // create_samplers to have run.
+    // texture slots. Requires every referenced image to be resident.
     void bind_material_textures(Gltf_data& data) const;
 
     // Blocking convenience: make every pending image resident and bind the
@@ -235,7 +229,6 @@ public:
     // Deferred GPU half of image loading (see Gltf_image_residency): after
     // parse_gltf every entry of `images` is null and the pixels live here.
     Gltf_image_residency                                    image_residency;
-    std::vector<std::shared_ptr<erhe::graphics::Sampler>>   samplers;
     std::vector<std::string>                                extensions;
     Gltf_physics_data                                       physics;
     // Object-reference local values of the ERHE_* "properties" maps whose

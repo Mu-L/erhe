@@ -122,6 +122,24 @@ const erhe::property::Enum_info c_material_blending_mode_enum_info{"Material_ble
 const erhe::property::Enum_info c_texgen_mode_enum_info           {"Texgen_mode",            c_texgen_mode_entries};
 const erhe::property::Enum_info c_normalmap_encoding_enum_info    {"Normalmap_encoding",     c_normalmap_encoding_entries};
 
+constexpr erhe::property::Enum_entry c_sampler_address_mode_entries[] = {
+    {"Repeat",          static_cast<int32_t>(erhe::graphics::Sampler_address_mode::repeat)},
+    {"Clamp to Edge",   static_cast<int32_t>(erhe::graphics::Sampler_address_mode::clamp_to_edge)},
+    {"Mirrored Repeat", static_cast<int32_t>(erhe::graphics::Sampler_address_mode::mirrored_repeat)},
+};
+constexpr erhe::property::Enum_entry c_filter_entries[] = {
+    {"Nearest", static_cast<int32_t>(erhe::graphics::Filter::nearest)},
+    {"Linear",  static_cast<int32_t>(erhe::graphics::Filter::linear)},
+};
+constexpr erhe::property::Enum_entry c_sampler_mipmap_mode_entries[] = {
+    {"Not Mipmapped", static_cast<int32_t>(erhe::graphics::Sampler_mipmap_mode::not_mipmapped)},
+    {"Nearest",       static_cast<int32_t>(erhe::graphics::Sampler_mipmap_mode::nearest)},
+    {"Linear",        static_cast<int32_t>(erhe::graphics::Sampler_mipmap_mode::linear)},
+};
+const erhe::property::Enum_info c_sampler_address_mode_enum_info{"Sampler_address_mode", c_sampler_address_mode_entries};
+const erhe::property::Enum_info c_filter_enum_info              {"Filter",               c_filter_entries};
+const erhe::property::Enum_info c_sampler_mipmap_mode_enum_info {"Sampler_mipmap_mode",  c_sampler_mipmap_mode_entries};
+
 auto c_str(const Bxdf_model bxdf_model) -> const char*
 {
     switch (bxdf_model) {

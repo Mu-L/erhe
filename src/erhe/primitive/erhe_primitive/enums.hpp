@@ -1,5 +1,6 @@
 #pragma once
 
+#include "erhe_graphics/enums.hpp"
 #include "erhe_property/enum_info.hpp"
 
 #include <cstddef>
@@ -193,6 +194,10 @@ extern const erhe::property::Enum_info c_bxdf_model_enum_info;
 extern const erhe::property::Enum_info c_material_blending_mode_enum_info;
 extern const erhe::property::Enum_info c_texgen_mode_enum_info;
 extern const erhe::property::Enum_info c_normalmap_encoding_enum_info;
+// The erhe::graphics sampler enums, for the Material slot sampler properties.
+extern const erhe::property::Enum_info c_sampler_address_mode_enum_info;
+extern const erhe::property::Enum_info c_filter_enum_info;
+extern const erhe::property::Enum_info c_sampler_mipmap_mode_enum_info;
 
 [[nodiscard]] auto supports_anisotropy(Bxdf_model bxdf_model) -> bool;
 [[nodiscard]] auto c_str(Primitive_mode primitive_mode) -> const char*;

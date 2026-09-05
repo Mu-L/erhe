@@ -95,7 +95,6 @@ public:
     [[nodiscard]] auto get_pending_byte_count () const -> std::size_t { return 0; }
 
     auto process_next_image(Gltf_data&, erhe::graphics::Device&, Image_transfer&) -> bool { return false; }
-    void create_samplers(Gltf_data&, erhe::graphics::Device&) const {}
     auto process_next_image_into_frame(Gltf_data&, erhe::graphics::Device&, Image_transfer&, erhe::graphics::Command_buffer&, std::size_t&) -> bool { return false; }
     void bind_material_textures(Gltf_data&) const {}
     void drain(Gltf_data&, erhe::graphics::Device&, Image_transfer&) {}
@@ -115,7 +114,6 @@ public:
     std::vector<std::shared_ptr<erhe::graphics::Texture>>   images;
     std::vector<std::shared_ptr<Gltf_image_source>>         image_sources;
     Gltf_image_residency                                    image_residency;
-    std::vector<std::shared_ptr<erhe::graphics::Sampler>>   samplers;
     std::vector<std::string>                                extensions;
     Gltf_physics_data                                       physics;
     // Object-reference local values of the ERHE_* "properties" maps whose

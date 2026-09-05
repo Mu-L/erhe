@@ -83,9 +83,7 @@ purple by layer, computed rows dim gray. Untinted rows are hand-written.
 | base_color_texture, metallic_roughness_texture, normal_texture, occlusion_texture, emissive_texture | entry | object references, texture or graph texture; inherits; mirrored into `Material_data` by `on_property_changed` |
 | `<slot>`_texture_texgen_mode (5) | entry | enumeration, affects shader variant; inherits; mirrored |
 | `<slot>`_texture_uv_rotation, _uv_offset, _uv_scale (15) | entry | inherits; mirrored |
-
-Not properties: the five slot samplers (`Material_data`, edited through
-`Material_change_operation`).
+| `<slot>`_texture_wrap_u, _wrap_v, _min_filter, _mag_filter, _mipmap_mode, _max_anisotropy, _lod_bias (35) | entry | the slot sampler state; inherits; mirrored into `Material_sampler_state`, resolved to a GPU sampler by the renderer; lod_bias developer-only |
 
 ### Light (`src/erhe/scene/erhe_scene/light.cpp`, section 4.3)
 

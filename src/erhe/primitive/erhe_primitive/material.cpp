@@ -1,5 +1,6 @@
 #include "erhe_primitive/material.hpp"
 
+#include "erhe_graphics/sampler.hpp"
 #include "erhe_graphics/texture.hpp"
 #include "erhe_primitive/primitive_log.hpp"
 
@@ -231,6 +232,53 @@ auto slot_scale(const std::string_view name, const Slot_pointer slot, const std:
     );
 }
 
+// Slot samplers: entry-store properties like the slot transforms, mirrored
+// into the slot's Material_sampler_state; the rows sit under a
+// "<Slot> Sampler" group while the slot is bound. Defaults are those of
+// Material_sampler_state (= Sampler_create_info).
+template <typename E>
+auto slot_sampler_enum(
+    const std::string_view                name,
+    const Slot_pointer                    slot,
+    const std::string_view                group,
+    const Slot_lighting                   lighting,
+    const erhe::property::Enum_info&      enum_info,
+    const E                               default_value,
+    const std::string_view                label
+) -> Property<E>
+{
+    return Property<E>::register_property(
+        name, c_owner, enum_info,
+        Property_metadata{
+            .default_value = erhe::property::Enum_value{static_cast<int32_t>(default_value)},
+            .inherits      = true,
+            .ui            = Property_ui{.group = group, .label = label, .visible_when = slot_visible(slot, lighting)}
+        }
+    );
+}
+
+auto slot_sampler_float(
+    const std::string_view name,
+    const Slot_pointer     slot,
+    const std::string_view group,
+    const Slot_lighting    lighting,
+    const float            default_value,
+    const float            min,
+    const float            max,
+    const std::string_view label,
+    const bool             developer_only
+) -> Property<float>
+{
+    return Property<float>::register_property(
+        name, c_owner,
+        Property_metadata{
+            .default_value = default_value,
+            .inherits      = true,
+            .ui            = Property_ui{.min = min, .max = max, .presentation = Property_ui::Presentation::slider, .group = group, .developer_only = developer_only, .label = label, .visible_when = slot_visible(slot, lighting)}
+        }
+    );
+}
+
 } // anonymous namespace
 
 const Property<Texgen_mode> Material::base_color_texture_texgen_mode_property        = slot_texgen  ("base_color_texture_texgen_mode",           &Material_texture_samplers::base_color,             "Base Color Texture",          Slot_lighting::any);
@@ -253,6 +301,147 @@ const Property<Texgen_mode> Material::emissive_texture_texgen_mode_property     
 const Property<float>       Material::emissive_texture_uv_rotation_property             = slot_rotation("emissive_texture_uv_rotation",                &Material_texture_samplers::emissive,               "Emissive Texture",            Slot_lighting::any);
 const Property<glm::vec2>   Material::emissive_texture_uv_offset_property               = slot_offset  ("emissive_texture_uv_offset",                  &Material_texture_samplers::emissive,               "Emissive Texture",            Slot_lighting::any);
 const Property<glm::vec2>   Material::emissive_texture_uv_scale_property                = slot_scale   ("emissive_texture_uv_scale",                   &Material_texture_samplers::emissive,               "Emissive Texture",            Slot_lighting::any);
+const Property<erhe::graphics::Sampler_address_mode> Material::base_color_texture_wrap_u_property         = slot_sampler_enum ("base_color_texture_wrap_u",         &Material_texture_samplers::base_color, "Base Color Sampler", Slot_lighting::any, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_u,      "Wrap U");
+const Property<erhe::graphics::Sampler_address_mode> Material::base_color_texture_wrap_v_property         = slot_sampler_enum ("base_color_texture_wrap_v",         &Material_texture_samplers::base_color, "Base Color Sampler", Slot_lighting::any, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_v,      "Wrap V");
+const Property<erhe::graphics::Filter>               Material::base_color_texture_min_filter_property     = slot_sampler_enum ("base_color_texture_min_filter",     &Material_texture_samplers::base_color, "Base Color Sampler", Slot_lighting::any, c_filter_enum_info,               Material_sampler_state{}.min_filter,  "Min Filter");
+const Property<erhe::graphics::Filter>               Material::base_color_texture_mag_filter_property     = slot_sampler_enum ("base_color_texture_mag_filter",     &Material_texture_samplers::base_color, "Base Color Sampler", Slot_lighting::any, c_filter_enum_info,               Material_sampler_state{}.mag_filter,  "Mag Filter");
+const Property<erhe::graphics::Sampler_mipmap_mode>  Material::base_color_texture_mipmap_mode_property    = slot_sampler_enum ("base_color_texture_mipmap_mode",    &Material_texture_samplers::base_color, "Base Color Sampler", Slot_lighting::any, c_sampler_mipmap_mode_enum_info,  Material_sampler_state{}.mipmap_mode, "Mipmap Mode");
+const Property<float>                                Material::base_color_texture_max_anisotropy_property = slot_sampler_float("base_color_texture_max_anisotropy", &Material_texture_samplers::base_color, "Base Color Sampler", Slot_lighting::any, Material_sampler_state{}.max_anisotropy, 1.0f, 16.0f, "Max Anisotropy", false);
+const Property<float>                                Material::base_color_texture_lod_bias_property       = slot_sampler_float("base_color_texture_lod_bias",       &Material_texture_samplers::base_color, "Base Color Sampler", Slot_lighting::any, Material_sampler_state{}.lod_bias, -4.0f, 4.0f, "LOD Bias", true);
+const Property<erhe::graphics::Sampler_address_mode> Material::metallic_roughness_texture_wrap_u_property         = slot_sampler_enum ("metallic_roughness_texture_wrap_u",         &Material_texture_samplers::metallic_roughness, "Metallic Roughness Sampler", Slot_lighting::lit, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_u,      "Wrap U");
+const Property<erhe::graphics::Sampler_address_mode> Material::metallic_roughness_texture_wrap_v_property         = slot_sampler_enum ("metallic_roughness_texture_wrap_v",         &Material_texture_samplers::metallic_roughness, "Metallic Roughness Sampler", Slot_lighting::lit, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_v,      "Wrap V");
+const Property<erhe::graphics::Filter>               Material::metallic_roughness_texture_min_filter_property     = slot_sampler_enum ("metallic_roughness_texture_min_filter",     &Material_texture_samplers::metallic_roughness, "Metallic Roughness Sampler", Slot_lighting::lit, c_filter_enum_info,               Material_sampler_state{}.min_filter,  "Min Filter");
+const Property<erhe::graphics::Filter>               Material::metallic_roughness_texture_mag_filter_property     = slot_sampler_enum ("metallic_roughness_texture_mag_filter",     &Material_texture_samplers::metallic_roughness, "Metallic Roughness Sampler", Slot_lighting::lit, c_filter_enum_info,               Material_sampler_state{}.mag_filter,  "Mag Filter");
+const Property<erhe::graphics::Sampler_mipmap_mode>  Material::metallic_roughness_texture_mipmap_mode_property    = slot_sampler_enum ("metallic_roughness_texture_mipmap_mode",    &Material_texture_samplers::metallic_roughness, "Metallic Roughness Sampler", Slot_lighting::lit, c_sampler_mipmap_mode_enum_info,  Material_sampler_state{}.mipmap_mode, "Mipmap Mode");
+const Property<float>                                Material::metallic_roughness_texture_max_anisotropy_property = slot_sampler_float("metallic_roughness_texture_max_anisotropy", &Material_texture_samplers::metallic_roughness, "Metallic Roughness Sampler", Slot_lighting::lit, Material_sampler_state{}.max_anisotropy, 1.0f, 16.0f, "Max Anisotropy", false);
+const Property<float>                                Material::metallic_roughness_texture_lod_bias_property       = slot_sampler_float("metallic_roughness_texture_lod_bias",       &Material_texture_samplers::metallic_roughness, "Metallic Roughness Sampler", Slot_lighting::lit, Material_sampler_state{}.lod_bias, -4.0f, 4.0f, "LOD Bias", true);
+const Property<erhe::graphics::Sampler_address_mode> Material::normal_texture_wrap_u_property         = slot_sampler_enum ("normal_texture_wrap_u",         &Material_texture_samplers::normal, "Normal Sampler", Slot_lighting::lit, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_u,      "Wrap U");
+const Property<erhe::graphics::Sampler_address_mode> Material::normal_texture_wrap_v_property         = slot_sampler_enum ("normal_texture_wrap_v",         &Material_texture_samplers::normal, "Normal Sampler", Slot_lighting::lit, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_v,      "Wrap V");
+const Property<erhe::graphics::Filter>               Material::normal_texture_min_filter_property     = slot_sampler_enum ("normal_texture_min_filter",     &Material_texture_samplers::normal, "Normal Sampler", Slot_lighting::lit, c_filter_enum_info,               Material_sampler_state{}.min_filter,  "Min Filter");
+const Property<erhe::graphics::Filter>               Material::normal_texture_mag_filter_property     = slot_sampler_enum ("normal_texture_mag_filter",     &Material_texture_samplers::normal, "Normal Sampler", Slot_lighting::lit, c_filter_enum_info,               Material_sampler_state{}.mag_filter,  "Mag Filter");
+const Property<erhe::graphics::Sampler_mipmap_mode>  Material::normal_texture_mipmap_mode_property    = slot_sampler_enum ("normal_texture_mipmap_mode",    &Material_texture_samplers::normal, "Normal Sampler", Slot_lighting::lit, c_sampler_mipmap_mode_enum_info,  Material_sampler_state{}.mipmap_mode, "Mipmap Mode");
+const Property<float>                                Material::normal_texture_max_anisotropy_property = slot_sampler_float("normal_texture_max_anisotropy", &Material_texture_samplers::normal, "Normal Sampler", Slot_lighting::lit, Material_sampler_state{}.max_anisotropy, 1.0f, 16.0f, "Max Anisotropy", false);
+const Property<float>                                Material::normal_texture_lod_bias_property       = slot_sampler_float("normal_texture_lod_bias",       &Material_texture_samplers::normal, "Normal Sampler", Slot_lighting::lit, Material_sampler_state{}.lod_bias, -4.0f, 4.0f, "LOD Bias", true);
+const Property<erhe::graphics::Sampler_address_mode> Material::occlusion_texture_wrap_u_property         = slot_sampler_enum ("occlusion_texture_wrap_u",         &Material_texture_samplers::occlusion, "Occlusion Sampler", Slot_lighting::lit, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_u,      "Wrap U");
+const Property<erhe::graphics::Sampler_address_mode> Material::occlusion_texture_wrap_v_property         = slot_sampler_enum ("occlusion_texture_wrap_v",         &Material_texture_samplers::occlusion, "Occlusion Sampler", Slot_lighting::lit, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_v,      "Wrap V");
+const Property<erhe::graphics::Filter>               Material::occlusion_texture_min_filter_property     = slot_sampler_enum ("occlusion_texture_min_filter",     &Material_texture_samplers::occlusion, "Occlusion Sampler", Slot_lighting::lit, c_filter_enum_info,               Material_sampler_state{}.min_filter,  "Min Filter");
+const Property<erhe::graphics::Filter>               Material::occlusion_texture_mag_filter_property     = slot_sampler_enum ("occlusion_texture_mag_filter",     &Material_texture_samplers::occlusion, "Occlusion Sampler", Slot_lighting::lit, c_filter_enum_info,               Material_sampler_state{}.mag_filter,  "Mag Filter");
+const Property<erhe::graphics::Sampler_mipmap_mode>  Material::occlusion_texture_mipmap_mode_property    = slot_sampler_enum ("occlusion_texture_mipmap_mode",    &Material_texture_samplers::occlusion, "Occlusion Sampler", Slot_lighting::lit, c_sampler_mipmap_mode_enum_info,  Material_sampler_state{}.mipmap_mode, "Mipmap Mode");
+const Property<float>                                Material::occlusion_texture_max_anisotropy_property = slot_sampler_float("occlusion_texture_max_anisotropy", &Material_texture_samplers::occlusion, "Occlusion Sampler", Slot_lighting::lit, Material_sampler_state{}.max_anisotropy, 1.0f, 16.0f, "Max Anisotropy", false);
+const Property<float>                                Material::occlusion_texture_lod_bias_property       = slot_sampler_float("occlusion_texture_lod_bias",       &Material_texture_samplers::occlusion, "Occlusion Sampler", Slot_lighting::lit, Material_sampler_state{}.lod_bias, -4.0f, 4.0f, "LOD Bias", true);
+const Property<erhe::graphics::Sampler_address_mode> Material::emissive_texture_wrap_u_property         = slot_sampler_enum ("emissive_texture_wrap_u",         &Material_texture_samplers::emissive, "Emissive Sampler", Slot_lighting::any, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_u,      "Wrap U");
+const Property<erhe::graphics::Sampler_address_mode> Material::emissive_texture_wrap_v_property         = slot_sampler_enum ("emissive_texture_wrap_v",         &Material_texture_samplers::emissive, "Emissive Sampler", Slot_lighting::any, c_sampler_address_mode_enum_info, Material_sampler_state{}.wrap_v,      "Wrap V");
+const Property<erhe::graphics::Filter>               Material::emissive_texture_min_filter_property     = slot_sampler_enum ("emissive_texture_min_filter",     &Material_texture_samplers::emissive, "Emissive Sampler", Slot_lighting::any, c_filter_enum_info,               Material_sampler_state{}.min_filter,  "Min Filter");
+const Property<erhe::graphics::Filter>               Material::emissive_texture_mag_filter_property     = slot_sampler_enum ("emissive_texture_mag_filter",     &Material_texture_samplers::emissive, "Emissive Sampler", Slot_lighting::any, c_filter_enum_info,               Material_sampler_state{}.mag_filter,  "Mag Filter");
+const Property<erhe::graphics::Sampler_mipmap_mode>  Material::emissive_texture_mipmap_mode_property    = slot_sampler_enum ("emissive_texture_mipmap_mode",    &Material_texture_samplers::emissive, "Emissive Sampler", Slot_lighting::any, c_sampler_mipmap_mode_enum_info,  Material_sampler_state{}.mipmap_mode, "Mipmap Mode");
+const Property<float>                                Material::emissive_texture_max_anisotropy_property = slot_sampler_float("emissive_texture_max_anisotropy", &Material_texture_samplers::emissive, "Emissive Sampler", Slot_lighting::any, Material_sampler_state{}.max_anisotropy, 1.0f, 16.0f, "Max Anisotropy", false);
+const Property<float>                                Material::emissive_texture_lod_bias_property       = slot_sampler_float("emissive_texture_lod_bias",       &Material_texture_samplers::emissive, "Emissive Sampler", Slot_lighting::any, Material_sampler_state{}.lod_bias, -4.0f, 4.0f, "LOD Bias", true);
+
+namespace {
+
+// The seven sampler properties of one slot, for the mirror, the seed and
+// set_data.
+class Slot_sampler_properties
+{
+public:
+    const Property<erhe::graphics::Sampler_address_mode>& wrap_u;
+    const Property<erhe::graphics::Sampler_address_mode>& wrap_v;
+    const Property<erhe::graphics::Filter>&               min_filter;
+    const Property<erhe::graphics::Filter>&               mag_filter;
+    const Property<erhe::graphics::Sampler_mipmap_mode>&  mipmap_mode;
+    const Property<float>&                                max_anisotropy;
+    const Property<float>&                                lod_bias;
+};
+
+auto sampler_properties_of(const Material_texture_samplers& samplers, const Material_texture_sampler& slot) -> const Slot_sampler_properties*
+{
+    static const Slot_sampler_properties c_base_color        {Material::base_color_texture_wrap_u_property,         Material::base_color_texture_wrap_v_property,         Material::base_color_texture_min_filter_property,         Material::base_color_texture_mag_filter_property,         Material::base_color_texture_mipmap_mode_property,         Material::base_color_texture_max_anisotropy_property,         Material::base_color_texture_lod_bias_property};
+    static const Slot_sampler_properties c_metallic_roughness{Material::metallic_roughness_texture_wrap_u_property, Material::metallic_roughness_texture_wrap_v_property, Material::metallic_roughness_texture_min_filter_property, Material::metallic_roughness_texture_mag_filter_property, Material::metallic_roughness_texture_mipmap_mode_property, Material::metallic_roughness_texture_max_anisotropy_property, Material::metallic_roughness_texture_lod_bias_property};
+    static const Slot_sampler_properties c_normal            {Material::normal_texture_wrap_u_property,             Material::normal_texture_wrap_v_property,             Material::normal_texture_min_filter_property,             Material::normal_texture_mag_filter_property,             Material::normal_texture_mipmap_mode_property,             Material::normal_texture_max_anisotropy_property,             Material::normal_texture_lod_bias_property};
+    static const Slot_sampler_properties c_occlusion         {Material::occlusion_texture_wrap_u_property,          Material::occlusion_texture_wrap_v_property,          Material::occlusion_texture_min_filter_property,          Material::occlusion_texture_mag_filter_property,          Material::occlusion_texture_mipmap_mode_property,          Material::occlusion_texture_max_anisotropy_property,          Material::occlusion_texture_lod_bias_property};
+    static const Slot_sampler_properties c_emissive          {Material::emissive_texture_wrap_u_property,           Material::emissive_texture_wrap_v_property,           Material::emissive_texture_min_filter_property,           Material::emissive_texture_mag_filter_property,           Material::emissive_texture_mipmap_mode_property,           Material::emissive_texture_max_anisotropy_property,           Material::emissive_texture_lod_bias_property};
+    if (&slot == &samplers.base_color)         { return &c_base_color; }
+    if (&slot == &samplers.metallic_roughness) { return &c_metallic_roughness; }
+    if (&slot == &samplers.normal)             { return &c_normal; }
+    if (&slot == &samplers.occlusion)          { return &c_occlusion; }
+    if (&slot == &samplers.emissive)           { return &c_emissive; }
+    return nullptr;
+}
+
+// Writes `state` through the slot's properties: a field at its default
+// clears the local value (so a folder value shows through), any other
+// value becomes local.
+void apply_sampler_state(Material& material, const Slot_sampler_properties& properties, const Material_sampler_state& state)
+{
+    const Material_sampler_state defaults{};
+    const auto apply = [&material]<typename T>(const Property<T>& property, const T value, const T default_value) {
+        if (value != default_value) {
+            material.set_value(property, value);
+        } else {
+            material.clear_value(property);
+        }
+    };
+    apply(properties.wrap_u,         state.wrap_u,         defaults.wrap_u);
+    apply(properties.wrap_v,         state.wrap_v,         defaults.wrap_v);
+    apply(properties.min_filter,     state.min_filter,     defaults.min_filter);
+    apply(properties.mag_filter,     state.mag_filter,     defaults.mag_filter);
+    apply(properties.mipmap_mode,    state.mipmap_mode,    defaults.mipmap_mode);
+    apply(properties.max_anisotropy, state.max_anisotropy, defaults.max_anisotropy);
+    apply(properties.lod_bias,       state.lod_bias,       defaults.lod_bias);
+}
+
+// Mirrors the changed sampler property into the slot state; false when
+// `changed` is not one of the slot's sampler properties.
+auto mirror_sampler_state(const Material& material, const Slot_sampler_properties& properties, const erhe::property::Dependency_property* changed, Material_sampler_state& state) -> bool
+{
+    if (changed == properties.wrap_u.get_ptr())         { state.wrap_u         = material.get_value(properties.wrap_u);         return true; }
+    if (changed == properties.wrap_v.get_ptr())         { state.wrap_v         = material.get_value(properties.wrap_v);         return true; }
+    if (changed == properties.min_filter.get_ptr())     { state.min_filter     = material.get_value(properties.min_filter);     return true; }
+    if (changed == properties.mag_filter.get_ptr())     { state.mag_filter     = material.get_value(properties.mag_filter);     return true; }
+    if (changed == properties.mipmap_mode.get_ptr())    { state.mipmap_mode    = material.get_value(properties.mipmap_mode);    return true; }
+    if (changed == properties.max_anisotropy.get_ptr()) { state.max_anisotropy = material.get_value(properties.max_anisotropy); return true; }
+    if (changed == properties.lod_bias.get_ptr())       { state.lod_bias       = material.get_value(properties.lod_bias);       return true; }
+    return false;
+}
+
+} // anonymous namespace
+
+auto to_sampler_create_info(const Material_sampler_state& state) -> erhe::graphics::Sampler_create_info
+{
+    return erhe::graphics::Sampler_create_info{
+        .min_filter     = state.min_filter,
+        .mag_filter     = state.mag_filter,
+        .mipmap_mode    = state.mipmap_mode,
+        .address_mode   = { state.wrap_u, state.wrap_v, state.wrap_v },
+        .lod_bias       = state.lod_bias,
+        .max_anisotropy = state.max_anisotropy,
+        .debug_label    = "Material sampler"
+    };
+}
+
+auto sampler_state_from(const erhe::graphics::Sampler_create_info& create_info) -> Material_sampler_state
+{
+    return Material_sampler_state{
+        .wrap_u         = create_info.address_mode[0],
+        .wrap_v         = create_info.address_mode[1],
+        .min_filter     = create_info.min_filter,
+        .mag_filter     = create_info.mag_filter,
+        .mipmap_mode    = create_info.mipmap_mode,
+        .max_anisotropy = create_info.max_anisotropy,
+        .lod_bias       = create_info.lod_bias
+    };
+}
+
+void Material::set_slot_sampler(Material_texture_sampler& slot, const Material_sampler_state& state)
+{
+    const Slot_sampler_properties* properties = sampler_properties_of(data.texture_samplers, slot);
+    if (properties == nullptr) {
+        log_primitive->error("Material '{}': set_slot_sampler with a slot of another material", get_name());
+        return;
+    }
+    const erhe::property::Dependency_object::Change_batch batch{*this};
+    apply_sampler_state(*this, *properties, state);
+}
 
 Material::Material()                           = default;
 Material::Material(const Material&)            = default;
@@ -286,6 +475,7 @@ void Material::seed_slot_values_from_data()
         if (slot.rotation != 0.0f)                       { set_value(rotation_property,    slot.rotation); }
         if (slot.offset != glm::vec2{0.0f, 0.0f})        { set_value(offset_property,      slot.offset); }
         if (slot.scale  != glm::vec2{1.0f, 1.0f})        { set_value(scale_property,       slot.scale); }
+        apply_sampler_state(*this, *sampler_properties_of(data.texture_samplers, slot), slot.sampler); // the default fields clear an already unset value
     };
     seed_slot(data.texture_samplers.base_color,         base_color_texture_property,         base_color_texture_texgen_mode_property,         base_color_texture_uv_rotation_property,         base_color_texture_uv_offset_property,         base_color_texture_uv_scale_property);
     seed_slot(data.texture_samplers.metallic_roughness, metallic_roughness_texture_property, metallic_roughness_texture_texgen_mode_property, metallic_roughness_texture_uv_rotation_property, metallic_roughness_texture_uv_offset_property, metallic_roughness_texture_uv_scale_property);
@@ -312,7 +502,7 @@ void Material::on_property_changed(const erhe::property::Property_changed_args& 
         if (changed == rotation_property.get_ptr())    { slot.rotation          = get_value(rotation_property);    return true; }
         if (changed == offset_property.get_ptr())      { slot.offset            = get_value(offset_property);      return true; }
         if (changed == scale_property.get_ptr())       { slot.scale             = get_value(scale_property);       return true; }
-        return false;
+        return mirror_sampler_state(*this, *sampler_properties_of(data.texture_samplers, slot), changed, slot.sampler);
     };
     if (mirror_slot(data.texture_samplers.base_color,         base_color_texture_property,         base_color_texture_texgen_mode_property,         base_color_texture_uv_rotation_property,         base_color_texture_uv_offset_property,         base_color_texture_uv_scale_property)) { return; }
     if (mirror_slot(data.texture_samplers.metallic_roughness, metallic_roughness_texture_property, metallic_roughness_texture_texgen_mode_property, metallic_roughness_texture_uv_rotation_property, metallic_roughness_texture_uv_offset_property, metallic_roughness_texture_uv_scale_property)) { return; }
@@ -388,7 +578,7 @@ void Material::set_data(const Material_data& new_data)
         if (new_slot.rotation != 0.0f)                { set_value(rotation_property,    new_slot.rotation);    } else { clear_value(rotation_property);    }
         if (new_slot.offset != glm::vec2{0.0f, 0.0f}) { set_value(offset_property,      new_slot.offset);      } else { clear_value(offset_property);      }
         if (new_slot.scale  != glm::vec2{1.0f, 1.0f}) { set_value(scale_property,       new_slot.scale);       } else { clear_value(scale_property);       }
-        slot.sampler = new_slot.sampler;
+        apply_sampler_state(*this, *sampler_properties_of(data.texture_samplers, slot), new_slot.sampler);
     };
     apply_slot(data.texture_samplers.base_color,           new_data.texture_samplers.base_color,               base_color_texture_property,            base_color_texture_texgen_mode_property,            base_color_texture_uv_rotation_property,           base_color_texture_uv_offset_property,           base_color_texture_uv_scale_property);
     apply_slot(data.texture_samplers.metallic_roughness,   new_data.texture_samplers.metallic_roughness,       metallic_roughness_texture_property,    metallic_roughness_texture_texgen_mode_property,    metallic_roughness_texture_uv_rotation_property,   metallic_roughness_texture_uv_offset_property,   metallic_roughness_texture_uv_scale_property);

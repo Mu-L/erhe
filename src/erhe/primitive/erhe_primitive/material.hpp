@@ -13,17 +13,39 @@
 #include <string_view>
 
 namespace erhe::graphics {
-    class Sampler;
+    class Sampler_create_info;
     class Texture_reference;
 }
 
 namespace erhe::primitive {
 
+// How a slot's texture is sampled: plain data, the values of the slot's
+// sampler properties (section 4.1 of doc/property-system.md). The renderer
+// resolves a GPU sampler from it (Material_sampler_cache); the defaults are
+// those of erhe::graphics::Sampler_create_info, so a slot at its defaults
+// samples as it did with no explicit sampler.
+class Material_sampler_state
+{
+public:
+    erhe::graphics::Sampler_address_mode wrap_u        {erhe::graphics::Sampler_address_mode::repeat};
+    erhe::graphics::Sampler_address_mode wrap_v        {erhe::graphics::Sampler_address_mode::repeat};
+    erhe::graphics::Filter               min_filter    {erhe::graphics::Filter::linear};
+    erhe::graphics::Filter               mag_filter    {erhe::graphics::Filter::nearest};
+    erhe::graphics::Sampler_mipmap_mode  mipmap_mode   {erhe::graphics::Sampler_mipmap_mode::linear};
+    float                                max_anisotropy{1.0f};
+    float                                lod_bias      {0.0f};
+
+    [[nodiscard]] auto operator==(const Material_sampler_state&) const -> bool = default;
+};
+
+[[nodiscard]] auto to_sampler_create_info(const Material_sampler_state& state) -> erhe::graphics::Sampler_create_info;
+[[nodiscard]] auto sampler_state_from    (const erhe::graphics::Sampler_create_info& create_info) -> Material_sampler_state;
+
 class Material_texture_sampler
 {
 public:
     std::shared_ptr<erhe::graphics::Texture_reference> texture_reference{};
-    std::shared_ptr<erhe::graphics::Sampler>           sampler          {};
+    Material_sampler_state                             sampler          {};
     Texgen_mode                                        texgen_mode      {Texgen_mode::uv0};
     float                                              rotation         {0.0f};
     glm::vec2                                          offset           {0.0f, 0.0f};
@@ -66,12 +88,11 @@ public:
     return false;
 }
 
-// The material state whose storage is this struct: the texture slots. A
-// slot's texture_reference and its texgen_mode, rotation, offset and scale
-// are also registered properties of the Material (member-backed,
-// doc/property-system.md D18 / D28), so write them through the Material
-// properties or set_data on a live material; the sampler is edited here
-// directly.
+// The material state whose storage is this struct: the texture slots.
+// Every slot field is a mirror of a registered property of the Material
+// (doc/property-system.md section 4.1): the texture_reference (D28), the
+// texgen_mode, rotation, offset and scale, and the sampler state. Write
+// them through the Material properties or set_data on a live material.
 class Material_data
 {
 public:
@@ -193,6 +214,48 @@ public:
     static const erhe::property::Property<float>       emissive_texture_uv_rotation_property;
     static const erhe::property::Property<glm::vec2>   emissive_texture_uv_offset_property;
     static const erhe::property::Property<glm::vec2>   emissive_texture_uv_scale_property;
+    // The slot samplers (entry-store, inherit like the slot texture,
+    // mirrored into the slot's Material_sampler_state): wrap, filters,
+    // mipmap mode, anisotropy and the LOD bias.
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> base_color_texture_wrap_u_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> base_color_texture_wrap_v_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               base_color_texture_min_filter_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               base_color_texture_mag_filter_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_mipmap_mode>  base_color_texture_mipmap_mode_property;
+    static const erhe::property::Property<float>                                base_color_texture_max_anisotropy_property;
+    static const erhe::property::Property<float>                                base_color_texture_lod_bias_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> metallic_roughness_texture_wrap_u_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> metallic_roughness_texture_wrap_v_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               metallic_roughness_texture_min_filter_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               metallic_roughness_texture_mag_filter_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_mipmap_mode>  metallic_roughness_texture_mipmap_mode_property;
+    static const erhe::property::Property<float>                                metallic_roughness_texture_max_anisotropy_property;
+    static const erhe::property::Property<float>                                metallic_roughness_texture_lod_bias_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> normal_texture_wrap_u_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> normal_texture_wrap_v_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               normal_texture_min_filter_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               normal_texture_mag_filter_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_mipmap_mode>  normal_texture_mipmap_mode_property;
+    static const erhe::property::Property<float>                                normal_texture_max_anisotropy_property;
+    static const erhe::property::Property<float>                                normal_texture_lod_bias_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> occlusion_texture_wrap_u_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> occlusion_texture_wrap_v_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               occlusion_texture_min_filter_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               occlusion_texture_mag_filter_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_mipmap_mode>  occlusion_texture_mipmap_mode_property;
+    static const erhe::property::Property<float>                                occlusion_texture_max_anisotropy_property;
+    static const erhe::property::Property<float>                                occlusion_texture_lod_bias_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> emissive_texture_wrap_u_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_address_mode> emissive_texture_wrap_v_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               emissive_texture_min_filter_property;
+    static const erhe::property::Property<erhe::graphics::Filter>               emissive_texture_mag_filter_property;
+    static const erhe::property::Property<erhe::graphics::Sampler_mipmap_mode>  emissive_texture_mipmap_mode_property;
+    static const erhe::property::Property<float>                                emissive_texture_max_anisotropy_property;
+    static const erhe::property::Property<float>                                emissive_texture_lod_bias_property;
+    // The sampler state of one of this material's own slots, written through
+    // the slot's seven sampler properties in one change batch (a field at its
+    // default clears the local value, as set_data does).
+    void set_slot_sampler(Material_texture_sampler& slot, const Material_sampler_state& state);
 
     [[nodiscard]] auto get_base_color                        () const -> glm::vec3              { return get_value(base_color_property); }
     [[nodiscard]] auto get_opacity                           () const -> float                  { return get_value(opacity_property); }
@@ -242,10 +305,9 @@ public:
     void set_occlusion_texture                 (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
     void set_emissive_texture                  (const std::shared_ptr<erhe::graphics::Texture_reference>& texture);
 
-    // Whole Material_data in: the texture references and the slot
-    // transforms go through their properties (one change batch; an unbound
-    // slot clears its local value), the samplers are assigned. The way undo
-    // applies a Material_data snapshot.
+    // Whole Material_data in: every slot field goes through its property
+    // (one change batch; a field at its default clears the local value).
+    // The way undo applies a Material_data snapshot.
     void set_data(const Material_data& new_data);
     // The texture of one of this material's own slots (data.texture_samplers.*),
     // for a caller holding the slot by pointer; a slot of another material

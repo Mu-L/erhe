@@ -31,14 +31,14 @@ volume computation, and PBR material definitions.
 - Create a `Primitive` from a `Geometry` + `Build_info` to get a renderable mesh.
 - `build_buffer_mesh()` -- builds vertex/index data from a GEO::Mesh.
 - `Vertex_buffer_sink` / `Index_buffer_sink` subclasses control where data goes. The GPU-backed implementation lives in `erhe::scene_renderer::Mesh_memory` (which implements both sink interfaces directly); CPU-backed allocators use `Cpu_vertex_buffer_sink` / `Cpu_index_buffer_sink`.
-- `Material` is an `Item` with PBR properties and optional texture samplers. The five slot textures are object properties (`base_color_texture_property` ..., `register_member` over `data.texture_samplers.<slot>.texture_reference`, `doc/property-system.md` section 4.1): write a live material's slot through `set_base_color_texture()` and the other setters, `set_slot_texture()` for a slot held by pointer, or `set_data()` for a whole `Material_data` snapshot; the slot's sampler and transform fields are plain members. `erhe::primitive` links `erhe::graphics` privately for the `Texture_reference` cast.
+- `Material` is an `Item` with PBR properties and optional texture samplers. The five slot textures are object properties (`base_color_texture_property` ..., `register_member` over `data.texture_samplers.<slot>.texture_reference`, `doc/property-system.md` section 4.1): write a live material's slot through `set_base_color_texture()` and the other setters, `set_slot_texture()` for a slot held by pointer, `set_slot_sampler()` for a slot's `Material_sampler_state`, or `set_data()` for a whole `Material_data` snapshot; every slot field (texture, transform, sampler state) mirrors a property. `Material_sampler_state` is plain data (wrap, filters, mipmap mode, anisotropy, LOD bias); the renderer resolves the GPU `Sampler` from it. `erhe::primitive` links `erhe::graphics` publicly for the sampler enums.
 
 ## Dependencies
 - `erhe::geometry` -- source `Geometry` type
 - `erhe::dataformat` -- `Vertex_format`, `Format` enums
 - `erhe::math` -- `Aabb`, `Sphere`
 - `erhe::item` -- `Item` base for `Material`
-- `erhe::graphics` -- `Texture`, `Sampler` (in Material)
+- `erhe::graphics` -- `Texture_reference`, the sampler enums (in Material)
 - `erhe::raytrace` -- `IGeometry` (for raytrace mesh)
 - `erhe::buffer` -- `Cpu_buffer`
 - `erhe::profile` -- profiling mutex

@@ -303,8 +303,9 @@ table, see D2a), and references to other objects (D28).
   `item->get_property_sub_object(index)`, the item stays the one the
   operation names and seals against, and a sub-object that no longer
   exists at apply time is a logged no-op.
-  `Material_change_operation` stays for the fields that remain in
-  `Material_data` (texture samplers). A `Property_set_apply_operation`
+  `Material_change_operation` applies a whole `Material_data` snapshot
+  through `Material::set_data` (the MCP `edit_material` tool). A
+  `Property_set_apply_operation`
   applies a `Property_set` (D17) to a list of items and records one before
   bag per item, for paste and multi-selection edits.
 - D12 Editor UI. `Property_editor` has a generic
@@ -509,10 +510,9 @@ table, see D2a), and references to other objects (D28).
     hidden one re-renders when it is next drawn. The token lives in the
     slot and is replaced when the slot is reclaimed for another item; a
     destroyed item deactivates it (D15). A texture slot's texture is a
-    property (D28, section 4.1) and refreshes the thumbnail; the slot's
-    sampler and transform fields are not properties and do not. The
-    Properties window material preview keeps its per-frame render: it
-    must also follow those sampler edits and the window size.
+    property (D28, section 4.1) and refreshes the thumbnail, as do its
+    transform and sampler properties. The Properties window material
+    preview keeps its per-frame render: it must follow the window size.
   - `Shadow_render_node`. The `cast_shadow` consequence already arrives
     through the D19 changed callback: `Scene_host::on_light_changed`
     invalidates the scene's `Light_set` and `Light_set::resolve` recomputes
@@ -1126,7 +1126,8 @@ folder value through). A save writes effective values into the glTF
 material, so after a round trip every value is local again; the folder
 keeps its own values in `ERHE_scene` `library_folders`.
 
-`Material_data` keeps only `texture_samplers`. `Material` exposes typed
+`Material_data` keeps only `texture_samplers`, every field of which
+mirrors a property (below). `Material` exposes typed
 getters and setters for every migrated field (`get_base_color()`,
 `set_base_color()`, ...) implemented on the property store, so call sites
 (`Material_buffer` upload, shader variant derivation, glTF import/export, the
@@ -1154,24 +1155,33 @@ value - local, inherited from a content-library folder (D30) or the
 default - kept current by `Material::on_property_changed`, so the
 per-frame readers (`Material_buffer::gather_texture`, `Shader_key::derive`)
 and the glTF export read the member with no variant access and see a
-folder's texture like the material's own. The slot's sampler stays in
-`Material_data` with `Material_change_operation`.
-The `Member_value_traits` cast to `erhe::graphics::Texture_reference` needs
-the complete class, so `erhe::primitive` links `erhe::graphics` privately.
+folder's texture like the material's own. The slot sampler is seven
+entry-store properties the same way: `<slot>_texture_wrap_u`, `_wrap_v`
+(`Sampler_address_mode`), `_min_filter`, `_mag_filter` (`Filter`),
+`_mipmap_mode` (`Sampler_mipmap_mode`), `_max_anisotropy` (1..16) and
+`_lod_bias` (developer-only), in the `<Slot> Sampler` group, `visible_when`
+the slot is bound, mirrored into the slot's `Material_sampler_state`
+(plain data whose defaults are those of `Sampler_create_info`). The
+renderer resolves the GPU sampler from the state
+(`Material_sampler_cache` in `Material_buffer`: one `Sampler` per
+distinct state, created on first use, so equal states share one object
+and the texture heap keys by it); the glTF export dedups its samplers by
+state the same way, and the importer's `bind_material_textures` writes
+the parsed glTF sampler into the slot with `set_slot_sampler`. No
+`Sampler` object is ever stored on a material, so no writer needs a
+device. `erhe::primitive` links `erhe::graphics` publicly for the sampler
+enums the state names.
 Writers of a live material use `set_base_color_texture()` and the other
-setters, `set_slot_texture(slot, texture)` for a slot held by pointer
-(the glTF importer's `bind_material_textures` and the graph-texture
-binders), `set_value` on a slot transform property, or
-`set_data(Material_data)` (what `Material_change_operation` applies: the
-textures and slot transforms through the properties in one change batch,
-the samplers assigned). A `Material_data` cannot say "inherit", so a slot
-field at its default - an unbound texture, an identity transform - clears
+setters, `set_slot_texture(slot, texture)` and `set_slot_sampler(slot,
+state)` for a slot held by pointer (the glTF importer, the graph-texture
+binders, `Rendertarget_mesh`), `set_value` on a slot property, or
+`set_data(Material_data)` (what `Material_change_operation` applies:
+every slot field through its property in one change batch). A
+`Material_data` cannot say "inherit", so a slot field at its default - an
+unbound texture, an identity transform, a default sampler field - clears
 the local value and any other value becomes local; the constructor seeds
 the store from `Material_create_info.data` by the same rule. The
-Properties window draws the slot textures and transforms as generic rows
-and, under a `<Slot> Sampler` group, the bound slot's sampler rows; its
-material inspect snapshot ignores the property-backed slot fields so a
-texture or transform edit records one operation.
+Properties window draws every material row as a generic row.
 
 ### 4.2 Node
 
