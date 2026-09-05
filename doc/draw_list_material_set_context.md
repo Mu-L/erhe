@@ -5,7 +5,7 @@ much of the plan has been reviewed, and why the work exists at all. The plan
 itself is self-contained for implementing; this is what to read before picking
 it up.
 
-## Status: the plan is implemented; what verification is left
+## Status: the plan is implemented and verified
 
 **The reported bug is fixed**, and its regression test says so: V3
 (`mcp_server_tests.cpp` `material_drag_to_second_mesh_uses_same_record_slot`)
@@ -115,32 +115,24 @@ commits).
   the `Material` object, with no notification, dirties **both** of the root's
   sets exactly once each.
 
-**Phase 7, what is NOT run** and needs a person at the keyboard:
+**Phase 7, the interactive sweep** (user-verified on the desktop, 2026-09-05):
+the V4 checks - live slider / picker dragging across every `Material_data`
+field (V4.2), texture re-bake (V4.3), cross-scene assignment (V4.4), preview
+churn with the hotbar and inventory open (V4.6), brush preview (V4.7),
+lightmap streaming (V4.8), BRDF slice window (V4.10), async glTF import and
+its undo (V4.11) - and the real-mouse material paint / item-tree material
+drop with Ctrl+Z taking each back (`Mesh_material_assign_operation`).
+Not run and not planned: V5's A/B screenshots (the pixel comparison needs a
+build where swapchain readback works) and the OpenGL sampler-array
+(non-bindless) heap path on its own.
 
-- The V4 interactive checks: live slider/picker dragging across every
-  `Material_data` field (V4.2 - the standing hole-in-the-hash risk), texture
-  re-bake (V4.3), cross-scene assignment (V4.4), preview churn with the hotbar
-  and inventory open (V4.6), brush preview (V4.7), lightmap streaming (V4.8),
-  BRDF slice window (V4.10), async glTF import and its undo (V4.11).
-- V5's A/B screenshots. `capture_screenshot` reports "the swapchain does not
-  support reading its images back" in this configuration, so the pixel
-  comparison needs a build where readback works.
-- The OpenGL sampler-array (non-bindless) heap path specifically.
-- A real-mouse check of the material paint tool and the item-tree material
-  drop, and that Ctrl+Z takes each of them back. Added 2026-09-01, when
-  material assignment became undoable (`Mesh_material_assign_operation`,
-  commits 21b065ada / 7dd3d9189 / 738d2e606 / b8c150ccd). Same gestures as the
-  V4 checks above, so one sweep covers both.
-
-**Quest: DONE 2026-09-01, and the rest of phase 7 on Quest is SKIPPED** by the
-user's call - passing on desktop gives high confidence for Quest. What ran:
-a fresh uninstall + clean reinstall, user-verified visually in the headset,
-plus the draw-list assertions driven against the Quest editor over MCP
-(`adb forward tcp:3743`; `material_index == material_set_slot` held through
-assign / undo / redo). Memory `project_quest_mcp_access` has the recipe and
-the two false-negative traps.
-
-So what is left of phase 7 is the DESKTOP interactive sweep above.
+**Quest: verified 2026-09-01**; the rest of phase 7 on Quest is skipped by
+the user's call - passing on desktop gives high confidence for Quest. What
+ran: a fresh uninstall + clean reinstall, user-verified visually in the
+headset, plus the draw-list assertions driven against the Quest editor over
+MCP (`adb forward tcp:3743`; `material_index == material_set_slot` held
+through assign / undo / redo). Memory `project_quest_mcp_access` has the
+recipe and the two false-negative traps.
 
 **Verification recipe.** Build `editor` and the test targets in `build_tests`
 (configured **OpenGL**, so the Vulkan path needs `scripts/build_ninja_win_vulkan.bat`
