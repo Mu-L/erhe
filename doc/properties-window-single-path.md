@@ -11,8 +11,8 @@ The design record is `doc/property-system.md` (D12 owns the window's
 generic section, D30 the holder rule, section 6 the future work);
 `doc/property-inventory.md` owns the per-field status and its "Not yet
 migrated" table lists the hand-written rows that are authored state;
-`doc/property-migration-handoff.md` owns the order and recipe of the
-per-owner migrations that this task depends on.
+section 4.18 of the design record owns the recipe of the per-owner
+migrations that this task depends on.
 
 ## 1. The two paths
 
@@ -87,12 +87,12 @@ per-owner migrations that this task depends on.
    the same row and the same MCP call that set it
    (`Dependency_object::is_write_sealed` is the per-property check the
    rows, the context menu and `set_item_property` use).
-2. The per-owner migrations of `doc/property-migration-handoff.md` are
-   done (the Light derived rows, Layout, Grid, Brush_placement,
-   Rendertarget_mesh, Animation and Node_joint each deleted their
-   hand-written rows in their own commit); the graph-node parameters it
-   still lists are drawn by the Node Properties window, not this one, so
-   they are not on this task's path.
+2. The per-owner migrations are done (the Light derived rows, Layout,
+   Grid, Brush_placement, Rendertarget_mesh, Animation and Node_joint each
+   deleted their hand-written rows in their own commit); the graph-node
+   parameters section 6 of the design record still lists are drawn by
+   the Node Properties window, not this one, so they are not on this
+   task's path.
 3. R4 holds: the sampler rows are Material properties and the inspect
    snapshot is gone.
 4. Holds: the last authored rows are properties (`Brush::material_property`,

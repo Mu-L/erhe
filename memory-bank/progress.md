@@ -24,12 +24,12 @@
 ✓step-4{4cb30bd4a}::brush-material+graph-mesh-properties;item_diagnostics-frame
 ?user-interactive-verify
 
-[TASK::property-migrations]{ONGOING}
+[TASK::property-migrations]{DONE-2026-09-05}
 ✓Material+Node+Light+Camera{entry-store-since-2026-09-04}+graph-nodes+Mesh_primitive+Node_physics+Grid+Brush_placement+Physics_material+Layout+Layout-hints{attached}
 ✓Node_physics-entry-store+material-carries-damping/wind/density{a5233529c+901dab96a,2026-09-04}
 ✓interactive-fixes{holder-type+per-type-multiselect+Mesh-owned-shadow_cast/lightmapped;900328b01..9c4ff5327}
 ✓Light-derived-rows{56615421c}+Layout{90ab4c97b}+Grid{07be30baa}+Brush_placement{65620bed4}+Rendertarget_mesh{11897628c}+Animation{526f35383}+Node_joint{c8146b473};2026-09-05;all-headless-verified
-?left::graph-node-parameters{section-4.5;low-value;¬blocking}
+?graph-node-parameters::future-work{doc/property-system.md-section-6;only-when-user-asks}
 ?user-interactive-verify{Light-flux-slider-undo;Layout/Grid/Brush_placement-holders;joint-rows}
 
 [NOTES]
