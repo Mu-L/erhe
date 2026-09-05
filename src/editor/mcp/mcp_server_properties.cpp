@@ -298,8 +298,8 @@ auto Mcp_server::action_set_item_property(const json& args) -> std::string
     if (property->is_read_only()) {
         return make_error_content("Property '" + property_name + "' is read-only");
     }
-    if (item->is_sealed()) {
-        return make_error_content("Item '" + item->get_name() + "' is sealed (lock_edit): unlock_items first, or edit the prefab's source scene");
+    if (target->is_write_sealed(*property)) { // D24; lock_edit itself stays writable
+        return make_error_content("Item '" + item->get_name() + "' is sealed (lock_edit): set lock_edit false or unlock_items first, or edit the prefab's source scene");
     }
     const bool computed_writable = property->get_metadata(target->get_property_owner_type()).is_computed_writable(); // D26
 

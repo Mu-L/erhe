@@ -405,7 +405,7 @@ void Dependency_property_rows::row(Property_editor& editor, const Dependency_pro
         tooltip += erhe::property::to_string(property, first.get_value(property));
     }
 
-    const bool sealed = first_item.is_sealed(); // D24: a sealed item's rows are read-only
+    const bool sealed = first_item.is_write_sealed(property); // D24: a sealed item's rows are read-only (lock_edit stays writable)
     // Tinted label (D12): one hue per value source, so a registered
     // property is told apart from a hand-written row and its layer is
     // read at a glance - the tooltip names the source in words.
@@ -838,7 +838,7 @@ void Dependency_property_rows::context_menu(const Dependency_property& property,
     for (std::size_t i = 0; i < m_items->size(); ++i) {
         any_local = any_local || target(i)->has_local_value(property);
     }
-    const bool writable = !property.is_read_only() && !m_items->front()->is_sealed(); // D24
+    const bool writable = !property.is_read_only() && !m_items->front()->is_write_sealed(property); // D24
     if (ImGui::MenuItem("Reset to default", nullptr, false, any_local && writable)) {
         reset_to_default(property);
     }

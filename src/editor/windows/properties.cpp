@@ -1011,38 +1011,17 @@ void Properties::physics_joint_settings_properties(const std::shared_ptr<erhe::p
     pop_group();
 }
 
+// Developer diagnostics (R3 of doc/properties-window-single-path.md): the
+// whole flag word as text. The authored bits are property rows
+// (Item_base::lock_edit_property and the other flag bridges); the rest are
+// transient presentation state and not editable here.
 void Properties::item_flags(const std::shared_ptr<erhe::Item_base>& item)
 {
     ERHE_PROFILE_FUNCTION();
 
-    push_group("Flags", ImGuiTreeNodeFlags_None, m_indent);
-
-    using namespace erhe::utility;
-    using Item_flags = erhe::Item_flags;
-
-    const uint64_t flags = item->get_flag_bits();
-    for (uint64_t bit_position = 0; bit_position < Item_flags::count; ++ bit_position) {
-        if (((uint64_t{1} << bit_position) & Item_flags::derived) != 0u) {
-            continue; // visible / shadow_cast / lightmapped: property rows (D23)
-        }
-        add_entry(Item_flags::c_bit_labels[bit_position], [item, bit_position, flags, this]() {
-            const uint64_t bit_mask = uint64_t{1} << bit_position;
-            bool           value    = test_bit_set(flags, bit_mask);
-            if (ImGui::Checkbox("##", &value)) {
-                if (bit_mask == Item_flags::selected) {
-                    if (value) {
-                        m_context.selection->add_to_selection(item);
-                    } else {
-                        m_context.selection->remove_from_selection(item);
-                    }
-                } else {
-                    item->set_flag_bits(bit_mask, value);
-                }
-            }
-        });
-    }
-
-    pop_group();
+    add_entry("Flags", [item]() {
+        ImGui::TextWrapped("%s", erhe::Item_flags::to_string(item->get_flag_bits()).c_str());
+    });
 }
 
 [[nodiscard]] auto show_item_details(const erhe::Item_base* const item)
@@ -1094,96 +1073,10 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
     );
     push_group(group_label.c_str(), flags, m_indent);
     if (show_item_details(item.get())) {
-        // TODO Same as group_label above - avoid heap allocation every frame
-        std::string item_name_label = fmt::format("{} Name", item->get_type_name());
-        add_entry(item_name_label.c_str(), [item]() {
-            if (item->is_lock_edit()) {
-                ImGui::TextUnformatted(item->get_name().c_str());
-            } else {
-                std::string name = item->get_name();
-                const bool enter_pressed = ImGui::InputText("##", &name, ImGuiInputTextFlags_EnterReturnsTrue);
-                if (enter_pressed || ImGui::IsItemDeactivatedAfterEdit()) { // TODO
-                    if (name != item->get_name()) {
-                        item->set_name(name);
-                    }
-                }
-            }
-        });                 
-
-        add_entry("Locks", [this, item]() {
-            ImFont* icon_font = m_imgui_renderer.material_design_font();
-            if (icon_font == nullptr) {
-                return;
-            }
-            const float font_size =
-                m_imgui_renderer.get_imgui_settings().scale_factor *
-                m_imgui_renderer.get_imgui_settings().material_design_font_size;
-
-            bool lock_xfm = item->is_lock_viewport_transform();
-            bool lock_edt = item->is_lock_edit();
-            bool lock_sel = item->is_lock_viewport_selection();
-            const char* xfm_icon = lock_xfm ? ICON_MDI_AXIS_ARROW_LOCK         : ICON_MDI_AXIS_ARROW;
-            const char* edt_icon = lock_edt ? ICON_MDI_LOCK                     : ICON_MDI_LOCK_OPEN;
-            const char* sel_icon = lock_sel ? ICON_MDI_LOCK_OUTLINE             : ICON_MDI_LOCK_OPEN_VARIANT_OUTLINE;
-            const ImVec4 dim_color = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
-
-            if (!lock_xfm) { ImGui::PushStyleColor(ImGuiCol_Text, dim_color); }
-            ImGui::PushFont(icon_font, font_size);
-            const bool xfm_clicked = ImGui::Button(xfm_icon);
-            ImGui::PopFont();
-            if (!lock_xfm) { ImGui::PopStyleColor(); }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Transform Lock: %s", lock_xfm ? "Locked" : "Unlocked");
-            }
-            if (xfm_clicked) {
-                item->set_flag_bits(erhe::Item_flags::lock_viewport_transform, !lock_xfm);
-            }
-
-            ImGui::SameLine();
-            if (!lock_edt) { ImGui::PushStyleColor(ImGuiCol_Text, dim_color); }
-            ImGui::PushFont(icon_font, font_size);
-            const bool edt_clicked = ImGui::Button(edt_icon);
-            ImGui::PopFont();
-            if (!lock_edt) { ImGui::PopStyleColor(); }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Edit Lock: %s", lock_edt ? "Locked" : "Unlocked");
-            }
-            if (edt_clicked) {
-                item->set_lock_edit(!lock_edt);
-            }
-
-            ImGui::SameLine();
-            if (!lock_sel) { ImGui::PushStyleColor(ImGuiCol_Text, dim_color); }
-            ImGui::PushFont(icon_font, font_size);
-            const bool sel_clicked = ImGui::Button(sel_icon);
-            ImGui::PopFont();
-            if (!lock_sel) { ImGui::PopStyleColor(); }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Selection Lock: %s", lock_sel ? "Locked" : "Unlocked");
-            }
-            if (sel_clicked) {
-                item->set_flag_bits(erhe::Item_flags::lock_viewport_selection, !lock_sel);
-            }
-        });
-
         if (m_context.developer_mode) {
             add_entry("Id", [item]() { ImGui::Text("%u", static_cast<unsigned int>(item->get_id())); });
             item_flags(item);
         }
-
-        //// if (!erhe::scene::is_light(item)) { // light uses light color, so hide item color
-        ////     glm::vec4 color = item->get_wireframe_color();
-        ////     if (
-        ////         ImGui::ColorEdit4(
-        ////             "Item_base Color",
-        ////             &color.x,
-        ////             ImGuiColorEditFlags_Float |
-        ////             ImGuiColorEditFlags_NoInputs
-        ////         )
-        ////     ) {
-        ////         item->set_wireframe_color(color);
-        ////     }
-        //// }
     }
 
     const bool edit_disabled = item->is_lock_edit();
@@ -1359,7 +1252,6 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
 
     erhe::primitive::Material* selected_material = selected_material_shared.get();
 
-    const std::string                           name_before = selected_material->get_name();
     const erhe::primitive::Material_data        before      = selected_material->data;
     erhe::primitive::Material_data&             data        = selected_material->data;
     erhe::primitive::Material_texture_samplers& samplers    = data.texture_samplers;
@@ -1369,13 +1261,6 @@ void Properties::material_properties(const std::vector<std::shared_ptr<erhe::Ite
         (m_material_state == Editor_state::clean          ) ? "clean" :
         (m_material_state == Editor_state::dirty_editing  ) ? "dirty_editing" :
         (m_material_state == Editor_state::dirty_completed) ? "dirty_completed" : "?"); });
-
-    add_entry("Name", [=]() {
-        std::string name = selected_material->get_name();
-        if (ImGui::InputText("##", &name)) {
-            selected_material->set_name(name);
-        }
-    });
 
     const auto  available_size = ImGui::GetContentRegionAvail();
     const float area_size_0    = std::min(available_size.x, available_size.y);

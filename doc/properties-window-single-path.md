@@ -29,9 +29,8 @@ per-owner migrations that this task depends on.
    `mesh_properties`, `node_physics_properties`, `node_joint_properties`,
    `collision_filter_properties`, `physics_joint_settings_properties`,
    `brush_properties`, `texture_properties`, ...) add `add_entry` rows
-   per item: the name row, the Locks row, the `item_flags` grid, the
-   tags, the attachment Remove buttons, the read-only diagnostics, and
-   the authored rows the inventory's "Not yet migrated" table lists.
+   per item: the attachment Remove buttons, the read-only diagnostics,
+   and the authored rows the inventory's "Not yet migrated" table lists.
    `material_properties` is a third variant with its own inspect
    snapshot for the sampler rows. These rows are drawn once per selected
    item, in a group per item, with no mixed-value display and no shared
@@ -68,10 +67,17 @@ per-owner migrations that this task depends on.
 
 ## 3. Order
 
-1. Make the item-level rows properties: name (bridge), the authored
-   flags (bridges; `item_flags` grid goes), tags. This alone gives every
-   item type the shared multi-selection treatment for the rows every
-   item has.
+1. The item-level rows are properties: `Item_base::name_property` and
+   `tags_property` (string bridges), and the authored flag bits as
+   boolean bridges (`lock_edit_property` and the other flag properties
+   in `item.cpp`; the inventory's Item_base table lists them). The
+   window's Name and Locks rows and the developer flag grid are gone;
+   developer mode keeps the id and the flag word as read-only
+   diagnostics (R3). `lock_edit` carries
+   `Property_flags::writable_when_sealed` so the seal is lifted through
+   the same row and the same MCP call that set it
+   (`Dependency_object::is_write_sealed` is the per-property check the
+   rows, the context menu and `set_item_property` use).
 2. The per-owner migrations of `doc/property-migration-handoff.md` are
    done (the Light derived rows, Layout, Grid, Brush_placement,
    Rendertarget_mesh, Animation and Node_joint each deleted their
