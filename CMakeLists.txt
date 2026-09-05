@@ -724,6 +724,27 @@ CPMAddPackage(
         "MESHOPT_INSTALL OFF"
 )
 
+CPMAddPackage(
+    NAME              wuffs
+    GIT_TAG           126a80a8f1dd62c40ca6391dc37094538dca795a
+    #VERSION           0.4.0-alpha.9
+    GIT_SHALLOW       FALSE
+    GITHUB_REPOSITORY google/wuffs
+)
+
+CPMAddPackage(
+    NAME              LightUSD
+    GIT_TAG           fix-vs2026
+    GIT_SHALLOW       TRUE
+    #GITHUB_REPOSITORY lighttransport/LightUSD
+    GITHUB_REPOSITORY tksuoran/LightUSD
+        OPTIONS
+                 "LIGHTUSD_WITH_GEOGRAM Off"
+                 "LIGHTUSD_WITH_MESHOPT Off"
+       "LIGHTUSD_USE_WUFFS_IMAGE_LOADER Off"
+               "LIGHTUSD_CXX_EXCEPTIONS On"
+)
+
 # CPMAddPackage(
 #     NAME              reflect-cpp
 #     GIT_SHALLOW       TRUE
@@ -739,14 +760,6 @@ CPMAddPackage(
     OPTIONS
            "TF_BUILD_TESTS OFF"
         "TF_BUILD_EXAMPLES OFF"
-)
-
-CPMAddPackage(
-    NAME              wuffs
-    GIT_TAG           126a80a8f1dd62c40ca6391dc37094538dca795a
-    #VERSION           0.4.0-alpha.9
-    GIT_SHALLOW       FALSE
-    GITHUB_REPOSITORY google/wuffs
 )
 
 if (${ERHE_TERMINAL_LIBRARY} STREQUAL "cpp-terminal")
