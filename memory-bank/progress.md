@@ -19,6 +19,7 @@
 
 [TASK::properties-window-single-path]{ONGOING}
 ✓step-1{89986a2b3+7789f1332,2026-09-05}::name/tags/flag-bridges+writable_when_sealed;headless-verified
+✓modes+per-component-mixed{9d989e29a}|?user-interactive
 ?step-3::sampler-rows→Material-properties+retire-inspect-snapshot
 ?step-4::per-class-fns→diagnostics-only;item_properties=thin-frame
 
