@@ -136,6 +136,158 @@ const erhe::property::Property<erhe::property::Object_reference> Item_base::styl
     }
 );
 
+// Item-level authored state as bridged properties (D18): the name, the
+// tags and the persistent flag bits stay in their members - every reader
+// is a bit test or a string reference - and the Properties window draws
+// them through the registered path, so a multi-selection edits them
+// together with mixed-value display and one undo entry per edit.
+
+const erhe::property::Property<std::string> Item_base::name_property = erhe::property::Property<std::string>::register_property(
+    "name", Item_base::property_owner_type(),
+    erhe::property::Property_metadata{
+        .ui     = erhe::property::Property_ui{.label = "Name"},
+        .bridge = erhe::property::Property_bridge{
+            .get = [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+                return static_cast<const Item_base&>(object).get_name();
+            },
+            .set = [](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
+                Item_base&         item = static_cast<Item_base&>(object);
+                const std::string& name = std::get<std::string>(value);
+                if (name != item.get_name()) {
+                    item.set_name(name);
+                }
+            }
+        }
+    }
+);
+
+// The tag set as one comma-separated string; set splits on commas and
+// drops surrounding whitespace and empty entries.
+const erhe::property::Property<std::string> Item_base::tags_property = erhe::property::Property<std::string>::register_property(
+    "tags", Item_base::property_owner_type(),
+    erhe::property::Property_metadata{
+        .ui     = erhe::property::Property_ui{.tooltip = "Comma-separated tags", .label = "Tags"},
+        .bridge = erhe::property::Property_bridge{
+            .get = [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+                return Item_base::tags_to_string(static_cast<const Item_base&>(object).get_tags());
+            },
+            .set = [](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
+                Item_base&            item = static_cast<Item_base&>(object);
+                std::set<std::string> tags;
+                Item_base::tags_from_string(std::get<std::string>(value), tags);
+                if (tags != item.get_tags()) {
+                    item.set_tags(tags);
+                }
+            }
+        }
+    }
+);
+
+auto Item_base::tags_to_string(const std::set<std::string>& tags) -> std::string
+{
+    std::string text;
+    for (const std::string& tag : tags) {
+        if (!text.empty()) {
+            text += ", ";
+        }
+        text += tag;
+    }
+    return text;
+}
+
+void Item_base::tags_from_string(const std::string_view text, std::set<std::string>& out_tags)
+{
+    out_tags.clear();
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        std::size_t end = text.find(',', start);
+        if (end == std::string_view::npos) {
+            end = text.size();
+        }
+        std::string_view tag = text.substr(start, end - start);
+        while (!tag.empty() && ((tag.front() == ' ') || (tag.front() == '\t'))) {
+            tag.remove_prefix(1);
+        }
+        while (!tag.empty() && ((tag.back() == ' ') || (tag.back() == '\t'))) {
+            tag.remove_suffix(1);
+        }
+        if (!tag.empty()) {
+            out_tags.emplace(tag);
+        }
+        start = end + 1;
+    }
+}
+
+namespace {
+
+// A persistent flag bit as a bridged boolean: get is the bit test, set is
+// Item_base::set_flag_bits (which runs handle_flag_bits_update and, for
+// lock_edit, the seal).
+[[nodiscard]] auto register_flag_property(
+    const std::string_view name,
+    const uint64_t         bit,
+    const std::string_view label,
+    const std::string_view group,
+    const std::string_view tooltip,
+    const bool             developer_only,
+    const uint32_t         extra_flags = erhe::property::Property_flags::none
+) -> erhe::property::Property<bool>
+{
+    return erhe::property::Property<bool>::register_property(
+        name, Item_base::property_owner_type(),
+        erhe::property::Property_metadata{
+            .default_value = false,
+            .flags         = erhe::property::Property_flags::serialize | extra_flags,
+            .ui            = erhe::property::Property_ui{.group = group, .tooltip = tooltip, .developer_only = developer_only, .label = label},
+            .bridge        = erhe::property::Property_bridge{
+                .get = [bit](const erhe::property::Dependency_object& object) -> erhe::property::Property_value {
+                    return erhe::utility::test_bit_set(static_cast<const Item_base&>(object).get_flag_bits(), bit);
+                },
+                .set = [bit](erhe::property::Dependency_object& object, const erhe::property::Property_value& value) {
+                    static_cast<Item_base&>(object).set_flag_bits(bit, std::get<bool>(value));
+                }
+            }
+        }
+    );
+}
+
+} // anonymous namespace
+
+const erhe::property::Property<bool> Item_base::lock_viewport_transform_property = register_flag_property(
+    "lock_viewport_transform", Item_flags::lock_viewport_transform, "Transform", "Locks", "Viewport transform tools leave the item alone", false
+);
+const erhe::property::Property<bool> Item_base::lock_edit_property = register_flag_property(
+    "lock_edit", Item_flags::lock_edit, "Edit", "Locks", "Seals the item: every other property is read-only while set", false,
+    erhe::property::Property_flags::writable_when_sealed
+);
+const erhe::property::Property<bool> Item_base::lock_viewport_selection_property = register_flag_property(
+    "lock_viewport_selection", Item_flags::lock_viewport_selection, "Selection", "Locks", "Viewport picking skips the item", false
+);
+const erhe::property::Property<bool> Item_base::show_in_ui_property = register_flag_property(
+    "show_in_ui", Item_flags::show_in_ui, "Show In UI", "", "Listed in the item tree and the pickers", false
+);
+const erhe::property::Property<bool> Item_base::show_debug_visualizations_property = register_flag_property(
+    "show_debug_visualizations", Item_flags::show_debug_visualizations, "Show Debug Visualizations", "", "", false
+);
+const erhe::property::Property<bool> Item_base::exclude_from_prefab_property = register_flag_property(
+    "exclude_from_prefab", Item_flags::exclude_from_prefab, "Exclude From Prefab", "", "Left out when the subtree is saved as a prefab", true
+);
+const erhe::property::Property<bool> Item_base::no_message_property = register_flag_property(
+    "no_message", Item_flags::no_message, "No Message", "", "", true
+);
+const erhe::property::Property<bool> Item_base::no_transform_update_property = register_flag_property(
+    "no_transform_update", Item_flags::no_transform_update, "No Transform Update", "", "", true
+);
+const erhe::property::Property<bool> Item_base::transform_world_normative_property = register_flag_property(
+    "transform_world_normative", Item_flags::transform_world_normative, "Transform World Normative", "", "", true
+);
+const erhe::property::Property<bool> Item_base::show_in_developer_ui_property = register_flag_property(
+    "show_in_developer_ui", Item_flags::show_in_developer_ui, "Show In Developer UI", "", "", true
+);
+const erhe::property::Property<bool> Item_base::ik_lock_property = register_flag_property(
+    "ik_lock", Item_flags::ik_lock, "IK Lock", "", "", true
+);
+
 auto Item_base::style_applies(const erhe::property::Dependency_object& source, const erhe::property::Dependency_object& object) -> bool
 {
     const std::optional<erhe::property::Owner_type> target = source.get_secondary_property_owner_type();
@@ -376,6 +528,11 @@ void Item_base::remove_tag(const std::string_view tag)
 void Item_base::clear_tags()
 {
     m_tags.clear();
+}
+
+void Item_base::set_tags(const std::set<std::string>& tags)
+{
+    m_tags = tags;
 }
 
 void Item_base::set_source_path(const std::filesystem::path& path)

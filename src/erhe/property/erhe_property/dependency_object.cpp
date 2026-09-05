@@ -410,9 +410,14 @@ void Dependency_object::store_coerced(const Dependency_property& property, Effec
     }
 }
 
+auto Dependency_object::is_write_sealed(const Dependency_property& property) const -> bool
+{
+    return m_sealed && ((get_metadata(property).flags & Property_flags::writable_when_sealed) == 0u);
+}
+
 auto Dependency_object::reject_if_sealed(const Dependency_property& property) const -> bool
 {
-    if (m_sealed) {
+    if (is_write_sealed(property)) {
         log->error("property '{}': object is sealed", property.get_name());
         return true;
     }

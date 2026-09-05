@@ -75,3 +75,23 @@ TEST(Item_sealing, copy_follows_the_copied_flag)
     EXPECT_FALSE(locked_copy->is_lock_edit());
     EXPECT_FALSE(locked_copy->is_sealed());
 }
+
+// lock_edit_property is the seal's own switch (Property_flags::
+// writable_when_sealed): the only property write a sealed item accepts.
+TEST(Item_sealing, lock_edit_property_lifts_the_seal)
+{
+    auto item = std::make_shared<Locked_item>("i");
+    EXPECT_TRUE(item->set_value(erhe::Item_base::lock_edit_property.get(), erhe::property::Property_value{true}));
+    EXPECT_TRUE(item->is_lock_edit());
+    EXPECT_TRUE(item->is_sealed());
+    EXPECT_TRUE (item->is_write_sealed(erhe::Item_base::name_property.get()));
+    EXPECT_FALSE(item->is_write_sealed(erhe::Item_base::lock_edit_property.get()));
+    EXPECT_FALSE(item->set_value(erhe::Item_base::name_property.get(), erhe::property::Property_value{std::string{"renamed"}}));
+    EXPECT_EQ(item->get_name(), "i");
+
+    EXPECT_TRUE(item->set_value(erhe::Item_base::lock_edit_property.get(), erhe::property::Property_value{false}));
+    EXPECT_FALSE(item->is_sealed());
+    EXPECT_FALSE(item->is_write_sealed(erhe::Item_base::name_property.get()));
+    EXPECT_TRUE(item->set_value(erhe::Item_base::name_property.get(), erhe::property::Property_value{std::string{"renamed"}}));
+    EXPECT_EQ(item->get_name(), "renamed");
+}

@@ -494,6 +494,27 @@ public:
     // Properties window shows a "Style" row with the picker; style_applies
     // is the rule the setter and the picker's candidate list share.
     static const erhe::property::Property<erhe::property::Object_reference> style_property;
+    // Item-level authored state as bridged properties (D18), drawn by the
+    // Properties window's registered path: the name, the tags (one
+    // comma-separated string, see tags_to_string / tags_from_string) and
+    // the persistent flag bits that are authored. lock_edit_property is
+    // writable on a sealed item (Property_flags::writable_when_sealed) so
+    // the seal can be lifted through it.
+    static const erhe::property::Property<std::string> name_property;
+    static const erhe::property::Property<std::string> tags_property;
+    static const erhe::property::Property<bool> lock_viewport_transform_property;
+    static const erhe::property::Property<bool> lock_edit_property;
+    static const erhe::property::Property<bool> lock_viewport_selection_property;
+    static const erhe::property::Property<bool> show_in_ui_property;
+    static const erhe::property::Property<bool> show_debug_visualizations_property;
+    static const erhe::property::Property<bool> exclude_from_prefab_property;
+    static const erhe::property::Property<bool> no_message_property;
+    static const erhe::property::Property<bool> no_transform_update_property;
+    static const erhe::property::Property<bool> transform_world_normative_property;
+    static const erhe::property::Property<bool> show_in_developer_ui_property;
+    static const erhe::property::Property<bool> ik_lock_property;
+    [[nodiscard]] static auto tags_to_string  (const std::set<std::string>& tags) -> std::string;
+    static void               tags_from_string(std::string_view text, std::set<std::string>& out_tags);
     // True when `object` can use `source` as its style: the source's
     // secondary owner type is on the object's owner chain, or is the
     // object's own secondary owner type or a descendant of it. An editor
@@ -517,6 +538,7 @@ public:
     void add_tag          (std::string_view tag);
     void remove_tag       (std::string_view tag);
     void clear_tags       ();
+    void set_tags         (const std::set<std::string>& tags);
 
 protected:
     // Writes one Item_flags::derived bit from its property's effective

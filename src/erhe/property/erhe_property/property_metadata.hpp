@@ -66,6 +66,10 @@ public:
     static constexpr uint32_t affects_draw_list_partition  = (1u << 1);
     static constexpr uint32_t affects_shader_variant       = (1u << 2);
     static constexpr uint32_t serialize                    = (1u << 3);
+    // D24: the write is accepted on a sealed object. For the property that
+    // owns the seal (Item_base::lock_edit_property), which must stay
+    // writable so the seal can be lifted through it.
+    static constexpr uint32_t writable_when_sealed         = (1u << 4);
 };
 
 // What the Properties window needs to draw the row. Data only.

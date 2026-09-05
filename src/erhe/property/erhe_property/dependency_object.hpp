@@ -163,6 +163,11 @@ public:
     void               seal     ()       { m_sealed = true; }
     void               unseal   ()       { m_sealed = false; }
     [[nodiscard]] auto is_sealed() const -> bool { return m_sealed; }
+    // True when a write of `property` is refused because the object is
+    // sealed: the seal is on and the property is not flagged
+    // Property_flags::writable_when_sealed. Read-only rows and disabled
+    // editors ask this rather than is_sealed() alone.
+    [[nodiscard]] auto is_write_sealed(const Dependency_property& property) const -> bool;
 
     // Style (D25): one shared style source per object - another
     // Dependency_object whose LOCAL values are the style (a Property_style,
@@ -305,6 +310,7 @@ private:
     [[nodiscard]] auto get_style_value    (const Dependency_property& property) const -> std::optional<Property_value>;
 
     [[nodiscard]] auto reject_if_sealed   (const Dependency_property& property) const -> bool;
+
     // The effective value the object would have without its style layer
     // (inherited or default, coerced): a style user's value before the
     // source gained the property, or after it lost it.

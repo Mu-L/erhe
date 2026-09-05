@@ -46,6 +46,11 @@ purple by layer, computed rows dim gray. Untinted rows are hand-written.
 |---|---|---|
 | visible | entry | flag mirror |
 | style | bridge | object reference to the item's style source (doc/style-library.md D3), style items only |
+| name | bridge | over `get_name` / `set_name` |
+| tags | bridge | the tag set as one comma-separated string (`tags_to_string` / `tags_from_string`) |
+| lock_viewport_transform, lock_edit, lock_viewport_selection | bridge | flag bits, "Locks" group; lock_edit is `Property_flags::writable_when_sealed` (D24) so the seal lifts through it |
+| show_in_ui, show_debug_visualizations | bridge | flag bits |
+| exclude_from_prefab, no_message, no_transform_update, transform_world_normative, show_in_developer_ui, ik_lock | bridge | flag bits, developer-only rows |
 
 ### Hierarchy (`src/erhe/item/erhe_item/hierarchy.cpp`)
 
@@ -233,6 +238,6 @@ migration priority order. Each migration follows the Material recipe
 Rows that are not properties and stay hand-written: read-only
 diagnostics (geometry and buffer mesh counts, texture dimensions,
 raytrace state, skin joints, rigid body label / position / activity /
-shape / inertia, brush polygon counts), name and id rows, and list
+shape / inertia, brush polygon counts, the id and the flag word), and list
 editors (attachments, samplers, animation channels and samplers, joint
 limits and drives).

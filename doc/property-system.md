@@ -756,7 +756,13 @@ table, see D2a), and references to other objects (D28).
     of an expression already installed keep working: a sealed prefab
     interior still follows its instance root's `visible`, and a formula
     on a sealed object still tracks its sources; only authoring the local
-    layer is closed. `apply_local_state` and the untyped `set_value` /
+    layer is closed. A property flagged
+    `Property_flags::writable_when_sealed` is written even while sealed:
+    it is the flag of the property that owns the seal
+    (`Item_base::lock_edit_property`), so the lock is lifted through the
+    same row, operation and MCP call that set it.
+    `Dependency_object::is_write_sealed(property)` is the per-property
+    form of the check for editors that disable a widget. `apply_local_state` and the untyped `set_value` /
     `clear_value` return `bool` so undo and MCP can report a rejected
     write instead of recording a no-op. A copy (D10) is not sealed (WPF
     `Clone` of a frozen object is unfrozen); `Item_base` re-derives the

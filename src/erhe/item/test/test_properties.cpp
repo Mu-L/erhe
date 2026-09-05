@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -255,4 +256,39 @@ TEST(Item_properties, container_link_inherits_and_notifies)
     auto clone = std::dynamic_pointer_cast<Leaf>(leaf->clone());
     ASSERT_TRUE(clone);
     EXPECT_EQ(clone->get_inheritance_container(), nullptr);
+}
+
+// Item-level bridged properties (D18): name, tags and the persistent flag
+// bits read and write the members.
+TEST(Item_properties, name_and_flag_bridges)
+{
+    auto widget = std::make_shared<Widget>("w");
+    EXPECT_EQ(std::get<std::string>(widget->get_value(erhe::Item_base::name_property.get())), "w");
+    EXPECT_EQ(widget->get_value_source(erhe::Item_base::name_property.get()), Value_source::local);
+    EXPECT_TRUE(widget->set_value(erhe::Item_base::name_property.get(), Property_value{std::string{"widget"}}));
+    EXPECT_EQ(widget->get_name(), "widget");
+
+    EXPECT_FALSE(widget->get_value(erhe::Item_base::lock_viewport_selection_property));
+    EXPECT_TRUE(widget->set_value(erhe::Item_base::lock_viewport_selection_property.get(), Property_value{true}));
+    EXPECT_TRUE(widget->is_lock_viewport_selection());
+    widget->set_flag_bits(erhe::Item_flags::lock_viewport_selection, false);
+    EXPECT_FALSE(widget->get_value(erhe::Item_base::lock_viewport_selection_property));
+    widget->enable_flag_bits(erhe::Item_flags::show_in_ui);
+    EXPECT_TRUE(widget->get_value(erhe::Item_base::show_in_ui_property));
+}
+
+TEST(Item_properties, tags_bridge)
+{
+    auto widget = std::make_shared<Widget>("w");
+    EXPECT_EQ(std::get<std::string>(widget->get_value(erhe::Item_base::tags_property.get())), "");
+    widget->add_tag("b");
+    widget->add_tag("a");
+    EXPECT_EQ(std::get<std::string>(widget->get_value(erhe::Item_base::tags_property.get())), "a, b");
+
+    EXPECT_TRUE(widget->set_value(erhe::Item_base::tags_property.get(), Property_value{std::string{" red ,blue,, , green\t"}}));
+    EXPECT_EQ(widget->get_tags(), (std::set<std::string>{"red", "blue", "green"}));
+    EXPECT_EQ(std::get<std::string>(widget->get_value(erhe::Item_base::tags_property.get())), "blue, green, red");
+
+    EXPECT_TRUE(widget->clear_value(erhe::Item_base::tags_property.get()));
+    EXPECT_TRUE(widget->get_tags().empty());
 }

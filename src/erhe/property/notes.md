@@ -181,8 +181,12 @@ every write of the local layer (`set_value`, `set_current_value`,
 `clear_value`, `set_expression`, `apply_local_state`) is rejected like a
 read-only write - one logged error, `false`, nothing changes. Reads,
 inherited values and their notifications, observers and an installed
-expression keep working. A copy is not sealed. `erhe::Item_base` ties the
-seal to `Item_flags::lock_edit`.
+expression keep working. A copy is not sealed. A property flagged
+`Property_flags::writable_when_sealed` is the exception: its writes are
+accepted while sealed, for the property that owns the seal;
+`is_write_sealed(property)` is the per-property check editors use in
+place of `is_sealed()`. `erhe::Item_base` ties the seal to
+`Item_flags::lock_edit` and flags `lock_edit_property` that way.
 
 ## Secondary owner type
 
