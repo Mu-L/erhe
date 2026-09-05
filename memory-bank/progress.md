@@ -17,8 +17,10 @@
 ✓shared-listing-rule{940aeccbb}+Add-Property-row{93153dcf9}+Remove-Property{5ea6655e8}+rows-m_items-leak-fix{4e496b984}+MCP-tool{75ca1498c}+docs-D12/D13{3a2318199;plan-doc-deleted}
 ?user-interactive-verify
 
-[TASK::properties-window-single-path]{NEXT}
-?doc/properties-window-single-path.md{item-level-bridges-first}
+[TASK::properties-window-single-path]{ONGOING}
+✓step-1{89986a2b3+7789f1332,2026-09-05}::name/tags/flag-bridges+writable_when_sealed;headless-verified
+?step-3::sampler-rows→Material-properties+retire-inspect-snapshot
+?step-4::per-class-fns→diagnostics-only;item_properties=thin-frame
 
 [TASK::property-migrations]{ONGOING}
 ✓Material+Node+Light+Camera{entry-store-since-2026-09-04}+graph-nodes+Mesh_primitive+Node_physics+Grid+Brush_placement+Physics_material+Layout+Layout-hints{attached}

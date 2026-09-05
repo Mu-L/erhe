@@ -46,11 +46,13 @@
 @property-migrations::✓2026-09-05{7-commits-56615421c..c8146b473:Light-flux/blackbody{writable-computed}+Layout{entry+mirror+ERHE_layout-properties=complete-local-set}+Grid{entry+mirror;read_config-through-store}+Brush_placement{entry;brush-validated}+Rendertarget_mesh{computed-size,own-owner-type}+Animation{computed-range/counts;notify_keyframes_changed}+Node_joint{connected_node=BRIDGED-weak{no-node-cycle};settings+enable_collision-entry-inherit}}
   lookup-fixes::find_item_in_scene-visits-brushes+animations+physics_joints{by-name-refs-resolved-to-library-entry-node-before}
   left::graph-node-parameters{section-4.5;59-member-regs/16-files+texture-graph-bridges;low-value{style-sharing-rarely-wanted};¬blocking-single-path}
-@now::properties-window-single-path{doc/properties-window-single-path.md;item-level-bridges(name,flags,tags)-first}
+@properties-window-single-path::step-1✓2026-09-05{89986a2b3+7789f1332:Item_base-name/tags-string-bridges+authored-flag-bool-bridges{Locks-group;developer_only-for-obscure-bits};Property_flags::writable_when_sealed{lock_edit-owns-seal;Dependency_object::is_write_sealed(property)=per-property-check-in-rows/context-menu/MCP-set_item_property};window-Name/Locks/flag-grid+material-Name-row-removed;dev-mode-Flags=read-only-to_string}
+  verify✓headless{scratchpad-verify_item_rows.py:name/tags/lock_edit-set+undo;sealed-refuses-name+accepts-lock_edit=false}+erhe_item_tests-129/129|?user-interactive{multi-select-per-type-sections,Locks-checkboxes}
+  next::step-3{sampler-rows→Material-properties{wrap/filter/mipmap/anisotropy×5-slots;Sampler-recreated-after_set;ERHE_material-sampler-persistence}→retire-m_material_state-snapshot}→step-4{per-class-fns→diagnostics-only}
 
 [STATE]
 @branch::main{#43-commits-unpushed;user-pushes-themselves}
-prompt_queue.txt::item-0=properties-window-single-path{START-HERE};item-1=graph-node-params{optional};items-2-5-unchanged
+prompt_queue.txt::item-0=properties-window-single-path{step-3-next};item-1=graph-node-params{optional};items-2-5-unchanged
 
 [OPEN]
 ?user-interactive-check{folders+category-props+texture-slots+styles+node-attachment-values+camera+physics-materials}→expect-fixes;then-migrations{Node_physics-first}
