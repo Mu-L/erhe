@@ -18,9 +18,7 @@ no descendant inherits it; moving it to the entry store is what makes it
 holdable. A hand-written row is authored state the Properties window still
 draws by hand and no property carries at all.
 
-1. `Node_joint`: enable collision, connected node as a node-typed object
-   reference (hand-written rows).
-2. Geometry graph and texture graph node parameters (section 4.5), last;
+1. Geometry graph and texture graph node parameters (section 4.5), last;
    sharing them through a style is rarely wanted.
 
 Done and the template for a derived row: the Light flux slider and
@@ -29,7 +27,8 @@ writable through a setter over intensity; `Rendertarget_mesh`'s size
 (section 4.15) and `Animation`'s time range and counts (section 4.16) are
 read-only computed rows. Done and following the bridged
 owner recipe below: `Layout` (section 4.13), `Grid` and `Brush_placement`
-(section 4.11).
+(section 4.11) and `Node_joint` (section 4.17, its connected node bridged
+over a weak member so two joints never form a strong cycle).
 
 Stays as it is: `Node`'s transform (bridged for the reasons D18 gives),
 `Physics_joint_settings` limits and drives (no property value form) and

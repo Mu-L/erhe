@@ -18,6 +18,7 @@
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/node_attachment.hpp"
+#include "erhe_physics/physics_joint_settings.hpp"
 #include "erhe_scene/animation.hpp"
 #include "erhe_scene/scene.hpp"
 
@@ -83,6 +84,15 @@ auto find_item_in_scene(Scene_root& scene_root, Predicate&& matches) -> std::sha
         for (const std::shared_ptr<erhe::graphics::Texture>& texture : library->textures->get_all<erhe::graphics::Texture>()) {
             if (texture && matches(*texture)) {
                 return texture;
+            }
+        }
+    }
+    // Physics joint settings: the targets of a Node_joint's joint_settings
+    // property (section 4.17).
+    if (library && library->physics_joints) {
+        for (const std::shared_ptr<erhe::physics::Physics_joint_settings>& settings : library->physics_joints->get_all<erhe::physics::Physics_joint_settings>()) {
+            if (settings && matches(*settings)) {
+                return settings;
             }
         }
     }

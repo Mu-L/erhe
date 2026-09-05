@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erhe_scene/node_attachment.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <memory>
 
@@ -58,6 +59,21 @@ public:
     // Implements / overrides Node_attachment
     void handle_item_host_update(erhe::Item_host* old_item_host, erhe::Item_host* new_item_host) override;
 
+    // Registered properties (doc/property-system.md section 4.17).
+    // connected_node is a node-typed object reference (D28) bridged (D18)
+    // over the weak member: a joint keeps no strong reference to a scene
+    // node, so two joints connected to each other's nodes form no cycle
+    // a scene close cannot break; the property is local only.
+    // joint_settings (an object reference to a shared
+    // Physics_joint_settings) and enable_collision are entry-stored and
+    // inherit from the node chain (D30). The members below mirror the
+    // effective values; on_property_changed refreshes them and rebuilds
+    // the constraint.
+    static const erhe::property::Property<erhe::property::Object_reference> connected_node_property;
+    static const erhe::property::Property<erhe::property::Object_reference> joint_settings_property;
+    static const erhe::property::Property<bool>                             enable_collision_property;
+    void on_property_changed(const erhe::property::Property_changed_args& args) override;
+
     // Public API
     [[nodiscard]] auto get_connected_node  () const -> std::shared_ptr<erhe::scene::Node>;
     void               set_connected_node  (const std::shared_ptr<erhe::scene::Node>& node);
@@ -86,6 +102,7 @@ public:
 
 private:
     void destroy_constraint();
+    void refresh_mirror();
 
     std::weak_ptr<erhe::scene::Node>                       m_connected_node;
     std::shared_ptr<erhe::physics::Physics_joint_settings> m_settings;

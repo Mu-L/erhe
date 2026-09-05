@@ -1703,6 +1703,32 @@ readers: `reset_channel_seek_state` (the tail of every keyframe edit in
 call it. `Properties::animation_properties` keeps only the "Open in
 Animation Window" button; the generic section draws the four rows.
 
+### 4.17 Node_joint
+
+`Node_joint` (the editor's physics joint attachment, section 4.10's
+sibling) registers `connected_node`, `joint_settings` and
+`enable_collision` (UI group `Joint`). `connected_node` is a node-typed
+object reference (D28, `reference_item_types` the node bit, validated to
+null or a `Node`) bridged (D18) over the weak member: attachments detach
+only in `Node::~Node`, so a strong node-to-node reference through two
+joints connected to each other's nodes would be a cycle no scene close
+breaks; the bridge keeps the joint's reference weak, which makes the
+property local only (no holder, no inheritance). The bridge's set refuses
+the joint's own node with a warning; `set_connected_node` invalidates
+the property for expressions. `joint_settings` (an object reference to a
+shared `Physics_joint_settings`, a content-library item) and
+`enable_collision` (bool) are entry-stored and inherit (D30), so a node
+or a style holds them for the joints below. The members are a mirror
+refreshed by `Node_joint::on_property_changed`, which also rebuilds the
+constraint (the former setters' consequence); the setters write the
+store, and the placing constructor writes local values only where an
+argument differs from the property default. The KHR_physics_rigid_bodies
+joint carrier keeps writing the effective values and reading them back
+as local ones (it carries no `properties` map). `Properties::
+node_joint_properties` keeps the "Connect to Selected Node" and "Rebuild
+Joint" actions and the constraint state diagnostic; the generic section
+draws the three rows.
+
 ## 5. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather

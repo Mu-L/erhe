@@ -734,27 +734,9 @@ void Properties::node_joint_properties(Node_joint& node_joint)
 {
     ERHE_PROFILE_FUNCTION();
 
-    add_entry(
-        "Connected Node",
-        [this, &node_joint]() {
-            // Empty reference == constrained to the world. Self-connection is rejected below.
-            std::shared_ptr<erhe::Item_base> value = node_joint.get_connected_node();
-            Item_reference_options options;
-            options.none_text = "(world)";
-            if (
-                item_reference_imgui(
-                    m_context, "##connected_node", value, erhe::scene::Node::get_static_type(), options
-                )
-            ) {
-                const std::shared_ptr<erhe::scene::Node> node = std::dynamic_pointer_cast<erhe::scene::Node>(value);
-                if (node.get() != node_joint.get_node()) {
-                    node_joint.set_connected_node(node);
-                }
-            }
-        },
-        "Drop a node here to connect the joint to it; no connected node constrains to the world"
-    );
-
+    // The connected node, the joint settings and the collision flag are
+    // generic property rows (doc/property-system.md section 4.17); the
+    // actions and the diagnostic remain here.
     add_entry(
         "Connect",
         [this, &node_joint]() {
@@ -771,25 +753,6 @@ void Properties::node_joint_properties(Node_joint& node_joint)
         },
         "Connects the joint to the first selected node other than the joint's own node"
     );
-
-    erhe::scene::Node* node = node_joint.get_node();
-    Scene_root* scene_root = (node != nullptr) ? static_cast<Scene_root*>(node->get_item_host()) : nullptr;
-    const std::shared_ptr<Content_library> content_library = (scene_root != nullptr) ? scene_root->get_content_library() : std::shared_ptr<Content_library>{};
-    if (content_library) {
-        add_entry("Joint Settings", [this, &node_joint, content_library]() {
-            std::shared_ptr<erhe::physics::Physics_joint_settings> settings = node_joint.get_settings();
-            if (content_library->physics_joints->combo(m_context, "##", settings, true)) {
-                node_joint.set_settings(settings);
-            }
-        });
-    }
-
-    add_entry("Enable Collision", [&node_joint]() {
-        bool enable_collision = node_joint.get_enable_collision();
-        if (ImGui::Checkbox("##", &enable_collision)) {
-            node_joint.set_enable_collision(enable_collision);
-        }
-    });
 
     add_entry("Constraint", [&node_joint]() {
         ImGui::TextUnformatted((node_joint.get_constraint() != nullptr) ? "Created" : "Pending");

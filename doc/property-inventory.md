@@ -145,6 +145,14 @@ change touches the settings store from on_property_changed.
 |---|---|---|
 | first_time, last_time, sampler_count, channel_count | computed | read-only over the samplers and channels; notify_keyframes_changed pushes to expressions |
 
+### Node_joint (`src/editor/scene/node_joint.cpp`, section 4.17)
+
+| Property | Storage | Notes |
+|---|---|---|
+| connected_node | bridge | node-typed object reference over the weak member (no node-to-node cycle); local only; refuses the joint's own node |
+| joint_settings | entry | object reference to a Physics_joint_settings; inherits (D30) |
+| enable_collision | entry | inherits; the mirror follows and the constraint rebuilds |
+
 ### Layout (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13)
 
 | Property | Storage | Notes |
@@ -221,7 +229,6 @@ migration priority order. Each migration follows the Material recipe
 |---|---|---|
 | Physics_joint_settings | limits, drives | lists; no `Property_value` form, stay hand-written |
 | Scene | ambient light | the per-scene overrides stay a settings block |
-| Node_joint | enable collision, connected node | connected node as a node-typed object reference |
 
 Rows that are not properties and stay hand-written: read-only
 diagnostics (geometry and buffer mesh counts, texture dimensions,

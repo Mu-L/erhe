@@ -67,7 +67,52 @@ void apply_limit_to_axis(
     out.damping   = limit.damping;
 }
 
+using erhe::property::Object_reference;
+using erhe::property::Property;
+using erhe::property::Property_metadata;
+using erhe::property::Property_ui;
+using erhe::property::Property_value;
+using Node_traits     = erhe::property::Member_value_traits<std::shared_ptr<erhe::scene::Node>>;
+using Settings_traits = erhe::property::Member_value_traits<std::shared_ptr<erhe::physics::Physics_joint_settings>>;
+
+const erhe::property::Owner_type c_joint_owner = Node_joint::property_owner_type();
+constexpr std::string_view      c_joint_group = "Joint";
+
 } // anonymous namespace
+
+// Section 4.17: the connected node bridged over the weak member (no strong
+// node-to-node reference), the settings and the collision flag in the
+// entry store, inheriting.
+const Property<Object_reference> Node_joint::connected_node_property = Property<Object_reference>::register_property(
+    "connected_node", c_joint_owner,
+    Property_metadata{
+        .ui     = Property_ui{.group = c_joint_group, .tooltip = "Node whose nearest rigid body is body B; none constrains to the world. The joint's own node is refused.", .label = "Connected Node", .reference_item_types = erhe::Item_type::node},
+        .bridge = erhe::property::Property_bridge{
+            .get = [](const erhe::property::Dependency_object& object) -> Property_value {
+                return Node_traits::to_value(static_cast<const Node_joint&>(object).get_connected_node());
+            },
+            .set = [](erhe::property::Dependency_object& object, const Property_value& value) {
+                Node_joint& joint = static_cast<Node_joint&>(object);
+                const std::shared_ptr<erhe::scene::Node> node = Node_traits::from_value(value);
+                if (node && (node.get() == joint.get_node())) {
+                    log_physics->warn("joint on '{}': a joint cannot connect to its own node", node->get_name());
+                    return;
+                }
+                joint.set_connected_node(node);
+            }
+        }
+    },
+    Node_traits::validate
+);
+const Property<Object_reference> Node_joint::joint_settings_property = Property<Object_reference>::register_property(
+    "joint_settings", c_joint_owner,
+    Property_metadata{.inherits = true, .ui = Property_ui{.group = c_joint_group, .tooltip = "Shared six-dof limits and drives the constraint is built from", .label = "Joint Settings", .reference_item_types = erhe::Item_type::physics_joint_settings}},
+    Settings_traits::validate
+);
+const Property<bool> Node_joint::enable_collision_property = Property<bool>::register_property(
+    "enable_collision", c_joint_owner,
+    Property_metadata{.default_value = false, .inherits = true, .ui = Property_ui{.group = c_joint_group, .tooltip = "Let the two connected bodies collide with each other", .label = "Enable Collision"}}
+);
 
 Node_joint::Node_joint()                             = default;
 Node_joint::Node_joint(const Node_joint&)            = default;
@@ -82,6 +127,12 @@ Node_joint::Node_joint(
     , m_settings        {settings}
     , m_enable_collision{enable_collision}
 {
+    // Local values only where the arguments differ from the property
+    // defaults, so a default-constructed joint stays open to a holder
+    // (a set_value here reaches on_property_changed, whose rebuild is a
+    // no-op while detached).
+    if (settings)         { set_value(joint_settings_property, Settings_traits::to_value(settings)); }
+    if (enable_collision) { set_value(enable_collision_property, true); }
 }
 
 Node_joint::Node_joint(const Node_joint& src, erhe::for_clone)
@@ -128,7 +179,26 @@ void Node_joint::set_connected_node(const std::shared_ptr<erhe::scene::Node>& no
         return;
     }
     m_connected_node = node;
+    invalidate_dependents(connected_node_property.get()); // bridged storage changed outside set_value (D22)
     rebuild();
+}
+
+void Node_joint::on_property_changed(const erhe::property::Property_changed_args& args)
+{
+    if (!erhe::property::is_owner_type_or_descendant(c_joint_owner, args.property.get_owner_type())) {
+        return;
+    }
+    if (&args.property == connected_node_property.get_ptr()) {
+        return; // bridged: set_connected_node already updated the member and rebuilt
+    }
+    refresh_mirror();
+    rebuild();
+}
+
+void Node_joint::refresh_mirror()
+{
+    m_settings         = Settings_traits::from_value(get_value(joint_settings_property));
+    m_enable_collision = get_value(enable_collision_property);
 }
 
 auto Node_joint::get_settings() const -> const std::shared_ptr<erhe::physics::Physics_joint_settings>&
@@ -138,11 +208,7 @@ auto Node_joint::get_settings() const -> const std::shared_ptr<erhe::physics::Ph
 
 void Node_joint::set_settings(const std::shared_ptr<erhe::physics::Physics_joint_settings>& settings)
 {
-    if (m_settings == settings) {
-        return;
-    }
-    m_settings = settings;
-    rebuild();
+    set_value(joint_settings_property, Settings_traits::to_value(settings));
 }
 
 auto Node_joint::get_enable_collision() const -> bool
@@ -152,11 +218,7 @@ auto Node_joint::get_enable_collision() const -> bool
 
 void Node_joint::set_enable_collision(const bool enable_collision)
 {
-    if (m_enable_collision == enable_collision) {
-        return;
-    }
-    m_enable_collision = enable_collision;
-    rebuild();
+    set_value(enable_collision_property, enable_collision);
 }
 
 auto Node_joint::get_constraint() const -> erhe::physics::IConstraint*
