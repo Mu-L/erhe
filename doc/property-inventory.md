@@ -133,6 +133,12 @@ change touches the settings store from on_property_changed.
 | wind_receptivity | entry | inherits; read by the scene wind each fixed step |
 | density | entry | inherits; the mass of a body without an explicit mass |
 
+### Rendertarget_mesh (`src/editor/rendertarget_mesh.cpp`, section 4.15)
+
+| Property | Storage | Notes |
+|---|---|---|
+| width, height, pixels_per_meter | computed | read-only; the size is authored through resize_rendertarget |
+
 ### Layout (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13)
 
 | Property | Storage | Notes |
@@ -209,7 +215,6 @@ migration priority order. Each migration follows the Material recipe
 |---|---|---|
 | Physics_joint_settings | limits, drives | lists; no `Property_value` form, stay hand-written |
 | Scene | ambient light | the per-scene overrides stay a settings block |
-| Rendertarget_mesh | width, height, pixels per meter | |
 | Animation | start time, end time | |
 | Node_joint | enable collision, connected node | connected node as a node-typed object reference |
 

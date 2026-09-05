@@ -24,6 +24,34 @@
 
 namespace editor {
 
+auto Rendertarget_mesh::property_owner_type() -> erhe::property::Owner_type
+{
+    static const erhe::property::Owner_type id = erhe::property::allocate_owner_type(erhe::scene::Mesh::property_owner_type(), "Rendertarget_mesh");
+    return id;
+}
+
+namespace {
+
+constexpr std::string_view c_rendertarget_group = "Rendertarget";
+
+} // anonymous namespace
+
+const erhe::property::Property<float> Rendertarget_mesh::width_property = erhe::property::Property<float>::register_computed(
+    "width", Rendertarget_mesh::property_owner_type(),
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return static_cast<const Rendertarget_mesh&>(object).get_width(); },
+    erhe::property::Property_metadata{.flags = erhe::property::Property_flags::none, .ui = erhe::property::Property_ui{.group = c_rendertarget_group, .tooltip = "Texture width in pixels; the mesh is this over the pixels per meter wide, in meters", .label = "Width"}}
+);
+const erhe::property::Property<float> Rendertarget_mesh::height_property = erhe::property::Property<float>::register_computed(
+    "height", Rendertarget_mesh::property_owner_type(),
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return static_cast<const Rendertarget_mesh&>(object).get_height(); },
+    erhe::property::Property_metadata{.flags = erhe::property::Property_flags::none, .ui = erhe::property::Property_ui{.group = c_rendertarget_group, .tooltip = "Texture height in pixels; the mesh is this over the pixels per meter high, in meters", .label = "Height"}}
+);
+const erhe::property::Property<float> Rendertarget_mesh::pixels_per_meter_property = erhe::property::Property<float>::register_computed(
+    "pixels_per_meter", Rendertarget_mesh::property_owner_type(),
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return static_cast<const Rendertarget_mesh&>(object).get_pixels_per_meter(); },
+    erhe::property::Property_metadata{.flags = erhe::property::Property_flags::none, .ui = erhe::property::Property_ui{.group = c_rendertarget_group, .tooltip = "Texture pixels per world meter, set at creation", .label = "Pixels per Meter"}}
+);
+
 Rendertarget_mesh::Rendertarget_mesh(
     erhe::graphics::Device&                 graphics_device,
     erhe::graphics::Command_buffer&         command_buffer,
@@ -168,6 +196,8 @@ void Rendertarget_mesh::resize_rendertarget(
 
     m_local_width  = static_cast<float>(m_texture->get_width ()) / m_pixels_per_meter;
     m_local_height = static_cast<float>(m_texture->get_height()) / m_pixels_per_meter;
+    invalidate_dependents(width_property.get());  // D26: expressions reading the size re-evaluate
+    invalidate_dependents(height_property.get());
 
     std::shared_ptr<erhe::geometry::Geometry> geometry = std::make_shared<erhe::geometry::Geometry>();
     erhe::geometry::shapes::make_rectangle(geometry->get_mesh(), m_local_width, m_local_height, true, false);

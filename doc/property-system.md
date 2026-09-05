@@ -1673,6 +1673,21 @@ catalog entry or hand-written row; a hint rides the child node's `ERHE_node` pro
 its qualified name, and the glTF importer reads a legacy `ERHE_layout`
 `layout_item` block into the attached values.
 
+### 4.15 Rendertarget_mesh
+
+`Rendertarget_mesh` (the editor's mesh that carries a render target
+texture as its material) has its own owner type under `Mesh`'s (D27,
+`Rendertarget_mesh::property_owner_type()`) and registers its size as
+read-only computed properties (D26, group `Rendertarget`, not
+serialized): `width` and `height` (the texture size in pixels; the mesh
+is that over the pixels per meter, in meters) and `pixels_per_meter`
+(set at creation). The size is
+authored through `resize_rendertarget`, which needs a device, a command
+buffer and the mesh memory, so it is not a property setter;
+`resize_rendertarget` invalidates the two size properties for
+expressions. The Properties window draws them as generic rows; it has no
+hand-written rendertarget rows.
+
 ## 5. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -1712,6 +1727,7 @@ style layer is D25.
   takes them on.
 - Further computed properties (D26) as their consumers appear: a node's
   world bounds over its subtree, a scene's item counts.
+  `Rendertarget_mesh`'s size (section 4.15) is one already.
 - Further item migrations, each reusing the Material recipe (section 4.1).
   `doc/property-inventory.md` owns the per-field status: every registered
   property with its storage kind, and the hand-written Properties rows

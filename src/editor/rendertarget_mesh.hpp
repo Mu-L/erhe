@@ -60,6 +60,16 @@ public:
     auto get_type     () const -> uint64_t         override;
     auto get_type_name() const -> std::string_view override;
 
+    // Property owner type under Mesh's (doc/property-system.md D27), and
+    // the size as read-only computed properties (D26): the texture width
+    // and height in pixels and the pixels per meter (the mesh is the
+    // quotient, in meters), read from the texture the last resize made.
+    [[nodiscard]] static auto property_owner_type() -> erhe::property::Owner_type;
+    auto get_property_owner_type() const -> erhe::property::Owner_type override { return property_owner_type(); }
+    static const erhe::property::Property<float> width_property;
+    static const erhe::property::Property<float> height_property;
+    static const erhe::property::Property<float> pixels_per_meter_property;
+
     // Public API
     [[nodiscard]] auto get_texture         () const -> std::shared_ptr<erhe::graphics::Texture>;
     [[nodiscard]] auto get_render_pass     () const -> erhe::graphics::Render_pass*;

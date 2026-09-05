@@ -599,15 +599,6 @@ void Properties::mesh_properties(erhe::scene::Mesh& mesh)
     }
 }
 
-void Properties::rendertarget_properties(Rendertarget_mesh& rendertarget)
-{
-    ERHE_PROFILE_FUNCTION();
-
-    add_entry("Width",            [&](){ ImGui::Text("%f", rendertarget.get_width()); });
-    add_entry("Height",           [&](){ ImGui::Text("%f", rendertarget.get_height()); });
-    add_entry("Pixels per Meter", [&](){ ImGui::Text("%f", static_cast<float>(rendertarget.get_pixels_per_meter())); });
-}
-
 void Properties::brush_properties(const std::shared_ptr<Brush>& brush)
 {
     ERHE_PROFILE_FUNCTION();
@@ -1272,10 +1263,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
 
     if (mesh) {
         mesh_properties(*mesh);
-    }
-
-    if (rendertarget) {
-        rendertarget_properties(*rendertarget);
     }
 
     if (brush) {

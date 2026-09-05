@@ -109,7 +109,6 @@ private:
     void mesh_properties              (erhe::scene::Mesh& mesh);
     void skin_properties              (erhe::scene::Skin& skin);
     void material_properties          (const std::vector<std::shared_ptr<erhe::Item_base>>& items);
-    void rendertarget_properties      (Rendertarget_mesh& rendertarget);
     void brush_properties             (const std::shared_ptr<Brush>& brush);
     void brush_placement_properties   (Brush_placement& brush_placement);
     void geometry_graph_mesh_properties(Geometry_graph_mesh& geometry_graph_mesh);
