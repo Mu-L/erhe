@@ -27,6 +27,7 @@
 #include "erhe_graphics/texture.hpp"
 #include "grid/grid.hpp"
 #include "scene/node_joint.hpp"
+#include "erhe_scene/layout.hpp"
 #include "scene/node_physics.hpp"
 #include "scene/node_raytrace_mask.hpp"
 #include "scene/scene_root.hpp"
@@ -573,6 +574,21 @@ auto Mcp_server::query_node_details(const json& args) -> std::string
             att_json["joint_settings"]   = settings ? settings->get_name() : "";
             att_json["enable_collision"] = node_joint->get_enable_collision();
             att_json["constraint"]       = (node_joint->get_constraint() != nullptr) ? "created" : "pending";
+        }
+
+        // Layout: the mirror update() reads (the effective values of the
+        // Layout properties, doc/property-system.md section 4.13).
+        auto layout = std::dynamic_pointer_cast<erhe::scene::Layout>(att);
+        if (layout) {
+            const erhe::math::Aabb& volume = layout->get_volume();
+            att_json["layout_type"]      = erhe::scene::Layout::c_type_strings[static_cast<std::size_t>(layout->get_layout_type())];
+            att_json["volume_min"]       = {volume.min.x, volume.min.y, volume.min.z};
+            att_json["volume_max"]       = {volume.max.x, volume.max.y, volume.max.z};
+            att_json["primary"]          = erhe::scene::Layout::c_axis_direction_strings[static_cast<std::size_t>(layout->get_primary())];
+            att_json["secondary"]        = erhe::scene::Layout::c_axis_direction_strings[static_cast<std::size_t>(layout->get_secondary())];
+            att_json["tertiary"]         = erhe::scene::Layout::c_axis_direction_strings[static_cast<std::size_t>(layout->get_tertiary())];
+            att_json["gap"]              = {layout->get_gap().x, layout->get_gap().y, layout->get_gap().z};
+            att_json["grid_track_count"] = {layout->get_grid_track_count().x, layout->get_grid_track_count().y, layout->get_grid_track_count().z};
         }
 
         attachments.push_back(att_json);

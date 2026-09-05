@@ -356,38 +356,40 @@ const erhe::property::Enum_info c_layout_type_enum_info     {"Layout_type",     
 const erhe::property::Enum_info c_axis_direction_enum_info  {"Axis_direction",   c_axis_direction_entries};
 const erhe::property::Enum_info c_layout_alignment_enum_info{"Layout_alignment", c_layout_alignment_entries};
 
-const Property<Layout_type> Layout::type_property = Property<Layout_type>::register_member(
-    "type", Layout::property_owner_type(), c_layout_type_enum_info, &Layout::m_type,
-    Property_metadata{.default_value = erhe::property::make_value(Layout_type::stack), .ui = Property_ui{.group = c_group, .tooltip = "Stack along the primary axis, an explicit cell grid, or lines wrapped into sheets", .label = "Type"}}
+// Entry-stored, inheriting (section 4.13): the members are a mirror
+// refreshed by Layout::on_property_changed.
+const Property<Layout_type> Layout::type_property = Property<Layout_type>::register_property(
+    "type", Layout::property_owner_type(), c_layout_type_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Layout_type::stack), .inherits = true, .ui = Property_ui{.group = c_group, .tooltip = "Stack along the primary axis, an explicit cell grid, or lines wrapped into sheets", .label = "Type"}}
 );
-const Property<glm::vec3> Layout::volume_min_property = Property<glm::vec3>::register_member<Layout, glm::vec3>(
-    "volume_min", Layout::property_owner_type(), [](auto& layout) -> auto& { return layout.m_volume.min; },
-    Property_metadata{.default_value = glm::vec3{-0.5f, -0.5f, -0.5f}, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "Local-space box the children are arranged in", .label = "Volume Min"}}
+const Property<glm::vec3> Layout::volume_min_property = Property<glm::vec3>::register_property(
+    "volume_min", Layout::property_owner_type(),
+    Property_metadata{.default_value = glm::vec3{-0.5f, -0.5f, -0.5f}, .inherits = true, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "Local-space box the children are arranged in", .label = "Volume Min"}}
 );
-const Property<glm::vec3> Layout::volume_max_property = Property<glm::vec3>::register_member<Layout, glm::vec3>(
-    "volume_max", Layout::property_owner_type(), [](auto& layout) -> auto& { return layout.m_volume.max; },
-    Property_metadata{.default_value = glm::vec3{0.5f, 0.5f, 0.5f}, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "Local-space box the children are arranged in", .label = "Volume Max"}}
+const Property<glm::vec3> Layout::volume_max_property = Property<glm::vec3>::register_property(
+    "volume_max", Layout::property_owner_type(),
+    Property_metadata{.default_value = glm::vec3{0.5f, 0.5f, 0.5f}, .inherits = true, .ui = Property_ui{.step = 0.01f, .group = c_group, .tooltip = "Local-space box the children are arranged in", .label = "Volume Max"}}
 );
-const Property<Axis_direction> Layout::primary_property = Property<Axis_direction>::register_member(
-    "primary", Layout::property_owner_type(), c_axis_direction_enum_info, &Layout::m_primary,
-    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_x), .ui = Property_ui{.group = c_group, .tooltip = "Signed axis the children advance along", .label = "Primary"}}
+const Property<Axis_direction> Layout::primary_property = Property<Axis_direction>::register_property(
+    "primary", Layout::property_owner_type(), c_axis_direction_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_x), .inherits = true, .ui = Property_ui{.group = c_group, .tooltip = "Signed axis the children advance along", .label = "Primary"}}
 );
-const Property<Axis_direction> Layout::secondary_property = Property<Axis_direction>::register_member(
-    "secondary", Layout::property_owner_type(), c_axis_direction_enum_info, &Layout::m_secondary,
-    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_y), .ui = Property_ui{.group = c_group, .tooltip = "Signed axis lines wrap into (grid and flow)", .label = "Secondary"}}
+const Property<Axis_direction> Layout::secondary_property = Property<Axis_direction>::register_property(
+    "secondary", Layout::property_owner_type(), c_axis_direction_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_y), .inherits = true, .ui = Property_ui{.group = c_group, .tooltip = "Signed axis lines wrap into (grid and flow)", .label = "Secondary"}}
 );
-const Property<Axis_direction> Layout::tertiary_property = Property<Axis_direction>::register_member(
-    "tertiary", Layout::property_owner_type(), c_axis_direction_enum_info, &Layout::m_tertiary,
-    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_z), .ui = Property_ui{.group = c_group, .tooltip = "Signed axis sheets stack along (grid and flow)", .label = "Tertiary"}}
+const Property<Axis_direction> Layout::tertiary_property = Property<Axis_direction>::register_property(
+    "tertiary", Layout::property_owner_type(), c_axis_direction_enum_info,
+    Property_metadata{.default_value = erhe::property::make_value(Axis_direction::pos_z), .inherits = true, .ui = Property_ui{.group = c_group, .tooltip = "Signed axis sheets stack along (grid and flow)", .label = "Tertiary"}}
 );
-const Property<glm::vec3> Layout::gap_property = Property<glm::vec3>::register_member(
-    "gap", Layout::property_owner_type(), &Layout::m_gap,
-    Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .ui = Property_ui{.min = 0.0f, .max = 10000.0f, .step = 0.01f, .group = c_group, .tooltip = "Spacing per level: primary, secondary, tertiary", .label = "Gap"}}
+const Property<glm::vec3> Layout::gap_property = Property<glm::vec3>::register_property(
+    "gap", Layout::property_owner_type(),
+    Property_metadata{.default_value = glm::vec3{0.0f, 0.0f, 0.0f}, .inherits = true, .ui = Property_ui{.min = 0.0f, .max = 10000.0f, .step = 0.01f, .group = c_group, .tooltip = "Spacing per level: primary, secondary, tertiary", .label = "Gap"}}
 );
-const Property<glm::ivec3> Layout::grid_track_count_property = Property<glm::ivec3>::register_member(
-    "grid_track_count", Layout::property_owner_type(), &Layout::m_grid_track_count,
-    Property_metadata{.default_value = glm::ivec3{1, 1, 1}, .ui = Property_ui{.min = 1.0f, .max = 1000.0f, .step = 0.1f, .group = c_group, .tooltip = "Grid: cells per axis", .label = "Grid Tracks", .visible_when = is_grid}},
-    {}, positive_tracks
+const Property<glm::ivec3> Layout::grid_track_count_property = Property<glm::ivec3>::register_property(
+    "grid_track_count", Layout::property_owner_type(),
+    Property_metadata{.default_value = glm::ivec3{1, 1, 1}, .inherits = true, .ui = Property_ui{.min = 1.0f, .max = 1000.0f, .step = 0.1f, .group = c_group, .tooltip = "Grid: cells per axis", .label = "Grid Tracks", .visible_when = is_grid}},
+    positive_tracks
 );
 
 const Property<Layout_alignment> Layout::align_x_property = Property<Layout_alignment>::register_attached(
@@ -453,6 +455,25 @@ Layout::Layout(const Layout& src, erhe::for_clone)
     , m_grid_track_count {src.m_grid_track_count }
     , m_grid_track_extent{src.m_grid_track_extent}
 {
+}
+
+void Layout::on_property_changed(const erhe::property::Property_changed_args& args)
+{
+    if (erhe::property::is_owner_type_or_descendant(Layout::property_owner_type(), args.property.get_owner_type())) {
+        refresh_mirror();
+    }
+}
+
+void Layout::refresh_mirror()
+{
+    m_type             = get_value(type_property);
+    m_volume.min       = get_value(volume_min_property);
+    m_volume.max       = get_value(volume_max_property);
+    m_primary          = get_value(primary_property);
+    m_secondary        = get_value(secondary_property);
+    m_tertiary         = get_value(tertiary_property);
+    m_gap              = get_value(gap_property);
+    m_grid_track_count = get_value(grid_track_count_property);
 }
 
 void Layout::handle_item_host_update(erhe::Item_host* const old_item_host, erhe::Item_host* const new_item_host)

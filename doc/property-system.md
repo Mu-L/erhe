@@ -1614,25 +1614,32 @@ window draws the material as generic rows only.
 ### 4.13 Layout
 
 `Layout` (`erhe::scene`, the node attachment that arranges its node's
-children inside a volume) registers its parameters as member-backed
-properties (D18, owner type `Layout::property_owner_type()`, UI group
-`Layout`): the members are what `Layout::update()` reads each frame, so
-they stay the storage and a write has no other consequence (no
-`after_set`). `type` (`Layout_type`, `Enum_info` `c_layout_type_enum_info`
-next to the enumeration in `erhe_scene/layout.hpp`, defined in
-`layout.cpp`), `volume_min` and `volume_max` (accessor lambdas into the
-`Aabb` member), `primary`, `secondary` and `tertiary` (`Axis_direction`,
-`Enum_info` `c_axis_direction_enum_info`, signed axis labels `+X` .. `-Z`),
-`gap` (0..10000 per component) and `grid_track_count` (1..1000,
-validated to at least 1 per axis, `visible_when` the type is grid). The
-members are private; `get_layout_type()`, `set_layout_type()` and the
-other typed accessors write through the properties, so the glTF
-`ERHE_layout` import, the export and any editor writer notify. The
-accessor is named `get_layout_type()` because `get_type()` is the
-`Item_base` virtual item type. The per-track extent lists
-(`get_grid_track_extent(axis)`) are not properties: the Properties
-window keeps their custom / per-track rows and draws everything else as
-generic rows.
+children inside a volume) registers its parameters as entry-stored
+properties, the Material way (section 4.1), every one `inherits` (a
+layout without a local value reads its node chain, section 4.2 / D30, so
+an empty node or a style holds `Layout.gap` for the layouts below it),
+owner type `Layout::property_owner_type()`, UI group `Layout`: `type`
+(`Layout_type`, `Enum_info` `c_layout_type_enum_info` next to the
+enumeration in `erhe_scene/layout.hpp`, defined in `layout.cpp`),
+`volume_min` and `volume_max`, `primary`, `secondary` and `tertiary`
+(`Axis_direction`, `Enum_info` `c_axis_direction_enum_info`, signed axis
+labels `+X` .. `-Z`), `gap` (0..10000 per component) and
+`grid_track_count` (1..1000, validated to at least 1 per axis,
+`visible_when` the type is grid). The private members `Layout::update()`
+reads each frame are a mirror of the effective values:
+`Layout::on_property_changed` refreshes them on every change of a
+`Layout` property, whatever its source. `get_layout_type()`,
+`set_layout_type()` and the other typed accessors read the mirror and
+write the store, so the glTF `ERHE_layout` import, the export and any
+editor writer notify. The accessor is named `get_layout_type()` because
+`get_type()` is the `Item_base` virtual item type. The clone constructor
+copies the mirror; the entries copy through D10. `ERHE_layout` keeps
+writing every field explicitly and the `properties` map of local values;
+on load the map is the layout's complete local set, the same rule as
+`ERHE_light` (`doc/gltf_extensions/ERHE_layout.md`). The per-track
+extent lists (`get_grid_track_extent(axis)`) are not properties: the
+Properties window keeps their custom / per-track rows and draws
+everything else as generic rows.
 
 ### 4.14 Layout per-child hints (attached properties)
 
@@ -1701,12 +1708,13 @@ style layer is D25.
 - Entry storage for the member-backed registrations (D18) whose values a
   node or a style should hold and a descendant inherit (D30): a bridged
   property is always local, so it is neither offered on a holder nor
-  inherited. In the order the holding is wanted: `Layout`, `Grid`,
+  inherited. In the order the holding is wanted: `Grid`,
   `Brush_placement`, then the graph node parameters. The Light, Camera
   and Node_physics migrations (sections 4.3, 4.4, 4.10) are the recipe:
   keep the engineered struct as a mirror refreshed from
-  `on_property_changed`, route the writers through setters. `Node`'s
-  transform stays bridged for the reasons D18 gives.
+  `on_property_changed`, route the writers through setters. `Layout`
+  (section 4.13) is done the same way. `Node`'s transform stays bridged
+  for the reasons D18 gives.
 - Shader graph (`src/editor/graph/`) node parameters as properties. The
   oldest graph editor has no parameter serialization and no undo
   operations at all; migrating it starts with adopting the

@@ -18,25 +18,23 @@ no descendant inherits it; moving it to the entry store is what makes it
 holdable. A hand-written row is authored state the Properties window still
 draws by hand and no property carries at all.
 
-1. `Layout` (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13):
-   type, primary, secondary, tertiary, volume_min, volume_max, gap,
-   grid_track_count.
-2. `Grid` (`src/editor/grid/grid.cpp`, section 4.11): plane_type,
+1. `Grid` (`src/editor/grid/grid.cpp`, section 4.11): plane_type,
    center, rotation, intersect_enable, snap_enabled, cell_size,
    cell_div, cell_count, the level colors and widths, the label settings.
-3. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
+2. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
    4.11): brush, facet, corner.
-4. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
+3. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
    rows).
-5. `Animation`: start time, end time (hand-written rows).
-6. `Node_joint`: enable collision, connected node as a node-typed object
+4. `Animation`: start time, end time (hand-written rows).
+5. `Node_joint`: enable collision, connected node as a node-typed object
    reference (hand-written rows).
-7. Geometry graph and texture graph node parameters (section 4.5), last;
+6. Geometry graph and texture graph node parameters (section 4.5), last;
    sharing them through a style is rarely wanted.
 
 Done and the template for a derived row: the Light flux slider and
 blackbody swatch (section 4.3) are computed properties (D26), flux
-writable through a setter over intensity.
+writable through a setter over intensity. Done and following the bridged
+owner recipe below: `Layout` (section 4.13).
 
 Stays as it is: `Node`'s transform (bridged for the reasons D18 gives),
 `Physics_joint_settings` limits and drives (no property value form) and
@@ -44,8 +42,8 @@ the scene's ambient light (a settings block).
 
 ## 2. Recipe for a bridged owner
 
-The Light (section 4.3), Camera (section 4.4) and Node_physics (section
-4.10) migrations are the template. A property that models "this body
+The Light (section 4.3), Camera (section 4.4), Node_physics (section
+4.10) and Layout (section 4.13) migrations are the template. A property that models "this body
 instance" belongs to the attachment; one that models "what kind of matter
 this is" belongs to the shared material (Node_physics kept the KHR motion
 fields and its role, the physics material took damping, wind receptivity

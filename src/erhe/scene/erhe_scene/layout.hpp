@@ -95,10 +95,11 @@ public:
     // deliberately left for later; recomputing each frame is simple and correct.
     void update();
 
-    // Registered properties (erhe::property, doc/property-system.md
-    // section 4.13), member-backed (D18) over the parameters below; update()
-    // reads the members each frame, so a write has no other consequence.
-    // The accessors write through the properties, so every writer notifies.
+    // Registered properties (doc/property-system.md section 4.13), stored
+    // in the entry store and inheriting from the node chain (D30): an
+    // empty node or a style holds "Layout.gap" for the layouts below it.
+    // The members are a mirror of the effective values kept current by
+    // on_property_changed; update() reads the mirror each frame.
     static const erhe::property::Property<Type>           type_property;
     static const erhe::property::Property<glm::vec3>      volume_min_property;
     static const erhe::property::Property<glm::vec3>      volume_max_property;
@@ -143,7 +144,13 @@ public:
     [[nodiscard]] auto get_grid_track_extent(int axis) -> std::vector<float>&             { return m_grid_track_extent[static_cast<std::size_t>(axis)]; }
     [[nodiscard]] auto get_grid_track_extent(int axis) const -> const std::vector<float>& { return m_grid_track_extent[static_cast<std::size_t>(axis)]; }
 
+    // Implements erhe::property::Dependency_object: refreshes the mirror
+    // on every change of a Layout property, whatever its source.
+    void on_property_changed(const erhe::property::Property_changed_args& args) override;
+
 private:
+    void refresh_mirror();
+
     void layout_stack(Node& layout_node);
     void layout_grid (Node& layout_node);
     void layout_flow (Node& layout_node);

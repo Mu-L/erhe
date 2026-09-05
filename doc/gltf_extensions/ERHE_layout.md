@@ -45,6 +45,12 @@ for them.
   `pos_x` | `neg_x` | `pos_y` | `neg_y` | `pos_z` | `neg_z`.
 - `layout.grid_track_extent_{x,y,z}`: per-track extents; empty array =
   uniform tracks.
+- `layout.properties`: the attachment's local property values by name
+  (`doc/property-system.md` D23), the layout's complete local set: the
+  explicit fields above are the effective values for readers without the
+  property system, and a field the map does not name holds no local
+  value after the load, so a value inherited from the node
+  (`ERHE_node` `properties`, `Layout.gap`) or a style inherits again.
 
 ## Load semantics
 

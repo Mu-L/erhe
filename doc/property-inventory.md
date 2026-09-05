@@ -136,9 +136,7 @@ Every Grid property's property_changed touches the settings store.
 
 | Property | Storage | Notes |
 |---|---|---|
-| type, primary, secondary, tertiary | member | enumerations |
-| volume_min, volume_max | member | accessor lambdas into the Aabb |
-| gap, grid_track_count | member | track count validated to at least 1 per axis, visible for grid |
+| type, primary, secondary, tertiary, volume_min, volume_max, gap, grid_track_count | entry | inherits (D30, from the node chain); the members update() reads mirror the effective values; track count validated to at least 1 per axis, visible for grid |
 
 Not properties: the per-axis grid track extent lists.
 

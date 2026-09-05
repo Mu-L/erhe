@@ -259,6 +259,19 @@ void import_layouts(const erhe::gltf::Gltf_data& gltf_data)
             }
             layout->enable_flag_bits(erhe::Item_flags::content | erhe::Item_flags::show_in_ui | erhe::Item_flags::show_debug_visualizations);
             apply_flags(*layout, lj);
+            // The explicit fields above wrote local values; the properties
+            // map is the layout's complete local set (the ERHE_light rule),
+            // so a field it does not name is cleared again and a value
+            // held by the node above inherits after the reload.
+            const auto properties_it = lj.find("properties");
+            if ((properties_it != lj.end()) && properties_it->is_object()) {
+                erhe::gltf::clear_local_properties_not_listed(
+                    *layout,
+                    [properties_it](const std::string_view property_name) -> bool {
+                        return properties_it->contains(std::string{property_name});
+                    }
+                );
+            }
             node->attach(layout);
         }
         // Legacy "layout_item" sub-object (files written before the hints

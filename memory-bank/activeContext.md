@@ -42,12 +42,13 @@
   verify✓headless{scratchpad:verify_material_move*.py+verify_np_inherit.py}|?user-interactive
 @interactive-check-fixes::✓2026-09-04{900328b01:attached-holder-type{register_attached(name,owner,HOLDER,...);applies_to;for_each_attached_property_of;Layout-hints-held-by-Node-only}|b8cea9cd0+34cac3e24:multi-selection=per-owner-type-sections{library-entry→its-item;nodes+their-attachments;scratch-cleared-after-use}|9c4ff5327:shadow_cast+lightmapped=Mesh-properties{Item_base-keeps-visible;node/style-hold-Mesh.shadow_cast-via-Add-Property;legacy-flags-apply-to-meshes-only}}
   by-design::own-class-properties-always-rows{Add-Property-offers-only-other-class-values};Style-row-on-every-item
-@next::properties-window-single-path{doc/properties-window-single-path.md;two-paths=registered-rows(per-type-sections)+hand-written-per-item-rows;R1-R5;order:item-level-bridges(name,flags,tags)→per-owner-migrations→retire-material-inspect→diagnostics-only-helpers}
-@then::property-migrations{doc/property-migration-handoff.md;Light-derived-rows→Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes}
+@writable-computed::D26-extended✓2026-09-05{56615421c:register_computed(compute,set,writes)→compute_set+compute_writes;set_value→setter;clear/expression-rejected;editor-records-Property_set_operation-on-`writes`{make_computed_write_operation+rows.recorded_property};MCP-get_item_properties.writes;Light.flux{writes-intensity}+Light.blackbody{read-only};light_properties=zero-range-warning-only}
+@now::property-migrations{doc/property-migration-handoff.md;©User-swapped-order-2026-09-05:migrations-BEFORE-single-path;Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes}
+@then::properties-window-single-path{doc/properties-window-single-path.md;depends-on-migrations}
 
 [STATE]
 @branch::main{#36-commits-unpushed;user-pushes-themselves}
-prompt_queue.txt::item-0=properties-window-single-path{doc/properties-window-single-path.md};item-1=property-migrations;items-2-5-unchanged
+prompt_queue.txt::item-0=property-migrations{Layout-next};item-1=properties-window-single-path;items-2-5-unchanged
 
 [OPEN]
 ?user-interactive-check{folders+category-props+texture-slots+styles+node-attachment-values+camera+physics-materials}→expect-fixes;then-migrations{Node_physics-first}
