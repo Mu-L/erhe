@@ -17,15 +17,16 @@
 ✓shared-listing-rule{940aeccbb}+Add-Property-row{93153dcf9}+Remove-Property{5ea6655e8}+rows-m_items-leak-fix{4e496b984}+MCP-tool{75ca1498c}+docs-D12/D13{3a2318199;plan-doc-deleted}
 ?user-interactive-verify
 
-[TASK::properties-window-single-path]{AFTER-migrations}
+[TASK::properties-window-single-path]{NEXT}
 ?doc/properties-window-single-path.md{item-level-bridges-first}
 
 [TASK::property-migrations]{ONGOING}
 ✓Material+Node+Light+Camera{entry-store-since-2026-09-04}+graph-nodes+Mesh_primitive+Node_physics+Grid+Brush_placement+Physics_material+Layout+Layout-hints{attached}
 ✓Node_physics-entry-store+material-carries-damping/wind/density{a5233529c+901dab96a,2026-09-04}
 ✓interactive-fixes{holder-type+per-type-multiselect+Mesh-owned-shadow_cast/lightmapped;900328b01..9c4ff5327}
-✓Light-derived-rows{flux-writable-computed+blackbody;56615421c,2026-09-05}
-?next::Layout→Grid→Brush_placement→Rendertarget_mesh→Animation→Node_joint→graph-nodes{doc/property-migration-handoff.md}
+✓Light-derived-rows{56615421c}+Layout{90ab4c97b}+Grid{07be30baa}+Brush_placement{65620bed4}+Rendertarget_mesh{11897628c}+Animation{526f35383}+Node_joint{c8146b473};2026-09-05;all-headless-verified
+?left::graph-node-parameters{section-4.5;low-value;¬blocking}
+?user-interactive-verify{Light-flux-slider-undo;Layout/Grid/Brush_placement-holders;joint-rows}
 
 [NOTES]
 !headless-recipe::build_vs2026_vulkan_headless-editor→ERHE_AI_DRIVER=1-launch-hidden→mcp_call.py-b64-args{get_item_properties/set_item_property/get_addable_item_properties/undo;ids-reshuffle-per-launch;scene_name-required-for-create_node/select_items/get_node_details}
