@@ -2,6 +2,7 @@
 #include "app_context.hpp"
 #include "app_scenes.hpp"
 #include "assets/asset_manager.hpp"
+#include "brushes/brush.hpp"
 #include "content_library/content_library.hpp"
 #include "content_library/style.hpp"
 #include "geometry_graph/graph_mesh.hpp"
@@ -81,6 +82,15 @@ auto find_item_in_scene(Scene_root& scene_root, Predicate&& matches) -> std::sha
         for (const std::shared_ptr<erhe::graphics::Texture>& texture : library->textures->get_all<erhe::graphics::Texture>()) {
             if (texture && matches(*texture)) {
                 return texture;
+            }
+        }
+    }
+    // Brushes: the targets of a Brush_placement's brush property
+    // (section 4.11).
+    if (library && library->brushes) {
+        for (const std::shared_ptr<Brush>& brush : library->brushes->get_all<Brush>()) {
+            if (brush && matches(*brush)) {
+                return brush;
             }
         }
     }

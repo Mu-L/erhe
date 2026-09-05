@@ -28,10 +28,11 @@ public:
     // TODO Consider if Brush_placement is clonable or not
     auto clone() const -> std::shared_ptr<erhe::Item_base> override;
 
-    // Registered properties (doc/property-system.md section 4.11):
-    // the brush as an object reference (D28) member-backed over m_brush,
-    // and the facet and corner as developer-only integers bridged over the
-    // GEO::index_t members (NO_INDEX reads as -1).
+    // Registered properties (doc/property-system.md section 4.11), stored
+    // in the entry store and inheriting from the node chain (D30): the
+    // brush as an object reference (D28) and the facet and corner as
+    // developer-only integers (-1 = NO_INDEX). The members below are a
+    // mirror of the effective values kept current by on_property_changed.
     static const erhe::property::Property<erhe::property::Object_reference> brush_property;
     static const erhe::property::Property<int>                              facet_property;
     static const erhe::property::Property<int>                              corner_property;
@@ -42,7 +43,13 @@ public:
     [[nodiscard]] auto get_corner() const -> GEO::index_t;
     void set_corner(GEO::index_t corner);
 
+    // Implements erhe::property::Dependency_object: refreshes the mirror
+    // on every change of a Brush_placement property, whatever its source.
+    void on_property_changed(const erhe::property::Property_changed_args& args) override;
+
 private:
+    void refresh_mirror();
+
     std::shared_ptr<Brush> m_brush;
     GEO::index_t           m_facet;
     GEO::index_t           m_corner;

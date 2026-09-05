@@ -1562,10 +1562,15 @@ buttons by hand and everything else as generic rows through its own
 same rows in the Properties window.
 
 `Brush_placement` registers `brush` as an object property (D28,
-`reference_item_types` the brush type bit) member-backed over its brush
-pointer, and `facet` and `corner` as developer-only integers bridged
-over the `GEO::index_t` members (`NO_INDEX` reads as -1);
-`set_corner()` writes through the property.
+`reference_item_types` the brush type bit, validated to null or a
+`Brush`) and `facet` and `corner` as developer-only integers (-1 is
+`GEO::NO_INDEX`), all three entry-stored and inheriting (D30). The
+members `get_brush()` / `get_facet()` / `get_corner()` read are a mirror
+refreshed by `Brush_placement::on_property_changed`; `set_corner()` and
+the placing constructor write the store, the constructor only where an
+argument differs from the property default so a default-constructed
+placement stays open to a holder. Placements are not persisted, so
+there is no carrier to keep in step.
 `Properties::brush_placement_properties` keeps the brush's polygon
 count diagnostics.
 
@@ -1716,12 +1721,12 @@ style layer is D25.
 - Entry storage for the member-backed registrations (D18) whose values a
   node or a style should hold and a descendant inherit (D30): a bridged
   property is always local, so it is neither offered on a holder nor
-  inherited. In the order the holding is wanted: `Brush_placement`,
-  then the graph node parameters. The Light, Camera
+  inherited. What is left: the graph node parameters. The Light, Camera
   and Node_physics migrations (sections 4.3, 4.4, 4.10) are the recipe:
   keep the engineered struct as a mirror refreshed from
   `on_property_changed`, route the writers through setters. `Layout`
-  (section 4.13) and `Grid` (section 4.11) are done the same way. `Node`'s transform stays bridged
+  (section 4.13), `Grid` and `Brush_placement` (section 4.11) are done
+  the same way. `Node`'s transform stays bridged
   for the reasons D18 gives.
 - Shader graph (`src/editor/graph/`) node parameters as properties. The
   oldest graph editor has no parameter serialization and no undo

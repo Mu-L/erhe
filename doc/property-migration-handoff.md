@@ -18,20 +18,19 @@ no descendant inherits it; moving it to the entry store is what makes it
 holdable. A hand-written row is authored state the Properties window still
 draws by hand and no property carries at all.
 
-1. `Brush_placement` (`src/editor/brushes/brush_placement.cpp`, section
-   4.11): brush, facet, corner.
-2. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
+1. `Rendertarget_mesh`: width, height, pixels per meter (hand-written
    rows).
-3. `Animation`: start time, end time (hand-written rows).
-4. `Node_joint`: enable collision, connected node as a node-typed object
+2. `Animation`: start time, end time (hand-written rows).
+3. `Node_joint`: enable collision, connected node as a node-typed object
    reference (hand-written rows).
-5. Geometry graph and texture graph node parameters (section 4.5), last;
+4. Geometry graph and texture graph node parameters (section 4.5), last;
    sharing them through a style is rarely wanted.
 
 Done and the template for a derived row: the Light flux slider and
 blackbody swatch (section 4.3) are computed properties (D26), flux
 writable through a setter over intensity. Done and following the bridged
-owner recipe below: `Layout` (section 4.13) and `Grid` (section 4.11).
+owner recipe below: `Layout` (section 4.13), `Grid` and `Brush_placement`
+(section 4.11).
 
 Stays as it is: `Node`'s transform (bridged for the reasons D18 gives),
 `Physics_joint_settings` limits and drives (no property value form) and

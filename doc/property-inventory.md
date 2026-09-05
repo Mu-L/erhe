@@ -154,8 +154,8 @@ Per-child hints, attached (section 4.14), set on the child Node:
 
 | Property | Storage | Notes |
 |---|---|---|
-| brush | member | object reference, Brush |
-| facet, corner | bridge | `GEO::index_t` as int, developer-only |
+| brush | entry | object reference (D28), null or a Brush; inherits (D30); the mirror pointer follows |
+| facet, corner | entry | developer-only; -1 = NO_INDEX; inherits; set_corner writes the store |
 
 ### Geometry graph nodes (`src/editor/geometry_graph/nodes/`, section 4.5)
 
