@@ -51,7 +51,8 @@ per-owner migrations that this task depends on.
   viewport locks, `no_transform_update`, ... as bridged booleans or one
   enumeration-like group), the tags, and the rows of the inventory's
   table (`Rendertarget_mesh`, `Animation`, `Node_joint`, the Light
-  derived rows as computed properties with setters, D26).
+  derived rows as computed properties with setters, D26 - all landed
+  2026-09-05, see step 2 of the order below).
 - R3 Diagnostics (counts, dimensions, the live rigid body's state,
   raytrace state, skin joints) stay read-only rows, drawn per item; they
   are not authored state and need no mixed-value handling. They may
@@ -71,10 +72,12 @@ per-owner migrations that this task depends on.
    flags (bridges; `item_flags` grid goes), tags. This alone gives every
    item type the shared multi-selection treatment for the rows every
    item has.
-2. The per-owner migrations in the order `doc/property-migration-handoff.md`
-   gives (Light derived rows, Layout, Grid, Brush_placement,
-   Rendertarget_mesh, Animation, Node_joint, graph nodes), each deleting
-   its hand-written rows in the same commit.
+2. The per-owner migrations of `doc/property-migration-handoff.md` are
+   done (the Light derived rows, Layout, Grid, Brush_placement,
+   Rendertarget_mesh, Animation and Node_joint each deleted their
+   hand-written rows in their own commit); the graph-node parameters it
+   still lists are drawn by the Node Properties window, not this one, so
+   they are not on this task's path.
 3. Retire `material_properties` and the inspect snapshot (R4).
 4. Fold the remaining per-class functions into diagnostics-only helpers
    (R3), and make `item_properties` a thin frame: the group header, the

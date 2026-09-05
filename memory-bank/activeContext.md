@@ -50,7 +50,7 @@
 
 [STATE]
 @branch::main{#43-commits-unpushed;user-pushes-themselves}
-prompt_queue.txt::item-0=property-migrations{graph-nodes-only-left};item-1=properties-window-single-path;items-2-5-unchanged
+prompt_queue.txt::item-0=properties-window-single-path{START-HERE};item-1=graph-node-params{optional};items-2-5-unchanged
 
 [OPEN]
 ?user-interactive-check{folders+category-props+texture-slots+styles+node-attachment-values+camera+physics-materials}→expect-fixes;then-migrations{Node_physics-first}
