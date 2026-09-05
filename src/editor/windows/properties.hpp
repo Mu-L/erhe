@@ -119,9 +119,7 @@ private:
     void mesh_properties              (erhe::scene::Mesh& mesh);
     void skin_properties              (erhe::scene::Skin& skin);
     void material_properties          (const std::vector<std::shared_ptr<erhe::Item_base>>& items);
-    void brush_properties             (const std::shared_ptr<Brush>& brush);
     void brush_placement_properties   (Brush_placement& brush_placement);
-    void geometry_graph_mesh_properties(Geometry_graph_mesh& geometry_graph_mesh);
     void node_physics_properties      (Node_physics& node_physics);
     void node_joint_properties        (Node_joint& node_joint);
     // Generic rows for the item's registered properties
@@ -131,6 +129,7 @@ private:
     void physics_joint_settings_properties(const std::shared_ptr<erhe::physics::Physics_joint_settings>& settings);
     void item_flags                   (const std::shared_ptr<erhe::Item_base>& item);
     void item_properties              (const std::shared_ptr<erhe::Item_base>& item);
+    void item_diagnostics             (const std::shared_ptr<erhe::Item_base>& item);
 
 
     // Scene-hosted references (see AGENTS.md "Scene-hosted references in

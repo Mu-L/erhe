@@ -350,7 +350,6 @@ void Properties::texture_properties(const std::shared_ptr<erhe::graphics::Textur
 
     push_group("Texture", ImGuiTreeNodeFlags_DefaultOpen, m_indent);
 
-    add_entry("Name",   [texture](){ ImGui::TextUnformatted(texture->get_name().c_str()); });
     add_entry("Width",  [texture](){ ImGui::Text("%d", texture->get_width()); });
     add_entry("Height", [texture](){ ImGui::Text("%d", texture->get_height()); });
     add_entry("Format", [texture](){ ImGui::TextUnformatted(erhe::dataformat::c_str(texture->get_pixelformat())); });
@@ -580,30 +579,6 @@ void Properties::mesh_properties(erhe::scene::Mesh& mesh)
     }
 }
 
-void Properties::brush_properties(const std::shared_ptr<Brush>& brush)
-{
-    ERHE_PROFILE_FUNCTION();
-
-    push_group("Brush", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed, m_indent);
-
-    add_entry("Material", [brush, this]() {
-        // Accept a Material dragged directly or from the content library (Content_library_node).
-        std::shared_ptr<erhe::Item_base> value = brush->get_material();
-        Item_reference_options options;
-        options.accept_content_library_node = true;
-        options.show_clear_button           = false; // a brush keeps its material; no unset
-        if (
-            item_reference_imgui(
-                m_context, "##brush_material", value, erhe::primitive::Material::get_static_type(), options
-            )
-        ) {
-            brush->set_material(std::dynamic_pointer_cast<erhe::primitive::Material>(value));
-        }
-    });
-
-    pop_group();
-}
-
 void Properties::brush_placement_properties(Brush_placement& brush_placement)
 {
     ERHE_PROFILE_FUNCTION();
@@ -642,31 +617,6 @@ void Properties::on_begin()
 void Properties::on_end()
 {
     ImGui::PopStyleVar();
-}
-
-void Properties::geometry_graph_mesh_properties(Geometry_graph_mesh& geometry_graph_mesh)
-{
-    ERHE_PROFILE_FUNCTION();
-
-    // The referenced Graph_mesh asset; rebinding applies the new asset's
-    // latest bake immediately (main thread).
-    erhe::scene::Node* node = geometry_graph_mesh.get_node();
-    Scene_root* scene_root = (node != nullptr) ? static_cast<Scene_root*>(node->get_item_host()) : nullptr;
-    const std::shared_ptr<Content_library> content_library = (scene_root != nullptr) ? scene_root->get_content_library() : std::shared_ptr<Content_library>{};
-    if (content_library && content_library->graph_meshes) {
-        add_entry("Graph Mesh", [this, &geometry_graph_mesh, content_library]() {
-            std::shared_ptr<Graph_mesh> graph_mesh = geometry_graph_mesh.get_graph_mesh();
-            if (content_library->graph_meshes->combo(m_context, "##", graph_mesh, true)) {
-                geometry_graph_mesh.set_graph_mesh(graph_mesh);
-                geometry_graph_mesh.apply_baked_products();
-            }
-        });
-    } else {
-        add_entry("Graph Mesh", [&geometry_graph_mesh]() {
-            const std::shared_ptr<Graph_mesh>& graph_mesh = geometry_graph_mesh.get_graph_mesh();
-            ImGui::TextUnformatted(graph_mesh ? graph_mesh->get_name().c_str() : "(none)");
-        });
-    }
 }
 
 void Properties::node_physics_properties(Node_physics& node_physics)
@@ -1018,34 +968,57 @@ void Properties::item_flags(const std::shared_ptr<erhe::Item_base>& item)
         !erhe::is<Rendertarget_mesh>(item);
 }
 
+// The per-item part of the window (R3 / R5 of
+// doc/properties-window-single-path.md): the read-only diagnostics of the
+// item's class, the actions, and the list editors that have no property
+// form (the scene's settings block, a layout's track extents, a collision
+// filter's system lists, joint limits and drives), all drawn per item and
+// disabled while the item is sealed.
+void Properties::item_diagnostics(const std::shared_ptr<erhe::Item_base>& item)
+{
+    const auto& node_physics     = std::dynamic_pointer_cast<Node_physics           >(item);
+    const auto& node_joint       = std::dynamic_pointer_cast<Node_joint             >(item);
+    const auto& scene            = std::dynamic_pointer_cast<erhe::scene::Scene     >(item);
+    const auto& layout           = std::dynamic_pointer_cast<erhe::scene::Layout    >(item);
+    const auto& light            = std::dynamic_pointer_cast<erhe::scene::Light     >(item);
+    const auto& mesh             = std::dynamic_pointer_cast<erhe::scene::Mesh      >(item);
+    const auto& brush_placement  = std::dynamic_pointer_cast<Brush_placement        >(item);
+    const auto& texture          = std::dynamic_pointer_cast<erhe::graphics::Texture>(item);
+    const auto& collision_filter = std::dynamic_pointer_cast<erhe::physics::Collision_filter      >(item);
+    const auto& physics_joint    = std::dynamic_pointer_cast<erhe::physics::Physics_joint_settings>(item);
+
+    const bool edit_disabled = item->is_lock_edit();
+    if (edit_disabled) {
+        ImGui::BeginDisabled();
+    }
+    if (node_physics)     { node_physics_properties(*node_physics); }
+    if (node_joint)       { node_joint_properties(*node_joint); }
+    if (collision_filter) { collision_filter_properties(collision_filter); }
+    if (physics_joint)    { physics_joint_settings_properties(physics_joint); }
+    if (scene)            { scene_properties(*scene); }
+    if (light)            { light_properties(*light); }
+    if (layout)           { layout_properties(*layout); }
+    if (mesh)             { mesh_properties(*mesh); }
+    if (brush_placement)  { brush_placement_properties(*brush_placement); }
+    if (texture)          { texture_properties(texture); }
+    if (edit_disabled) {
+        ImGui::EndDisabled();
+    }
+}
+
 void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in)
 {
     ERHE_PROFILE_FUNCTION();
 
-    const auto& content_library_node = std::dynamic_pointer_cast<Content_library_node   >(item_in);
-    const auto& item            = (content_library_node && content_library_node->item) ? content_library_node->item : item_in;
-
-    const auto& node_physics    = std::dynamic_pointer_cast<Node_physics           >(item);
-    const auto& node_joint      = std::dynamic_pointer_cast<Node_joint             >(item);
-    const auto& rendertarget    = std::dynamic_pointer_cast<Rendertarget_mesh      >(item);
-    const auto& scene           = std::dynamic_pointer_cast<erhe::scene::Scene     >(item);
-    const auto& layout          = std::dynamic_pointer_cast<erhe::scene::Layout    >(item);
-    const auto& light           = std::dynamic_pointer_cast<erhe::scene::Light     >(item);
-    const auto& mesh            = std::dynamic_pointer_cast<erhe::scene::Mesh      >(item);
-    const auto& node            = std::dynamic_pointer_cast<erhe::scene::Node      >(item);
-    const auto& brush           = std::dynamic_pointer_cast<Brush                  >(item);
-    const auto& brush_placement = std::dynamic_pointer_cast<Brush_placement        >(item);
-    const auto& geometry_graph_mesh = std::dynamic_pointer_cast<Geometry_graph_mesh>(item);
-    const auto& texture         = std::dynamic_pointer_cast<erhe::graphics::Texture>(item);
-    const auto& collision_filter  = std::dynamic_pointer_cast<erhe::physics::Collision_filter      >(item);
-    const auto& physics_joint     = std::dynamic_pointer_cast<erhe::physics::Physics_joint_settings>(item);
-
+    const auto& content_library_node = std::dynamic_pointer_cast<Content_library_node>(item_in);
+    const auto& item = (content_library_node && content_library_node->item) ? content_library_node->item : item_in;
     if (!item) {
         return;
     }
+    const auto& node = std::dynamic_pointer_cast<erhe::scene::Node>(item);
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Framed;
-    if (!node_physics && !rendertarget) {
+    if (!erhe::is<Node_physics>(item.get()) && !erhe::is<Rendertarget_mesh>(item.get())) {
         flags |= ImGuiTreeNodeFlags_DefaultOpen;
     }
 
@@ -1058,72 +1031,14 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
         item->get_name()
     );
     push_group(group_label.c_str(), flags, m_indent);
-    if (show_item_details(item.get())) {
-        if (m_context.developer_mode) {
-            add_entry("Id", [item]() { ImGui::Text("%u", static_cast<unsigned int>(item->get_id())); });
-            item_flags(item);
-        }
+    if (show_item_details(item.get()) && m_context.developer_mode) {
+        add_entry("Id", [item]() { ImGui::Text("%u", static_cast<unsigned int>(item->get_id())); });
+        item_flags(item);
     }
 
-    const bool edit_disabled = item->is_lock_edit();
-    if (edit_disabled) {
-        ImGui::BeginDisabled();
-    }
-
-    if (node_physics) {
-        node_physics_properties(*node_physics);
-    }
-
-    if (node_joint) {
-        node_joint_properties(*node_joint);
-    }
-
-    if (collision_filter) {
-        collision_filter_properties(collision_filter);
-    }
-
-    if (physics_joint) {
-        physics_joint_settings_properties(physics_joint);
-    }
-
-    if (scene) {
-        scene_properties(*scene);
-    }
-
-    if (light) {
-        light_properties(*light);
-    }
-
-    if (layout) {
-        layout_properties(*layout);
-    }
-
-    if (mesh) {
-        mesh_properties(*mesh);
-    }
-
-    if (brush) {
-        brush_properties(brush);
-    }
-
-    if (brush_placement) {
-        brush_placement_properties(*brush_placement);
-    }
-
-    if (geometry_graph_mesh) {
-        geometry_graph_mesh_properties(*geometry_graph_mesh);
-    }
-
-    if (texture) {
-        texture_properties(texture);
-    }
-
-    if (edit_disabled) {
-        ImGui::EndDisabled();
-    }
+    item_diagnostics(item);
 
     if (node) {
-        //push_group("Attachments", ImGuiTreeNodeFlags_DefaultOpen, m_indent);
         for (const std::shared_ptr<erhe::scene::Node_attachment>& attachment : node->get_attachments()) {
             item_properties(attachment);
             // Undoable remove (pure detach) for this attachment. Queuing to the
@@ -1136,7 +1051,6 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
                 }
             }, "Remove this attachment (undoable)");
         }
-        //pop_group();
 
         // "Add Attachment": popup listing the attachment catalog, entries
         // disabled when the node cannot take that kind (duplicate / precondition).
@@ -1156,6 +1070,8 @@ void Properties::item_properties(const std::shared_ptr<erhe::Item_base>& item_in
         });
     }
 
+    // The registered rows of the item (and, for a node, of each attachment
+    // above, drawn by the recursive call).
     dependency_properties(item);
 
     pop_group();

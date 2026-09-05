@@ -33,6 +33,18 @@ auto Brush_data::get_name() const -> const std::string&
     return name;
 }
 
+const erhe::property::Property<erhe::property::Object_reference> Brush::material_property =
+    erhe::property::Property<erhe::property::Object_reference>::register_member(
+        "material", Brush::property_owner_type(), &Brush::m_material,
+        erhe::property::Property_metadata{
+            .ui = erhe::property::Property_ui{
+                .label                = "Material",
+                .reference_item_types = erhe::Item_type::material,
+                .show_clear_button    = false
+            }
+        }
+    );
+
 Brush::Brush(const Brush_data& create_info)
     : Item  {create_info.get_name()}
     , m_data{create_info}
@@ -65,7 +77,7 @@ auto Brush::get_normal_style() const -> erhe::primitive::Normal_style
 
 void Brush::set_material(const std::shared_ptr<erhe::primitive::Material>& material)
 {
-    m_material = material;
+    set_value(material_property, erhe::property::Object_reference{material});
 }
 
 auto Brush::make_with_material(const std::shared_ptr<erhe::primitive::Material>& material) const -> std::shared_ptr<Brush>

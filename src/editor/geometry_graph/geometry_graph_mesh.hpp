@@ -68,9 +68,13 @@ public:
     // inline here could deadlock - the caller may hold item_host_mutex).
     void handle_item_host_update(erhe::Item_host* old_item_host, erhe::Item_host* new_item_host) override;
 
+    // The referenced Graph_mesh asset (member-backed object property,
+    // doc/property-system.md D18 / D28). A write releases the controlled
+    // products at once - a rebind target may never publish a bake, and a
+    // stale mesh must not linger - and applies the new asset's latest
+    // bake (main thread). set_graph_mesh writes the property.
+    static const erhe::property::Property<erhe::property::Object_reference> graph_mesh_property;
     [[nodiscard]] auto get_graph_mesh() const -> const std::shared_ptr<Graph_mesh>&;
-    // Rebinding resets the applied revision; call apply_baked_products()
-    // afterwards (main thread) to materialize the new asset's bake.
     void set_graph_mesh(const std::shared_ptr<Graph_mesh>& graph_mesh);
 
     // Applies the referenced asset's current baked products to the node:
@@ -90,6 +94,8 @@ public:
     [[nodiscard]] auto get_controlled_node_physics() const -> const std::shared_ptr<Node_physics>&;
 
 private:
+    static void on_graph_mesh_set(Geometry_graph_mesh& attachment);
+
     // Detaches the controlled Mesh / Node_physics from the node that
     // holds them (m_controlled_node; may differ from get_node() after a
     // detach or move) and drops them. Safe during node teardown (~Node

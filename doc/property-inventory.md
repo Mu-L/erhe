@@ -180,6 +180,18 @@ Per-child hints, attached (section 4.14), set on the child Node:
 | brush | entry | object reference (D28), null or a Brush; inherits (D30); the mirror pointer follows |
 | facet, corner | entry | developer-only; -1 = NO_INDEX; inherits; set_corner writes the store |
 
+### Brush (`src/editor/brushes/brush.cpp`)
+
+| Property | Storage | Notes |
+|---|---|---|
+| material | member | object reference, a Material; no clear (a brush keeps a material) |
+
+### Geometry_graph_mesh (`src/editor/geometry_graph/geometry_graph_mesh.cpp`)
+
+| Property | Storage | Notes |
+|---|---|---|
+| graph_mesh | member | object reference, a Graph_mesh asset; after_set releases the controlled products and applies the new bake |
+
 ### Geometry graph nodes (`src/editor/geometry_graph/nodes/`, section 4.5)
 
 One owner type per node kind; every parameter is `member` with
@@ -231,6 +243,8 @@ migration priority order. Each migration follows the Material recipe
 | Owner | Fields | Notes |
 |---|---|---|
 | Physics_joint_settings | limits, drives | lists; no `Property_value` form, stay hand-written |
+| Collision_filter | collision_systems, collide_with_systems, not_collide_with_systems | string lists; stay hand-written |
+| Layout | grid track extents | per-axis float lists; stay hand-written |
 | Scene | ambient light | the per-scene overrides stay a settings block |
 
 Rows that are not properties and stay hand-written: read-only

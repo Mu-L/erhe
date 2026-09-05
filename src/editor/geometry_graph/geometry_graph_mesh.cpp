@@ -17,6 +17,25 @@
 
 namespace editor {
 
+const erhe::property::Property<erhe::property::Object_reference> Geometry_graph_mesh::graph_mesh_property =
+    erhe::property::Property<erhe::property::Object_reference>::register_member(
+        "graph_mesh", Geometry_graph_mesh::property_owner_type(), &Geometry_graph_mesh::m_graph_mesh,
+        erhe::property::Property_metadata{
+            .ui = erhe::property::Property_ui{
+                .tooltip              = "The geometry graph asset whose bake this node shows",
+                .label                = "Graph Mesh",
+                .reference_item_types = erhe::Item_type::graph_mesh
+            }
+        },
+        &Geometry_graph_mesh::on_graph_mesh_set
+    );
+
+void Geometry_graph_mesh::on_graph_mesh_set(Geometry_graph_mesh& attachment)
+{
+    attachment.release_controlled_products();
+    attachment.apply_baked_products();
+}
+
 Geometry_graph_mesh::Geometry_graph_mesh()
     : Item{"Geometry Graph Mesh"}
 {
@@ -87,17 +106,7 @@ auto Geometry_graph_mesh::get_controlled_node_physics() const -> const std::shar
 
 void Geometry_graph_mesh::set_graph_mesh(const std::shared_ptr<Graph_mesh>& graph_mesh)
 {
-    if (m_graph_mesh == graph_mesh) {
-        return;
-    }
-    m_graph_mesh = graph_mesh;
-    // Release immediately on ANY change so no stale mesh lingers: a
-    // rebind target may never publish a bake (e.g. an asset without an
-    // output node), in which case apply_baked_products() would keep the
-    // previous asset's mesh forever. Both bind paths (Properties, MCP)
-    // call apply_baked_products() right after, so a baked target shows
-    // without a visible gap.
-    release_controlled_products();
+    set_value(graph_mesh_property, erhe::property::Object_reference{graph_mesh});
 }
 
 void Geometry_graph_mesh::release_controlled_products()

@@ -24,17 +24,15 @@ per-owner migrations that this task depends on.
    standing for its item, a node followed by its attachments) and draws
    one such section per type; a single selection draws the section under
    the item's own group through `item_properties` and `dependency_properties`.
-2. Hand-written rows. `Properties::item_properties` and the per-class
-   functions it calls (`scene_properties`, `light_properties`,
-   `mesh_properties`, `node_physics_properties`, `node_joint_properties`,
+2. Hand-written rows. `Properties::item_properties` is the frame (the
+   group header, the developer id and flag word, the attachment Remove
+   and Add buttons) around `item_diagnostics`, whose per-class functions
+   (`scene_properties`, `light_properties`, `mesh_properties`,
+   `node_physics_properties`, `node_joint_properties`,
    `collision_filter_properties`, `physics_joint_settings_properties`,
-   `brush_properties`, `texture_properties`, ...) add `add_entry` rows
-   per item: the attachment Remove buttons, the read-only diagnostics,
-   and the authored rows the inventory's "Not yet migrated" table lists.
-   `material_properties` draws the material preview and the BRDF slice
-   for a selected material. These rows are drawn once per selected
-   item, in a group per item, with no mixed-value display and no shared
-   edit.
+   `texture_properties`, ...) add the read-only diagnostics, the actions
+   and the R5 list editors per item. `material_properties` draws the
+   material preview and the BRDF slice for a selected material.
 
 ## 2. Requirements
 
@@ -70,9 +68,11 @@ per-owner migrations that this task depends on.
   record); `material_properties` draws only the preview render and the
   BRDF slice for a selected material.
 - R5 List-valued state with no `Property_value` form
-  (`Physics_joint_settings` limits and drives, the scene's ambient light
-  settings block) keeps its hand-written editor, drawn per item, and is
-  the documented exception.
+  (`Physics_joint_settings` limits and drives, `Collision_filter`'s three
+  system lists, `Layout`'s per-axis grid track extents, the scene's
+  ambient light and settings-override block) keeps its hand-written
+  editor, drawn per item, and is the documented exception; the
+  inventory's "Not yet migrated" table lists them.
 
 ## 3. Order
 
@@ -95,9 +95,10 @@ per-owner migrations that this task depends on.
    they are not on this task's path.
 3. R4 holds: the sampler rows are Material properties and the inspect
    snapshot is gone.
-4. Fold the remaining per-class functions into diagnostics-only helpers
-   (R3), and make `item_properties` a thin frame: the group header, the
-   diagnostics, the registered section, the attachment Remove buttons.
+4. Holds: the last authored rows are properties (`Brush::material_property`,
+   `Geometry_graph_mesh::graph_mesh_property`), the per-class functions
+   draw diagnostics, actions and the R5 editors only (`item_diagnostics`),
+   and `item_properties` is the frame of section 1.
 
 ## 4. Verification
 
