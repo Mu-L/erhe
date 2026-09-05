@@ -213,6 +213,9 @@ auto delete_keyframe(
 
 void reset_channel_seek_state(erhe::scene::Animation& animation)
 {
+    // Every keyframe edit above ends here: the computed time range and
+    // counts push to their expression readers (D26).
+    animation.notify_keyframes_changed();
     for (erhe::scene::Animation_channel& channel : animation.channels) {
         channel.start_position = 0;
     }
@@ -357,6 +360,7 @@ auto ensure_channel(
             .value_offset   = 0
         }
     );
+    animation.notify_keyframes_changed();
     return animation.channels.size() - 1;
 }
 

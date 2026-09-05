@@ -75,6 +75,17 @@ public:
     static constexpr std::string_view static_type_name{"Animation"};
     [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return Item_type::animation; }
 
+    // Read-only computed properties (doc/property-system.md D26, section
+    // 4.16) over the samplers and channels: the keyed time range and the
+    // counts. A writer of `samplers` / `channels` / a sampler's timestamps
+    // calls notify_keyframes_changed() so an expression reading them
+    // re-evaluates; the values themselves are always current on read.
+    static const erhe::property::Property<float> first_time_property;
+    static const erhe::property::Property<float> last_time_property;
+    static const erhe::property::Property<int>   sampler_count_property;
+    static const erhe::property::Property<int>   channel_count_property;
+    void notify_keyframes_changed();
+
     // Public API
     [[nodiscard]] auto evaluate      (float time_current, std::size_t channel_index, std::size_t component) -> float;
     [[nodiscard]] auto get_first_time() const -> float;

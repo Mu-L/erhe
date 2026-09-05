@@ -13,6 +13,7 @@
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/scene.hpp"
 #include "erhe_scene/scene_host.hpp"
+#include "erhe_property/dependency_property.hpp"
 
 #include <gtest/gtest.h>
 
@@ -137,3 +138,32 @@ TEST(animation_apply, keeps_moving_the_node_on_later_frames)
 
 } // anonymous namespace
 
+
+// The keyed time range and the counts as computed properties (D26,
+// doc/property-system.md section 4.16): read-only, always current on read,
+// pushed to expression readers by notify_keyframes_changed().
+TEST(animation_apply, time_range_and_counts_are_computed_properties)
+{
+    using erhe::property::Value_source;
+    auto animation = std::make_shared<erhe::scene::Animation>("a");
+    auto node      = std::make_shared<erhe::scene::Node>("n");
+    EXPECT_EQ(animation->get_value(erhe::scene::Animation::sampler_count_property), 0);
+    EXPECT_EQ(animation->get_value(erhe::scene::Animation::channel_count_property), 0);
+    EXPECT_TRUE(erhe::scene::Animation::first_time_property.get().is_read_only());
+
+    make_translation_animation(*animation, node);
+    EXPECT_EQ(animation->get_value(erhe::scene::Animation::sampler_count_property), 1);
+    EXPECT_EQ(animation->get_value(erhe::scene::Animation::channel_count_property), 1);
+    EXPECT_FLOAT_EQ(animation->get_value(erhe::scene::Animation::first_time_property), 0.0f);
+    EXPECT_FLOAT_EQ(animation->get_value(erhe::scene::Animation::last_time_property), 1.0f);
+    EXPECT_EQ(animation->get_value_source(erhe::scene::Animation::last_time_property.get()), Value_source::computed);
+    EXPECT_FALSE(animation->set_value(erhe::scene::Animation::last_time_property.get(), erhe::property::Property_value{5.0f}));
+
+    // A keyframe edit is visible on read at once; the push is a no-op
+    // while nothing reads the properties.
+    animation->samplers[0].timestamps.back() = 3.0f;
+    EXPECT_FLOAT_EQ(animation->get_value(erhe::scene::Animation::last_time_property), 3.0f);
+    animation->notify_keyframes_changed();
+    EXPECT_FLOAT_EQ(animation->get_value(erhe::scene::Animation::last_time_property), 3.0f);
+    EXPECT_FALSE(animation->has_local_value(erhe::scene::Animation::last_time_property.get()));
+}

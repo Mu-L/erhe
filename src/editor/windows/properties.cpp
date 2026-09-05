@@ -183,15 +183,10 @@ void Properties::animation_properties(const std::shared_ptr<erhe::scene::Animati
 {
     ERHE_PROFILE_FUNCTION();
 
-    const float start_time = animation->get_first_time();
-    const float end_time   = animation->get_last_time();
-
-    add_entry("Start Time", [=](){ ImGui::Text("%.4f", start_time); });
-    add_entry("End Time",   [=](){ ImGui::Text("%.4f", end_time); });
-    add_entry("Samplers", [animation](){ ImGui::Text("%d", static_cast<int>(animation->samplers.size())); });
-    add_entry("Channels", [animation](){ ImGui::Text("%d", static_cast<int>(animation->channels.size())); });
-
-    // Playback and curve editing live in the Animation window (issue #243).
+    // The time range and the sampler / channel counts are computed
+    // properties drawn by the generic rows (doc/property-system.md section
+    // 4.16). Playback and curve editing live in the Animation window
+    // (issue #243).
     add_entry("Edit", [this, animation]() {
         if (ImGui::Button("Open in Animation Window")) {
             m_context.animation_window->set_animation(animation);

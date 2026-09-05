@@ -350,6 +350,41 @@ Animation::Animation(const Animation&)            = default;
 Animation& Animation::operator=(const Animation&) = default;
 Animation::~Animation() noexcept                  = default;
 
+namespace {
+
+constexpr std::string_view c_animation_group = "Animation";
+
+} // anonymous namespace
+
+const erhe::property::Property<float> Animation::first_time_property = erhe::property::Property<float>::register_computed(
+    "first_time", Animation::property_owner_type(),
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return static_cast<const Animation&>(object).get_first_time(); },
+    erhe::property::Property_metadata{.flags = erhe::property::Property_flags::none, .ui = erhe::property::Property_ui{.group = c_animation_group, .tooltip = "Earliest keyframe time over the channels, in seconds", .label = "Start Time"}}
+);
+const erhe::property::Property<float> Animation::last_time_property = erhe::property::Property<float>::register_computed(
+    "last_time", Animation::property_owner_type(),
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return static_cast<const Animation&>(object).get_last_time(); },
+    erhe::property::Property_metadata{.flags = erhe::property::Property_flags::none, .ui = erhe::property::Property_ui{.group = c_animation_group, .tooltip = "Latest keyframe time over the channels, in seconds", .label = "End Time"}}
+);
+const erhe::property::Property<int> Animation::sampler_count_property = erhe::property::Property<int>::register_computed(
+    "sampler_count", Animation::property_owner_type(),
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return static_cast<int>(static_cast<const Animation&>(object).samplers.size()); },
+    erhe::property::Property_metadata{.flags = erhe::property::Property_flags::none, .ui = erhe::property::Property_ui{.group = c_animation_group, .label = "Samplers"}}
+);
+const erhe::property::Property<int> Animation::channel_count_property = erhe::property::Property<int>::register_computed(
+    "channel_count", Animation::property_owner_type(),
+    [](const erhe::property::Dependency_object& object) -> erhe::property::Property_value { return static_cast<int>(static_cast<const Animation&>(object).channels.size()); },
+    erhe::property::Property_metadata{.flags = erhe::property::Property_flags::none, .ui = erhe::property::Property_ui{.group = c_animation_group, .label = "Channels"}}
+);
+
+void Animation::notify_keyframes_changed()
+{
+    invalidate_dependents(first_time_property.get());
+    invalidate_dependents(last_time_property.get());
+    invalidate_dependents(sampler_count_property.get());
+    invalidate_dependents(channel_count_property.get());
+}
+
 Animation::Animation(const std::string_view name)
     : Item<Item_base, Item_base, Animation>{name}
 {

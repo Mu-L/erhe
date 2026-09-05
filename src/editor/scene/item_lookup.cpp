@@ -18,6 +18,7 @@
 #include "erhe_primitive/material.hpp"
 #include "erhe_scene/node.hpp"
 #include "erhe_scene/node_attachment.hpp"
+#include "erhe_scene/animation.hpp"
 #include "erhe_scene/scene.hpp"
 
 namespace editor {
@@ -82,6 +83,15 @@ auto find_item_in_scene(Scene_root& scene_root, Predicate&& matches) -> std::sha
         for (const std::shared_ptr<erhe::graphics::Texture>& texture : library->textures->get_all<erhe::graphics::Texture>()) {
             if (texture && matches(*texture)) {
                 return texture;
+            }
+        }
+    }
+    // Animations: content-library items with computed properties
+    // (section 4.16) the property tools address by id or name.
+    if (library && library->animations) {
+        for (const std::shared_ptr<erhe::scene::Animation>& animation : library->animations->get_all<erhe::scene::Animation>()) {
+            if (animation && matches(*animation)) {
+                return animation;
             }
         }
     }

@@ -139,6 +139,12 @@ change touches the settings store from on_property_changed.
 |---|---|---|
 | width, height, pixels_per_meter | computed | read-only; the size is authored through resize_rendertarget |
 
+### Animation (`src/erhe/scene/erhe_scene/animation.cpp`, section 4.16)
+
+| Property | Storage | Notes |
+|---|---|---|
+| first_time, last_time, sampler_count, channel_count | computed | read-only over the samplers and channels; notify_keyframes_changed pushes to expressions |
+
 ### Layout (`src/erhe/scene/erhe_scene/layout.cpp`, section 4.13)
 
 | Property | Storage | Notes |
@@ -215,7 +221,6 @@ migration priority order. Each migration follows the Material recipe
 |---|---|---|
 | Physics_joint_settings | limits, drives | lists; no `Property_value` form, stay hand-written |
 | Scene | ambient light | the per-scene overrides stay a settings block |
-| Animation | start time, end time | |
 | Node_joint | enable collision, connected node | connected node as a node-typed object reference |
 
 Rows that are not properties and stay hand-written: read-only

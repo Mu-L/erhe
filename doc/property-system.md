@@ -1688,6 +1688,21 @@ buffer and the mesh memory, so it is not a property setter;
 expressions. The Properties window draws them as generic rows; it has no
 hand-written rendertarget rows.
 
+### 4.16 Animation
+
+`Animation` (`erhe::scene`) registers its keyed time range and its
+sampler and channel counts as read-only computed properties (D26, group
+`Animation`, not serialized): `first_time` and `last_time` over
+`get_first_time()` / `get_last_time()`, `sampler_count` and
+`channel_count` over the two vectors. The samplers and channels stay
+public vectors edited in place by the animation editing functions and
+the glTF loader, so the values are always current on read and
+`Animation::notify_keyframes_changed()` is the push for expression
+readers: `reset_channel_seek_state` (the tail of every keyframe edit in
+`src/editor/animation/animation_edit.cpp`) and the channel creation
+call it. `Properties::animation_properties` keeps only the "Open in
+Animation Window" button; the generic section draws the four rows.
+
 ## 5. Out of scope
 
 Kept out deliberately, as they are the WPF parts that serve XAML UI rather
@@ -1727,7 +1742,8 @@ style layer is D25.
   takes them on.
 - Further computed properties (D26) as their consumers appear: a node's
   world bounds over its subtree, a scene's item counts.
-  `Rendertarget_mesh`'s size (section 4.15) is one already.
+  `Rendertarget_mesh`'s size (section 4.15) and `Animation`'s time range
+  and counts (section 4.16) are ones already.
 - Further item migrations, each reusing the Material recipe (section 4.1).
   `doc/property-inventory.md` owns the per-field status: every registered
   property with its storage kind, and the hand-written Properties rows
